@@ -185,11 +185,30 @@ function M.smooth(rectangles, ground_y, options, env)
 	local clear = env.clear_trees or function(zone, protected)
 		return fragments.clear_trees(zone, nil, engine, protected)
 	end
-	-- Unowned logs cannot be reliably distinguished from trees. In the safe
-	-- contract leave cleanup to the caller and treat their columns as obstacles.
-	local tree_stats, clear_reason
-	if boxes then tree_stats = {removed = 0}
-	else tree_stats, clear_reason = operation(clear, zones, rectangles) end
+	-- Trees are cleared in both contracts. A building's logs look like trees, so with
+	-- structure boxes the protection is the footprints of the boxes plus
+	-- options.is_protected, checked per column like clear_trees does, and the rectangles
+	-- stay protected too. Trees that protection leaves standing are obstacles to the scan below.
+	local protected = rectangles
+	if boxes then
+		local protected_columns = {}
+		-- The whole answer is cached per column: the seed loop asks for every node.
+		protected = function(x, z)
+			local row = protected_columns[z] or {}
+			protected_columns[z] = row
+			if row[x] == nil then
+				local hit = within(rectangles, x, z) or in_structure(x, z)
+				if not hit then
+					for y = volume.minp.y, volume.maxp.y do
+						if options.is_protected({x = x, y = y, z = z}) then hit = true break end
+					end
+				end
+				row[x] = hit
+			end
+			return row[x]
+		end
+	end
+	local tree_stats, clear_reason = operation(clear, zones, protected)
 	if not tree_stats then return false, clear_reason end
 	written = envelope_add(written, tree_stats.written)
 
