@@ -102,3 +102,7 @@ living_villages_farmer_chest_withdraw (Farmers take seeds and food from chests) 
 # farm stops growing by itself, though two villagers a player feeds can still have a child. Off,
 # births ignore food, and farmers' food still heals villagers and speeds up children.
 living_villages_births_need_food (Births need fed parents) bool true
+
+# An unemployed villager takes a free composter it can reach ahead of any other job, and looks for
+# one this far away (other jobs: 48 nodes, up and down as well; composters: 24 up and down).
+living_villages_farm_job_radius (Range to look for a free composter) int 96 48 120

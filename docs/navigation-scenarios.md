@@ -113,24 +113,23 @@ Expected result: the villager opens the door, walks in, and reaches the bed.
 The door closes behind it instead of being left standing open, even though
 the bed is the very next node after the doorway.
 
-## 11. Lakeside village with no workstations
+## 11. Barrels make fishermen, and only barrels
 
-Build a small village of bedded, unemployed villagers next to a lake at
-least 3x3 in open span, with no workstation anywhere reachable. Wait through
-a full day/night cycle.
+Build a small village of bedded, unemployed villagers next to a lake at least
+3x3 in open span, with no workstation anywhere reachable. Wait through a full
+day/night cycle.
 
-Expected result: each unemployed, bedded villager promotes to fisherman
-(the Lookup Tool's `Fisherman flag` turns `yes`) once its own promotion
-check runs, and during the next work period each walks to its own stand at
-the water's edge and starts a fishing session. Promotion is for life: the
-`Fisherman flag` and profession must stay set even after the lake is later
-drained or built over.
+Expected result: they all stay unemployed, however large the lake.
 
-Fisherman is a fallback only: a villager promotes only when no reachable
-workstation within the job-search range (48 nodes) is free. While one is, the
-villager walks to it for a normal job instead, and the Lookup Tool's
-`Free workstation reachable` line says `yes, at ...`. Test this scenario with
-every workstation claimed or out of range.
+Place a barrel within 32 nodes of the water. A villager claims it, and during
+the next work period walks to its own stand at the water's edge and starts a
+fishing session, without being called back to the barrel.
+
+Break that barrel. If nobody has traded with the fisherman, it is unemployed
+again within a few seconds: its skin changes, `Fisherman flag` turns `no`, the
+bobber and rod go. If a player has traded with it, it stays a fisherman, stops
+fishing (`Fishing status: not fishing: no barrel`) and takes the next free
+barrel it finds.
 
 ## 12. A lake filled in or frozen while a fisherman is using it
 
@@ -141,7 +140,7 @@ surface water (for example `mcl_weather`'s freeze, if installed).
 
 Expected result: the session ends on the next tick (`Fishing session: none`,
 `Fish target: none`), any bobber is removed, and the villager keeps its
-fisherman profession. Once work time allows it again, the villager searches
+barrel and its profession. Once work time allows it again, the villager searches
 for a new qualifying spot rather than retrying the invalidated one.
 
 ## 13. Two fishermen on one shoreline

@@ -101,17 +101,7 @@ metadata["1,0,0"] = {villager = "villager-1", villages_last_birth = "2"}
 metadata["2,0,0"] = {}
 metadata["4,0,0"] = {villager = "villager-2"}
 
--- A qualifying 3x3 pond well within the bed's 16-node search radius, and a
--- too-small 2-tile pond well within the fish target's -- but each outside
--- the other's radius, so neither call sees the other's pond.
-place_pond(13, 15, -1, 1, 0)
 place_pond(40, 41, 0, 0, 0)
--- A 32-tile, one-node-wide channel and a separate, disconnected 3x3 pond,
--- both within range of a third bed at (100, 0, 0): the channel is bigger by
--- tile count but does not qualify (span 32x1), so the qualifying 3x3 pond
--- must be the one reported.
-place_pond(85, 116, 0, 0, 0)
-place_pond(90, 92, 5, 7, 0)
 
 local search_diagnostic = {
 	job_search_diagnostics = function(_, route)
@@ -197,13 +187,7 @@ assert(shown.form:find("Fishing status: fishing", 1, true))
 assert(shown.form:find("Fish target: (40.0, 0.0, 0.0)", 1, true))
 assert(shown.form:find("Fish route: arrived at (39.0, 0.0, 0.0)", 1, true), shown.form)
 assert(shown.form:find("Fishing session: wait (next phase in 10s)", 1, true))
-assert(shown.form:find("Free workstation reachable: n/a", 1, true), "a fisherman is not waiting on a workstation")
-assert(shown.form:find("Water near bed: largest pond near bed: 9 tiles, 3x3 span (qualifies for promotion)", 1, true))
-assert(shown.form:find(
-	"Water at fish target: largest pond near fish target: 2 tiles, 2x1 span (too small to qualify)", 1, true))
-assert(shown.form:find(
-	"Barrel claim (hidden from vanilla by the profession guard): assigned node is not a barrel (mcl_composters:composter)",
-	1, true))
+assert(shown.form:find("Barrel claim: assigned node is not a barrel (mcl_composters:composter)", 1, true))
 assert(shown.form:find("Births: checked today; local cooldown until day 4", 1, true))
 assert(original_uses == 0)
 
@@ -248,12 +232,9 @@ assert(shown.form:find("Fisherman flag: no", 1, true))
 assert(shown.form:find("Fishing status: not a fisherman", 1, true))
 assert(shown.form:find("Fish target: none", 1, true))
 assert(shown.form:find("Fishing session: none", 1, true))
-assert(shown.form:find("Water near bed: no bed", 1, true))
-assert(shown.form:find("Water at fish target: no fish target", 1, true))
-assert(shown.form:find("Barrel claim (hidden from vanilla by the profession guard): n/a (not a fisherman)", 1, true))
+assert(shown.form:find("Barrel claim: n/a (not a fisherman)", 1, true))
 
--- A barrel-employed fisherman's claim is reported directly, since the
--- profession guard (#70) hides an invalid one from vanilla's own checks.
+-- A barrel-employed fisherman's claim is reported directly.
 metadata["6,0,0"] = {villager = "villager-9"}
 local barrel_fisherman = {
 	get_luaentity = function()
@@ -271,7 +252,7 @@ local barrel_fisherman = {
 	end,
 }
 lookup("stack", player, {type = "object", ref = barrel_fisherman})
-assert(shown.form:find("Barrel claim (hidden from vanilla by the profession guard): valid claim", 1, true), shown.form)
+assert(shown.form:find("Barrel claim: valid claim", 1, true), shown.form)
 assert(shown.form:find("Fishing status: not fishing: no stand chosen yet", 1, true), shown.form)
 
 -- Review fix: a fisherman with no route, target, or session must still say
@@ -283,25 +264,6 @@ lookup("stack", player, {type = "object", ref = barrel_fisherman})
 assert(shown.form:find("Fishing status: not fishing: waiting for work period", 1, true), shown.form)
 timeofday = 0.4
 
--- Review fix: a merely bigger pond that does not qualify (a one-wide
--- channel) must not have its count/span reported alongside another pond's
--- qualifies=true.
-local channel_fisherman = {
-	get_luaentity = function()
-		return {
-			name = "mobs_mc:villager", _id = "villager-10", _profession = "unemployed",
-			_bed = {x = 100, y = 0, z = 0},
-			object = {
-				get_pos = function() return {x = 100, y = 0, z = 0} end,
-				get_properties = function() return nil end,
-			},
-		}
-	end,
-}
-lookup("stack", player, {type = "object", ref = channel_fisherman})
-assert(shown.form:find("Water near bed: largest pond near bed: 9 tiles, 3x3 span (qualifies for promotion)", 1, true),
-	shown.form)
-
 -- "Nearest fish candidate" breaks a persistent "no reachable water found
 -- nearby" down candidate by candidate, since none of the other lines say
 -- *why* every candidate near a fisherman was rejected.
@@ -312,7 +274,7 @@ local unsupported_fisherman = {
 	get_luaentity = function()
 		return {
 			name = "mobs_mc:villager", _id = "villager-11", _profession = "fisherman",
-			_villages_fisherman = true,
+			_villages_fisherman = true, _jobsite = {x = 60, y = 0, z = 0},
 			object = {
 				get_pos = function() return {x = 60, y = 0, z = 0} end,
 				get_properties = function() return nil end,
@@ -321,7 +283,7 @@ local unsupported_fisherman = {
 	end,
 }
 lookup("stack", player, {type = "object", ref = unsupported_fisherman})
-assert(shown.form:find("Nearest fish candidate: (70.0, 0.0, 0.0) [qualifying pond anchor]", 1, true), shown.form)
+assert(shown.form:find("Nearest fish candidate to the barrel: (70.0, 0.0, 0.0) [qualifying pond anchor]", 1, true), shown.form)
 
 -- A bounded pond search reports unknown when its one-wide component exceeds
 -- the proof budget, rather than calling it a definite rejection.
@@ -343,22 +305,20 @@ local capped_fisherman = {
 	get_luaentity = function()
 		return {
 			name = "mobs_mc:villager", _id = "villager-13", _profession = "fisherman",
-			_villages_fisherman = true,
+			_villages_fisherman = true, _jobsite = {x = 0, y = 0, z = 0},
 			object = {get_pos = function() return {x = 0, y = 0, z = 0} end, get_properties = function() return nil end},
 		}
 	end,
 }
 lookup("stack", player, {type = "object", ref = capped_fisherman})
-assert(shown.form:find("Nearest fish candidate: bounded pond search incomplete; qualifying status unknown", 1, true), shown.form)
+assert(shown.form:find("Nearest fish candidate to the barrel: bounded pond search incomplete; qualifying status unknown", 1, true), shown.form)
 
--- "Free workstation reachable" reports the promotion check's recorded answer
--- for an unemployed villager only (#259).
-local function unemployed_with(record, extra)
+-- What an unemployed villager's job search is doing.
+local function unemployed_with(extra)
 	return {
 		get_luaentity = function()
 			local entity = {
 				name = "mobs_mc:villager", _id = "villager-12", _profession = "unemployed",
-				_villages_promotion_station = record,
 				object = {
 					get_pos = function() return {x = 60, y = 0, z = 0} end,
 					get_properties = function() return nil end,
@@ -369,34 +329,24 @@ local function unemployed_with(record, extra)
 		end,
 	}
 end
-lookup("stack", player, {type = "object", ref = unemployed_with(nil)})
-assert(shown.form:find("Promotion gates: unemployed yes, adult yes, claimed bed NO, work hours", 1, true), shown.form)
-assert(shown.form:find("Free workstation reachable: not checked yet", 1, true), shown.form)
-assert(shown.form:find("Promotion check: not reached since load, not scheduled", 1, true), shown.form)
-lookup("stack", player, {type = "object", ref = unemployed_with(nil, {
+lookup("stack", player, {type = "object", ref = unemployed_with()})
+assert(shown.form:find("Composter sought: none", 1, true), shown.form)
+assert(not shown.form:find("Promotion", 1, true), "villagers are no longer promoted")
+lookup("stack", player, {type = "object", ref = unemployed_with({_villages_farm_seek = {x = 7, y = 0, z = 8}})})
+assert(shown.form:find("Composter sought: (7.0, 0.0, 8.0)", 1, true), shown.form)
+lookup("stack", player, {type = "object", ref = unemployed_with({
 	_villages_job_search_route = {status = "planning", id = 48},
 })})
 assert(shown.form:find("Job-search queue: route 48; submitted 30s ago (server game time); queue job 19: yielded (live)", 1, true), shown.form)
 assert(shown.form:find("resumes 4; last resume 10s ago; last progress 5s ago", 1, true), shown.form)
 assert(shown.form:find("workstation candidates 3/8 examined; current (3.0, 0.0, 0.0); planner 64 nodes searched", 1, true), shown.form)
 assert(shown.form:find("route queue pending 5; completed in last 60 game seconds 2", 1, true), shown.form)
-lookup("stack", player, {type = "object", ref = unemployed_with(nil, {
+lookup("stack", player, {type = "object", ref = unemployed_with({
 	_villages_job_search_route = {status = "planning", id = 99},
 })})
 assert(shown.form:find("route 99; submitted unknown (server game time)", 1, true), shown.form)
 assert(shown.form:find("no matching queue job (not live)", 1, true), shown.form)
 assert(shown.form:find("last progress not yet; workstation candidates unknown; planner unknown", 1, true), shown.form)
-lookup("stack", player, {type = "object", ref = unemployed_with(nil, {
-	_villages_promotion_reached = 0, _villages_fisherman_check = 0, _villages_promotion_pending = true,
-})})
-assert(shown.form:find("Promotion check: last reached", 1, true), shown.form)
-assert(shown.form:find("workstation search queued", 1, true), shown.form)
-lookup("stack", player, {type = "object", ref = unemployed_with({site = {x = 7, y = 0, z = 8}, at = 0})})
-assert(shown.form:find("Free workstation reachable: yes, at (7.0, 0.0, 8.0) (blocks fisherman promotion", 1, true), shown.form)
-lookup("stack", player, {type = "object", ref = unemployed_with({site = false, at = 0})})
-assert(shown.form:find("Free workstation reachable: no (checked", 1, true), shown.form)
-lookup("stack", player, {type = "object", ref = unemployed_with({site = {x = 7, y = 0, z = 8}, at = 0}, {_profession = "farmer"})})
-assert(shown.form:find("Free workstation reachable: n/a", 1, true), shown.form)
 
 local visitor = {
 	is_player = function() return true end,

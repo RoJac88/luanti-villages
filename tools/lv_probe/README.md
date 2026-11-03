@@ -232,3 +232,16 @@ farmers' `do_custom` cost. The village's own villagers are below, in delivery ra
 On Linux set `LUANTI=/usr/bin/luanti` and `LUANTI_USER=$HOME/.minetest` (or wherever yours are). `mcl_decor` must be in that
 `mods` directory, as it is not part of VoxeLibre. A run overwrites the tracked `results/` file for its seed and chunk, so restore that
 afterwards with `git checkout` unless you mean to update it.
+
+## Who takes which job
+
+```sh
+LV_PROBE_JOBS=1 tools/lv_probe/run.sh 2002 --chunk 368,1328 --with-mod
+```
+
+`LV_PROBE_JOBS=1` (needs `--with-mod`; not with `LV_PROBE_FARM`, `LV_PROBE_FLOCK` or `LV_PROBE_CENSUS`) raises a walled platform
+with a pond over each built village. Two fishermen work from barrels, one of them traded with, and an unemployed villager with a bed
+lives beside the pond. The clock is held in the work stage. Every 10 s a record gives each villager's profession, position, claim,
+fishing session and composter search. At 150 s both barrels are broken, and at 180 s the traded fisherman is given another. At 210 s a
+villager appears right beside a free barrel, with a composter over 48 nodes away. At 330 s another appears right beside a free smoker,
+with a walled-off composter. The run ends at 480 s with the cost of those villagers' `do_custom` and of one scan for composters.

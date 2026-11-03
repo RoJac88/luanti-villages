@@ -32,6 +32,16 @@ Kill a farmer that holds goods and a part-filled composter.
 - Within about a minute the composter empties, and an unemployed villager can take the job.
 - A composter you filled yourself, with no farmer involved, keeps its compost.
 
+## Taking the job
+
+With an unemployed adult villager and every other workstation free:
+
+- A free composter it can reach, even with a barrel right beside it, and it walks to the composter. The Lookup Tool's `Composter sought` line names it.
+- A composter 90 nodes away, with nothing nearer, and it still goes. It would not at 100 unless `living_villages_farm_job_radius` is raised.
+- A free jukebox or pulpit beside it doesn't tempt it either until it is a farmer or there is no composter.
+- Wall the composter off: within a minute it gives up (`Composter sought: none`) and can take the barrel.
+- Two villagers and one composter: one becomes a farmer, and the other then takes another job.
+
 ## Births
 
 With a free bed and two adult villagers who own beds nearby:

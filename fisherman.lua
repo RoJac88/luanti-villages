@@ -1,27 +1,26 @@
--- Keeps the fisherman profession and its trades intact once VoxeLibre's own
--- activity loop sees a jobsite it cannot validate. `do_activity` (called from
--- inside the vanilla `do_custom` this file wraps) runs `validate_jobsite`
--- every ~5s; when `_jobsite` does not resolve, `remove_job`
--- (mobs_mc/villager.lua:1240) clears it and, for a villager that has never
--- traded, also resets `_profession` to "unemployed" and wipes `_trades`.
--- Barrels are no longer required for this profession (#7), so a fallback
--- fisherman has no jobsite by design, and even a barrel-employed one loses
--- jobsite proximity the moment it walks to the water to fish (#72). Both
--- would otherwise be un-professioned within one activity tick.
+-- The fisherman's working day. A claimed barrel makes a villager a fisherman, as
+-- any workstation makes its own profession, and vanilla decides the rest: when
+-- the barrel goes, `remove_job` (mobs_mc/villager.lua:1240) makes an untraded one
+-- unemployed and leaves a traded one its profession and trades, to look for
+-- another barrel. Only a fisherman with a claimed barrel fishes.
 --
--- Fisherman is for life: this guard never demotes one, so nothing here needs
--- to distinguish a barrel fisherman from a fallback one.
+-- Vanilla's do_work calls a villager back to its jobsite every few seconds, so
+-- while it is at the water or on its way common.activity_override answers for it,
+-- as for a farmer in its field.
 local core = minetest
 local common = dofile(core.get_modpath("living_villages") .. "/common.lua")
 local cells = dofile(core.get_modpath("living_villages") .. "/cells.lua")
--- A trade list with one traded entry, in the form core.deserialize reads.
-local TRADED = "return {{traded_once = true, tier = 0}}"
+local BARREL = "mcl_barrels:barrel_closed"
+-- Measured from the barrel, which keeps the stand well inside vanilla's
+-- RESETTLE_DISTANCE (100), past which it would give the barrel up.
 local FISH_SEARCH_RADIUS = 32
--- Asymmetric vertically, matching navigation.lua's promotion search: a lake
--- below the villager's own standing height is common, water above is rare.
+-- Asymmetric vertically: a lake below the barrel is common, water above is rare.
 local FISH_BELOW_BAND = 6
 local FISH_ABOVE_BAND = 2
 local FISH_RETRY_INTERVAL = 5
+-- The search starts from the barrel, so it finds the same tile every time. One it
+-- could not get to, its stands taken or blocked, is left alone for this long.
+local FAILED_WATER_SECONDS = 300
 -- Fishing cycle (#73): cast, then wait for a bite, then reel in. Trades
 -- restock once per completed cycle, so its length is also the restock rate.
 local CAST_SECONDS = 2
@@ -118,6 +117,24 @@ local function should_flag(self)
 	return not self.child and self._profession == "fisherman"
 end
 
+-- Per villager, kept out of the save.
+local failed_water = setmetatable({}, {__mode = "k"})
+
+local function water_key(pos)
+	return pos.x .. ":" .. pos.y .. ":" .. pos.z
+end
+
+local function remember_failed_water(self, water)
+	failed_water[self] = failed_water[self] or {}
+	failed_water[self][water_key(water)] = core.get_gametime() + FAILED_WATER_SECONDS
+end
+
+local function has_barrel(self)
+	if not common.has_claimed_jobsite(self) then return false end
+	local node = core.get_node_or_nil(self._jobsite)
+	return node ~= nil and node.name == BARREL
+end
+
 local SHORE_NEIGHBOR_OFFSETS = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}}
 
 -- navigation.lua's approaches() only checks a fishing spot's own four
@@ -156,7 +173,7 @@ end
 -- cardinally adjacent to it (#72). The pond must hold a 2x3 block of
 -- water to qualify for daily fishing (#259).
 local function nearest_water(self)
-	local pos = self.object:get_pos()
+	local pos = self._jobsite
 	if not pos then return nil end
 	local minp = {x = pos.x - FISH_SEARCH_RADIUS, y = pos.y - FISH_BELOW_BAND, z = pos.z - FISH_SEARCH_RADIUS}
 	local maxp = {x = pos.x + FISH_SEARCH_RADIUS, y = pos.y + FISH_ABOVE_BAND, z = pos.z + FISH_SEARCH_RADIUS}
@@ -189,10 +206,12 @@ local function nearest_water(self)
 		if remaining <= 0 then break end
 	end
 	local best, best_distance
+	local failed = failed_water[self] or {}
 	for _, site in ipairs(candidates) do
 		local key = site.x .. ":" .. site.y .. ":" .. site.z
 		local distance = vector.distance(pos, site)
-		if qualifies[key] and (not best_distance or distance < best_distance) then
+		if qualifies[key] and core.get_gametime() >= (failed[key] or 0)
+			and (not best_distance or distance < best_distance) then
 			best, best_distance = site, distance
 		end
 	end
@@ -261,8 +280,8 @@ end
 -- Mirrors mobs_mc/villager.lua's file-local unlock_trades: unlock any locked
 -- trade at or below the villager's current max tier and leave the rest. That
 -- function is only about twenty lines with no engine coupling, so it is
--- replicated here rather than reached into, since a jobsiteless fisherman
--- never runs through do_work (villager.lua:1301), the only place vanilla
+-- replicated here rather than reached into, since a fisherman at the water
+-- is not running through do_work (villager.lua:1301), the only place vanilla
 -- calls it from.
 local function restock_trades(self)
 	if not self._trades or not core.deserialize or not core.serialize then return end
@@ -313,16 +332,6 @@ end
 -- villager away from the water on any tick even though the walk fix above
 -- already holds it in place; re-derive facing from the route's own
 -- recorded stand every tick too, not just once on arrival.
--- Mirrors mobs_mc/villager.lua's has_traded, on a serialized trade list.
-local function has_traded(serialized)
-	local trades = serialized and core.deserialize(serialized)
-	if type(trades) ~= "table" then return false end
-	for _, trade in pairs(trades) do
-		if trade.traded_once then return true end
-	end
-	return false
-end
-
 local function hold_still(self, turn_in_direction)
 	self.state = "stand"
 	self.order = "stand"
@@ -378,25 +387,21 @@ local function advance_fishing_session(self)
 	end
 end
 
--- A claim made during the wrapped call already mutated real node meta via
--- vanilla's own employ() (mobs_mc/villager.lua:1150); release it rather than
--- leave a node permanently locked to a fisherman who will never work it.
-local function release_stray_claim(self, jobsite)
-	local meta = core.get_meta(jobsite)
-	if meta and meta:get_string("villager") == self._id then
-		meta:set_string("villager", "")
-	end
+-- The profession is gone, so everything the job kept goes with it.
+local function stop_being_fisherman(self)
+	end_fishing_session(self)
+	self._villages_fisherman = nil
+	self._villages_fish_next = nil
 end
 
-return function(def)
+local function install(def)
 	local original_activate = def.on_activate
 	local original_custom = def.do_custom
 	local original_deactivate = def.on_deactivate
 	local turn_in_direction = def.turn_in_direction or mcl_mobs.mob_class.turn_in_direction
 
-	-- A villager already employed as a fisherman when its mapblock loads
-	-- (existing barrel fishermen, or one #71 promoted before a save) needs
-	-- the flag restored; it is not itself part of the saved fields. A
+	-- A villager already employed as a fisherman when its mapblock loads needs
+	-- the flag restored, and one saved with the flag and no such job loses it. A
 	-- fishing session's phase/timer would survive a reload through the
 	-- generic staticdata copy (mcl_mobs/api.lua:87 keeps plain tables), but
 	-- its bobber (an ObjectRef, dropped by that same copy since it is
@@ -404,9 +409,7 @@ return function(def)
 	-- with no visible bobber.
 	def.on_activate = function(self, staticdata, dtime)
 		local result = original_activate(self, staticdata, dtime)
-		if should_flag(self) then
-			self._villages_fisherman = true
-		end
+		self._villages_fisherman = should_flag(self) or nil
 		self._villages_fish_session = nil
 		self._villages_fish_bobber = nil
 		self._villages_fish_rod = nil
@@ -437,69 +440,21 @@ return function(def)
 		if not self._villages_fisherman then
 			return original_custom(self, dtime)
 		end
-		local profession, trades, jobsite = self._profession, self._trades, self._jobsite
-		-- A fallback fisherman that has not traded is demoted by remove_job,
-		-- and in that same do_activity call get_a_job walks it toward the
-		-- nearest free workstation of any type (#110); the restore below
-		-- cannot cancel that path. Showing vanilla a traded-looking trade
-		-- list stops the demotion, so get_a_job only looks for barrels.
-		-- Also with a jobsite, which validate_jobsite may drop mid-call (a
-		-- barrel fisherman fishing past RESETTLE_DISTANCE). The entry has
-		-- tier 0 and nothing locked so do_work's unlock_trades, which reads
-		-- both, passes over it.
-		local stand_in = not has_traded(trades)
-		if stand_in then self._trades = TRADED end
 		local result = original_custom(self, dtime)
-		if stand_in then self._trades = trades end
 
-		-- Fisherman is for life: always restore the profession and its
-		-- trades, whatever vanilla changed them to. An untraded fallback
-		-- fisherman reaches get_a_job() through the same
-		-- `_profession == "unemployed"` branch as any other jobless
-		-- villager -- remove_job sets that before do_activity checks it,
-		-- inside the very call this wraps -- and unlike a traded
-		-- villager's request list (narrowed to its own profession's
-		-- jobsite type), an untraded one's covers every profession's
-		-- jobsite type. A fisherman standing beside so much as a composter
-		-- can be employed straight into "farmer".
-		self._profession = profession
-		if trades ~= nil and self._trades == nil then self._trades = trades end
-
-		-- A jobsite that is new (was nil, or a different position, before
-		-- this call) came from that same employ() call. Keep it if it is a
-		-- jobsite this profession would have wanted anyway -- a barrel --
-		-- since that is a harmless, legitimate claim; otherwise release it.
-		if self._jobsite and (not jobsite or not vector.equals(self._jobsite, jobsite)) then
-			local node = core.get_node_or_nil(self._jobsite)
-			local matches_profession = node and common.workstation_profession(node.name) == "fisherman"
-			if not matches_profession then
-				release_stray_claim(self, self._jobsite)
-				self._jobsite = nil
-			end
+		-- Vanilla took the job away, and may already have given it another.
+		if not should_flag(self) then
+			stop_being_fisherman(self)
+			return result
 		end
-
-		-- Never resurrect a jobsite vanilla invalidated. validate_jobsite
-		-- (mobs_mc/villager.lua:1256) only clears `_jobsite` after the
-		-- node's own meta already failed an ownership check --
-		-- RESETTLE_DISTANCE clears that meta itself first, and every other
-		-- path only reaches remove_job because the check had already
-		-- failed. `retrieve_my_jobsite` never fails for any other reason
-		-- (mobs_mc/villager.lua:1223), so restoring the old position here
-		-- could never make next tick's check pass again; it would only
-		-- recreate a dangling reference to a claim that is already gone,
-		-- or, worse, since the node itself remains genuinely unclaimed,
-		-- one another villager may since have taken. A fisherman with no
-		-- jobsite is already this mod's intended steady state.
 
 		-- Drive the fishing cycle once at the water's edge, or send the
 		-- fisherman there in the first place whenever it is not already
-		-- headed somewhere and work time allows it. Both a fallback fisherman
-		-- (no jobsite) and a barrel-employed one make this trip; a barrel only
-		-- grants the profession, not an exemption from fishing at the shore.
+		-- headed somewhere and work time allows it.
 		if not self.child and self._id then
 			if self._villages_fish_session then
-				-- A session ends the moment any of its three conditions
-				-- stops holding (following, work time, or the water it
+				-- A session ends the moment any of its conditions stops
+				-- holding (following, work time, the barrel, or the water it
 				-- anchored on). Work time already covers both nightfall and
 				-- thunder, since neither is ever inside an is_work_time()
 				-- window. Check these before touching anything: navigation's
@@ -508,7 +463,7 @@ return function(def)
 				-- these flipped, and that action must be left alone, not
 				-- immediately stomped by hold_still and then orphaned by
 				-- end_fishing_session restoring a now-stale prior order.
-				if self.following or not common.is_work_time(self)
+				if self.following or not common.is_work_time(self) or not has_barrel(self)
 					or not (self._villages_fish_target and common.is_surface_water(self._villages_fish_target)) then
 					end_fishing_session(self)
 				else
@@ -528,10 +483,11 @@ return function(def)
 				if self._villages_fish_target then
 					local route = self._villages_fish_route
 					if route and route.status == "retry" and core.get_gametime() >= route.retry_at then
+						remember_failed_water(self, self._villages_fish_target)
 						self._villages_fish_target = nil
 						self._villages_fish_route = nil
 					end
-				elseif core.get_gametime() >= (self._villages_fish_next or 0) then
+				elseif has_barrel(self) and core.get_gametime() >= (self._villages_fish_next or 0) then
 					local water = nearest_water(self)
 					if water then
 						-- Keep the target even if gopath fails to start: navigation.lua
@@ -553,3 +509,15 @@ return function(def)
 		return result
 	end
 end
+
+-- common.activity_override: a fisherman at the water or on its way is not called back.
+-- One waiting to try again goes back to its barrel, rather than wander off.
+local function activity_override(villager, stage)
+	if stage ~= "work" then return nil end
+	if villager._villages_fish_session then return "fish" end
+	local route = villager._villages_fish_route
+	if villager._villages_fish_target and not (route and route.status == "retry") then return "fish" end
+	return nil
+end
+
+return install, activity_override

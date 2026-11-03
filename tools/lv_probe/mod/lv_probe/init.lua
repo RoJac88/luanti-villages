@@ -20,6 +20,7 @@ local terrain_rules = dofile(modpath .. "/village_terrain.lua") -- copied in by 
 local census = dofile(modpath .. "/census.lua")
 local flock_probe = dofile(modpath .. "/flock.lua")
 local farm_probe = dofile(modpath .. "/farm.lua")
+local jobs_probe = dofile(modpath .. "/jobs.lua")
 local plants = dofile(modpath .. "/plants.lua")
 local remains = dofile(modpath .. "/remains.lua")
 
@@ -404,6 +405,13 @@ local function finish_site(site, outcome)
 	end
 	if outcome == "built" and site.info and farm_probe.enabled() then
 		return farm_probe.run(site.area, function(record)
+			record.seed, record.chunk = seed, result.chunk
+			local f = io.open(RESULT_FILE, "a")
+			if f then f:write(core.write_json(record), "\n") f:close() end
+		end, finish)
+	end
+	if outcome == "built" and site.info and jobs_probe.enabled() then
+		return jobs_probe.run(site.area, function(record)
 			record.seed, record.chunk = seed, result.chunk
 			local f = io.open(RESULT_FILE, "a")
 			if f then f:write(core.write_json(record), "\n") f:close() end

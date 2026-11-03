@@ -26,7 +26,8 @@ their jobsite lose it, so vanilla demotes them.
 | `farm_stock.lua` | The farmer's pouch (`_villages_farm_pouch`, item name to count, saved with the villager and dropped when it dies), and moving goods to and from chests already in range (`living_villages_farmer_chest_radius`). It never places a chest. `living_villages_farmer_chest_withdraw` makes chests deposit-only |
 | `farm_compost.lua` | The composter through its hopper hooks, since its right-click handlers need a player. Marks composters a farmer filled; an ABM empties marked, unclaimed ones, since vanilla's `employ` cannot claim a filled one. Loaded at normal load for the ABM |
 | `food.lua` | Food points (`_villages_food`; bread 4, crop 1, an adult wants 12), what receiving food does, and whether a villager may become a parent (`living_villages_births_need_food`) |
-| `fisherman.lua` | Water-based fisherman profession, the fishing loop, and the bobber and rod entities |
+| `fisherman.lua` | The fishing loop of a fisherman with a claimed barrel, and the bobber and rod entities |
+| `farm_jobs.lua` | Unemployed villagers take a free composter ahead of any other job, from further away |
 | `nitwit.lua` | Keeps nitwits from being demoted to unemployed by VoxeLibre's jobsite check |
 | `keeper.lua` | Tavern keeper role, which is a butcher underneath and claims a jukebox, plus its menu and hours |
 | `music.lua` | On holidays the keeper on duty plays the jukebox's disc (or the day's default record when it holds none) from dinner to close, started per player in hearing range (#187) |

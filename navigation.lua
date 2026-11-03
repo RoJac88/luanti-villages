@@ -61,29 +61,15 @@ local DOOR_USE_RADIUS = 2.5
 -- Door closes must outlive the villager that scheduled them: an entity can be
 -- unloaded or despawned while another villager is still passing through.
 local deferred_door_closes = {}
--- Fallback-to-fisherman promotion (#71): how far from the bed to look for
--- water, and how large a contiguous surface-water pond must be to qualify.
--- Asymmetric vertically: a lake below a bed built on higher ground is
--- common, water hanging above one is rare (overhangs, waterfalls).
-local WATER_SEARCH_RADIUS = 24
-local WATER_BELOW_BAND = 6
-local WATER_ABOVE_BAND = 2
-local WATER_POND_MIN_SPAN = 3
-local WATER_POND_MIN_COUNT = WATER_POND_MIN_SPAN * WATER_POND_MIN_SPAN
-local WATER_POND_FILL_CAP = 32
--- job_search_target plans a route to every free workstation within 48 nodes,
--- so one search can take hundreds of milliseconds. At a few seconds'
--- spacing, a village of unemployed villagers stalled the server for seconds at
--- a time (#113). Spread out, and jittered so villagers do not line up.
-local FISHERMAN_PROMOTION_INTERVAL = 60
-local FISHERMAN_PROMOTION_JITTER = 30
--- A villager that has not reached the check for this long has been away from
--- work (night, or not yet loaded), so its overdue check is staggered.
-local PROMOTION_RESUME_GAP = 5
 -- Shoreline stand routing (#72): how close another villager must be to a
 -- candidate stand to count as already occupying it. Matches the bed
 -- occupancy radius in init.lua's occupied_by_other.
 local STAND_OCCUPANCY_RADIUS = 0.6
+
+-- Villagers whose next job search is farm_jobs.lua's, for the one gopath call
+-- that starts it.
+local composter_trips = setmetatable({}, {__mode = "k"})
+local COMPOSTER = "mcl_composters:composter"
 
 local function same_pos(a, b)
 	return a and b and a.x == b.x and a.y == b.y and a.z == b.z
@@ -450,14 +436,22 @@ end
 
 -- Do not claim here: native get_a_job still finds this station within one
 -- block and invokes its own employ function after the villager arrives.
-local function job_search_target(self, progress)
+-- With composter_only (farm_jobs.lua), only an empty composter will do, over the
+-- wider range an unemployed villager looks for one.
+local function job_search_target(self, progress, composter_only)
 	if self._jobsite or not self._id then return end
 	local pos = self.object:get_pos()
 	if not pos then return end
-	local range = planner_range()
-	local minp = {x = pos.x - range, y = pos.y - range, z = pos.z - range}
-	local maxp = {x = pos.x + range, y = pos.y + range, z = pos.z + range}
-	local sites = core.find_nodes_in_area(minp, maxp, common.workstation_search_nodes())
+	local sites
+	if composter_only then
+		local minp, maxp = common.farm_job_box(pos)
+		sites = core.find_nodes_in_area(minp, maxp, {COMPOSTER})
+	else
+		local range = planner_range()
+		local minp = {x = pos.x - range, y = pos.y - range, z = pos.z - range}
+		local maxp = {x = pos.x + range, y = pos.y + range, z = pos.z + range}
+		sites = core.find_nodes_in_area(minp, maxp, common.workstation_search_nodes())
+	end
 	if progress then progress.total = #sites end
 	local profession = has_traded(self) and self._profession or nil
 	local best
@@ -492,132 +486,6 @@ local function job_search_target(self, progress)
 		end
 	end
 	return best
-end
-
-local WATER_NEIGHBOR_OFFSETS = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}}
-local is_surface_water = common.is_surface_water
-
--- Flood fill outward over contiguous surface water at a single water level,
--- capped so one villager's promotion check cannot be made arbitrarily
--- expensive by a large lake. `visited` is shared across every pond checked in
--- one qualifying_water call so an already-ruled-in-or-out pond is never
--- flooded twice. `find_nodes_in_area` only bounds the seed positions handed
--- to this function, not the tiles it walks outward to, so bounds are passed
--- in and enforced here too -- otherwise a pond that pokes outside the search
--- radius could still supply the qualifying footprint.
-local function flood_fill_pond(start, minp, maxp, visited)
-	visited[start.x .. ":" .. start.y .. ":" .. start.z] = true
-	local queue, head = {start}, 1
-	local count = 1
-	local min_x, max_x, min_z, max_z = start.x, start.x, start.z, start.z
-	while queue[head] and count < WATER_POND_FILL_CAP do
-		local pos = queue[head]
-		head = head + 1
-		for _, offset in ipairs(WATER_NEIGHBOR_OFFSETS) do
-			local neighbor = {x = pos.x + offset[1], y = pos.y, z = pos.z + offset[2]}
-			local key = neighbor.x .. ":" .. neighbor.y .. ":" .. neighbor.z
-			local in_bounds = neighbor.x >= minp.x and neighbor.x <= maxp.x
-				and neighbor.z >= minp.z and neighbor.z <= maxp.z
-			if not visited[key] and in_bounds then
-				visited[key] = true
-				if is_surface_water(neighbor) then
-					count = count + 1
-					min_x, max_x = math.min(min_x, neighbor.x), math.max(max_x, neighbor.x)
-					min_z, max_z = math.min(min_z, neighbor.z), math.max(max_z, neighbor.z)
-					table.insert(queue, neighbor)
-					if count >= WATER_POND_FILL_CAP then break end
-				end
-			end
-		end
-	end
-	return count, max_x - min_x + 1, max_z - min_z + 1
-end
-
--- A qualifying body of water is bigger than a 2x2 pool in both horizontal
--- directions, not merely a long, one-wide channel that happens to satisfy a
--- raw tile count.
-local function qualifying_water(bed)
-	local minp = {x = bed.x - WATER_SEARCH_RADIUS, y = bed.y - WATER_BELOW_BAND, z = bed.z - WATER_SEARCH_RADIUS}
-	local maxp = {x = bed.x + WATER_SEARCH_RADIUS, y = bed.y + WATER_ABOVE_BAND, z = bed.z + WATER_SEARCH_RADIUS}
-	local sites = core.find_nodes_in_area(minp, maxp, {"group:water"})
-	local visited = {}
-	for _, site in ipairs(sites) do
-		local key = site.x .. ":" .. site.y .. ":" .. site.z
-		if not visited[key] and is_surface_water(site) then
-			local count, span_x, span_z = flood_fill_pond(site, minp, maxp, visited)
-			if count >= WATER_POND_MIN_COUNT and span_x >= WATER_POND_MIN_SPAN and span_z >= WATER_POND_MIN_SPAN then
-				return true
-			end
-		end
-	end
-	return false
-end
-
-local function eligible_for_promotion(self)
-	return not self.child and self._profession == "unemployed" and self._id ~= nil
-end
-
--- An unemployed villager becomes a fisherman when no workstation is
--- reachable and enough water is close to its bed, so a village without
--- workstations is not a village of idlers (#71). Anchored on the bed rather
--- than the villager's live position so the decision is stable instead of
--- flip-flopping as the villager wanders; a bedless villager is never
--- promoted. Cooldown keeps both the reachability search (job_search_target
--- performs real pathfinding) and the water flood fill off the per-tick path,
--- and the water is checked first so a villager with none skips the search.
--- Fisherman is for life (#70): this never runs again once promoted, since
--- _profession no longer reads "unemployed".
--- When each villager last reached the promotion check, kept out of the save.
-local promotion_seen = setmetatable({}, {__mode = "k"})
-
-local promotion_pending = setmetatable({}, {__mode = "k"})
-
-local function evaluate_fisherman_promotion(self)
-	if not eligible_for_promotion(self) then return end
-	local now = core.get_gametime()
-	-- For the diagnostic form: when this check last ran at all, and whether
-	-- its search is still queued.
-	self._villages_promotion_reached = now
-	-- The check runs only at work time, so every deadline lapses overnight and
-	-- after a load; resuming them all at once would put every eligible villager
-	-- in the same tick's search. Spread the first check after a gap instead.
-	local seen = promotion_seen[self]
-	promotion_seen[self] = now
-	if not seen or now - seen > PROMOTION_RESUME_GAP then
-		self._villages_fisherman_check = math.max(self._villages_fisherman_check or 0,
-			now + math.random() * FISHERMAN_PROMOTION_JITTER)
-	end
-	if now < (self._villages_fisherman_check or 0) then return end
-	self._villages_fisherman_check = now + FISHERMAN_PROMOTION_INTERVAL
-		+ math.random() * FISHERMAN_PROMOTION_JITTER
-	if not has_claimed_bed(self) then return end
-	-- Water first: it is the cheap test, and most villagers have none near
-	-- their bed, so they never pay for the workstation search.
-	if not qualifying_water(self._bed) then return end
-	-- The workstation search is the expensive part: it runs from the route
-	-- queue (#162), and the villager is promoted when it comes back empty.
-	if promotion_pending[self] then return end
-	promotion_pending[self] = true
-	self._villages_promotion_pending = true
-	route_queue.submit(function() return job_search_target(self) end, function(selection)
-		promotion_pending[self] = nil
-		self._villages_promotion_pending = nil
-		-- Kept for the diagnostic form: a free workstation is what stops a
-		-- bedded villager by a large pond from becoming a fisherman (#259).
-		self._villages_promotion_station = {
-			site = selection and {x = selection.site.x, y = selection.site.y, z = selection.site.z} or false,
-			at = core.get_gametime(),
-		}
-		if selection or self._jobsite or not eligible_for_promotion(self) then return end
-		self._profession = "fisherman"
-		self._villages_fisherman = true
-	end, {
-		valid = function() return self.object:get_pos() ~= nil end,
-		on_error = function()
-			promotion_pending[self] = nil
-			self._villages_promotion_pending = nil
-		end,
-	})
 end
 
 -- Whether `pos` is on a bed whose headroom is too low to walk from.
@@ -877,8 +745,7 @@ local TRIP_FIELDS = {
 	"_villages_bed_route", "_villages_job_route", "_villages_farm_route",
 	"_villages_fish_route", "_villages_job_search_route", "_villages_goto_route",
 	"_villages_farm_target", "_villages_fish_target", "_villages_door_entry",
-	"_villages_follow", "_villages_follow_failed", "_villages_promotion_station",
-	"_villages_promotion_reached", "_villages_promotion_pending",
+	"_villages_follow", "_villages_follow_failed",
 	"_villages_job_search_diagnostics",
 }
 
@@ -932,9 +799,6 @@ local function install(def)
 		self._villages_fish_target = nil
 		self._villages_job_search_route = nil
 		self._villages_goto_route = nil
-		self._villages_promotion_station = nil
-		self._villages_promotion_reached = nil
-		self._villages_promotion_pending = nil
 		self._villages_job_search_diagnostics = nil
 		if had_managed_route then stop(self) end
 		return result
@@ -1064,12 +928,13 @@ local function install(def)
 						examined = 0, total = 0, nodes_searched = 0,
 					}
 					self._villages_job_search_diagnostics = search
+					local composter_only = composter_trips[self]
 					local function current()
 						local active = self._villages_job_search_route
 						return active and active.status == "planning" and active.id == searching.id
 					end
 					stop(self)
-					route_queue.submit(function() return job_search_target(self, search) or false end, function(found)
+					route_queue.submit(function() return job_search_target(self, search, composter_only) or false end, function(found)
 						search.state, search.finished_at = "completed", core.get_gametime()
 						if not current() then return end
 						self._villages_job_search_route = nil
@@ -1260,7 +1125,6 @@ local function install(def)
 			self._villages_farm_target = nil
 			self._villages_fish_target = nil
 		else
-			evaluate_fisherman_promotion(self)
 			local job_destination = {
 			pos = self._jobsite, route_field = "_villages_job_route", kind = "jobsite",
 			claimed = has_claimed_jobsite,
@@ -1313,6 +1177,14 @@ return install, {
 	nodes_for_reach = nodes_for_reach,
 	backoff_seconds = backoff_seconds,
 	cancel_goto = cancel_goto,
+	-- A trip to the nearest free composter this villager can reach, or a failed
+	-- job search route when it can reach none.
+	seek_composter = function(self, site, on_arrival)
+		composter_trips[self] = true
+		local started = self:gopath(site, on_arrival, true)
+		composter_trips[self] = nil
+		return started
+	end,
 	job_search_diagnostics = function(entity, route)
 		if not route or not route.id then return nil end
 		local record = entity._villages_job_search_diagnostics

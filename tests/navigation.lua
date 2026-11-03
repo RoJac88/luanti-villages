@@ -695,6 +695,51 @@ minetest.get_node_or_nil = original_node
 search_sites = {}
 jobsite_claimed = true
 
+-- farm_jobs.lua's search takes only composters, and over its own wider box.
+do
+	local asked
+	local real_find = minetest.find_nodes_in_area
+	minetest.find_nodes_in_area = function(minp, maxp, names)
+		if names[1] ~= "group:water" then asked = {minp = minp, maxp = maxp, names = names} end
+		return real_find(minp, maxp, names)
+	end
+	jobsite_present = true
+	jobsite_claimed = false
+	search_sites = {{x = 30, y = 0, z = 0}}
+	-- Its own copy of the module: the mark is kept per copy, and the game loads one.
+	local install_farm, farm_nav = dofile("navigation.lua")
+	local farm_def = {on_activate = function() end, do_custom = function() end, gopath = function() return true end}
+	install_farm(farm_def)
+	local farm_seeker = {
+		_id = "villager-1", state = "stand",
+		gopath = function(self, ...) return farm_def.gopath(self, ...) end,
+		object = {
+			get_pos = function() return {x = 15, y = 0, z = 0} end,
+			set_velocity = function() end,
+		},
+	}
+	assert(farm_nav.seek_composter(farm_seeker, {x = 10, y = 0, z = 0}))
+	settle()
+	assert(#asked.names == 1 and asked.names[1] == "mcl_composters:composter")
+	assert(asked.maxp.x == 15 + 96 and asked.maxp.y == 24)
+	assert(farm_seeker._villages_job_search_route.status == "travelling")
+	assert(not farm_seeker._jobsite)
+	-- The next search, not farm_jobs.lua's, is the ordinary one.
+	local ordinary = {
+		_id = "villager-1", state = "stand",
+		object = {
+			get_pos = function() return {x = 15, y = 0, z = 0} end,
+			set_velocity = function() end,
+		},
+	}
+	assert(farm_def.gopath(ordinary, {x = 10, y = 0, z = 0}, nil, true))
+	settle()
+	assert(#asked.names > 1 and asked.maxp.x == 15 + 48)
+	minetest.find_nodes_in_area = real_find
+	search_sites = {}
+	jobsite_claimed = true
+end
+
 -- A search with no viable station is reported as a local retry instead of
 -- sending the villager back to the known-bad raw-node route.
 jobsite_claimed = false
@@ -1183,259 +1228,6 @@ assert(activated_fisherman.state == "stand")
 assert(not activated_fisherman._target and not activated_fisherman.current_target and not activated_fisherman.waypoints)
 assert(not activated_fisherman.callback_arrived and not activated_fisherman._villages_fish_route)
 assert(not activated_fisherman._villages_fish_target)
-
--- #71: an unemployed, bedded villager with no reachable workstation and a
--- qualifying pond near its bed is promoted to fisherman on the work-time
--- path.
-timeofday = 0.4
-now = 1000
-support_available = true
-support_node = "stone"
-jobsite_present = false
-search_sites = {}
-jobsite_claimed = true
-
-local function place_pond(min_x, max_x, min_z, max_z, y)
-	water_sites = {}
-	for x = min_x, max_x do
-		for z = min_z, max_z do
-			local pos = {x = x, y = y, z = z}
-			water_source_nodes[pos.x .. ":" .. pos.y .. ":" .. pos.z] = "mcl_core:water_source"
-			table.insert(water_sites, pos)
-		end
-	end
-end
-
-local function clear_pond()
-	water_sites, water_source_nodes = {}, {}
-end
-
--- The promotion check staggers its first run after a gap by math.random();
--- pin it to no delay so each case below evaluates on its first tick.
-local real_random = math.random
-math.random = function() return 0 end
-
-local promotion_def = {
-	on_activate = function() end,
-	do_custom = function() end,
-}
-dofile("navigation.lua")(promotion_def)
-
-local function new_promotion_entity(overrides)
-	local entity = {
-		_id = "villager-1", _bed = {x = 0, y = 0, z = 0}, _profession = "unemployed", state = "stand",
-		object = {
-			get_pos = function() return {x = 0, y = 0, z = 0} end,
-			set_velocity = function() end,
-		},
-	}
-	for key, value in pairs(overrides or {}) do entity[key] = value end
-	return entity
-end
-
-water_scans = 0
-place_pond(5, 7, -1, 1, 0)
-local promoted_entity = new_promotion_entity()
-promotion_def.do_custom(promoted_entity, 0.1)
-settle()
-assert(promoted_entity._profession == "fisherman", "a 3x3 pond must qualify for promotion")
-assert(promoted_entity._villages_fisherman == true, "promotion must set the fisherman guard flag immediately")
-assert(water_scans == 1)
-assert(promoted_entity._villages_promotion_station
-	and promoted_entity._villages_promotion_station.site == false,
-	"a promotion must record that no free workstation was found")
-
--- Idempotent, and the cooldown suppresses a rescan on the very next tick.
-promotion_def.do_custom(promoted_entity, 0.1)
-settle()
-assert(promoted_entity._profession == "fisherman")
-assert(water_scans == 1, "the promotion evaluation must respect its cooldown")
-clear_pond()
-
--- A 2x2 pool is not bigger than a 2x2 pool, so it does not qualify.
-place_pond(5, 6, -1, 0, 0)
-local small_pool_entity = new_promotion_entity()
-promotion_def.do_custom(small_pool_entity, 0.1)
-settle()
-assert(small_pool_entity._profession == "unemployed", "a 2x2 pool must not qualify for promotion")
-clear_pond()
-
--- A one-wide channel can hold more tiles than a 3x3 pond while still being
--- too narrow to fish from; the span check, not just the tile count, must
--- reject it.
-place_pond(5, 20, 0, 0, 0)
-local channel_entity = new_promotion_entity()
-promotion_def.do_custom(channel_entity, 0.1)
-settle()
-assert(channel_entity._profession == "unemployed", "a one-wide channel must not qualify for promotion")
-clear_pond()
-
--- The flood fill must not walk outside the search radius: find_nodes_in_area
--- only bounds the seed positions, so a one-wide channel that reaches the edge
--- of the radius and connects to a qualifying pond just beyond it must not
--- borrow that pond's footprint. Only the in-bounds channel tile at x=24 is a
--- seed; the 3x3 pond at x=25..27 sits entirely outside WATER_SEARCH_RADIUS.
-water_source_nodes[24 .. ":0:0"] = "mcl_core:water_source"
-water_sites = {{x = 24, y = 0, z = 0}}
-for x = 25, 27 do
-	for z = -1, 1 do
-		water_source_nodes[x .. ":0:" .. z] = "mcl_core:water_source"
-	end
-end
-local boundary_entity = new_promotion_entity()
-promotion_def.do_custom(boundary_entity, 0.1)
-settle()
-assert(boundary_entity._profession == "unemployed",
-	"a pond outside the search radius must not qualify, even reached from an in-bounds seed")
-clear_pond()
-
--- The vertical search is asymmetric: a lake below a bed built on higher
--- ground is common, water hanging above one is rare, so downward reach is
--- wider than upward reach.
-water_scans = 0
-place_pond(5, 7, -1, 1, -6)
-local below_entity = new_promotion_entity()
-promotion_def.do_custom(below_entity, 0.1)
-settle()
-assert(below_entity._profession == "fisherman", "a qualifying pond 6 below the bed must be found")
-clear_pond()
-
-water_scans = 0
-place_pond(5, 7, -1, 1, -7)
-local too_deep_entity = new_promotion_entity()
-promotion_def.do_custom(too_deep_entity, 0.1)
-settle()
-assert(too_deep_entity._profession == "unemployed", "a pond 7 below the bed must be outside the downward reach")
-clear_pond()
-
-water_scans = 0
-place_pond(5, 7, -1, 1, 2)
-local above_entity = new_promotion_entity()
-promotion_def.do_custom(above_entity, 0.1)
-settle()
-assert(above_entity._profession == "fisherman", "a qualifying pond 2 above the bed must be found")
-clear_pond()
-
-water_scans = 0
-place_pond(5, 7, -1, 1, 3)
-local too_high_entity = new_promotion_entity()
-promotion_def.do_custom(too_high_entity, 0.1)
-settle()
-assert(too_high_entity._profession == "unemployed", "a pond 3 above the bed must be outside the narrower upward reach")
-clear_pond()
-
--- A reachable, unclaimed workstation suppresses promotion even beside
--- qualifying water.
-water_scans = 0
-place_pond(5, 7, -1, 1, 0)
-jobsite_claimed = false
-search_sites = {{x = 20, y = 0, z = 0}, {x = 30, y = 0, z = 0}}
-local workstation_entity = new_promotion_entity({
-	object = {
-		get_pos = function() return {x = 15, y = 0, z = 0} end,
-		set_velocity = function() end,
-	},
-})
-promotion_def.do_custom(workstation_entity, 0.1)
-settle()
-assert(workstation_entity._profession == "unemployed", "a reachable workstation must suppress promotion")
-assert(not workstation_entity._villages_fisherman)
-assert(water_scans == 1, "water is checked before the workstation search")
-local blocked = workstation_entity._villages_promotion_station
-assert(blocked and blocked.site and blocked.site.x == 20 and blocked.site.z == 0,
-	"the blocking workstation must be recorded for the diagnostic")
-search_sites = {}
-jobsite_claimed = true
-clear_pond()
-
--- With no water near its bed, a villager never pays for the workstation
--- search, which plans a route to every free site in range (#113).
-water_scans = 0
-jobsite_claimed = false
-search_sites = {{x = 20, y = 0, z = 0}}
-local scans_before = job_search_scans
-local dry_entity = new_promotion_entity()
-promotion_def.do_custom(dry_entity, 0.1)
-settle()
-assert(water_scans == 1, "the water is checked")
-assert(job_search_scans == scans_before, "no water means no workstation search")
-assert(dry_entity._profession == "unemployed")
-search_sites = {}
-jobsite_claimed = true
-
--- The first work tick after a gap (night, or loading) does not send every
--- eligible villager into the search at once: each gets its own offset (#113).
-water_scans = 0
-place_pond(5, 7, -1, 1, 0)
-local offsets = {0.1, 0.5, 0.9}
-local draw = 0
-math.random = function()
-	draw = draw + 1
-	return offsets[draw] or 0
-end
-local morning = {}
-for i = 1, 3 do
-	morning[i] = new_promotion_entity({_villages_fisherman_check = now - 3600})
-	promotion_def.do_custom(morning[i], 0.1)
-end
-assert(water_scans == 0, "no villager searches on the first tick back at work")
-local start = now
-local promoted_at = {}
-for _ = 1, 30 do
-	now = now + 1
-	for i = 1, 3 do
-		promotion_def.do_custom(morning[i], 0.1)
-		settle()
-		if not promoted_at[i] and morning[i]._profession == "fisherman" then promoted_at[i] = now - start end
-	end
-end
-assert(promoted_at[1] == 3 and promoted_at[2] == 15 and promoted_at[3] == 27,
-	"each villager's first check lands at its own offset: "
-	.. tostring(promoted_at[1]) .. ", " .. tostring(promoted_at[2]) .. ", " .. tostring(promoted_at[3]))
-math.random = function() return 0 end
-clear_pond()
-
--- A bedless villager is never promoted, and never reaches the water search.
-water_scans = 0
-place_pond(5, 7, -1, 1, 0)
-local bedless_entity = new_promotion_entity()
-bedless_entity._bed = nil
-promotion_def.do_custom(bedless_entity, 0.1)
-settle()
-assert(bedless_entity._profession == "unemployed", "a bedless villager must never be promoted")
-assert(water_scans == 0, "a bedless villager must never reach the water search")
-clear_pond()
-
--- Children and nitwits are never promoted, even beside qualifying water.
-place_pond(5, 7, -1, 1, 0)
-local child_entity = new_promotion_entity({child = true})
-promotion_def.do_custom(child_entity, 0.1)
-settle()
-assert(child_entity._profession == "unemployed", "a child must never be promoted")
-
-local nitwit_entity = new_promotion_entity({_profession = "nitwit"})
-promotion_def.do_custom(nitwit_entity, 0.1)
-settle()
-assert(nitwit_entity._profession == "nitwit", "a nitwit must never be promoted")
-clear_pond()
-
--- The flood fill terminates at its cap instead of exploring an entire large
--- lake; the capped region already exceeds the qualifying span, so promotion
--- still succeeds.
-place_pond(0, 49, 0, 49, 0)
-local lookup_calls = 0
-local original_lookup = minetest.get_node_or_nil
-minetest.get_node_or_nil = function(pos)
-	lookup_calls = lookup_calls + 1
-	return original_lookup(pos)
-end
-local big_pond_entity = new_promotion_entity()
-promotion_def.do_custom(big_pond_entity, 0.1)
-settle()
-minetest.get_node_or_nil = original_lookup
-assert(big_pond_entity._profession == "fisherman", "a large lake must still qualify for promotion")
-assert(lookup_calls < 500, "the flood fill must stop at its cap instead of scanning the whole lake")
-clear_pond()
 
 -- Regression test (#84): mcl_mobs serializes every field of the entity, so a
 -- saved route writes its arrival callback into the staticdata as a dumped Lua

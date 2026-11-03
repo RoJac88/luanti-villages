@@ -14,7 +14,7 @@ local far_trips = dofile(core.get_modpath("living_villages") .. "/far_trips.lua"
 -- "living_villages". fisherman.lua's own living_villages:bobber registration must
 -- therefore run from here, at ordinary top-level load time, rather than
 -- from a dofile inside that callback like the other behavior modules.
-local install_fisherman = dofile(core.get_modpath("living_villages") .. "/fisherman.lua")
+local install_fisherman, fisherman_override = dofile(core.get_modpath("living_villages") .. "/fisherman.lua")
 local keeper = dofile(core.get_modpath("living_villages") .. "/keeper.lua")
 local cleric = dofile(core.get_modpath("living_villages") .. "/cleric.lua")
 -- Registers living_villages:meal, so it loads here for the same reason.
@@ -77,14 +77,7 @@ local function skin(self)
 		local tier = math.max(1, math.min(5, self._max_trade_tier or 1))
 		return texture .. "^" .. keeper.OVERLAY .. "^living_villages_villager_badge_" .. badges[tier] .. ".png"
 	end
-	-- _villages_fisherman is never transiently cleared, unlike _profession:
-	-- fisherman.lua's guard (#70) restores a jobsite-less fisherman's
-	-- _profession only after vanilla's own do_custom (which this file's
-	-- do_custom wraps innermost, calling tick_visual right after it) has
-	-- already reset it to "unemployed" for that tick. Reading _profession
-	-- straight would paint the plain, no-profession skin for that tick.
-	local profession = self._villages_fisherman and "fisherman" or self._profession
-	local overlay = profession_overlay[profession]
+	local overlay = profession_overlay[self._profession]
 	if overlay then
 		texture = texture .. "^living_villages_villager_profession_" .. overlay .. ".png"
 		if overlay ~= "nitwit" then
@@ -570,6 +563,8 @@ core.register_on_mods_loaded(function()
 	install_fisherman(def)
 	keeper.install(def)
 	cleric.install(def)
+	-- Outside every job above, which it keeps from an unemployed villager with a composter to go to.
+	dofile(core.get_modpath("living_villages") .. "/farm_jobs.lua").install(def, navigation_api)
 	-- Outside every role above, so none of them sees a child with a job (#262).
 	dofile(core.get_modpath("living_villages") .. "/child_jobs.lua").install(def)
 	-- One copy of seat.lua, so that its reservations cover both the tavern's
@@ -583,11 +578,12 @@ core.register_on_mods_loaded(function()
 	local market_controller = market.new({site = market_site, props = market_props, navigation = navigation_api})
 	bell.install(def, market_controller, navigation_api)
 	-- The shepherd's flock (#215) steers VoxeLibre's own sheep and, while the shepherd
-	-- grazes it, answers get_activity for it. A farmer out in its field is answered the same way.
+	-- grazes it, answers get_activity for it. A farmer out in its field and a fisherman at the water are answered the same way.
 	local flock = dofile(core.get_modpath("living_villages") .. "/flock.lua")
 	flock.install(def, core.registered_entities["mobs_mc:sheep"], bell, navigation_api)
 	common.activity_override = function(villager, stage)
 		return flock.activity_override(villager, stage) or farmer.activity_override(villager, stage)
+			or fisherman_override(villager, stage)
 	end
 	dofile(core.get_modpath("living_villages") .. "/well.lua").install(def)
 	-- The morning at the bell (#329), the well's visit at the bell; one of the two a morning.

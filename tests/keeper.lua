@@ -203,4 +203,21 @@ dave._villages_keeper = nil
 def.on_activate(dave, "", 0)
 assert(dave._villages_keeper)
 
+-- With a composter to go to (farm_jobs.lua), an unemployed villager leaves the jukebox be.
+do
+	local free = {x = 40, y = 0, z = 0}
+	nodes[key(free)] = "mcl_jukebox:jukebox"
+	metas[key(free)] = {}
+	local farmhand = villager("farmhand", {x = 39, y = 0, z = 0})
+	farmhand._villages_farm_seek = {x = 90, y = 0, z = 0}
+	now = now + 100
+	def.do_custom(farmhand, 0.1)
+	assert(farmhand._profession == "unemployed" and not farmhand._jobsite)
+	assert(minetest.get_meta(free):get_string("villager") == "")
+	farmhand._villages_farm_seek = nil
+	now = now + 100
+	def.do_custom(farmhand, 0.1)
+	assert(farmhand._villages_keeper, "and takes it once there is none")
+end
+
 print("keeper.lua: ok")
