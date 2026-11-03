@@ -39,8 +39,27 @@ local COMPOST_KEEP = {
 	[WHEAT] = WHEAT_PER_BREAD,
 }
 -- It stops composting once it holds this much bone meal, so the surplus is not all
--- turned into something it cannot use.
+-- turned into something it cannot use. With a chest for the surplus it needs less.
 local BONE_MEAL_LIMIT = 32
+local BONE_MEAL_LIMIT_WITH_CHEST = 4
+-- What it holds on to when it goes to a chest. Anything else it picks up goes in whole.
+local DEPOSIT_KEEP = {
+	["mcl_farming:wheat_seeds"] = 16,
+	["mcl_farming:beetroot_seeds"] = 16,
+	["mcl_farming:potato_item"] = 16,
+	["mcl_farming:carrot_item"] = 16,
+	["mcl_farming:beetroot_item"] = 16,
+	[WHEAT] = WHEAT_PER_BREAD,
+	[BREAD] = 8,
+	[BONE_MEAL] = BONE_MEAL_LIMIT_WITH_CHEST,
+}
+-- A trip to a chest waits for this much over the keep, unless the pouch is full.
+local DEPOSIT_TRIGGER = 8
+local WITHDRAW_SEEDS = 8
+local SEEDS = {
+	"mcl_farming:wheat_seeds", "mcl_farming:beetroot_seeds", "mcl_farming:potato_item", "mcl_farming:carrot_item",
+}
+local CHEST_SCAN_SECONDS = 60
 
 -- Live working state. Not saved: a reload clears the farmer's route anyway
 -- (navigation.lua), and it picks its next job from what it finds.
@@ -118,10 +137,82 @@ local function walk_to(self, session, target, now)
 	return false
 end
 
-local function harvest(self, pos)
+-- The chests near its farm, looked for now and then so one a player places gets used.
+local function chests_of(self, session, now)
+	if not session.chests or now >= session.chests_at then
+		session.chests = stock.find_chests(self._jobsite)
+		session.chests_at = now + CHEST_SCAN_SECONDS
+	end
+	return session.chests
+end
+
+-- Something a farm yields that it has no use for, such as a poison potato. With no
+-- chest to put it in it stays where it fell, rather than filling the pouch for good.
+local function harvest(self, pos, session, now)
 	local drops = field.harvest(pos)
 	if not drops then return end
-	for _, drop in ipairs(drops) do stock.add_itemstring(self, drop) end
+	local has_chest = #chests_of(self, session, now) > 0
+	for _, drop in ipairs(drops) do
+		local name = drop:match("^%S+")
+		if has_chest or DEPOSIT_KEEP[name] then
+			stock.add_itemstring(self, drop)
+		else
+			core.add_item(pos, drop)
+		end
+	end
+end
+
+-- The item most over what it keeps, and by how much.
+local function excess_item(self)
+	local best, best_extra = nil, 0
+	for name in pairs(self._villages_farm_pouch or {}) do
+		local extra = stock.count(self, name) - (DEPOSIT_KEEP[name] or 0)
+		if extra > best_extra or (extra == best_extra and best and name < best) then
+			best, best_extra = name, extra
+		end
+	end
+	return best, best_extra
+end
+
+local function wants_to_deposit(self)
+	local item, extra = excess_item(self)
+	if not item then return false end
+	-- Something it never keeps is only ever on its way to a chest.
+	return extra >= DEPOSIT_TRIGGER or not DEPOSIT_KEEP[item] or not stock.has_harvest_room(self)
+end
+
+local function deposit(self, pos, session, now)
+	local item, extra = excess_item(self)
+	if not item then return end
+	local _, fitted = stock.put_in_chest(self, pos, item, extra)
+	if fitted then
+		core.sound_play("default_chest_close", {pos = pos, gain = 0.3, max_hear_distance = 16}, true)
+	else
+		session.skip[key(pos)] = now + SKIP_SECONDS
+	end
+end
+
+-- The chests holding seeds, for a farmer with empty plots and none of its own.
+local function chests_with_seeds(session, chests, now)
+	local found = {}
+	if not stock.may_withdraw() then return found end
+	for _, chest in ipairs(chests) do
+		if not skipped(session, chest, now) then
+			for _, seed in ipairs(SEEDS) do
+				if stock.chest_count(chest, seed) > 0 then
+					table.insert(found, chest)
+					break
+				end
+			end
+		end
+	end
+	return found
+end
+
+local function withdraw_seeds(self, pos)
+	for _, seed in ipairs(SEEDS) do
+		if stock.take_from_chest(self, pos, seed, WITHDRAW_SEEDS) > 0 then return end
+	end
 end
 
 local function plant(self, pos)
@@ -147,8 +238,9 @@ local function can_bake(self)
 end
 
 -- The item it has most of beyond what it keeps, or nil.
-local function surplus_item(self)
-	if stock.count(self, BONE_MEAL) >= BONE_MEAL_LIMIT then return nil end
+local function surplus_item(self, has_chest)
+	local limit = has_chest and BONE_MEAL_LIMIT_WITH_CHEST or BONE_MEAL_LIMIT
+	if stock.count(self, BONE_MEAL) >= limit then return nil end
 	local best, best_extra = nil, 0
 	for name, keep in pairs(COMPOST_KEEP) do
 		-- Wheat is for bread while there is room for more.
@@ -162,13 +254,13 @@ local function surplus_item(self)
 	return best_extra > 0 and best or nil
 end
 
-local function composter_has_work(self, name)
+local function composter_has_work(self, name, has_chest)
 	if compost.is_ready(name) or can_bake(self) then return true end
-	return compost.takes_items(name) and surplus_item(self) ~= nil
+	return compost.takes_items(name) and surplus_item(self, has_chest) ~= nil
 end
 
 -- One thing at the composter: take the bone meal, bake a loaf or add an item.
-local function work_composter(self, pos)
+local function work_composter(self, pos, session, now)
 	local collected = compost.collect(pos)
 	if collected then
 		stock.add(self, collected)
@@ -180,7 +272,7 @@ local function work_composter(self, pos)
 		return
 	end
 	local node = core.get_node_or_nil(pos)
-	local item = surplus_item(self)
+	local item = surplus_item(self, #chests_of(self, session, now) > 0)
 	if item and node and compost.takes_items(node.name) and compost.add_item(pos, item) then
 		stock.take(self, item, 1)
 	end
@@ -189,11 +281,13 @@ end
 -- The jobs, most pressing first. wanted says whether to do that kind
 -- of job at all now, and each kind lists its places. Tilling waits until there are
 -- seeds for what it opens up, and nothing already open is left unsown.
-local function plot_jobs(self, farm)
+local function plot_jobs(self, session, farm, now)
 	local seeds = has_seed(self)
+	local chests = chests_of(self, session, now)
 	local composter = core.get_node_or_nil(self._jobsite).name
 	compost.nudge(self._jobsite, composter)
 	return {
+		{positions = chests, wanted = #chests > 0 and wants_to_deposit(self), work = deposit},
 		{positions = farm.mature, wanted = stock.has_harvest_room(self), work = harvest},
 		{positions = farm.empty, wanted = seeds, work = plant},
 		{
@@ -206,20 +300,25 @@ local function plot_jobs(self, farm)
 			wanted = stock.count(self, BONE_MEAL) > 0,
 			work = fertilise,
 		},
-		{positions = {self._jobsite}, wanted = composter_has_work(self, composter), work = work_composter},
+		{positions = {self._jobsite}, wanted = composter_has_work(self, composter, #chests > 0), work = work_composter},
+		{
+			positions = not seeds and #farm.empty > 0 and chests_with_seeds(session, chests, now) or {},
+			wanted = not seeds,
+			work = withdraw_seeds,
+		},
 	}
 end
 
 -- One job within reach, or one walk to the most pressing job. Returns "worked",
 -- "walking", or nil for nothing to do.
 local function next_step(self, session, pos, now)
-	local jobs = plot_jobs(self, field.scan(self._jobsite))
+	local jobs = plot_jobs(self, session, field.scan(self._jobsite), now)
 	for _, job in ipairs(jobs) do
 		if job.wanted then
 			local target, distance = nearest(session, pos, job.positions, now)
 			if target and distance <= REACH then
 				face(self, pos, target)
-				job.work(self, target)
+				job.work(self, target, session, now)
 				return "worked"
 			end
 		end

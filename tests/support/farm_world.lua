@@ -251,6 +251,15 @@ function M.claim(world, pos, id, name)
 	world.meta(pos).fields.villager = id
 end
 
+-- A chest with its inventory made, holding the items given.
+function M.chest(world, pos, name, items)
+	world.set(pos, name or "mcl_chests:chest_small")
+	local inv = world.meta(pos).inv
+	inv:set_size("main", 27)
+	for _, item in ipairs(items or {}) do inv:add_item("main", item) end
+	return inv
+end
+
 -- A farmer whose gopath walks it to the cell beside the target at once, as the
 -- stock_buildings test covers real routes. fail_walks makes gopath refuse.
 function M.farmer(world, pos, fields)

@@ -169,6 +169,88 @@ world.nodes["0,2,0"] = {name = "mcl_composters:composter_7"}
 step(2)
 assert(#world.composted == 0 and world.meta(job).timer == true)
 
+-- Well over what it keeps, it stores the excess in a chest in range and keeps the rest.
+setup({_villages_farm_pouch = {["mcl_bone_meal:bone_meal"] = 4, ["mcl_farming:carrot_item"] = 30}})
+support.chest(world, {x = 2, y = 2, z = 0})
+step()
+assert(pouch("mcl_farming:carrot_item") == 16)
+assert(world.meta({x = 2, y = 2, z = 0}).inv:get_stack("main", 1):to_string() == "mcl_farming:carrot_item 14")
+assert(#world.composted == 0, "with a chest and bone meal in hand, it stores rather than composts")
+
+-- It walks to a chest that is further off.
+setup({_villages_farm_pouch = {["mcl_bone_meal:bone_meal"] = 4, ["mcl_farming:carrot_item"] = 30}})
+support.chest(world, {x = 20, y = 2, z = 0})
+step()
+assert(#farmer.walks == 1 and farmer.walks[1].x == 20)
+step()
+assert(pouch("mcl_farming:carrot_item") == 16)
+
+-- A small excess is not worth a trip.
+setup({_villages_farm_pouch = {["mcl_bone_meal:bone_meal"] = 4, ["mcl_farming:carrot_item"] = 20}})
+support.chest(world, {x = 20, y = 2, z = 0})
+step(3)
+assert(#farmer.walks == 0 and pouch("mcl_farming:carrot_item") == 20)
+
+-- A full chest is left alone for a while, and nothing is lost to it.
+setup({_villages_farm_pouch = {["mcl_bone_meal:bone_meal"] = 4, ["mcl_farming:carrot_item"] = 30}})
+local full = support.chest(world, {x = 2, y = 2, z = 0})
+for i = 1, 27 do full:set_stack("main", i, "mcl_core:stone 64") end
+step(3)
+assert(pouch("mcl_farming:carrot_item") == 30)
+
+-- With no chest it never places one and leaves no food on the ground: surplus goes to the composter, and a full pouch waits with the crop standing.
+setup({_villages_farm_pouch = {["mcl_farming:carrot_item"] = 116, ["mcl_farming:wheat_seeds"] = 8}})
+local waiting = plot(1, 1, "mcl_farming:wheat")
+step()
+assert(world.name(waiting) == "mcl_farming:wheat", "no room for the harvest")
+assert(#world.composted == 1, "the composter makes room")
+assert(#world.dropped == 0 and #farmer.walks == 0)
+for _, node in pairs(world.nodes) do assert(not node.name:find("chest"), "no chest placed") end
+step(7)
+assert(world.name(waiting) ~= "mcl_farming:wheat", "room made, so it harvests")
+
+-- A chest placed later is found on its next look.
+setup({_villages_farm_pouch = {["mcl_bone_meal:bone_meal"] = 32, ["mcl_farming:carrot_item"] = 30}})
+step(2)
+assert(pouch("mcl_farming:carrot_item") == 30, "nowhere for it to go")
+support.chest(world, {x = 2, y = 2, z = 0})
+world.now = world.now + 61
+step(2)
+assert(pouch("mcl_farming:carrot_item") == 16)
+
+-- Inedible drops: into the pouch with a chest to take them, on the ground without.
+setup()
+world.defs["mcl_farming:potato"].test_drops = {"mcl_farming:potato_item", "mcl_farming:potato_item_poison"}
+plot(1, 1, "mcl_farming:potato")
+step()
+assert(pouch("mcl_farming:potato_item") == 1 and pouch("mcl_farming:potato_item_poison") == 0)
+assert(#world.dropped == 1 and world.dropped[1].item == "mcl_farming:potato_item_poison")
+setup()
+support.chest(world, {x = 2, y = 2, z = 0})
+world.defs["mcl_farming:potato"].test_drops = {"mcl_farming:potato_item_poison"}
+plot(1, 1, "mcl_farming:potato")
+step(2)
+assert(#world.dropped == 0)
+assert(world.meta({x = 2, y = 2, z = 0}).inv:get_stack("main", 1):to_string() == "mcl_farming:potato_item_poison 1")
+
+-- Out of seeds with empty plots, it fetches some from a chest; only then.
+setup()
+local bare_plot = plot(1, 1)
+local seed_chest = support.chest(world, {x = 2, y = 2, z = 0}, nil, {"mcl_farming:wheat_seeds 20", "mcl_core:iron_ingot 5"})
+step()
+assert(pouch("mcl_farming:wheat_seeds") == 8 and pouch("mcl_core:iron_ingot") == 0)
+step()
+assert(world.name(bare_plot) == "mcl_farming:wheat_1")
+assert(seed_chest:get_stack("main", 2):to_string() == "mcl_core:iron_ingot 5", "nothing else is touched")
+
+-- Deposit-only by setting.
+setup()
+world.settings["living_villages_farmer_chest_withdraw"] = false
+plot(1, 1)
+support.chest(world, {x = 2, y = 2, z = 0}, nil, {"mcl_farming:wheat_seeds 20"})
+step(2)
+assert(pouch("mcl_farming:wheat_seeds") == 0)
+
 -- Only in the work stage, and only a farmer holding its composter.
 local function untouched(label)
 	local here = plot(1, 1, "mcl_farming:wheat")
