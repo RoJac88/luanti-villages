@@ -122,6 +122,53 @@ world.set({x = 3, y = 1, z = 1}, "mcl_core:water_source")
 step(2)
 assert(world.name({x = 1, y = 1, z = 2}) == "mcl_core:dirt")
 
+-- Three wheat make a loaf at the composter, one step at a time; nothing is lost.
+setup({_villages_farm_pouch = {["mcl_farming:wheat_item"] = 7}})
+step(2)
+assert(pouch("mcl_farming:bread") == 2 and pouch("mcl_farming:wheat_item") == 1)
+step(3)
+assert(pouch("mcl_farming:bread") == 2 and pouch("mcl_farming:wheat_item") == 1, "not enough for another")
+
+-- Beyond the keep, surplus goes in the composter until it is ready, then it takes
+-- the bone meal, which is real, and then uses it on the crop furthest from ripe.
+setup({_villages_farm_pouch = {["mcl_farming:wheat_seeds"] = 16}})
+world.set({x = 1, y = 1, z = 1}, "mcl_farming:soil_wet")
+world.set({x = 1, y = 2, z = 1}, "mcl_farming:wheat_5")
+world.set({x = 2, y = 1, z = 1}, "mcl_farming:soil_wet")
+world.set({x = 2, y = 2, z = 1}, "mcl_farming:wheat_2")
+step(9)
+assert(pouch("mcl_farming:wheat_seeds") == 9, "seven in; level 7 takes no more")
+assert(world.name(job) == "mcl_composters:composter_7" and #world.composted == 7)
+assert(world.meta(job).timer == true)
+world.nodes["0,2,0"] = {name = "mcl_composters:composter_ready"} -- the node timer fires
+farmer_module.sessions[farmer].next_at = 0 -- it had gone idle, and looks again in a few seconds
+step()
+assert(world.name(job) == "mcl_composters:composter", "collected")
+assert(world.meta(job).fields.villager == "farmer-1", "and still its job")
+assert(pouch("mcl_bone_meal:bone_meal") == 1 and #world.dropped == 0)
+step()
+assert(pouch("mcl_bone_meal:bone_meal") == 0)
+assert(world.bone_mealed.x == 2, "the least grown")
+assert(world.name({x = 2, y = 2, z = 1}) == "mcl_farming:wheat_3")
+step(4)
+assert(pouch("mcl_farming:wheat_seeds") == 8, "the keep is kept")
+
+-- Bread is for villagers, never for the composter.
+setup({_villages_farm_pouch = {["mcl_farming:bread"] = 12}})
+step(3)
+assert(pouch("mcl_farming:bread") == 12 and #world.composted == 0)
+
+-- Plenty of bone meal: the surplus stays, for villagers and storage.
+setup({_villages_farm_pouch = {["mcl_bone_meal:bone_meal"] = 32, ["mcl_farming:carrot_item"] = 20}})
+step(3)
+assert(#world.composted == 0 and pouch("mcl_farming:carrot_item") == 20)
+
+-- A composter stuck at level 7 waits for its timer rather than taking more.
+setup({_villages_farm_pouch = {["mcl_farming:wheat_seeds"] = 16}})
+world.nodes["0,2,0"] = {name = "mcl_composters:composter_7"}
+step(2)
+assert(#world.composted == 0 and world.meta(job).timer == true)
+
 -- Only in the work stage, and only a farmer holding its composter.
 local function untouched(label)
 	local here = plot(1, 1, "mcl_farming:wheat")

@@ -162,6 +162,29 @@ function M.harvest(pos)
 	return drops
 end
 
+-- Bone meal on a growing crop, through VoxeLibre's own function, which allows for
+-- no player. Returns whether the bone meal was spent.
+function M.fertilise(pos, item)
+	local node = core.get_node_or_nil(pos)
+	if not node or not growing_crops[node.name] or core.is_protected(pos, "") then return false end
+	local stack = ItemStack(item)
+	local left = mcl_bone_meal.use_bone_meal(stack, nil, {type = "node", under = pos, above = above(pos)})
+	return left ~= nil and left:is_empty()
+end
+
+-- The crops furthest from ripe, which have most to gain from bone meal.
+function M.least_grown(growing)
+	local lowest
+	for _, crop in ipairs(growing) do
+		if not lowest or crop.stage < lowest then lowest = crop.stage end
+	end
+	local positions = {}
+	for _, crop in ipairs(growing) do
+		if crop.stage == lowest then table.insert(positions, crop.pos) end
+	end
+	return positions
+end
+
 -- Which seed to sow in the cell: the one the pouch has most of, passing over any
 -- crop already next to it where another will do, since VoxeLibre halves the growth
 -- of a crop with the same crop on both axes. Nil if the pouch has no seeds.

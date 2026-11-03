@@ -10,6 +10,7 @@ local core = minetest
 local common = dofile(core.get_modpath("living_villages") .. "/common.lua")
 local field = dofile(core.get_modpath("living_villages") .. "/farm_field.lua")
 local stock = dofile(core.get_modpath("living_villages") .. "/farm_stock.lua")
+local compost = dofile(core.get_modpath("living_villages") .. "/farm_compost.lua")
 
 local TICK_SECONDS = 1
 local IDLE_SECONDS = 5
@@ -19,6 +20,27 @@ local REACH = 2.5
 local SKIP_SECONDS = 60
 -- Stay put this long after a job, ready for the next.
 local HOLD_SECONDS = 2
+
+local WHEAT = "mcl_farming:wheat_item"
+local BREAD = "mcl_farming:bread"
+local BONE_MEAL = compost.BONE_MEAL
+-- Three wheat to the loaf, as in the crafting recipe. A farmer stops baking at this
+-- many loaves, as it has nobody to give them to.
+local WHEAT_PER_BREAD = 3
+local BREAD_LIMIT = 12
+-- What it composts, and how much of each it keeps for sowing and eating. Bread goes
+-- to villagers, so it is never composted.
+local COMPOST_KEEP = {
+	["mcl_farming:wheat_seeds"] = 8,
+	["mcl_farming:beetroot_seeds"] = 8,
+	["mcl_farming:potato_item"] = 8,
+	["mcl_farming:carrot_item"] = 8,
+	["mcl_farming:beetroot_item"] = 8,
+	[WHEAT] = WHEAT_PER_BREAD,
+}
+-- It stops composting once it holds this much bone meal, so the surplus is not all
+-- turned into something it cannot use.
+local BONE_MEAL_LIMIT = 32
 
 -- Live working state. Not saved: a reload clears the farmer's route anyway
 -- (navigation.lua), and it picks its next job from what it finds.
@@ -114,11 +136,63 @@ local function has_seed(self)
 	return false
 end
 
--- The jobs on the plots, most pressing first. wanted says whether to do that kind
--- of job at all now, and each kind lists its plots. Tilling waits until there are
+local function fertilise(self, pos)
+	if stock.count(self, BONE_MEAL) > 0 and field.fertilise(pos, BONE_MEAL) then
+		stock.take(self, BONE_MEAL, 1)
+	end
+end
+
+local function can_bake(self)
+	return stock.count(self, WHEAT) >= WHEAT_PER_BREAD and stock.count(self, BREAD) < BREAD_LIMIT
+end
+
+-- The item it has most of beyond what it keeps, or nil.
+local function surplus_item(self)
+	if stock.count(self, BONE_MEAL) >= BONE_MEAL_LIMIT then return nil end
+	local best, best_extra = nil, 0
+	for name, keep in pairs(COMPOST_KEEP) do
+		-- Wheat is for bread while there is room for more.
+		if name ~= WHEAT or not can_bake(self) then
+			local extra = stock.count(self, name) - keep
+			if extra > best_extra or (extra == best_extra and best and name < best) then
+				best, best_extra = name, extra
+			end
+		end
+	end
+	return best_extra > 0 and best or nil
+end
+
+local function composter_has_work(self, name)
+	if compost.is_ready(name) or can_bake(self) then return true end
+	return compost.takes_items(name) and surplus_item(self) ~= nil
+end
+
+-- One thing at the composter: take the bone meal, bake a loaf or add an item.
+local function work_composter(self, pos)
+	local collected = compost.collect(pos)
+	if collected then
+		stock.add(self, collected)
+		return
+	end
+	if can_bake(self) then
+		stock.take(self, WHEAT, WHEAT_PER_BREAD)
+		stock.add(self, BREAD)
+		return
+	end
+	local node = core.get_node_or_nil(pos)
+	local item = surplus_item(self)
+	if item and node and compost.takes_items(node.name) and compost.add_item(pos, item) then
+		stock.take(self, item, 1)
+	end
+end
+
+-- The jobs, most pressing first. wanted says whether to do that kind
+-- of job at all now, and each kind lists its places. Tilling waits until there are
 -- seeds for what it opens up, and nothing already open is left unsown.
 local function plot_jobs(self, farm)
 	local seeds = has_seed(self)
+	local composter = core.get_node_or_nil(self._jobsite).name
+	compost.nudge(self._jobsite, composter)
 	return {
 		{positions = farm.mature, wanted = stock.has_harvest_room(self), work = harvest},
 		{positions = farm.empty, wanted = seeds, work = plant},
@@ -127,6 +201,12 @@ local function plot_jobs(self, farm)
 			wanted = seeds,
 			work = function(_, pos) field.till(pos, #farm.soil) end,
 		},
+		{
+			positions = field.least_grown(farm.growing),
+			wanted = stock.count(self, BONE_MEAL) > 0,
+			work = fertilise,
+		},
+		{positions = {self._jobsite}, wanted = composter_has_work(self, composter), work = work_composter},
 	}
 end
 
