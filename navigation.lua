@@ -208,10 +208,7 @@ end
 
 local has_claimed_jobsite = common.has_claimed_jobsite
 
-local function has_farm_target(self)
-	local node = self._villages_farm_target and core.get_node_or_nil(self._villages_farm_target)
-	return node and common.farm_replant_node(node.name)
-end
+local has_farm_target = common.has_farm_target
 
 local function has_fish_target(self)
 	return self._villages_fish_target ~= nil and common.is_surface_water(self._villages_fish_target)

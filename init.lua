@@ -27,6 +27,8 @@ local market_props = dofile(core.get_modpath("living_villages") .. "/market_prop
 	site = market_site, storage = path_storage, common = common,
 })
 local market = dofile(core.get_modpath("living_villages") .. "/market.lua")
+-- Registers the abandoned-composter ABM, likewise.
+dofile(core.get_modpath("living_villages") .. "/farm_compost.lua")
 -- Registers living_villages:pulpit, likewise.
 dofile(core.get_modpath("living_villages") .. "/pulpit.lua")
 local MODEL = "living_villages_villager.b3d"
@@ -563,7 +565,8 @@ core.register_on_mods_loaded(function()
 	child_growth.install(def)
 	local install_navigation, navigation_api = dofile(core.get_modpath("living_villages") .. "/navigation.lua")
 	install_navigation(def)
-	dofile(core.get_modpath("living_villages") .. "/farmer.lua")(def)
+	local farmer = dofile(core.get_modpath("living_villages") .. "/farmer.lua")
+	farmer.install(def)
 	install_fisherman(def)
 	keeper.install(def)
 	cleric.install(def)
@@ -580,10 +583,12 @@ core.register_on_mods_loaded(function()
 	local market_controller = market.new({site = market_site, props = market_props, navigation = navigation_api})
 	bell.install(def, market_controller, navigation_api)
 	-- The shepherd's flock (#215) steers VoxeLibre's own sheep and, while the shepherd
-	-- grazes it, answers get_activity for it.
+	-- grazes it, answers get_activity for it. A farmer out in its field is answered the same way.
 	local flock = dofile(core.get_modpath("living_villages") .. "/flock.lua")
 	flock.install(def, core.registered_entities["mobs_mc:sheep"], bell, navigation_api)
-	common.activity_override = flock.activity_override
+	common.activity_override = function(villager, stage)
+		return flock.activity_override(villager, stage) or farmer.activity_override(villager, stage)
+	end
 	dofile(core.get_modpath("living_villages") .. "/well.lua").install(def)
 	-- The morning at the bell (#329), the well's visit at the bell; one of the two a morning.
 	dofile(core.get_modpath("living_villages") .. "/bell_hangout.lua").install(def, bell)
