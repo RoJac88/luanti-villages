@@ -14,12 +14,6 @@ local workstation_nodes = {
 	["mcl_brewing:stand_000"] = true,
 	["mcl_stonecutter:stonecutter"] = true,
 }
-local farm_replant_nodes = {
-	["mcl_farming:wheat"] = "mcl_farming:wheat_1",
-	["mcl_farming:potato"] = "mcl_farming:potato_1",
-	["mcl_farming:carrot"] = "mcl_farming:carrot_1",
-	["mcl_farming:beetroot"] = "mcl_farming:beetroot_0",
-}
 local FISHING_POND_BATCH_CAP = 64
 local FISHING_POND_TOTAL_CAP = 128
 local FISHING_POND_SEARCH_CAP = 512
@@ -283,7 +277,6 @@ M = {
 		end
 		return core.get_meta(self._jobsite):get_string("villager") == self._id
 	end,
-	farm_replant_node = function(name) return farm_replant_nodes[name] end,
 	is_composter_node = function(name)
 		return name == "mcl_composters:composter" or composter_fill_nodes[name] == true
 	end,
