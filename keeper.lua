@@ -122,7 +122,7 @@ end
 local OLD_JOB_FIELDS = {
 	"_villages_fisherman", "_villages_fisherman_check",
 	"_villages_fish_target", "_villages_fish_route", "_villages_fish_next",
-	"_villages_farm_target", "_villages_farm_route", "_villages_farm_next",
+	"_villages_farm_target", "_villages_farm_route", "_villages_farm_next", "_villages_farm_pouch",
 	"_villages_job_route", "_villages_job_search_route",
 }
 

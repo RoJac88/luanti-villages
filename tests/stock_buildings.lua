@@ -35,6 +35,10 @@ local BUILDINGS = {
 local DIRECTIONS, ORIGIN, MARGIN = scene.DIRECTIONS, scene.ORIGIN, scene.MARGIN
 -- The time of day each kind of trip is scheduled for (common.lua's SCHEDULE).
 local HOME, WORK, TAVERN = 0.8, 0.3, 0.7
+-- The stock farm's crops: a farmer must be able to reach every plot.
+local farm_crops = {
+	["mcl_farming:wheat"] = true, ["mcl_farming:potato"] = true, ["mcl_farming:carrot"] = true,
+}
 
 -- Sends a villager standing at `start` (a position, as an entity's is) to
 -- `target`, which it claims as `field` says. Returns the cells of its route, or
@@ -111,6 +115,11 @@ local function test_building(name, rotation, doors_open, roads, slope)
 					table.insert(targets, {
 						kind = "jobsite " .. node_name:match(":(.*)$"), pos = pos, field = "_jobsite",
 						route_field = "_villages_job_route", timeofday = WORK,
+					})
+				elseif farm_crops[node_name] then
+					table.insert(targets, {
+						kind = "farm plot", pos = pos, field = "_villages_farm_target",
+						route_field = "_villages_farm_route", timeofday = WORK,
 					})
 				elseif node_name:find("chair") then
 					table.insert(seats, pos)
