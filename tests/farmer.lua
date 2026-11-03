@@ -17,6 +17,7 @@ minetest = {
 	get_modpath = function() return "." end,
 	get_timeofday = function() return time end,
 	get_gametime = function() return now end,
+	get_item_group = function() return 0 end,
 	get_node_or_nil = function(pos)
 		if pos.x == 0 then return {name = "mcl_composters:composter"} end
 		if pos.x == 2 then return {name = crop_name} end
@@ -45,7 +46,7 @@ vector = {
 local def = {
 	do_custom = function() end,
 }
-dofile("farmer.lua")(def)
+dofile("farmer.lua").install(def)
 local farmer = {
 	_id = "farmer-1", _profession = "farmer", _jobsite = {x = 0, y = 0, z = 0}, state = "stand",
 	object = {get_pos = function() return {x = 1, y = 0, z = 0} end},
@@ -71,5 +72,20 @@ path_target = nil
 farmer._villages_farm_next = nil
 def.do_custom(farmer, 0.1)
 assert(not path_target)
+
+-- Compost in the composter does not end the job: each fill level is the same
+-- jobsite, and stays out of the job search, since vanilla's employ cannot take it.
+local common = dofile("common.lua")
+for _, name in ipairs({"mcl_composters:composter_1", "mcl_composters:composter_7", "mcl_composters:composter_ready"}) do
+	assert(common.is_composter_node(name) and common.is_workstation_node(name))
+	assert(common.workstation_profession(name) == "farmer")
+	for _, searched in ipairs(common.workstation_search_nodes()) do assert(searched ~= name) end
+end
+local searched_empty = false
+for _, searched in ipairs(common.workstation_search_nodes()) do
+	searched_empty = searched_empty or searched == "mcl_composters:composter"
+end
+assert(searched_empty)
+assert(not common.is_composter_node("mcl_barrels:barrel_closed"))
 
 print("farmer.lua: ok")

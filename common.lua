@@ -43,6 +43,17 @@ local workstation_professions = {
 local workstation_search_node_names = {"group:cauldron"}
 for name in pairs(workstation_nodes) do table.insert(workstation_search_node_names, name) end
 
+-- A composter's fill levels are separate nodes, swapped in with its metadata, so
+-- the villager's claim stays on them and they are still its jobsite. They come
+-- after the search list on purpose: vanilla's employ takes only the empty node,
+-- so a villager sent to a filled, free composter could never claim it.
+local composter_fill_nodes = {["mcl_composters:composter_ready"] = true}
+for level = 1, 7 do composter_fill_nodes["mcl_composters:composter_" .. level] = true end
+for name in pairs(composter_fill_nodes) do
+	workstation_nodes[name] = true
+	workstation_professions[name] = "farmer"
+end
+
 local cells = dofile(core.get_modpath("living_villages") .. "/cells.lua")
 -- mcl_mobs/physics.lua: feet_pos = pos + (-collisionbox[2]) + 0.25.
 local FEET_OFFSET = 0.01 + 0.25
@@ -273,6 +284,15 @@ M = {
 		return core.get_meta(self._jobsite):get_string("villager") == self._id
 	end,
 	farm_replant_node = function(name) return farm_replant_nodes[name] end,
+	is_composter_node = function(name)
+		return name == "mcl_composters:composter" or composter_fill_nodes[name] == true
+	end,
+	-- Whether a farmer's current target is still somewhere to walk to. A farm trip
+	-- can head for a plot, the composter, a chest or a villager, and farmer.lua looks
+	-- again on arrival, so all that matters on the way is that the place is loaded.
+	has_farm_target = function(self)
+		return self._villages_farm_target ~= nil and core.get_node_or_nil(self._villages_farm_target) ~= nil
+	end,
 	-- Whether a villager's full standing box fits at pos, clear of obstructions
 	-- and hazards, over a solid floor. Checked before returning a villager to a
 	-- position recorded earlier, since the world can change in between and a

@@ -14,7 +14,7 @@ end
 local function valid_farmer(self)
 	if self.child or self._profession ~= "farmer" or not self._jobsite or not self._id then return false end
 	local node = core.get_node_or_nil(self._jobsite)
-	return node and node.name == "mcl_composters:composter"
+	return node and common.is_composter_node(node.name)
 		and core.get_meta(self._jobsite):get_string("villager") == self._id
 end
 
@@ -45,7 +45,14 @@ local function harvest_and_replant(self, crop)
 	self._villages_farm_next = core.get_gametime() + FARM_INTERVAL
 end
 
-return function(def)
+local M = {}
+
+-- common.activity_override: nothing yet keeps a farmer from its composter.
+function M.activity_override()
+	return nil
+end
+
+function M.install(def)
 	local original_custom = def.do_custom
 	def.do_custom = function(self, dtime)
 		local result = original_custom(self, dtime)
@@ -76,3 +83,5 @@ return function(def)
 		return result
 	end
 end
+
+return M
