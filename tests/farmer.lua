@@ -187,6 +187,30 @@ assert(#farmer.walks == 1 and farmer.walks[1].x == 20)
 step()
 assert(pouch("mcl_farming:carrot_item") == 16)
 
+-- Stood at its composter with room for more bone meal, it still goes to the chest
+-- first: the composter must not swallow the surplus on the way.
+setup({_villages_farm_pouch = {["mcl_farming:carrot_item"] = 40}})
+local store = support.chest(world, {x = 20, y = 2, z = 0})
+step()
+assert(#world.composted == 0 and #farmer.walks == 1 and farmer.walks[1].x == 20)
+step()
+assert(pouch("mcl_farming:carrot_item") == 16)
+assert(store:get_stack("main", 1):to_string() == "mcl_farming:carrot_item 24")
+
+-- A hungry villager out of reach comes before the composter too.
+setup({_villages_farm_pouch = {["mcl_farming:carrot_item"] = 40}})
+local customer = support.farmer(world, {x = 20, y = 2, z = 0})
+customer._id, customer._profession = "customer", "mason"
+step()
+assert(#world.composted == 0 and #farmer.walks == 1)
+
+-- Plots in reach still come first, so one walk works a whole patch.
+setup({_villages_farm_pouch = {["mcl_farming:carrot_item"] = 40}})
+support.chest(world, {x = 20, y = 2, z = 0})
+local on_the_way = plot(1, 1, "mcl_farming:wheat")
+step()
+assert(world.name(on_the_way) == "air" and #farmer.walks == 0)
+
 -- A small excess is not worth a trip.
 setup({_villages_farm_pouch = {["mcl_bone_meal:bone_meal"] = 4, ["mcl_farming:carrot_item"] = 20}})
 support.chest(world, {x = 20, y = 2, z = 0})
@@ -297,6 +321,21 @@ setup({_villages_food = 4, _villages_farm_pouch = {["mcl_farming:bread"] = 3}})
 step()
 assert(farmer._villages_food == 12 and pouch("mcl_farming:bread") == 1)
 
+-- Ground waiting to be sown comes before eating its seed crops, its own or anyone's.
+setup({_villages_food = 0, _villages_farm_pouch = {["mcl_farming:potato_item"] = 12}})
+local to_sow = plot(1, 1)
+local waiting_neighbour = neighbour(2, 1)
+step()
+assert(farmer._villages_food == 0 and not waiting_neighbour._villages_food, "sown first")
+assert(world.name(to_sow) == "mcl_farming:potato_1" and pouch("mcl_farming:potato_item") == 11)
+step()
+assert(farmer._villages_food == 7, "and nothing left to sow, it eats down to the seed it keeps")
+-- Food that is no seed is fair game even then.
+setup({_villages_food = 8, _villages_farm_pouch = {["mcl_farming:bread"] = 1, ["mcl_farming:potato_item"] = 1}})
+plot(1, 1)
+step()
+assert(farmer._villages_food == 12 and pouch("mcl_farming:bread") == 0)
+
 -- A round stops after a few, and the next waits.
 setup({_villages_farm_pouch = {["mcl_farming:bread"] = 8}})
 local crowd = {}
@@ -379,5 +418,19 @@ def = {do_custom = function() end, on_die = function() vanilla_died = true end}
 farmer_module.install(def)
 def.on_die(farmer, {x = 1, y = 2, z = 0}, {})
 assert(vanilla_died and #world.dropped == 1 and world.dropped[1].item == "mcl_farming:wheat_item 3")
+
+-- What the Lookup Tool shows.
+setup({_villages_farm_pouch = {["mcl_farming:bread"] = 3, ["mcl_farming:wheat_seeds"] = 2}})
+assert(farmer_module.status({_profession = "mason"}) == "not a farmer")
+assert(farmer_module.status(farmer) == "not ticked yet")
+assert(farmer_module.pouch_status(farmer) == "2 wheat_seeds, 3 bread")
+assert(farmer_module.pouch_status({}) == "empty")
+plot(1, 1, "mcl_farming:wheat")
+step()
+assert(farmer_module.status(farmer) == "working in its field")
+world.time = 0.7
+assert(farmer_module.status(farmer) == "off work")
+world.meta(job).fields.villager = "someone-else"
+assert(farmer_module.status(farmer) == "no claimed composter")
 
 print("farmer.lua: ok")

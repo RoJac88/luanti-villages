@@ -18,6 +18,7 @@
 # default tools/lv_probe/results/), LV_PROBE_PORT (first port to try; a free one
 # is used, never one a running game holds), LV_PROBE_LIMIT (seconds before giving up;
 # default 3600, or with a census sites x (census seconds + 120) + 600 if larger),
+# LV_PROBE_FARM=1 (with --with-mod) runs farmers' work on a stock farm and a bare plot beside each built village;
 # LV_PROBE_FLOCK=1 (with --with-mod) runs the shepherd flock day of each built village (#215;
 # LV_PROBE_FLOCK_EXTRA=N adds N synthetic shepherds),
 # LV_PROBE_CENSUS_PUTTER (seconds of the census held at the Putter stage first, with a well watch, #11),
@@ -69,6 +70,19 @@ if [ "$flock" -gt 0 ] && [ "$with_mod" != 1 ]; then
 fi
 if [ "$flock" -gt 0 ] && [ "$census" -gt 0 ]; then
 	echo "LV_PROBE_FLOCK and LV_PROBE_CENSUS cannot both be set" >&2
+	exit 2
+fi
+
+farm=${LV_PROBE_FARM:-0}
+case $farm in
+	''|*[!0-9]*) echo "LV_PROBE_FARM wants a whole number" >&2; exit 2 ;;
+esac
+if [ "$farm" -gt 0 ] && [ "$with_mod" != 1 ]; then
+	echo "LV_PROBE_FARM needs --with-mod" >&2
+	exit 2
+fi
+if [ "$farm" -gt 0 ] && { [ "$flock" -gt 0 ] || [ "$census" -gt 0 ]; }; then
+	echo "LV_PROBE_FARM cannot be set with LV_PROBE_FLOCK or LV_PROBE_CENSUS" >&2
 	exit 2
 fi
 
@@ -134,6 +148,7 @@ lv_probe_radius = $radius
 lv_probe_chunk = $chunk
 lv_probe_census = $census
 lv_probe_flock = $flock
+lv_probe_farm = $farm
 lv_probe_flock_extra = $flock_extra
 lv_probe_census_putter = ${LV_PROBE_CENSUS_PUTTER:-0}
 EOT
@@ -145,7 +160,7 @@ port=$(lv_claim_port "${LV_PROBE_PORT:-30123}" "$ports")
 visits=$sites
 if [ -n "$chunk" ]; then visits=1; fi
 extra_seconds=$census
-if [ "$flock" -gt 0 ]; then extra_seconds=800; fi
+if [ "$flock" -gt 0 ] || [ "$farm" -gt 0 ]; then extra_seconds=800; fi
 limit=${LV_PROBE_LIMIT:-$((visits * (extra_seconds + 120) + 600))}
 if [ -z "${LV_PROBE_LIMIT:-}" ] && [ "$limit" -lt 3600 ]; then limit=3600; fi
 server=

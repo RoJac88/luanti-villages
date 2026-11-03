@@ -290,19 +290,24 @@ local function work_composter(self, pos, session, now)
 	end
 end
 
--- The food it can give away, best first, or nil.
-local function spare_food(self)
+-- The food it can give away, best first, or nil. While it has ground waiting to be
+-- sown, a crop that is also its seed goes in the ground rather than down a throat:
+-- one potato planted is several later.
+local function spare_food(self, session)
 	for _, item in ipairs(food.FOODS) do
-		if stock.count(self, item) > (FOOD_SEED_KEEP[item] or 0) then return item end
+		if not (session.sowing and field.is_seed(item))
+			and stock.count(self, item) > (FOOD_SEED_KEEP[item] or 0) then
+			return item
+		end
 	end
 	return nil
 end
 
 -- Feeds the villager all it wants, from what the farmer can spare.
-local function hand_over(self, target)
+local function hand_over(self, target, session)
 	local given
 	while food.wants(target) do
-		local item = spare_food(self)
+		local item = spare_food(self, session)
 		if not item then break end
 		stock.take(self, item, 1)
 		food.receive(target, item)
@@ -374,14 +379,14 @@ local function plot_jobs(self, session, farm, now)
 	local composter = core.get_node_or_nil(self._jobsite).name
 	compost.nudge(self._jobsite, composter)
 	local hungry, hungry_by_cell = hungry_villagers(self, session, now)
-	local has_food = spare_food(self) ~= nil
+	local has_food = spare_food(self, session) ~= nil
 	return {
 		{
 			positions = hungry,
 			wanted = has_food,
 			reach = HANDOVER_REACH,
 			work = function(_, cell)
-				if hand_over(self, hungry_by_cell[key(cell)]) then round_progress(session, now, 1, 0) end
+				if hand_over(self, hungry_by_cell[key(cell)], session) then round_progress(session, now, 1, 0) end
 			end,
 			on_walk = function() round_progress(session, now, 0, 1) end,
 		},
@@ -398,7 +403,7 @@ local function plot_jobs(self, session, farm, now)
 			wanted = stock.count(self, BONE_MEAL) > 0,
 			work = fertilise,
 		},
-		{positions = {self._jobsite}, wanted = composter_has_work(self, composter, #chests > 0), work = work_composter},
+		{positions = {self._jobsite}, wanted = composter_has_work(self, composter, #chests > 0), work = work_composter, last_resort = true},
 		{
 			positions = not seeds and #farm.empty > 0 and chests_with_seeds(session, chests, now) or {},
 			wanted = not seeds,
@@ -415,17 +420,24 @@ end
 -- One job within reach, or one walk to the most pressing job. Returns "worked",
 -- "walking", or nil for nothing to do.
 local function next_step(self, session, pos, now)
+	local farm = field.scan(self._jobsite)
+	session.sowing = #farm.empty > 0 or #field.tillable(self._jobsite, farm.soil) > 0
 	-- It looks after itself first: a farmer can be a parent too.
-	if hand_over(self, self) then return "worked" end
-	local jobs = plot_jobs(self, session, field.scan(self._jobsite), now)
+	if hand_over(self, self, session) then return "worked" end
+	local jobs = plot_jobs(self, session, farm, now)
+	-- Work in reach goes first, so one walk does a whole patch of plots. But the composter
+	-- is always in reach of a farmer stood at it, and would swallow the surplus before
+	-- it ever walked to a chest or a hungry villager, so it waits for those.
+	local pending = false
 	for _, job in ipairs(jobs) do
 		if job.wanted then
 			local target, distance = nearest(session, pos, job.positions, now)
-			if target and distance <= (job.reach or REACH) then
+			if target and distance <= (job.reach or REACH) and not (job.last_resort and pending) then
 				face(self, pos, target)
 				job.work(self, target, session, now)
 				return "worked"
 			end
+			pending = pending or target ~= nil
 		end
 	end
 	for _, job in ipairs(jobs) do
@@ -508,6 +520,28 @@ function M.install(def)
 		stock.drop_all(self, pos or self.object:get_pos())
 		if original_die then return original_die(self, pos, cause) end
 	end
+end
+
+-- One line for the Lookup Tool inspector (diagnostic.lua).
+function M.status(villager)
+	if villager._profession ~= "farmer" then return "not a farmer" end
+	if not valid_farmer(villager) then return "no claimed composter" end
+	if not common.is_work_time(villager) then return "off work" end
+	local session = sessions[villager]
+	if not session then return "not ticked yet" end
+	if villager._villages_farm_target then return "on its way to " .. key(villager._villages_farm_target) end
+	if session.away then return "working in its field" end
+	return "nothing to do just now"
+end
+
+-- What it carries, for the same.
+function M.pouch_status(villager)
+	local parts = {}
+	for name, count in pairs(villager._villages_farm_pouch or {}) do
+		table.insert(parts, count .. " " .. name:gsub("^.*:", ""))
+	end
+	table.sort(parts)
+	return #parts > 0 and table.concat(parts, ", ") or "empty"
 end
 
 M.sessions = sessions

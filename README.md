@@ -14,8 +14,23 @@ world.
 - A village can have a child when a valid bed is unclaimed, as long as two nearby adults own
   beds and no nearby adult is without one. Automatic births are limited to about one every two
   game days in a local area.
+- Both parents must also have been fed 12 points of food by a farmer, which they spend. **A
+  village with no working farm stops growing by itself.** `living_villages_births_need_food`
+  turns this off.
 - Breeding with food also needs a free bed, but doesn't wait for the birth timer.
 - Beds owned by players don't count. Spawn eggs and curing zombie villagers work as before.
+
+### Farmers
+
+A villager with a composter works its farm through the work stage:
+
+- **Harvests and sows.** Mature wheat, potatoes, carrots and beetroot yield their real drops, which it carries. It sows from what it carries, so a farmer with no seeds plants nothing until it harvests or finds some. It avoids sowing the same crop as the plot's neighbours where it can, because that crop grows slower.
+- **Tills.** With seeds and nothing left to sow, it tills beside its field, onto dirt or grass that water will keep wet, up to `living_villages_farm_max_plots` plots. A composter beside water with no field starts one. It never tills a path. The stock farm's kerb keeps its field to its bed.
+- **Composts and bakes.** It adds surplus crops and seeds to its composter, takes the bone meal and spends it on the crops furthest from ripe. It bakes wheat into bread.
+- **Stores.** It takes large surpluses to the nearest chest within `living_villages_farmer_chest_radius` nodes of its composter, generated or yours, and takes back seeds and food when short. It never places a chest. With none in range it only composts and hands food out, and a full farmer leaves crops standing. `living_villages_farmer_chest_withdraw` makes chests deposit-only. Trapped, ender and protected chests are left alone.
+- **Feeds the village.** It hands food directly to villagers near its farm. Bread is worth 4 points and a crop 1, and a villager wants 12. Food heals, and a fed child grows faster.
+
+A farmer that dies drops what it carries.
 
 ### Fishermen
 
@@ -72,8 +87,10 @@ ordinary stairs and wooden doors. Iron doors still block them.
 
 - [VoxeLibre](https://content.luanti.org/packages/wuzzy/mineclone2/) 0.92.3. Other versions
   may work but haven't been tested.
-- These VoxeLibre mods: `mobs_mc`, `mcl_beds`, `mcl_villages`,
-  `mcl_decor`, and `mcl_itemframes`.
+- These VoxeLibre mods: `mobs_mc`, `mcl_beds`, `mcl_villages`, `mcl_itemframes`, `mcl_lectern`,
+  `mcl_wool`, `mcl_farming`, `mcl_composters`, `mcl_bone_meal`, and `mcl_chests`.
+- [`mcl_decor`](https://content.luanti.org/packages/EmoryNB/mcl_decor/), which is a separate mod,
+  not part of VoxeLibre. Install it from ContentDB.
 - Optional: `doc_identifier` (the Lookup Tool) and `mcl_fishing`.
 
 ## Installation
