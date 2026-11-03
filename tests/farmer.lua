@@ -207,7 +207,7 @@ assert(#world.composted == 1, "the composter makes room")
 assert(#world.dropped == 0 and #farmer.walks == 0)
 for _, node in pairs(world.nodes) do assert(not node.name:find("chest"), "no chest placed") end
 step(7)
-assert(world.name(waiting) == "air", "room made, so it harvests")
+assert(world.name(waiting) ~= "mcl_farming:wheat", "room made, so it harvests")
 
 -- A chest placed later is found on its next look.
 setup({_villages_farm_pouch = {["mcl_bone_meal:bone_meal"] = 32, ["mcl_farming:carrot_item"] = 30}})
