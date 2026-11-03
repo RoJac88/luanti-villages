@@ -104,6 +104,24 @@ farmer._villages_farm_route = {status = "planning"}
 step(3)
 assert(farmer._villages_farm_target == queued and #farmer.walks == 0)
 
+-- With seeds and nothing left to sow, it tills beside its field and then sows that.
+setup({_villages_farm_pouch = {["mcl_farming:wheat_seeds"] = 1}})
+plot(1, 1, "mcl_farming:wheat_2")
+world.set({x = 1, y = 1, z = 2}, "mcl_core:dirt")
+world.set({x = 3, y = 1, z = 1}, "mcl_core:water_source")
+step()
+assert(world.name({x = 1, y = 1, z = 2}) == "mcl_farming:soil")
+step()
+assert(world.name({x = 1, y = 2, z = 2}) == "mcl_farming:wheat_1" and pouch("mcl_farming:wheat_seeds") == 0)
+
+-- With no seeds it does not open up ground it cannot sow.
+setup()
+plot(1, 1, "mcl_farming:wheat_2")
+world.set({x = 1, y = 1, z = 2}, "mcl_core:dirt")
+world.set({x = 3, y = 1, z = 1}, "mcl_core:water_source")
+step(2)
+assert(world.name({x = 1, y = 1, z = 2}) == "mcl_core:dirt")
+
 -- Only in the work stage, and only a farmer holding its composter.
 local function untouched(label)
 	local here = plot(1, 1, "mcl_farming:wheat")
