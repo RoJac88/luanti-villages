@@ -125,7 +125,10 @@ local search_diagnostic = {
 			nodes_searched = 64, pending = 5, completed_last_minute = 2}
 	end,
 }
-dofile("diagnostic.lua")({}, nil, search_diagnostic)
+dofile("diagnostic.lua")({}, nil, search_diagnostic, {
+	status = function() return "working in its field" end,
+	pouch_status = function() return "3 bread" end,
+})
 local lookup = minetest.registered_items["doc_identifier:identifier_solid"].on_use
 local player = {
 	is_player = function() return true end,
@@ -168,6 +171,9 @@ lookup("stack", player, {type = "object", ref = object})
 assert(shown and shown.name == "admin")
 assert(shown.form:find("Villager diagnostics", 1, true))
 assert(shown.form:find("Profession: farmer", 1, true))
+assert(shown.form:find("Farm: working in its field", 1, true))
+assert(shown.form:find("Farm pouch: 3 bread", 1, true))
+assert(shown.form:find("Food: 0 points", 1, true))
 assert(shown.form:find(
 	"Visual: mesh living_villages_villager.b3d, textures [living_villages_villager_base.png], "
 	.. "visual_size none, is_visible true (default)", 1, true))

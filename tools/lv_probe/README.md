@@ -214,3 +214,21 @@ path conversions, all path conversions, and steps skipped while the shepherd is 
 During work, a shepherd searches outward from the bell (or loom) for loaded, open green pasture.
 Tile and candidate work is capped, and it chooses the nearest suitable stop found within that budget;
 if no pasture is found within the bounded search it uses the usual stops.
+
+## Farmers
+
+```sh
+LV_PROBE_FARM=1 tools/lv_probe/run.sh 2002 --chunk 368,1328 --with-mod
+```
+
+`LV_PROBE_FARM=1` (needs `--with-mod`; not with `LV_PROBE_FLOCK` or `LV_PROBE_CENSUS`) raises a walled platform over each
+built village with two farms: VoxeLibre's stock farm schematic, and a composter on bare dirt beside water with a path nearby.
+Three hungry villagers stand between them. The clock is held in the work stage. Every 20 s a record gives each farm's composter,
+claim, soil, crops and pouch, the villagers' food and any items on the ground. At 120 s the bare farm's farmer is given bone meal. At 240 s a chest with bread appears in range, and at 310 s the stock farmer
+is given a surplus to store. At 400 s the stock
+farmer goes as if it had died, so its composter should empty within about a minute. The run ends at 520 s with the
+farmers' `do_custom` cost. The village's own villagers are below, in delivery range and mostly out of reach.
+
+On Linux set `LUANTI=/usr/bin/luanti` and `LUANTI_USER=$HOME/.minetest` (or wherever yours are). `mcl_decor` must be in that
+`mods` directory, as it is not part of VoxeLibre. A run overwrites the tracked `results/` file for its seed and chunk, so restore that
+afterwards with `git checkout` unless you mean to update it.
