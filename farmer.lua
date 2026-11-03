@@ -115,11 +115,18 @@ local function has_seed(self)
 end
 
 -- The jobs on the plots, most pressing first. wanted says whether to do that kind
--- of job at all now, and each kind lists its plots.
+-- of job at all now, and each kind lists its plots. Tilling waits until there are
+-- seeds for what it opens up, and nothing already open is left unsown.
 local function plot_jobs(self, farm)
+	local seeds = has_seed(self)
 	return {
 		{positions = farm.mature, wanted = stock.has_harvest_room(self), work = harvest},
-		{positions = farm.empty, wanted = has_seed(self), work = plant},
+		{positions = farm.empty, wanted = seeds, work = plant},
+		{
+			positions = seeds and #farm.empty == 0 and field.tillable(self._jobsite, farm.soil) or {},
+			wanted = seeds,
+			work = function(_, pos) field.till(pos, #farm.soil) end,
+		},
 	}
 end
 

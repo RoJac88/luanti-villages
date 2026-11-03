@@ -83,3 +83,8 @@ living_villages_player_meals (Players are served a meal at tavern tables) bool t
 # Idle villagers standing near each other sometimes stop and face one another in
 # twos and threes for a few seconds, as if talking (#242). Atmosphere only.
 living_villages_conversation (Villagers converse) bool true
+
+# The largest field a farmer tills around its composter, in plots. It only extends a field onto
+# dirt or grass beside it that water will keep wet, and never onto a path. A field already bigger
+# than this is still farmed. 0 stops farmers tilling at all.
+living_villages_farm_max_plots (Largest field a farmer tills) int 40 0 289
