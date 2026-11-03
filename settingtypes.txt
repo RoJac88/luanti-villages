@@ -88,3 +88,11 @@ living_villages_conversation (Villagers converse) bool true
 # dirt or grass beside it that water will keep wet, and never onto a path. A field already bigger
 # than this is still farmed. 0 stops farmers tilling at all.
 living_villages_farm_max_plots (Largest field a farmer tills) int 40 0 289
+
+# How far from its composter a farmer looks for a chest to store its surplus (and 8 up or down).
+# It uses chests already there, generated or a player's, and never places one. With none in range
+# it only composts its surplus and hands it out to villagers. 0 stops farmers using chests.
+living_villages_farmer_chest_radius (Farmer chest range) int 32 0 64
+# A farmer may take seeds and food back out of those chests when it is short, and nothing else.
+# Off, a farmer only ever puts things in.
+living_villages_farmer_chest_withdraw (Farmers take seeds and food from chests) bool true
