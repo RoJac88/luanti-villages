@@ -104,6 +104,21 @@ function M.new()
 	end
 	for stage = 0, 2 do crop("mcl_farming:beetroot_" .. stage, {"mcl_farming:beetroot_seeds"}) end
 	defs["mcl_composters:composter_ready"] = {groups = {}}
+	-- The composter's hook without its dice: every item raises the level.
+	local function composter_push(pos)
+		local inv = world.meta(pos).inv
+		assert(inv:get_stack("src", 1):get_count() == 1)
+		inv:set_stack("src", 1, "")
+		local level = world.defs[world.name(pos)].level
+		local name = level < 7 and ("mcl_composters:composter_" .. (level + 1)) or "mcl_composters:composter_ready"
+		world.nodes[key(pos)] = {name = name}
+		table.insert(world.composted, pos)
+	end
+	world.composted = {}
+	for level = 0, 7 do
+		local name = level == 0 and "mcl_composters:composter" or ("mcl_composters:composter_" .. level)
+		defs[name] = {groups = {}, level = level, _mcl_hoppers_on_after_push = composter_push}
+	end
 	world.defs = defs
 
 	function world.set(pos, name) world.nodes[key(pos)] = {name = name} end

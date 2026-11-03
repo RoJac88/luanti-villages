@@ -13,10 +13,68 @@ local MARK = "villages_farmer_compost"
 local BONE_MEAL = "mcl_bone_meal:bone_meal"
 local RESET_INTERVAL = 60
 
-local M = {MARK = MARK}
+local M = {MARK = MARK, BONE_MEAL = BONE_MEAL}
 
 M.fill_nodes = {READY}
 for level = 1, 7 do table.insert(M.fill_nodes, "mcl_composters:composter_" .. level) end
+
+-- Whether one more item could raise the level. Level 7 is waiting on the node timer
+-- that turns it ready.
+function M.takes_items(name)
+	return name == EMPTY or (name:match("^mcl_composters:composter_[1-6]$") ~= nil)
+end
+
+function M.is_ready(name)
+	return name == READY
+end
+
+-- The composter's own step from 7 to ready runs off a node timer, which the block
+-- unloading can lose. Start it again if so.
+function M.nudge(pos, name)
+	if name ~= "mcl_composters:composter_7" then return end
+	local timer = core.get_node_timer(pos)
+	if not timer:is_started() then timer:start(1) end
+end
+
+local warned
+
+-- Puts one item in, by the hopper route, whose roll for a new layer is the same as
+-- a player's. Returns whether the composter took it.
+function M.add_item(pos, item)
+	local node = core.get_node_or_nil(pos)
+	local def = node and core.registered_nodes[node.name]
+	local after_push = def and def._mcl_hoppers_on_after_push
+	if not after_push then
+		if not warned then
+			warned = true
+			core.log("warning", "[living_villages] " .. (node and node.name or "?")
+				.. " has no hopper hook; farmers will not compost")
+		end
+		return false
+	end
+	local meta = core.get_meta(pos)
+	local inv = meta:get_inventory()
+	-- A generated composter may never have run its on_construct.
+	if inv:get_size("src") == 0 then inv:set_size("src", 1) end
+	if inv:get_size("dst") == 0 then inv:set_size("dst", 1) end
+	inv:set_stack("src", 1, item .. " 1")
+	meta:set_string(MARK, "1")
+	after_push(pos)
+	return true
+end
+
+-- Takes the bone meal from a ready composter. Returns its item name, or nil. Swaps
+-- rather than sets the node, which would wipe the villager's claim with the metadata.
+function M.collect(pos)
+	local node = core.get_node_or_nil(pos)
+	if not node or node.name ~= READY then return nil end
+	local meta = core.get_meta(pos)
+	local inv = meta:get_inventory()
+	if inv:get_size("dst") > 0 then inv:set_stack("dst", 1, "") end
+	meta:set_string(MARK, "")
+	core.swap_node(pos, {name = EMPTY})
+	return BONE_MEAL
+end
 
 -- Empties a marked composter nobody holds. Returns whether it did.
 function M.reset_abandoned(pos, node)
