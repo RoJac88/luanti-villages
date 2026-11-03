@@ -37,7 +37,13 @@ vector = {
 	end,
 }
 
+local births_need_food = false
 minetest = {
+	get_modpath = function() return "." end,
+	settings = {get_bool = function(_, name, default)
+		if name == "living_villages_births_need_food" then return births_need_food end
+		return default
+	end},
 	get_day_count = function() return day end,
 	get_timeofday = function() return time end,
 	get_node_or_nil = function(pos) return nodes[key(pos)] end,
@@ -141,5 +147,38 @@ local failed_bed = bed(23)
 fail_spawn = true
 assert(def.on_breed(alice, bob) == false)
 assert(data[key(failed_bed)].villager == "", "failed spawns must leave the bed free")
+
+-- With food required: automatic births need both parents fed, and spend it.
+fail_spawn = false
+births_need_food = true
+local before = births
+day, time = 40, 0.4
+data[key(failed_bed)].villager = ""
+def.do_custom(alice, 1)
+assert(births == before, "an unfed parent has none")
+assert(alice._villages_birth_check_day ~= 40, "and may yet be fed this morning")
+alice._villages_food = 12
+bob._villages_food = 11
+def.do_custom(alice, 1)
+assert(births == before, "an unfed mate is no mate")
+day = 41
+bob._villages_food = 12
+def.do_custom(alice, 1)
+assert(births == before + 1, "both fed")
+assert(alice._villages_food == 0 and bob._villages_food == 0, "both spent it")
+
+-- A player's feeding has paid already, so it needs nothing more and spends nothing.
+local fed_bed = bed(21)
+alice._villages_food, bob._villages_food = 3, 3
+assert(def.on_breed(alice, bob) == false and births == before + 2)
+assert(alice._villages_food == 3 and bob._villages_food == 3 and data[key(fed_bed)].villager ~= "")
+
+-- With the setting off, points are neither needed nor spent.
+births_need_food = false
+local open_bed = bed(19)
+day = 50
+alice._villages_food = 3
+def.do_custom(alice, 1)
+assert(births == before + 3 and alice._villages_food == 3 and data[key(open_bed)].villager ~= "")
 
 print("villager birth tests passed")
