@@ -223,4 +223,17 @@ nodes[key(pulpit)] = nil
 assert(not cleric.claimed_pulpit(alice))
 assert(cleric.status(alice) == "no pulpit")
 
+-- With a composter to go to (farm_jobs.lua), an unemployed villager leaves the pulpit be.
+do
+	local free = {x = 300, y = 0, z = 0}
+	nodes[key(free)] = "living_villages:pulpit"
+	metas[key(free)] = {}
+	local farmhand = villager("farmhand", {x = 299, y = 0, z = 0})
+	farmhand._villages_farm_seek = {x = 350, y = 0, z = 0}
+	assert(not cleric.employ(farmhand, free))
+	assert(not cleric.seeking(farmhand))
+	farmhand._villages_farm_seek = nil
+	assert(cleric.employ(farmhand, free))
+end
+
 print("cleric.lua: ok")

@@ -14,6 +14,9 @@ local workstation_nodes = {
 	["mcl_brewing:stand_000"] = true,
 	["mcl_stonecutter:stonecutter"] = true,
 }
+local FARM_JOB_MIN_RADIUS = 48
+local FARM_JOB_MAX_RADIUS = 120
+local FARM_JOB_HEIGHT = 24
 local FISHING_POND_BATCH_CAP = 64
 local FISHING_POND_TOTAL_CAP = 128
 local FISHING_POND_SEARCH_CAP = 512
@@ -438,6 +441,15 @@ M = {
 			or (core.get_item_group(name, "cauldron") > 0 and "leatherworker")
 	end,
 	workstation_search_nodes = function() return workstation_search_node_names end,
+	-- The box an unemployed villager searches for a free composter (farm_jobs.lua),
+	-- wider than the search for any other job. The engine refuses a box over
+	-- 4096000 nodes, which the setting's limit and the shallow height keep it under.
+	farm_job_box = function(pos)
+		local setting = tonumber(core.settings and core.settings:get("living_villages_farm_job_radius")) or 96
+		local radius = math.max(FARM_JOB_MIN_RADIUS, math.min(FARM_JOB_MAX_RADIUS, setting))
+		return {x = pos.x - radius, y = pos.y - FARM_JOB_HEIGHT, z = pos.z - radius},
+			{x = pos.x + radius, y = pos.y + FARM_JOB_HEIGHT, z = pos.z + radius}
+	end,
 	-- The morning visit to the well (well.lua) or the bell (bell_hangout.lua), #329:
 	-- one of the two a day. The claim is saved with the villager, so a reload does
 	-- not let it go to the other.

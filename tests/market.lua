@@ -83,11 +83,11 @@ assert(not ok and reason == "following")
 ok, reason = market.eligible({_profession = "farmer", _id = "stocked", _villages_market_stock_day = day})
 assert(not ok and reason == "already_stocked")
 
-local fisherman = {_profession = "unemployed", _villages_fisherman = true, _id = "fisher"}
-assert(market.profession(fisherman) == "fisherman", "stable fisherman flag masks vanilla transient demotion")
+local fisherman = {_profession = "fisherman", _villages_fisherman = true, _id = "fisher"}
+assert(market.profession(fisherman) == "fisherman")
 registered["mcl_core:apple"] = {}
 registered["mcl_farming:bread"] = {}
-assert(market.eligible(fisherman), "stable fisherman remains eligible after transient demotion")
+assert(market.eligible(fisherman))
 
 local guarded = setmetatable({_profession = "farmer", _id = "guarded"}, {
 	__index = function(_, key)

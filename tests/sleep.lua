@@ -360,23 +360,20 @@ entity_def.on_activate(dup_h, "", 0)
 assert(dup_g_removed() ~= dup_h_removed(),
 	"exactly one same-position duplicate must be removed regardless of activation order")
 
--- Regression test: skin() must trust _villages_fisherman, which is never
--- transiently cleared, rather than raw _profession. fisherman.lua's guard
--- (#70) only restores a jobsite-less fisherman's _profession after vanilla's
--- own do_custom -- which this file's do_custom wraps innermost, calling
--- tick_visual right after it -- has already reset it to "unemployed" for
--- that tick. Reading _profession directly would occasionally paint the
--- plain, no-profession skin for one visual-refresh cycle every time that
--- reset and the 0.5s refresh throttle happen to land on the same tick.
+-- A fisherman wears its profession, and one vanilla has just made unemployed
+-- does not, whatever the flag fisherman.lua clears a moment later still says.
 local gwen, gwen_props = make_villager("gwen", false, {x = 50, y = 0, z = 0})
 gwen._villages_fisherman = true
-gwen._profession = "unemployed" -- simulates the transient reset window
+gwen._profession = "fisherman"
 objects = {}
 entity_def.on_activate(gwen, "", 0)
 gwen_props.textures = {"old.png"}
 entity_def.do_custom(gwen, 0.6)
-assert(gwen_props.textures[1]:find("profession_fisherman", 1, true),
-	"a transiently-unemployed fisherman must still render its fisherman skin")
+assert(gwen_props.textures[1]:find("profession_fisherman", 1, true), "a fisherman wears its profession")
+gwen._profession = "unemployed"
+gwen_props.textures = {"old.png"}
+entity_def.do_custom(gwen, 0.6)
+assert(not gwen_props.textures[1]:find("profession_fisherman", 1, true), "one that lost the job does not")
 
 -- Regression test: vanilla's own set_textures (mobs_mc/villager.lua:734,
 -- called directly from remove_job/employ, not throttled or gated by this

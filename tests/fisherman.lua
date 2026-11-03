@@ -145,144 +145,126 @@ local function new_def(custom, activate)
 	}
 end
 
--- 1b. (#110) Vanilla sees a traded-looking trade list for a jobless untraded
--- fisherman, so it is never demoted and get_a_job gets no chance to walk it
--- to an arbitrary workstation; the real trades come back afterwards. A real
--- traded list reaches vanilla untouched.
+-- A claimed barrel for the villager `id`, at the position the tests stand it on.
+local function barrel_for(id, pos)
+	pos = pos or {x = 0, y = 0, z = 0}
+	place(pos, "mcl_barrels:barrel_closed", id)
+	return {x = pos.x, y = pos.y, z = pos.z}
+end
+
+-- 1. The barrel goes and vanilla's remove_job makes an untraded fisherman
+-- unemployed: it stays that way, with nothing left of the job, and vanilla sees
+-- its real trade list, so no stand-in hides it from that verdict.
 do
 	local seen
-	local def = new_def(function(self) seen = self._trades end)
-	dofile("fisherman.lua")(def)
-	local f = {_id = "s1", _villages_fisherman = true, _profession = "fisherman", _trades = "untraded", _jobsite = nil}
-	def.do_custom(f, 0.1)
-	assert(seen ~= "untraded" and minetest.deserialize(seen)[1].traded_once)
-	assert(f._trades == "untraded")
-
-	local none = {_id = "s2", _villages_fisherman = true, _profession = "fisherman", _jobsite = nil}
-	def.do_custom(none, 0.1)
-	assert(minetest.deserialize(seen)[1].traded_once)
-	assert(none._trades == nil)
-
-	local real = "return {{traded_once = true, tier = 2}}"
-	local traded = {_id = "s3", _villages_fisherman = true, _profession = "fisherman", _trades = real, _jobsite = nil}
-	def.do_custom(traded, 0.1)
-	assert(seen == real and traded._trades == real)
-
-	local barrel = {x = 5, y = 0, z = 5}
-	local owned = {_id = "s4", _villages_fisherman = true, _profession = "fisherman", _trades = "untraded", _jobsite = barrel}
-	def.do_custom(owned, 0.1)
-	assert(minetest.deserialize(seen)[1].traded_once and owned._trades == "untraded")
-end
-
--- 1c. (#110) A barrel fisherman whose jobsite vanilla drops mid-call (fishing
--- past RESETTLE_DISTANCE) is not demoted either, so get_a_job asks for no
--- path to a workstation.
-do
-	local searches = {}
-	local function traded(self)
-		local t = self._trades and minetest.deserialize(self._trades)
-		for _, trade in pairs(type(t) == "table" and t or {}) do
-			if trade.traded_once then return true end
-		end
-		return false
-	end
 	local def = new_def(function(self)
-		self._jobsite = nil -- validate_jobsite -> remove_job
-		if not traded(self) then
-			self._profession = "unemployed"
-			self._trades = nil
-		end
-		if self._profession == "unemployed" or traded(self) then
-			-- get_a_job: a traded villager's search is its own jobsite type
-			searches[#searches + 1] = traded(self) and "own" or "any"
-		end
-	end)
-	dofile("fisherman.lua")(def)
-	local barrel = {x = 5, y = 0, z = 5}
-	local f = {_id = "s5", _villages_fisherman = true, _profession = "fisherman", _trades = "untraded", _jobsite = barrel}
-	def.do_custom(f, 0.1)
-	assert(f._profession == "fisherman" and f._trades == "untraded" and f._jobsite == nil)
-	assert(#searches == 1 and searches[1] == "own")
-end
-
--- 1. An untraded fallback fisherman with no nearby workstation is knocked to
--- "unemployed" by remove_job and never re-employed; profession and trades
--- are restored, and there is no stray jobsite to leak.
-do
-	local def = new_def(function(self)
+		seen = self._trades
 		self._jobsite = nil
 		self._profession = "unemployed"
 		self._trades = nil
 	end)
 	dofile("fisherman.lua")(def)
-	local fisherman = {_id = "f1", _villages_fisherman = true, _profession = "fisherman", _trades = "some-trades", _jobsite = nil}
+	local fisherman = {
+		_id = "f1", _villages_fisherman = true, _profession = "fisherman", _trades = "untraded",
+		_jobsite = {x = 5, y = 0, z = 5}, _villages_fish_target = {x = 1, y = 0, z = 0},
+		_villages_fish_route = {status = "travelling"}, _villages_fish_next = 5,
+		_villages_fish_session = {phase = "wait", phase_ends_at = 0},
+	}
 	def.do_custom(fisherman, 0.1)
-	assert(fisherman._profession == "fisherman")
-	assert(fisherman._trades == "some-trades")
-	assert(fisherman._jobsite == nil)
+	assert(seen == "untraded", "vanilla must see the real trade list")
+	assert(fisherman._profession == "unemployed" and fisherman._trades == nil and fisherman._jobsite == nil)
+	assert(not fisherman._villages_fisherman, "the flag must go with the job")
+	assert(not fisherman._villages_fish_session and not fisherman._villages_fish_target
+		and not fisherman._villages_fish_route and not fisherman._villages_fish_next)
 end
 
--- 2. Regression: an untraded fallback fisherman standing beside an unrelated
--- workstation is employed straight into that profession by vanilla's
--- get_a_job, in the same call that first knocked it to "unemployed" (an
--- untraded villager's job search covers every profession's jobsite type,
--- not just its own). The profession must be restored, and the stray
--- claim -- which already wrote real node meta -- released rather than left
--- dangling on a fisherman who will never work it.
+-- 2. In the same vanilla call an untraded villager can take the job beside it; that
+-- is its new job, and the claim stays.
 do
 	local composter = {x = 5, y = 0, z = 5}
 	place(composter, "mcl_composters:composter", "")
 	local def = new_def(function(self)
-		self._jobsite = nil
-		self._profession = "unemployed"
-		self._trades = nil
-		-- vanilla's employ(): claims the node, then (untraded) sets profession.
-		meta_store[pos_key(composter)] = self._id
-		self._jobsite = composter
 		self._profession = "farmer"
+		self._jobsite = composter
+		meta_store[pos_key(composter)] = self._id
 	end)
 	dofile("fisherman.lua")(def)
-	local fisherman = {_id = "f2", _villages_fisherman = true, _profession = "fisherman", _trades = nil, _jobsite = nil}
+	local fisherman = {_id = "f2", _villages_fisherman = true, _profession = "fisherman", _jobsite = nil}
 	def.do_custom(fisherman, 0.1)
-	assert(fisherman._profession == "fisherman")
-	assert(fisherman._jobsite == nil)
-	assert(meta_store[pos_key(composter)] == "", "the composter's claim must be released, not left owned by a fisherman")
+	assert(fisherman._profession == "farmer" and fisherman._jobsite == composter)
+	assert(meta_store[pos_key(composter)] == "f2")
+	assert(not fisherman._villages_fisherman)
 end
 
--- 3. A fresh claim on a barrel -- a jobsite this profession would have
--- wanted anyway -- is left in place rather than released.
+-- 3. A traded fisherman keeps its profession and trades without a barrel, as in
+-- vanilla, but does not fish until it has another.
 do
-	local barrel = {x = 1, y = 0, z = 1}
-	place(barrel, "mcl_barrels:barrel_closed", "")
-	local def = new_def(function(self)
-		meta_store[pos_key(barrel)] = self._id
-		self._jobsite = barrel
-	end)
+	local gopaths = 0
+	local def = new_def(function(self) self._jobsite = nil end)
 	dofile("fisherman.lua")(def)
-	local fisherman = {_id = "f3", _villages_fisherman = true, _profession = "fisherman", _trades = nil, _jobsite = nil}
+	timeofday, now = 0.4, 50
+	place({x = 3, y = 0, z = 0}, "mcl_core:water_source")
+	water_sites = {{x = 3, y = 0, z = 0}}
+	local real = "return {{traded_once = true, tier = 2}}"
+	local fisherman = {
+		_id = "f3", _villages_fisherman = true, _profession = "fisherman", _trades = real,
+		_jobsite = {x = 5, y = 0, z = 5}, state = "stand",
+		_villages_fish_session = {phase = "wait", phase_ends_at = 1000},
+		_villages_fish_target = {x = 3, y = 0, z = 0},
+		object = {get_pos = function() return {x = 0, y = 0, z = 0} end, set_velocity = function() end},
+		gopath = function() gopaths = gopaths + 1 end,
+	}
 	def.do_custom(fisherman, 0.1)
-	assert(fisherman._profession == "fisherman")
-	assert(fisherman._jobsite and fisherman._jobsite.x == barrel.x)
-	assert(meta_store[pos_key(barrel)] == "f3")
+	assert(fisherman._profession == "fisherman" and fisherman._trades == real)
+	assert(fisherman._villages_fisherman, "still a fisherman")
+	assert(not fisherman._villages_fish_session and not fisherman._villages_fish_target,
+		"a session cannot outlive the barrel")
+	def.do_custom(fisherman, 0.1)
+	assert(gopaths == 0, "no barrel, no trip to the water")
+	timeofday, water_sites = 0, {}
 end
 
--- 4. Regression: a barrel fisherman that wanders past RESETTLE_DISTANCE has
--- its claim released by vanilla itself -- the node's own meta is cleared
--- before `_jobsite` is (mobs_mc/villager.lua:1268). The guard must not
--- resurrect a jobsite whose claim is already gone.
+-- 4. A barrel broken mid-session under a villager vanilla has not looked at yet
+-- ends the session too, and a placed-again barrel carries no claim.
 do
-	local barrel = {x = 2, y = 0, z = 2}
+	local barrel = {x = 7, y = 0, z = 7}
 	place(barrel, "mcl_barrels:barrel_closed", "f4")
-	local def = new_def(function(self)
-		meta_store[pos_key(barrel)] = ""
-		self._jobsite = nil
-	end)
+	place({x = 3, y = 0, z = 0}, "mcl_core:water_source")
+	local def = new_def(function() end)
 	dofile("fisherman.lua")(def)
-	local fisherman = {_id = "f4", _villages_fisherman = true, _profession = "fisherman", _trades = "some-trades", _jobsite = barrel}
+	timeofday, now = 0.4, 60
+	local fisherman = {
+		_id = "f4", _villages_fisherman = true, _profession = "fisherman", _jobsite = barrel, state = "stand",
+		_villages_fish_session = {phase = "wait", phase_ends_at = 1000},
+		_villages_fish_target = {x = 3, y = 0, z = 0},
+		object = {get_pos = function() return {x = 0, y = 0, z = 0} end, set_velocity = function() end},
+	}
 	def.do_custom(fisherman, 0.1)
-	assert(fisherman._profession == "fisherman")
-	assert(fisherman._trades == "some-trades")
-	assert(fisherman._jobsite == nil, "a released claim must not be restored")
+	assert(fisherman._villages_fish_session, "the claim holds, so the session goes on")
+	meta_store[pos_key(barrel)] = ""
+	def.do_custom(fisherman, 0.1)
+	assert(not fisherman._villages_fish_session)
+	timeofday = 0
+end
+
+-- 4a. While it fishes or is on its way, do_work must not call it back to the barrel.
+do
+	local _, override = dofile("fisherman.lua")
+	assert(override({_villages_fish_session = {}}, "work") == "fish")
+	assert(override({_villages_fish_target = {x = 1, y = 0, z = 0}}, "work") == "fish")
+	assert(override({}, "work") == nil, "nothing to do at the water: vanilla has it at the barrel")
+	assert(override({_villages_fish_target = {x = 1, y = 0, z = 0}, _villages_fish_route = {status = "retry"}}, "work") == nil,
+		"waiting to try again, it goes back to the barrel")
+	assert(override({_villages_fish_session = {}}, "putter") == nil, "only in the work stage")
+end
+
+-- 4b. A saved fisherman from before barrels were required loses a stale flag on load.
+do
+	local def = new_def()
+	dofile("fisherman.lua")(def)
+	local demoted = {_id = "f4b", _villages_fisherman = true, _profession = "unemployed"}
+	def.on_activate(demoted)
+	assert(not demoted._villages_fisherman)
 end
 
 -- 5. Unflagged villagers are untouched: a plain villager torn down by the
@@ -344,7 +326,7 @@ do
 			end
 		end
 		local fisherman = {
-			_id = "f7a1", _villages_fisherman = true, _profession = "fisherman", state = "stand",
+			_id = "f7a1", _villages_fisherman = true, _profession = "fisherman", state = "stand", _jobsite = barrel_for("f7a1", {x = 0, y = 0, z = 0}),
 			object = {get_pos = function() return {x = 0, y = 0, z = 0} end, set_velocity = function() end},
 			gopath = function() error("must not travel: 2x2 well should be rejected") end,
 		}
@@ -361,7 +343,7 @@ do
 		place({x = 15, y = 0, z = 2}, "mcl_core:water_source")
 		place({x = 16, y = 0, z = 2}, "mcl_core:water_source")
 		local fisherman = {
-			_id = "f7a2", _villages_fisherman = true, _profession = "fisherman", state = "stand",
+			_id = "f7a2", _villages_fisherman = true, _profession = "fisherman", state = "stand", _jobsite = barrel_for("f7a2", {x = 0, y = 0, z = 0}),
 			object = {get_pos = function() return {x = 0, y = 0, z = 0} end, set_velocity = function() end},
 			gopath = function() error("must not travel: bent channel should be rejected") end,
 		}
@@ -380,7 +362,7 @@ do
 		water_sites = {{x = 20, y = 0, z = 0}}
 		local gopath_called = false
 		local fisherman = {
-			_id = "f7a3", _villages_fisherman = true, _profession = "fisherman", state = "stand",
+			_id = "f7a3", _villages_fisherman = true, _profession = "fisherman", state = "stand", _jobsite = barrel_for("f7a3", {x = 0, y = 0, z = 0}),
 			object = {get_pos = function() return {x = 0, y = 0, z = 0} end, set_velocity = function() end},
 			gopath = function(self, target) gopath_called = true; self.state = "gowp"; return true end,
 		}
@@ -399,7 +381,7 @@ do
 		water_sites = {{x = 25, y = 0, z = 0}}
 		local gopath_called = false
 		local fisherman = {
-			_id = "f7a4", _villages_fisherman = true, _profession = "fisherman", state = "stand",
+			_id = "f7a4", _villages_fisherman = true, _profession = "fisherman", state = "stand", _jobsite = barrel_for("f7a4", {x = 0, y = 0, z = 0}),
 			object = {get_pos = function() return {x = 0, y = 0, z = 0} end, set_velocity = function() end},
 			gopath = function(self, target) gopath_called = true; self.state = "gowp"; return true end,
 		}
@@ -421,7 +403,7 @@ do
 		water_sites = {{x = 10, y = 0, z = 20}, {x = 11, y = 0, z = 22}}
 		local goal
 		local fisherman = {
-			_id = "f7a5", _villages_fisherman = true, _profession = "fisherman", state = "stand",
+			_id = "f7a5", _villages_fisherman = true, _profession = "fisherman", state = "stand", _jobsite = barrel_for("f7a5", {x = 0, y = 0, z = 0}),
 			object = {get_pos = function() return {x = 0, y = 0, z = 0} end, set_velocity = function() end},
 			gopath = function(self, target) goal = target; self.state = "gowp"; return true end,
 		}
@@ -451,7 +433,7 @@ do
 		local _, later_verdict, later_complete = pond_common.measure_fishing_pond(water_sites[2], minp, maxp, state)
 		assert(later_complete and later_verdict, "resuming from the later seed must prove the lake's 2x3 block")
 		local fisherman = {
-			_id = "f7a6", _villages_fisherman = true, _profession = "fisherman", state = "stand",
+			_id = "f7a6", _villages_fisherman = true, _profession = "fisherman", state = "stand", _jobsite = barrel_for("f7a6", {x = -20, y = 0, z = 16}),
 			object = {get_pos = function() return {x = -20, y = 0, z = 16} end, set_velocity = function() end},
 			gopath = function(self) self.state = "gowp"; return true end,
 		}
@@ -492,7 +474,7 @@ do
 	water_sites = sites
 	local gopath_target
 	local fisherman = {
-		_id = "f7b1", _villages_fisherman = true, _profession = "fisherman", state = "stand",
+		_id = "f7b1", _villages_fisherman = true, _profession = "fisherman", state = "stand", _jobsite = barrel_for("f7b1", {x = 0, y = 0, z = 0}),
 		object = {get_pos = function() return {x = 0, y = 0, z = 0} end, set_velocity = function() end},
 		gopath = function(self, target) gopath_target = target; self.state = "gowp"; return true end,
 	}
@@ -509,7 +491,7 @@ do
 	for _, tile in ipairs(channel) do place(tile, "mcl_core:water_source") end
 	water_sites = channel
 	local bent = {
-		_id = "f7b2", _villages_fisherman = true, _profession = "fisherman", state = "stand",
+		_id = "f7b2", _villages_fisherman = true, _profession = "fisherman", state = "stand", _jobsite = barrel_for("f7b2", {x = 0, y = 0, z = 0}),
 		object = {get_pos = function() return {x = 0, y = 0, z = 0} end, set_velocity = function() end},
 		gopath = function() error("must not travel: a bent one-wide channel is not a pond") end,
 	}
@@ -529,6 +511,31 @@ do
 	local child = {_id = "f7c2", _profession = "fisherman", child = true}
 	def.do_custom(child, 0.1)
 	assert(not child._villages_fisherman)
+end
+
+-- 7d. The water is looked for from the barrel, wherever the fisherman has got to:
+-- vanilla gives the barrel up past 100 nodes.
+do
+	local gopath_target
+	local def = new_def(function() end)
+	dofile("fisherman.lua")(def)
+	timeofday, now = 0.4, 90
+	for x = 40, 41 do
+		for z = 0, 2 do place({x = x, y = 0, z = z}, "mcl_core:water_source") end
+	end
+	for x = 80, 81 do
+		for z = 0, 2 do place({x = x, y = 0, z = z}, "mcl_core:water_source") end
+	end
+	water_sites = {{x = 40, y = 0, z = 0}, {x = 80, y = 0, z = 0}}
+	local fisherman = {
+		_id = "f7d", _villages_fisherman = true, _profession = "fisherman", state = "stand",
+		_jobsite = barrel_for("f7d", {x = 20, y = 0, z = 0}),
+		object = {get_pos = function() return {x = 70, y = 0, z = 0} end, set_velocity = function() end},
+		gopath = function(self, target) gopath_target = target; self.state = "gowp"; return true end,
+	}
+	def.do_custom(fisherman, 0.1)
+	assert(gopath_target and gopath_target.x == 40, "the pond near the barrel, not the one near the fisherman")
+	timeofday, water_sites = 0, {}
 end
 
 -- 8. #72: a working fisherman with no route in progress and qualifying water
@@ -553,7 +560,7 @@ do
 		end
 	end
 	local fisherman = {
-		_id = "f8", _villages_fisherman = true, _profession = "fisherman", state = "stand",
+		_id = "f8", _villages_fisherman = true, _profession = "fisherman", state = "stand", _jobsite = barrel_for("f8", {x = 0, y = 0, z = 0}),
 		object = {get_pos = function() return {x = 0, y = 0, z = 0} end, set_velocity = function() end},
 		gopath = function(self, target)
 			gopath_target = target
@@ -597,7 +604,7 @@ do
 	end
 	water_sites = {mid_lake, shore}
 	local fisherman = {
-		_id = "f8a", _villages_fisherman = true, _profession = "fisherman", state = "stand",
+		_id = "f8a", _villages_fisherman = true, _profession = "fisherman", state = "stand", _jobsite = barrel_for("f8a", {x = 0, y = 0, z = 0}),
 		object = {get_pos = function() return {x = 0, y = 0, z = 0} end, set_velocity = function() end},
 		gopath = function(self, target)
 			gopath_target = target
@@ -652,7 +659,7 @@ do
 	end
 	water_sites = {{x = 14, y = 0, z = 0}, {x = 19, y = 0, z = 0}}
 	local fisherman = {
-		_id = "f8a2", _villages_fisherman = true, _profession = "fisherman", state = "stand",
+		_id = "f8a2", _villages_fisherman = true, _profession = "fisherman", state = "stand", _jobsite = barrel_for("f8a2", {x = 0, y = 0, z = 0}),
 		object = {get_pos = function() return {x = 0, y = 0, z = 0} end, set_velocity = function() end},
 		gopath = function(self, target)
 			gopath_target = target
@@ -693,7 +700,7 @@ do
 		place({x = sand[1], y = 0, z = sand[2]}, "mcl_core:sand")
 	end
 	local fisherman = {
-		_id = "f8a3", _villages_fisherman = true, _profession = "fisherman", state = "stand",
+		_id = "f8a3", _villages_fisherman = true, _profession = "fisherman", state = "stand", _jobsite = barrel_for("f8a3", {x = 0, y = 0, z = 0}),
 		object = {get_pos = function() return {x = 0, y = 0, z = 0} end, set_velocity = function() end},
 		gopath = function(self, target)
 			gopath_target = target
@@ -711,10 +718,8 @@ do
 	timeofday, water_sites = 0, {}
 end
 
--- 8b: the vertical search is asymmetric, matching navigation.lua's
--- promotion search: a lake below the villager's own standing height is
--- common, water above is rare, so downward reach (6) is wider than upward
--- reach (2). Ponds must meet the 2x3 minimum size requirement (#259).
+-- 8b: the vertical search is asymmetric: a lake below the barrel is common,
+-- water above is rare, so downward reach (6) is wider than upward reach (2). Ponds must meet the 2x3 minimum size requirement (#259).
 do
 	local gopath_target
 	local def = new_def(function() end)
@@ -730,7 +735,7 @@ do
 	water_sites = {below}
 	ground_levels[-7] = true
 	local fisherman = {
-		_id = "f8b", _villages_fisherman = true, _profession = "fisherman", state = "stand",
+		_id = "f8b", _villages_fisherman = true, _profession = "fisherman", state = "stand", _jobsite = barrel_for("f8b", {x = 0, y = 0, z = 0}),
 		object = {get_pos = function() return {x = 0, y = 0, z = 0} end, set_velocity = function() end},
 		gopath = function(self, target) gopath_target = target; self.state = "gowp"; return true end,
 	}
@@ -748,7 +753,7 @@ do
 	end
 	water_sites = {too_deep}
 	local deep_fisherman = {
-		_id = "f8c", _villages_fisherman = true, _profession = "fisherman", state = "stand",
+		_id = "f8c", _villages_fisherman = true, _profession = "fisherman", state = "stand", _jobsite = barrel_for("f8c", {x = 0, y = 0, z = 0}),
 		object = {get_pos = function() return {x = 0, y = 0, z = 0} end, set_velocity = function() end},
 		gopath = function() error("must not travel: no water within the downward reach") end,
 	}
@@ -765,7 +770,7 @@ do
 	water_sites = {above}
 	ground_levels[1] = true
 	local above_fisherman = {
-		_id = "f8d", _villages_fisherman = true, _profession = "fisherman", state = "stand",
+		_id = "f8d", _villages_fisherman = true, _profession = "fisherman", state = "stand", _jobsite = barrel_for("f8d", {x = 0, y = 0, z = 0}),
 		object = {get_pos = function() return {x = 0, y = 0, z = 0} end, set_velocity = function() end},
 		gopath = function(self, target) gopath_target = target; self.state = "gowp"; return true end,
 	}
@@ -782,7 +787,7 @@ do
 	end
 	water_sites = {too_high}
 	local high_fisherman = {
-		_id = "f8e", _villages_fisherman = true, _profession = "fisherman", state = "stand",
+		_id = "f8e", _villages_fisherman = true, _profession = "fisherman", state = "stand", _jobsite = barrel_for("f8e", {x = 0, y = 0, z = 0}),
 		object = {get_pos = function() return {x = 0, y = 0, z = 0} end, set_velocity = function() end},
 		gopath = function() error("must not travel: no water within the narrower upward reach") end,
 	}
@@ -804,7 +809,7 @@ do
 	timeofday, now = 0.4, 200
 	water_sites, water_scans = {}, 0
 	local fisherman = {
-		_id = "f9", _villages_fisherman = true, _profession = "fisherman", state = "stand",
+		_id = "f9", _villages_fisherman = true, _profession = "fisherman", state = "stand", _jobsite = barrel_for("f9", {x = 0, y = 0, z = 0}),
 		object = {get_pos = function() return {x = 0, y = 0, z = 0} end, set_velocity = function() end},
 		gopath = function() gopath_called = true; return true end,
 	}
@@ -826,7 +831,7 @@ do
 	dofile("fisherman.lua")(def)
 	timeofday, now = 0.4, 300
 	local fisherman = {
-		_id = "f10", _villages_fisherman = true, _profession = "fisherman", state = "stand",
+		_id = "f10", _villages_fisherman = true, _profession = "fisherman", state = "stand", _jobsite = barrel_for("f10"),
 		_villages_fish_target = {x = 9, y = 0, z = 0},
 		object = {get_pos = function() return {x = 0, y = 0, z = 0} end, set_velocity = function() end},
 		gopath = function() gopath_called = true; return true end,
@@ -844,7 +849,7 @@ do
 	dofile("fisherman.lua")(def)
 	timeofday, now = 0.4, 400
 	local fisherman = {
-		_id = "f11", _villages_fisherman = true, _profession = "fisherman", state = "stand",
+		_id = "f11", _villages_fisherman = true, _profession = "fisherman", state = "stand", _jobsite = barrel_for("f11"),
 		_villages_fish_target = {x = 9, y = 0, z = 0},
 		_villages_fish_route = {status = "retry", retry_at = 300},
 		object = {get_pos = function() return {x = 0, y = 0, z = 0} end, set_velocity = function() end},
@@ -886,7 +891,7 @@ do
 	water_sites = {{x = 3, y = 0, z = 0}}
 	place({x = 3, y = 0, z = 0}, "mcl_core:water_source")
 	local fisherman = {
-		_id = "f13", _villages_fisherman = true, _profession = "fisherman", state = "stand",
+		_id = "f13", _villages_fisherman = true, _profession = "fisherman", state = "stand", _jobsite = barrel_for("f13", {x = 0, y = 0, z = 0}),
 		object = {get_pos = function() return {x = 0, y = 0, z = 0} end, set_velocity = function() end},
 		gopath = function(self)
 			gopath_calls = gopath_calls + 1
@@ -911,6 +916,39 @@ do
 	timeofday, water_sites = 0, {}
 end
 
+-- A tile it could not get to is not chosen again straight away, though the search
+-- from the barrel finds it first: another fisherman may be standing at it for good.
+do
+	local targets = {}
+	local def = new_def(function() end)
+	dofile("fisherman.lua")(def)
+	timeofday, now = 0.4, 650
+	for x = 3, 4 do
+		for z = 200, 202 do place({x = x, y = 0, z = z}, "mcl_core:water_source") end
+	end
+	water_sites = {{x = 3, y = 0, z = 200}, {x = 3, y = 0, z = 201}}
+	local fisherman = {
+		_id = "f13b", _villages_fisherman = true, _profession = "fisherman", state = "stand", _jobsite = barrel_for("f13b", {x = 0, y = 0, z = 200}),
+		object = {get_pos = function() return {x = 0, y = 0, z = 200} end, set_velocity = function() end},
+		gopath = function(self, target)
+			table.insert(targets, target)
+			self._villages_fish_route = {status = "retry", retry_at = now + 30}
+			return false
+		end,
+	}
+	def.do_custom(fisherman, 0.1)
+	assert(targets[1].z == 200)
+	now = now + 31
+	def.do_custom(fisherman, 0.1) -- clears the failed target
+	def.do_custom(fisherman, 0.1)
+	assert(targets[2].z == 201, "the next tile along, not the same one")
+	now = now + 301
+	def.do_custom(fisherman, 0.1)
+	def.do_custom(fisherman, 0.1)
+	assert(targets[3].z == 200, "and the first again once some time has passed")
+	timeofday, water_sites = 0, {}
+end
+
 -- #73: arrival at the stand faces the water and starts a fishing session in
 -- its "cast" phase. Pond must meet the 2x3 minimum size requirement (#259).
 do
@@ -925,7 +963,7 @@ do
 	end
 	place({x = 6, y = 1, z = 0}, "mcl_flowers:waterlily")
 	local fisherman = {
-		_id = "f14", _villages_fisherman = true, _profession = "fisherman", state = "stand",
+		_id = "f14", _villages_fisherman = true, _profession = "fisherman", state = "stand", _jobsite = barrel_for("f14", {x = 0, y = 0, z = 0}),
 		object = {get_pos = function() return {x = 0, y = 0, z = 0} end, set_velocity = function() end},
 		gopath = function(self, target, callback)
 			-- Mirrors navigation.lua's arrival_callback: the route's target
@@ -966,7 +1004,7 @@ do
 		expensive = {tier = 2, locked = true, trade_counter = 1},
 	}
 	local fisherman = {
-		_id = "f15", _villages_fisherman = true, _profession = "fisherman", state = "stand",
+		_id = "f15", _villages_fisherman = true, _profession = "fisherman", state = "stand", _jobsite = barrel_for("f15"),
 		_villages_fish_target = water, _max_trade_tier = 1,
 		_trades = minetest.serialize(trades),
 		_villages_fish_session = {phase = "cast", phase_ends_at = now + 2},
@@ -1023,7 +1061,7 @@ do
 	local water = {x = 5, y = 0, z = 0}
 	place(water, "mcl_core:water_source")
 	local fisherman = {
-		_id = "f_suppress", _villages_fisherman = true, _profession = "fisherman", state = "stand",
+		_id = "f_suppress", _villages_fisherman = true, _profession = "fisherman", state = "stand", _jobsite = barrel_for("f_suppress"),
 		_villages_fish_target = water,
 		_villages_fish_route = {status = "arrived", target = {x = 4, y = 0, z = 0}},
 		_villages_fish_session = {phase = "wait", phase_ends_at = now + 8},
@@ -1091,7 +1129,7 @@ do
 	place(water, "mcl_core:water_source")
 	local velocity_calls = {}
 	local fisherman = {
-		_id = "f21", _villages_fisherman = true, _profession = "fisherman", state = "stand",
+		_id = "f21", _villages_fisherman = true, _profession = "fisherman", state = "stand", _jobsite = barrel_for("f21"),
 		order = "wander", -- some pre-existing order, to also check it is restored on exit
 		_villages_fish_target = water,
 		_villages_fish_session = {phase = "wait", phase_ends_at = now + 8, previous_order = "wander"},
@@ -1132,7 +1170,7 @@ do
 	local stand = {x = 4, y = 0, z = 0}
 	place(water, "mcl_core:water_source")
 	local fisherman = {
-		_id = "f22", _villages_fisherman = true, _profession = "fisherman", state = "stand", order = "stand",
+		_id = "f22", _villages_fisherman = true, _profession = "fisherman", state = "stand", _jobsite = barrel_for("f22"), order = "stand",
 		_villages_fish_target = water,
 		_villages_fish_route = {status = "arrived", target = stand},
 		_villages_fish_session = {phase = "wait", phase_ends_at = now + 8, previous_order = nil},
@@ -1160,7 +1198,7 @@ do
 	spawned_bobbers = {}
 	local bobber = minetest.add_entity(water, "living_villages:bobber")
 	local fisherman = {
-		_id = "f16", _villages_fisherman = true, _profession = "fisherman", state = "stand", following = true,
+		_id = "f16", _villages_fisherman = true, _profession = "fisherman", state = "stand", _jobsite = barrel_for("f16"), following = true,
 		_villages_fish_target = water, _villages_fish_route = {status = "arrived"},
 		_villages_fish_session = {phase = "wait", phase_ends_at = now + 8},
 		_villages_fish_bobber = bobber,
@@ -1185,7 +1223,7 @@ do
 	local bobber = minetest.add_entity(water, "living_villages:bobber")
 	timeofday, now = 0.8, 1000
 	local fisherman = {
-		_id = "f17", _villages_fisherman = true, _profession = "fisherman", state = "stand",
+		_id = "f17", _villages_fisherman = true, _profession = "fisherman", state = "stand", _jobsite = barrel_for("f17"),
 		_villages_fish_target = water,
 		_villages_fish_session = {phase = "wait", phase_ends_at = now + 8},
 		_villages_fish_bobber = bobber,
@@ -1207,7 +1245,7 @@ do
 	spawned_bobbers = {}
 	local bobber = minetest.add_entity(water, "living_villages:bobber")
 	local fisherman = {
-		_id = "f18", _villages_fisherman = true, _profession = "fisherman", state = "stand",
+		_id = "f18", _villages_fisherman = true, _profession = "fisherman", state = "stand", _jobsite = barrel_for("f18"),
 		_villages_fish_target = water,
 		_villages_fish_session = {phase = "wait", phase_ends_at = now + 8},
 		_villages_fish_bobber = bobber,
@@ -1268,7 +1306,7 @@ do
 	place(water, "mcl_core:stone")
 	local rod = minetest.add_entity({x = 4, y = 0, z = 0}, "living_villages:fishing_rod")
 	local fisherman = {
-		_id = "f23", _villages_fisherman = true, _profession = "fisherman", state = "stand",
+		_id = "f23", _villages_fisherman = true, _profession = "fisherman", state = "stand", _jobsite = barrel_for("f23"),
 		_villages_fish_target = water,
 		_villages_fish_session = {phase = "wait", phase_ends_at = now + 8},
 		_villages_fish_rod = rod,
@@ -1326,7 +1364,7 @@ do
 	local water = {x = 5, y = 0, z = 0}
 	minetest.registered_items["mcl_fishing:fishing_rod"] = nil
 	local fisherman = {
-		_id = "f25", _villages_fisherman = true, _profession = "fisherman", state = "stand",
+		_id = "f25", _villages_fisherman = true, _profession = "fisherman", state = "stand", _jobsite = barrel_for("f25", {x = 0, y = 0, z = 0}),
 		object = {get_pos = function() return {x = 0, y = 0, z = 0} end, set_velocity = function() end},
 		gopath = function(self, target, callback)
 			self._villages_fish_route = {status = "arrived", target = {x = 4, y = 0, z = 0}}

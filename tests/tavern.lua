@@ -87,7 +87,7 @@ end
 dofile("tavern.lua")(def)
 
 local function villager(id, pos, extra)
-	local self = {_id = id, _profession = "farmer", state = "stand", _bed = {x = 0, y = 0, z = 0}}
+	local self = {_id = id, _profession = "mason", state = "stand", _bed = {x = 0, y = 0, z = 0}}
 	for k, v in pairs(extra or {}) do self[k] = v end
 	self.object = {
 		get_pos = function() return pos end,
@@ -120,7 +120,7 @@ assert(alice._villages_tavern_target == nil)
 local bob = villager("bob", {x = 18, y = 0, z = 1})
 def.do_custom(bob, 0.1)
 assert(bob._villages_tavern_arrived and not bob._villages_keeper and bob.order == "stand")
-assert(bob._profession == "farmer")
+assert(bob._profession == "mason")
 
 -- A traded villager never takes over, even at an empty tavern.
 local empty = {x = 40, y = 0, z = 0}
@@ -129,7 +129,7 @@ local carol = villager("carol", {x = 39, y = 0, z = 0}, {
 	_bed = {x = 40, y = 0, z = 2}, _trades = {{traded_once = true}},
 })
 def.do_custom(carol, 0.1)
-assert(carol._villages_tavern_arrived and not carol._villages_keeper and carol._profession == "farmer")
+assert(carol._villages_tavern_arrived and not carol._villages_keeper and carol._profession == "mason")
 assert((metas[key(empty)] or {}).villager == nil)
 
 -- Unloaded and reloaded on the way (a player walked out of range): the
@@ -170,6 +170,20 @@ local gina = villager("gina", {x = -29, y = 0, z = 0}, {
 def.do_custom(gina, 0.1)
 assert(gina._villages_keeper and gina._profession == "butcher")
 assert(gina._villages_fisherman == nil and gina._villages_fish_target == nil and gina._villages_fish_route == nil)
+
+-- A farmer does not leave its farm for the tavern.
+local fourth = {x = -60, y = 0, z = 0}
+nodes[key(fourth)] = "mcl_jukebox:jukebox"
+local composter = {x = -70, y = 0, z = 0}
+nodes[key(composter)] = "mcl_composters:composter"
+minetest.get_meta(composter):set_string("villager", "hank")
+local hank = villager("hank", {x = -59, y = 0, z = 0}, {
+	_bed = {x = -60, y = 0, z = 3}, _profession = "farmer", _jobsite = composter,
+})
+def.do_custom(hank, 0.1)
+assert(hank._profession == "farmer" and not hank._villages_keeper)
+assert(hank._jobsite == composter and minetest.get_meta(composter):get_string("villager") == "hank")
+assert(minetest.get_meta(fourth):get_string("villager") == "")
 
 -- Leave-by 17:00: a villager still on the way goes home instead.
 local dave = villager("dave", {x = 100, y = 0, z = 0}, {_bed = {x = 30, y = 0, z = 0}})

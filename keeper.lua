@@ -81,7 +81,7 @@ end
 -- Who may take up a free jukebox: an unemployed adult, or a keeper that lost
 -- its jukebox after trading and so keeps the role.
 local function wants_jukebox(self)
-	if self.child or not self._id or self._jobsite then return false end
+	if self.child or not self._id or self._jobsite or self._villages_farm_seek then return false end
 	return self._profession == "unemployed" or self._villages_keeper == true
 end
 
@@ -115,19 +115,21 @@ end
 -- over (#16), leaving whatever job it had -- but never one a player has
 -- traded with, whose trades would be lost with it (#15). Most villages have
 -- more jobsites than villagers, so waiting for someone unemployed would
--- leave the tavern empty for good.
+-- leave the tavern empty for good. Farmers stay on the farm: a village needs them
+-- for its food and its births.
 -- Everything the old job kept in this mod, so it cannot outlive the job. A
 -- fisherman's flag in particular would have fisherman.lua send the keeper
 -- fishing during Staff, which counts as work time.
 local OLD_JOB_FIELDS = {
-	"_villages_fisherman", "_villages_fisherman_check",
+	"_villages_fisherman",
 	"_villages_fish_target", "_villages_fish_route", "_villages_fish_next",
 	"_villages_farm_target", "_villages_farm_route", "_villages_farm_next", "_villages_farm_pouch",
 	"_villages_job_route", "_villages_job_search_route",
 }
 
 local function take_over(self, pos)
-	if self.child or not self._id or self._villages_keeper or self._profession == "nitwit" then return false end
+	if self.child or not self._id or self._villages_keeper or self._profession == "nitwit"
+		or self._profession == "farmer" or self._villages_farm_seek then return false end
 	-- These are employ()'s own conditions, checked up front so nothing below
 	-- can fail halfway: once the old job is released, employ() must succeed.
 	if not is_jukebox(pos) or not unclaimed(pos) or has_traded(self) then return false end

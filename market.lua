@@ -36,7 +36,6 @@ end
 local M = {}
 
 function M.profession(villager)
-	if villager._villages_fisherman then return "fisherman" end
 	return villager._profession
 end
 

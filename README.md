@@ -32,15 +32,21 @@ A villager with a composter works its farm through the work stage:
 
 A farmer that dies drops what it carries.
 
+### Who takes which job
+
+An unemployed villager takes a free composter it can reach ahead of any other job, including a
+tavern or a pulpit, and looks for one up to 96 nodes away (`living_villages_farm_job_radius`), where
+other jobs are looked for within 48. If it can't reach any free composter it can take another job,
+and tries the composters again five minutes later if it's still unemployed.
+
 ### Fishermen
 
-- An unemployed villager that has a bed but can't reach a workstation becomes a fisherman
-  when there's enough water near its bed. It doesn't need a barrel, but claiming a barrel still
-  works the normal way.
-- A fisherman keeps the profession for life, even if its water or barrel goes away later.
-- During work hours it walks to a spot at the water's edge and casts, waits, and reels in.
-  Fishing produces no items. Instead it restocks the fisherman's locked trades within its
-  current tier.
+- A villager becomes a fisherman by claiming a barrel, like any other workstation. Breaking the
+  barrel of a fisherman nobody has traded with makes it unemployed again. One that has traded keeps
+  its profession and looks for another barrel, and only fishes once it has one.
+- During work hours it walks to a spot at the water's edge within 32 nodes of its barrel and casts,
+  waits, and reels in. Fishing produces no items. Instead it restocks the fisherman's locked trades
+  within its current tier. With no water in range it works at the barrel, like any other villager.
 
 ### Getting around
 
@@ -74,7 +80,7 @@ ordinary stairs and wooden doors. Iron doors still block them.
 - **Evening visit:** from 15:30, every adult walks to the nearest tavern within 48 nodes of its
   bed and stays until 17:30. An adult that hasn't arrived by 17:00 goes home instead.
   - If a tavern has no keeper, the first villager to reach it takes the job and leaves its old
-    one, unless a player has traded with it.
+    one, unless a player has traded with it or it's a farmer.
 - **Seating:** guests each take a free chair that faces a table. This works in any tavern,
   including ones players built. Guests never take a chair a player is sitting in, and they get
   up if a player takes their chair. When no seat is free, a guest stands inside.
