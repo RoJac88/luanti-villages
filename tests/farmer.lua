@@ -13,6 +13,8 @@ local function setup(fields)
 	farmer_module.install(def)
 	farmer = support.farmer(world, {x = 1, y = 2, z = 0}, fields)
 	farmer._jobsite = job
+	-- Fed, so that a test about something else does not see it eat its pouch.
+	farmer._villages_food = farmer._villages_food or 12
 end
 
 local function plot(x, z, crop)
@@ -250,6 +252,88 @@ plot(1, 1)
 support.chest(world, {x = 2, y = 2, z = 0}, nil, {"mcl_farming:wheat_seeds 20"})
 step(2)
 assert(pouch("mcl_farming:wheat_seeds") == 0)
+
+-- Handing out food. Another villager, standing where a test wants it.
+local function neighbour(x, z, fields)
+	local other = support.farmer(world, {x = x, y = 2, z = z}, fields)
+	other._id, other._profession = "other-" .. x .. "-" .. z, "mason"
+	return other
+end
+
+-- Within reach: fed straight from the pouch, best food first, and nothing on the ground.
+setup({_villages_farm_pouch = {["mcl_farming:bread"] = 2, ["mcl_farming:beetroot_item"] = 10}})
+world.defs["mcl_farming:bread"] = {groups = {}, inventory_image = "bread.png"}
+local hungry = neighbour(2, 1)
+step()
+assert(hungry._villages_food == 12, "8 from the loaves, 4 from beetroot")
+assert(pouch("mcl_farming:bread") == 0 and pouch("mcl_farming:beetroot_item") == 6)
+assert(#world.dropped == 0)
+
+-- Further off: it walks there, then hands over.
+setup({_villages_farm_pouch = {["mcl_farming:bread"] = 3}})
+local distant = neighbour(20, 0)
+step()
+assert(#farmer.walks == 1 and farmer.walks[1].x == 20)
+step()
+assert(distant._villages_food == 12)
+
+-- It keeps a few of the crops that are also its seed.
+setup({_villages_farm_pouch = {["mcl_farming:carrot_item"] = 6}})
+local peckish = neighbour(2, 1)
+step(3)
+assert(peckish._villages_food == 2 and pouch("mcl_farming:carrot_item") == 4)
+
+-- Nobody beyond its range, nobody asleep, nobody full, and not itself by walking.
+setup({_villages_farm_pouch = {["mcl_farming:bread"] = 3}})
+local beyond = neighbour(40, 0)
+local asleep = neighbour(2, 1, {_villages_sleeping = true})
+local full = neighbour(1, 1, {_villages_food = 12})
+step(2)
+assert(not beyond._villages_food and not asleep._villages_food and full._villages_food == 12)
+assert(#farmer.walks == 0 and pouch("mcl_farming:bread") == 3)
+
+-- A hungry farmer feeds itself.
+setup({_villages_food = 4, _villages_farm_pouch = {["mcl_farming:bread"] = 3}})
+step()
+assert(farmer._villages_food == 12 and pouch("mcl_farming:bread") == 1)
+
+-- A round stops after a few, and the next waits.
+setup({_villages_farm_pouch = {["mcl_farming:bread"] = 8}})
+local crowd = {}
+for i = 1, 6 do crowd[i] = neighbour(1 + i % 2, i % 3 - 1, {_villages_food = 11}) end
+step(6)
+local fed = 0
+for _, other in ipairs(crowd) do if other._villages_food == 15 then fed = fed + 1 end end
+assert(fed == 4 and pouch("mcl_farming:bread") == 4, "four, then a wait")
+world.now = world.now + 121
+step(2)
+fed = 0
+for _, other in ipairs(crowd) do if other._villages_food == 15 then fed = fed + 1 end end
+assert(fed == 6)
+
+-- Nor does it chase forever one it cannot catch.
+setup({_villages_farm_pouch = {["mcl_farming:bread"] = 3}, fail_walks = true})
+neighbour(20, 0)
+for _ = 1, 40 do step() end
+assert(#farmer.walks <= 8, "gives up for a while")
+
+-- Out of food with someone hungry: it fetches some from a chest; only then.
+setup()
+local larder = support.chest(world, {x = 2, y = 2, z = 0}, nil, {"mcl_farming:bread 20", "mcl_core:iron_ingot 3"})
+local waiting_for_food = neighbour(1, 1)
+step(2)
+assert(pouch("mcl_farming:bread") == 5 and waiting_for_food._villages_food == 12)
+assert(larder:get_stack("main", 2):to_string() == "mcl_core:iron_ingot 3")
+setup()
+support.chest(world, {x = 2, y = 2, z = 0}, nil, {"mcl_farming:bread 20"})
+step(2)
+assert(pouch("mcl_farming:bread") == 0, "nobody hungry, so it leaves the chest alone")
+setup()
+world.settings["living_villages_farmer_chest_withdraw"] = false
+support.chest(world, {x = 2, y = 2, z = 0}, nil, {"mcl_farming:bread 20"})
+neighbour(1, 1)
+step(2)
+assert(pouch("mcl_farming:bread") == 0, "deposit-only")
 
 -- Only in the work stage, and only a farmer holding its composter.
 local function untouched(label)

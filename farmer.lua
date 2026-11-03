@@ -11,6 +11,7 @@ local common = dofile(core.get_modpath("living_villages") .. "/common.lua")
 local field = dofile(core.get_modpath("living_villages") .. "/farm_field.lua")
 local stock = dofile(core.get_modpath("living_villages") .. "/farm_stock.lua")
 local compost = dofile(core.get_modpath("living_villages") .. "/farm_compost.lua")
+local food = dofile(core.get_modpath("living_villages") .. "/food.lua")
 
 local TICK_SECONDS = 1
 local IDLE_SECONDS = 5
@@ -60,6 +61,17 @@ local SEEDS = {
 	"mcl_farming:wheat_seeds", "mcl_farming:beetroot_seeds", "mcl_farming:potato_item", "mcl_farming:carrot_item",
 }
 local CHEST_SCAN_SECONDS = 60
+-- Handing food over: from this far off, to those this near its farm. It keeps a few
+-- of the crops that are also its seed.
+local HANDOVER_REACH = 3
+local DELIVERY_RADIUS = 32
+local FOOD_SEED_KEEP = {["mcl_farming:potato_item"] = 4, ["mcl_farming:carrot_item"] = 4}
+local WITHDRAW_FOOD = 8
+-- A round feeds a few villagers, or gives up after chasing them this many times, and
+-- the next waits a while: villagers walk about, and the field needs tending too.
+local ROUND_FED = 4
+local ROUND_WALKS = 8
+local ROUND_SECONDS = 120
 
 -- Live working state. Not saved: a reload clears the farmer's route anyway
 -- (navigation.lua), and it picks its next job from what it finds.
@@ -278,6 +290,81 @@ local function work_composter(self, pos, session, now)
 	end
 end
 
+-- The food it can give away, best first, or nil.
+local function spare_food(self)
+	for _, item in ipairs(food.FOODS) do
+		if stock.count(self, item) > (FOOD_SEED_KEEP[item] or 0) then return item end
+	end
+	return nil
+end
+
+-- Feeds the villager all it wants, from what the farmer can spare.
+local function hand_over(self, target)
+	local given
+	while food.wants(target) do
+		local item = spare_food(self)
+		if not item then break end
+		stock.take(self, item, 1)
+		food.receive(target, item)
+		given = item
+	end
+	if given and target ~= self then
+		food.show_handover(self.object:get_pos(), target.object:get_pos(), given, target.object)
+	end
+	return given ~= nil
+end
+
+local function round_open(session, now)
+	return now >= (session.round_next or 0)
+end
+
+local function round_progress(session, now, fed, walked)
+	session.round_fed = (session.round_fed or 0) + fed
+	session.round_walks = (session.round_walks or 0) + walked
+	if session.round_fed >= ROUND_FED or session.round_walks >= ROUND_WALKS then
+		session.round_next = now + ROUND_SECONDS
+		session.round_fed, session.round_walks = 0, 0
+	end
+end
+
+-- The villagers near the farm short of food, by the cell each stands in.
+local function hungry_villagers(self, session, now)
+	local positions, by_cell = {}, {}
+	if not round_open(session, now) then return positions, by_cell end
+	for _, object in ipairs(core.get_objects_inside_radius(self._jobsite, DELIVERY_RADIUS)) do
+		local other = object:get_luaentity()
+		local at = other and other ~= self and other.name == "mobs_mc:villager" and object:get_pos()
+		if at and other._id and food.wants(other) then
+			local cell = vector.round(at)
+			table.insert(positions, cell)
+			by_cell[key(cell)] = other
+		end
+	end
+	return positions, by_cell
+end
+
+local function chests_with_food(session, chests, now)
+	local found = {}
+	if not stock.may_withdraw() then return found end
+	for _, chest in ipairs(chests) do
+		if not skipped(session, chest, now) then
+			for _, item in ipairs(food.FOODS) do
+				if stock.chest_count(chest, item) > 0 then
+					table.insert(found, chest)
+					break
+				end
+			end
+		end
+	end
+	return found
+end
+
+local function withdraw_food(self, pos)
+	for _, item in ipairs(food.FOODS) do
+		if stock.take_from_chest(self, pos, item, WITHDRAW_FOOD) > 0 then return end
+	end
+end
+
 -- The jobs, most pressing first. wanted says whether to do that kind
 -- of job at all now, and each kind lists its places. Tilling waits until there are
 -- seeds for what it opens up, and nothing already open is left unsown.
@@ -286,7 +373,18 @@ local function plot_jobs(self, session, farm, now)
 	local chests = chests_of(self, session, now)
 	local composter = core.get_node_or_nil(self._jobsite).name
 	compost.nudge(self._jobsite, composter)
+	local hungry, hungry_by_cell = hungry_villagers(self, session, now)
+	local has_food = spare_food(self) ~= nil
 	return {
+		{
+			positions = hungry,
+			wanted = has_food,
+			reach = HANDOVER_REACH,
+			work = function(_, cell)
+				if hand_over(self, hungry_by_cell[key(cell)]) then round_progress(session, now, 1, 0) end
+			end,
+			on_walk = function() round_progress(session, now, 0, 1) end,
+		},
 		{positions = chests, wanted = #chests > 0 and wants_to_deposit(self), work = deposit},
 		{positions = farm.mature, wanted = stock.has_harvest_room(self), work = harvest},
 		{positions = farm.empty, wanted = seeds, work = plant},
@@ -306,17 +404,24 @@ local function plot_jobs(self, session, farm, now)
 			wanted = not seeds,
 			work = withdraw_seeds,
 		},
+		{
+			positions = #hungry > 0 and not has_food and chests_with_food(session, chests, now) or {},
+			wanted = not has_food,
+			work = withdraw_food,
+		},
 	}
 end
 
 -- One job within reach, or one walk to the most pressing job. Returns "worked",
 -- "walking", or nil for nothing to do.
 local function next_step(self, session, pos, now)
+	-- It looks after itself first: a farmer can be a parent too.
+	if hand_over(self, self) then return "worked" end
 	local jobs = plot_jobs(self, session, field.scan(self._jobsite), now)
 	for _, job in ipairs(jobs) do
 		if job.wanted then
 			local target, distance = nearest(session, pos, job.positions, now)
-			if target and distance <= REACH then
+			if target and distance <= (job.reach or REACH) then
 				face(self, pos, target)
 				job.work(self, target, session, now)
 				return "worked"
@@ -328,6 +433,7 @@ local function next_step(self, session, pos, now)
 			-- A plot it cannot reach gives way to the next nearest, a tick later.
 			local target = nearest(session, pos, job.positions, now)
 			if target then
+				if job.on_walk then job.on_walk() end
 				if walk_to(self, session, target, now) then return "walking" end
 				return "worked"
 			end

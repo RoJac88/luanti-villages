@@ -96,3 +96,9 @@ living_villages_farmer_chest_radius (Farmer chest range) int 32 0 64
 # A farmer may take seeds and food back out of those chests when it is short, and nothing else.
 # Off, a farmer only ever puts things in.
 living_villages_farmer_chest_withdraw (Farmers take seeds and food from chests) bool true
+
+# Villages have children on their own only when both parents have been fed: farmers hand food to
+# villagers, and a parent needs 12 points of it (bread 4, a crop 1). So a village with no working
+# farm stops growing by itself, though two villagers a player feeds can still have a child. Off,
+# births ignore food, and farmers' food still heals villagers and speeds up children.
+living_villages_births_need_food (Births need fed parents) bool true
