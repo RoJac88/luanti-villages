@@ -1,9 +1,10 @@
 -- Villagers converse (#242): two or three idle adults standing within a few nodes
 -- of each other, as they do at the well (#11) and about the bell (#127), in
--- the putter, social (#327), bell and tavern stages, now and then stop and face one another for
--- 8-25 s, then go on. Atmosphere only: they talk where they stand and walk to
--- nowhere, there is no animation for it (the model has stand, walk and sleep),
--- and nothing is saved or placed.
+-- the putter, social (#327), bell and tavern stages (a tavern keeper in its putter and free
+-- hours, and on shift at its jukebox), now and then stop and face one another for
+-- 8-25 s, then go on. They talk where they stand and walk to nowhere, there is no
+-- animation for it (the model has stand, walk and sleep), and nothing of it is saved
+-- or placed. A conversation that runs its full time passes on gossip (gossip.lua).
 --
 -- A villager that is standing, free of every other system's errand, rolls
 -- CHANCE every few seconds; on a win it looks for idle neighbours within
@@ -24,7 +25,8 @@ local atan2 = math.atan2 or function(y, x) return math.atan(y, x) end
 local common = dofile(core.get_modpath("living_villages") .. "/common.lua")
 
 -- Market days (#281) run inside the bell stage, so there is no market stage here.
-local STAGES = {putter = true, social = true, bell = true, tavern = true}
+-- "free" is only ever a keeper's off-shift hours. Its shift ("staff") is not here: see on_shift.
+local STAGES = {putter = true, free = true, social = true, bell = true, tavern = true}
 local SCAN_MIN, SCAN_MAX = 4, 8
 local CHANCE = 0.2
 local RADIUS = 5
@@ -47,7 +49,7 @@ local FIELDS = {"_villages_talk", "_villages_talk_next", "_villages_talk_scan"}
 local BUSY = {
 	"_villages_church", "_villages_seat", "_villages_seated_at", "_villages_meal",
 	"_villages_fish_session", "_villages_fish_target", "_villages_farm_target", "_villages_keeper_target",
-	"_villages_follow", "_villages_keeper", "_villages_sleeping", "_villages_market_session",
+	"_villages_follow", "_villages_sleeping", "_villages_market_session",
 }
 local ROUTES = {
 	"_villages_bed_route", "_villages_job_route", "_villages_farm_route", "_villages_fish_route",
@@ -96,6 +98,14 @@ local function alive(self)
 	return self.object ~= nil and self.object:get_pos() ~= nil
 end
 
+-- A keeper at its jukebox on shift. It may talk there, since guests' meals are served from
+-- their own ticks (meal.lua) and ask of it only that keeper.status says it is staffing, which
+-- is order "work". So this one conversation holds without touching its order: "stand" would
+-- stop every meal in the tavern. Walking back to the jukebox has no "work", so it is not free.
+local function on_shift(self, stage)
+	return stage == "staff" and self.order == "work"
+end
+
 -- Standing and free: an adult in a stage that idles, with no trip, route, seat,
 -- trade or visit still on its way. Used to start a conversation and to keep one.
 local function idle(self)
@@ -108,7 +118,8 @@ local function idle(self)
 	end
 	if trading(self) then return false, "trading" end
 	local stage = common.schedule_stage(nil, self)
-	if not STAGES[stage] then return false, "stage" end
+	local shift = on_shift(self, stage)
+	if not STAGES[stage] and not shift then return false, "stage" end
 	-- A tavern guest (tavern.lua) is free only inside, in the Tavern stage, once arrived: not on
 	-- its way in, and not in the tavern stage without a tavern. Seated, eating and serving guests
 	-- are excluded by the fields below.
@@ -117,7 +128,7 @@ local function idle(self)
 	elseif stage == "tavern" then
 		return false, "tavern"
 	end
-	if not ORDERS[self.order or ""] then return false, "order:" .. tostring(self.order) end
+	if not ORDERS[self.order or ""] and not shift then return false, "order:" .. tostring(self.order) end
 	for _, field in ipairs(BUSY) do
 		if self[field] then return false, field end
 	end
@@ -167,7 +178,8 @@ local function start(self, partners)
 	for _, member in ipairs(group.members) do
 		member._villages_talk = {group = group, since = now(), was_standing = member.order == "stand"}
 		-- Stop a wander leg: the state is what wander.lua and vanilla's states go by.
-		member.order, member.state, member._villages_wander = "stand", "stand", nil
+		if member.order ~= "work" then member.order = "stand" end
+		member.state, member._villages_wander = "stand", nil
 		member:set_velocity(0)
 		member:set_animation("stand")
 	end
@@ -242,7 +254,7 @@ local function hold(self, talk, pos)
 		local first = others[1].object:get_pos()
 		x, z = first.x - pos.x, first.z - pos.z
 	end
-	self.order = "stand"
+	if self.order ~= "work" then self.order = "stand" end
 	self._villages_wander = nil
 	self:set_velocity(0)
 	self:set_animation("stand")
@@ -251,7 +263,7 @@ local function hold(self, talk, pos)
 	return false
 end
 
-local function install(def)
+local function install(def, gossip)
 	local original_activate = def.on_activate
 	local original_custom = def.do_custom
 	local original_staticdata = def.get_staticdata
@@ -289,6 +301,14 @@ local function install(def)
 				leave(self, "setting off")
 			elseif pos and idle(self) then
 				if hold(self, talk, pos) == false then return false end
+				-- Only a conversation that ran its time: the first to finish speaks for the group.
+				local group = talk.group
+				if gossip and not group.shared and not group.over and now() >= group.until_time then
+					group.shared = true
+					local members = others_of(self, talk)
+					members[#members + 1] = self
+					gossip.exchange(members)
+				end
 				leave(self, "finished")
 			else
 				leave(self, "taken over")

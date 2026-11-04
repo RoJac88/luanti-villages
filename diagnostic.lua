@@ -216,6 +216,7 @@ end
 -- Set by install: flock.lua's one-line account of a shepherd's flock and grazing (#215).
 local flock_status
 local farmer
+local gossip
 
 local function work_status(villager, job_ok)
 	local route = villager._villages_job_route
@@ -512,6 +513,7 @@ local function show(player, villager)
 		"Farm: " .. (farmer and farmer.status(villager) or "off"),
 		"Farm pouch: " .. (farmer and farmer.pouch_status(villager) or "off"),
 		"Food: " .. (villager._villages_food or 0) .. " points",
+		"Gossip: " .. (gossip and gossip.status(villager) or "off"),
 		"Jobsite route: " .. route_status(villager._villages_job_route),
 		"Jobsite planner: " .. planner_status(villager._villages_job_route),
 		"Jobsite planner trail: " .. planner_trail(villager._villages_job_route),
@@ -590,9 +592,10 @@ local function permitted(player)
 		or core.check_player_privs(name, {debug = true})
 end
 
-local function install(_, flock, nav_api, farm_module)
+local function install(_, flock, nav_api, farm_module, gossip_module)
 	flock_status = flock and flock.status
 	farmer = farm_module
+	gossip = gossip_module
 	navigation_api = nav_api
 	local items = core.registered_items or {}
 	for _, name in ipairs({"doc_identifier:identifier_solid", "doc_identifier:identifier_liquid"}) do
