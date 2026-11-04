@@ -83,4 +83,21 @@ assert(stock.may_withdraw())
 world.settings["living_villages_farmer_chest_withdraw"] = false
 assert(not stock.may_withdraw())
 
+-- A Builder asks for its own radius, and is given room or told there is none.
+do
+	local world = support.new()
+	local stock = dofile("farm_stock.lua")
+	local bench = {x = 0, y = 2, z = 0}
+	local chest = {x = 25, y = 2, z = 0}
+	local inv = support.chest(world, chest)
+	assert(#stock.find_chests(bench, 10) == 0 and #stock.find_chests(bench, 32) == 1)
+	assert(stock.add_to_chest(chest, "a") and stock.chest_count(chest, "a") == 1)
+	for slot = 1, 27 do inv:set_stack("main", slot, "b 64") end
+	assert(not stock.add_to_chest(chest, "a"), "full")
+	assert(not stock.add_to_chest({x = 9, y = 9, z = 9}, "a"), "no chest there")
+	world.protected["25,2,0"] = true
+	inv:set_stack("main", 1, "")
+	assert(not stock.add_to_chest(chest, "a"), "protected")
+end
+
 print("farm_stock.lua: ok")

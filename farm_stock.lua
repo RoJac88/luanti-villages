@@ -99,9 +99,9 @@ local function is_chest(pos)
 	return false
 end
 
--- The chests a farm can use, nearest the composter first.
-function M.find_chests(job)
-	local radius = chest_radius()
+-- The chests a farm can use, nearest the composter first. A Builder asks with its own radius.
+function M.find_chests(job, radius)
+	radius = radius or chest_radius()
 	if radius <= 0 then return {} end
 	local minp = {x = job.x - radius, y = job.y - CHEST_HEIGHT, z = job.z - radius}
 	local maxp = {x = job.x + radius, y = job.y + CHEST_HEIGHT, z = job.z + radius}
@@ -134,6 +134,15 @@ function M.take_from_chest(self, pos, name, count)
 	local moved = inv:remove_item("main", name .. " " .. count):get_count()
 	if moved > 0 then M.add(self, name, moved) end
 	return moved
+end
+
+-- Puts one item in the chest from outside the pouch, if it has room. Returns whether it did.
+function M.add_to_chest(pos, name)
+	if not is_chest(pos) or core.is_protected(pos, "") then return false end
+	local inv = chest_inventory(pos)
+	if not inv or not inv:room_for_item("main", name) then return false end
+	inv:add_item("main", name)
+	return true
 end
 
 -- How many of the item are in the chest.

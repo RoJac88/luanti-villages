@@ -1,0 +1,537 @@
+-- Run with: lua tests/builder.lua
+-- The Builder's role: who takes the bench, the project's states up to having all its
+-- materials, and what the status window shows and sells.
+local support = dofile("tests/support/farm_world.lua")
+local world = support.new()
+local core = minetest
+
+local BENCH = "living_villages:builder_block"
+local WOOD, COBBLE = "mcl_core:wood", "mcl_core:cobble"
+local WATER = "mcl_core:water_source"
+local BUCKET = "mcl_buckets:bucket_water"
+local CHEST = "mcl_chests:chest_small"
+
+world.defs[BENCH] = {groups = {}, is_ground_content = false}
+world.defs[WOOD] = {groups = {}, is_ground_content = false}
+world.defs[COBBLE] = {groups = {}}
+world.defs[CHEST].is_ground_content = false
+world.defs[WATER].liquidtype = "source"
+world.defs["air"].buildable_to = true
+
+local ground = "mcl_core:dirt_with_grass"
+local tallest = 3
+local function name_of(x, y, z)
+	if y > tallest then return "air" end
+	local node = world.nodes[x .. "," .. y .. "," .. z]
+	if node then return node.name end
+	return y <= 0 and ground or "air"
+end
+
+-- A VoxelManip that reads the world on demand, as a whole search area would be slow to copy.
+local ids, id_names = {}, {}
+local function id_of(name)
+	if not ids[name] then
+		id_names[#id_names + 1] = name
+		ids[name] = #id_names
+	end
+	return ids[name]
+end
+core.CONTENT_IGNORE = id_of("ignore")
+core.get_name_from_content_id = function(id) return id_names[id] end
+core.get_voxel_manip = function()
+	local vm = {}
+	function vm:read_from_map(minp, maxp)
+		self.minp, self.maxp = minp, maxp
+		local nx, ny = maxp.x - minp.x + 1, maxp.y - minp.y + 1
+		self.data = setmetatable({}, {__index = function(_, i)
+			i = i - 1
+			local z, rest = math.floor(i / (nx * ny)), i % (nx * ny)
+			local y, x = math.floor(rest / nx), rest % nx
+			return id_of(name_of(minp.x + x, minp.y + y, minp.z + z))
+		end})
+		return minp, maxp
+	end
+	function vm:get_data() return self.data end
+	function vm:get_param2_data() return setmetatable({}, {__index = function() return 0 end}) end
+	return vm
+end
+-- Square schematics only, so a rotation changes nothing a test looks at.
+core.place_schematic_on_vmanip = function(vm, pos, schematic)
+	local size, minp, maxp = schematic.size, vm.minp, vm.maxp
+	local nx, ny = maxp.x - minp.x + 1, maxp.y - minp.y + 1
+	for i, cell in ipairs(schematic.data) do
+		local index = i - 1
+		local x, y, z = index % size.x, math.floor(index / size.x) % size.y, math.floor(index / (size.x * size.y))
+		local at = (pos.z + z - minp.z) * ny * nx + (pos.y + y - minp.y) * nx + (pos.x + x - minp.x) + 1
+		rawset(vm.data, at, id_of(cell.name))
+	end
+	return true
+end
+
+-- A 5 by 5 hut: a ground layer, cobble walls with air inside, and one pool of water.
+local function hut()
+	local data = {}
+	for z = 0, 4 do
+		for y = 0, 2 do
+			for x = 0, 4 do
+				local name = "air"
+				if y == 0 then name = "mcl_core:dirt"
+				elseif x == 0 or x == 4 or z == 0 or z == 4 then name = COBBLE
+				elseif y == 1 and x == 2 and z == 2 then name = WATER end
+				data[#data + 1] = {name = name, prob = 255, param2 = 0}
+			end
+		end
+	end
+	return {size = {x = 5, y = 3, z = 5}, data = data}
+end
+TEST_HUT = hut
+core.serialize_schematic = function() return "schematic = TEST_HUT()" end
+
+local stored = {}
+core.serialize = function(value)
+	stored[#stored + 1] = value
+	return "stored " .. #stored
+end
+local function deep(value)
+	if type(value) ~= "table" then return value end
+	local copy = {}
+	for field, inner in pairs(value) do copy[field] = deep(inner) end
+	return copy
+end
+core.deserialize = function(text) return deep(stored[tonumber(text:match("%d+"))]) end
+core.pos_to_string = function(pos) return "(" .. pos.x .. "," .. pos.y .. "," .. pos.z .. ")" end
+core.formspec_escape = function(text) return text end
+core.colorize = function(_, text) return text end
+core.get_translator = function()
+	return function(message, ...)
+		local args = {...}
+		return (message:gsub("@(%d)", function(i) return args[tonumber(i)] end))
+	end
+end
+local shown, closed, receive = {}, 0, nil
+core.show_formspec = function(name, form, text) shown[#shown + 1] = {name = name, form = form, text = text} end
+core.close_formspec = function() closed = closed + 1 end
+core.register_on_player_receive_fields = function(fn) receive = fn end
+core.register_on_leaveplayer = function() end
+
+settlements = {
+	schematic_table = {{name = "hut", mts = "hut.mts", max_num = 1}, {name = "builder_house", mts = "hut.mts", max_num = 0}},
+	surface_mat = {["mcl_core:dirt_with_grass"] = true, ["mcl_core:sand"] = true},
+}
+
+local builder = dofile("builder.lua")
+local stock = dofile("farm_stock.lua")
+local market = dofile("market.lua")
+
+local records = {}
+local index = {
+	read_village = function() return records[1] end,
+	update_village = function(pos, _, change)
+		records[1] = records[1] or {center = pos}
+		change(records[1])
+		return records[1]
+	end,
+}
+
+local vanilla = {clicks = 0, walks = {}}
+local def = {
+	on_activate = function() end,
+	do_custom = function() return true end,
+	on_rightclick = function() vanilla.clicks = vanilla.clicks + 1 end,
+	gopath = function(self, target, arrived)
+		vanilla.walks[#vanilla.walks + 1] = target
+		if self.fail_walks then return false end
+		self.object:set_pos({x = target.x + 1, y = target.y, z = target.z})
+		if arrived then arrived(self, target) end
+		return true
+	end,
+}
+builder.install(def, nil, index)
+
+local serial = 0
+local function villager(pos, fields)
+	serial = serial + 1
+	local entity = support.farmer(world, pos, {_id = "v" .. serial, _profession = "unemployed"})
+	entity.gopath = def.gopath
+	for field, value in pairs(fields or {}) do entity[field] = value end
+	return entity
+end
+local function advance(entity, seconds)
+	world.now = world.now + (seconds or 5)
+	def.do_custom(entity, 1)
+end
+local function clear_map()
+	world.nodes, world.metas, records[1] = {}, {}, nil
+	ground = "mcl_core:dirt_with_grass"
+end
+local function place_bench(pos)
+	world.set(pos, BENCH)
+	return pos
+end
+local BENCH_POS = {x = 0, y = 1, z = 0}
+
+-- A villager of the house takes the bench at once; a bed further away does not.
+do
+	clear_map()
+	place_bench(BENCH_POS)
+	local far = villager({x = 30, y = 1, z = 30}, {_bed = {x = 30, y = 1, z = 30}})
+	far.fail_walks = true
+	world.now = 1000
+	def.do_custom(far, 1)
+	assert(far._jobsite == nil and not far._villages_builder, "its bed is not by the bench")
+	local owner = villager({x = 40, y = 1, z = 40}, {_bed = {x = 3, y = 1, z = 3}, _villages_farm_seek = {x = 9, y = 1, z = 9}})
+	def.do_custom(owner, 1)
+	assert(owner._villages_builder and owner._profession == "mason" and owner._villages_farm_seek == nil)
+	assert(owner._trades == nil, "it has no trades, so losing the bench unemploys it")
+	assert(vector.distance(owner._jobsite, BENCH_POS) == 0)
+	assert(world.meta(BENCH_POS).fields.villager == owner._id)
+	assert(builder.claimed_bench(owner))
+
+	-- It is taken now.
+	local late = villager({x = 2, y = 1, z = 2}, {_bed = {x = 3, y = 1, z = 3}})
+	world.now = world.now + 100
+	def.do_custom(late, 1)
+	assert(late._jobsite == nil)
+	assert(not builder.employ(late, BENCH_POS))
+end
+
+-- Not everyone can be a Builder.
+do
+	clear_map()
+	place_bench(BENCH_POS)
+	local bed = {x = 3, y = 1, z = 3}
+	for _, fields in ipairs({{child = true}, {_profession = "farmer"}, {_jobsite = {x = 9, y = 9, z = 9}}, {_id = false}}) do
+		fields._bed = bed
+		local entity = villager({x = 2, y = 1, z = 2}, fields)
+		if entity._id == false then entity._id = nil end
+		world.now = world.now + 100
+		def.do_custom(entity, 1)
+		assert(not entity._villages_builder)
+	end
+	assert(world.meta(BENCH_POS).fields.villager == nil)
+end
+
+-- Anyone else out of work may walk over, at work or free hours, unless a composter comes first.
+do
+	clear_map()
+	place_bench(BENCH_POS)
+	vanilla.walks = {}
+	local seeker = villager({x = 20, y = 1, z = 0}, {_villages_farm_seek = {x = 25, y = 1, z = 0}})
+	world.now = world.now + 100
+	def.do_custom(seeker, 1)
+	assert(#vanilla.walks == 0, "the farm comes first")
+	seeker._villages_farm_seek = nil
+	world.now = world.now + 100
+	def.do_custom(seeker, 1)
+	assert(#vanilla.walks == 1 and seeker._villages_builder, "it walked there and took it")
+
+	-- A bench it cannot reach is left alone for a while, and tried again after that.
+	clear_map()
+	place_bench(BENCH_POS)
+	vanilla.walks = {}
+	local stuck = villager({x = 20, y = 1, z = 0})
+	stuck.fail_walks = true
+	world.now = world.now + 100
+	def.do_custom(stuck, 1)
+	assert(#vanilla.walks == 1)
+	world.now = world.now + 20
+	def.do_custom(stuck, 1)
+	assert(#vanilla.walks == 1, "not yet")
+	world.now = world.now + 300
+	def.do_custom(stuck, 1)
+	assert(#vanilla.walks == 2)
+end
+
+-- What a project goes through, and what is kept.
+local function hired()
+	clear_map()
+	place_bench(BENCH_POS)
+	world.set({x = 2, y = 1, z = 0}, WOOD)
+	local entity = villager({x = 1, y = 1, z = 1}, {_bed = {x = 2, y = 1, z = 2}})
+	world.now = world.now + 100
+	def.do_custom(entity, 1)
+	assert(entity._villages_builder)
+	return entity
+end
+
+do
+	local entity = hired()
+	-- Its first look round, the moment it is hired, picks a building: never its own house.
+	local project = builder.load_project(BENCH_POS)
+	assert(project.state == "finding_site" and project.building == "hut")
+	assert(builder.status(entity):find("finding_site", 1, true))
+
+	-- With no chests there is a bill to pay, and the site is held for it.
+	advance(entity)
+	project = builder.load_project(BENCH_POS)
+	assert(project.state == "requires_materials", project.state)
+	assert(project.pos and project.pos.y == 0 and project.rotat and project.surface_mat == "mcl_core:dirt_with_grass")
+	assert(records[1].reserved["0,1,0"].x0 == project.pos.x and records[1].reserved["0,1,0"].x1 == project.pos.x + 4)
+	advance(entity, 10)
+
+	local report = builder.report(entity)
+	assert(report.state == "requires_materials" and report.building == "hut" and report.earthwork == 0)
+	local rows = {}
+	for _, row in ipairs(report.rows) do rows[row.item] = row end
+	assert(rows[COBBLE].need == 32 and rows[COBBLE].missing == 32 and rows[COBBLE].price == nil)
+	assert(rows[BUCKET].need == 1 and rows[BUCKET].price == 1, "water can be bought")
+	assert(report.left == 33 and report.total > report.left, "the air it wants inside is already there")
+
+	-- Chests near the bench count; so does what it carries; and not one chest further.
+	world.set({x = 40, y = 1, z = 0}, CHEST)
+	support.chest(world, {x = 40, y = 1, z = 0}, CHEST, {COBBLE .. " 64"})
+	support.chest(world, {x = -14, y = 1, z = 0}, CHEST, {COBBLE .. " 20"})
+	stock.add(entity, COBBLE, 2)
+	report = builder.report(entity)
+	for _, row in ipairs(report.rows) do rows[row.item] = row end
+	assert(rows[COBBLE].in_chests == 20 and rows[COBBLE].carried == 2 and rows[COBBLE].missing == 10)
+	advance(entity, 10)
+	assert(builder.load_project(BENCH_POS).state == "requires_materials")
+
+	-- Everything there: it has what it needs, and goes back when it stops being so.
+	support.chest(world, {x = -14, y = 1, z = 1}, CHEST, {COBBLE .. " 10", BUCKET})
+	advance(entity, 10)
+	assert(builder.load_project(BENCH_POS).state == "ready")
+	assert(builder.report(entity).state == "ready")
+	world.meta({x = -14, y = 1, z = 1}).inv:remove_item("main", COBBLE .. " 10")
+	advance(entity, 10)
+	assert(builder.load_project(BENCH_POS).state == "requires_materials")
+
+	-- Off work nothing moves; the next Builder picks it up from the bench.
+	local before = builder.load_project(BENCH_POS).state
+	world.time = 0.9
+	-- With what the first one carried, which does not pass to the next.
+	world.meta({x = -14, y = 1, z = 1}).inv:add_item("main", COBBLE .. " 12")
+	advance(entity, 20)
+	assert(builder.load_project(BENCH_POS).state == before)
+	assert(builder.report(entity).at_work == false)
+	world.time = 0.4
+	world.meta(BENCH_POS).fields.villager = nil
+	local successor = villager({x = 1, y = 1, z = 1}, {_bed = {x = 2, y = 1, z = 2}})
+	world.now = world.now + 100
+	def.do_custom(successor, 1)
+	assert(successor._villages_builder)
+	advance(successor, 10)
+	assert(builder.load_project(BENCH_POS).state == "ready")
+end
+
+-- No site: it stays on the same building, and looks again in a while.
+do
+	local entity = hired()
+	ground = WATER
+	advance(entity)
+	advance(entity)
+	local project = builder.load_project(BENCH_POS)
+	assert(project.state == "no_site" and project.building == "hut")
+	local report = builder.report(entity)
+	assert(report.size.x == 5 and report.size.y == 3 and report.size.z == 5 and report.range == 80)
+
+	ground = "mcl_core:dirt_with_grass"
+	advance(entity, 30)
+	assert(builder.load_project(BENCH_POS).state == "no_site", "not looked again yet")
+	advance(entity, 31)
+	assert(builder.load_project(BENCH_POS).state == "requires_materials", "the player cleared a spot")
+end
+
+-- A site spoiled before anything was built: it looks for another.
+do
+	local entity = hired()
+	advance(entity)
+	advance(entity)
+	local first = builder.load_project(BENCH_POS)
+	assert(first.state == "requires_materials")
+	world.set({x = first.pos.x + 2, y = 1, z = first.pos.z + 2}, WOOD)
+	advance(entity, 61)
+	local project = builder.load_project(BENCH_POS)
+	assert(project.state == "finding_site" and project.pos == nil and project.building == "hut")
+	advance(entity, 61)
+	project = builder.load_project(BENCH_POS)
+	assert(project.state == "requires_materials")
+	assert(project.pos.x ~= first.pos.x or project.pos.z ~= first.pos.z)
+end
+
+-- A second bench does not take the first one's site, unless that bench has gone.
+do
+	local entity = hired()
+	advance(entity)
+	advance(entity)
+	local first = builder.load_project(BENCH_POS)
+	local other_pos = {x = 1, y = 1, z = -8}
+	place_bench(other_pos)
+	local other = villager({x = 1, y = 1, z = -7}, {_bed = {x = 1, y = 1, z = -6}})
+	-- This one is not in range of the first bench's bed test.
+	world.now = world.now + 100
+	def.do_custom(other, 1)
+	assert(other._villages_builder and vector.distance(other._jobsite, other_pos) == 0)
+	advance(other)
+	advance(other)
+	local second = builder.load_project(other_pos)
+	assert(second.state == "requires_materials")
+	assert(math.abs(second.pos.x - first.pos.x) >= 8 or math.abs(second.pos.z - first.pos.z) >= 8, "they keep apart")
+end
+
+-- Buying: only what the project still lacks, on sale, with the money, from close by.
+local shoppers = 0
+local function shopper(pos, emeralds)
+	shoppers = shoppers + 1
+	local inv = support.chest(world, {x = 99, y = 99, z = shoppers})
+	if emeralds > 0 then inv:add_item("main", "mcl_core:emerald " .. emeralds) end
+	local player = {
+		inv = inv,
+		is_player = function() return true end,
+		get_player_name = function() return "singleplayer" end,
+		get_pos = function() return pos end,
+		get_inventory = function() return inv end,
+	}
+	return player
+end
+
+do
+	local entity = hired()
+	advance(entity)
+	advance(entity)
+	local near = {x = 2, y = 1, z = 2}
+	local ok, why = builder.buy(entity, shopper(near, 5), COBBLE)
+	assert(not ok and why == "not_for_sale", "cobble is not hard to come by")
+	ok, why = builder.buy(entity, shopper(near, 0), BUCKET)
+	assert(not ok and why == "no_emeralds")
+	ok, why = builder.buy(entity, shopper({x = 50, y = 1, z = 50}, 5), BUCKET)
+	assert(not ok and why == "too_far")
+	ok, why = builder.buy(entity, shopper(near, 5), "mcl_core:emerald")
+	assert(not ok and why == "not_for_sale")
+	ok, why = builder.buy(entity, shopper(near, 5), "mcl_buckets:bucket_lava")
+	assert(not ok and why == "not_needed", "the project wants no lava")
+
+	-- No chest: the player keeps it.
+	local player = shopper(near, 5)
+	ok, why = builder.buy(entity, player, BUCKET)
+	assert(ok and why == "in_inventory")
+	assert(player.inv:contains_item("main", "mcl_core:emerald 4") and not player.inv:contains_item("main", "mcl_core:emerald 5"))
+	assert(player.inv:contains_item("main", BUCKET))
+
+	-- A chest: it goes there, and then it is no longer lacking, so it cannot be bought again.
+	support.chest(world, {x = -14, y = 1, z = 0}, CHEST)
+	player = shopper(near, 5)
+	ok, why = builder.buy(entity, player, BUCKET)
+	assert(ok and why == "in_chest")
+	assert(stock.chest_count({x = -14, y = 1, z = 0}, BUCKET) == 1)
+	ok, why = builder.buy(entity, player, BUCKET)
+	assert(not ok and why == "not_needed")
+	assert(player.inv:contains_item("main", "mcl_core:emerald 4"), "and is not charged for it")
+
+	-- A full chest and a full player: it lands at the player's feet, not nowhere.
+	world.meta({x = -14, y = 1, z = 0}).inv:remove_item("main", BUCKET)
+	for slot = 1, 27 do world.meta({x = -14, y = 1, z = 0}).inv:set_stack("main", slot, COBBLE .. " 64") end
+	player = shopper(near, 1)
+	local real_add = player.inv.add_item
+	player.inv.add_item = function(self, list, item)
+		if item == BUCKET then return support.stack(item) end
+		return real_add(self, list, item)
+	end
+	world.dropped = {}
+	ok, why = builder.buy(entity, player, BUCKET)
+	assert(ok and why == "in_inventory" and #world.dropped == 1)
+end
+
+-- The window: a right-click on a Builder, and only on a Builder.
+do
+	local entity = hired()
+	advance(entity)
+	advance(entity)
+	vanilla.clicks = 0
+	shown = {}
+	local player = shopper({x = 2, y = 1, z = 2}, 5)
+	def.on_rightclick(entity, player)
+	assert(vanilla.clicks == 0 and #shown == 1)
+	local text = shown[1].text
+	assert(shown[1].form == "living_villages:builder_status")
+	assert(text:find("Hut", 1, true) and text:find("Waiting for materials", 1, true))
+	assert(text:find("item_image", 1, true) and text:find(COBBLE, 1, true) and text:find(BUCKET, 1, true))
+	assert(text:find("buy_", 1, true) and text:find("refresh", 1, true))
+	assert(text:find("^formspec_version%[4%]"))
+
+	-- A Buy button works by the row's item, and the window comes back with the news.
+	local field = text:match("(buy_%d+)")
+	shown = {}
+	assert(receive(player, "living_villages:builder_status", {[field] = "Buy"}) == true)
+	assert(#shown == 1 and shown[1].text:find("in your inventory", 1, true))
+
+	-- A field the window never sent buys nothing.
+	shown = {}
+	assert(receive(player, "living_villages:builder_status", {buy_99 = "Buy"}) == true)
+	assert(#shown == 0)
+
+	-- Refresh; someone else's form; and a villager gone with the window open.
+	assert(receive(player, "other:form", {refresh = "x"}) == false)
+	assert(receive(player, "living_villages:builder_status", {refresh = "Refresh"}) == true and #shown == 1)
+	assert(shown[1].text:find("It is off work", 1, true) == nil)
+	local object = entity.object
+	entity.object = {get_pos = function() return nil end}
+	shown, closed = {}, 0
+	assert(receive(player, "living_villages:builder_status", {refresh = "Refresh"}) == true)
+	assert(#shown == 0 and closed == 1)
+	entity.object = object
+	assert(receive(player, "living_villages:builder_status", {quit = "true"}) == true)
+
+	-- Everyone else still gets vanilla's window.
+	local other = villager({x = 2, y = 1, z = 2}, {_profession = "farmer"})
+	def.on_rightclick(other, player)
+	assert(vanilla.clicks == 1)
+end
+
+-- The window's words for each state, and a table only while it waits for materials.
+do
+	local status = dofile("builder_status.lua")
+	local form = status.formspec({state = "no_site", building = "small_house", size = {x = 7, y = 5, z = 9}, range = 80})
+	assert(form:find("Small house", 1, true) and form:find("7 by 9", 1, true) and form:find("within 80 nodes", 1, true))
+	assert(not form:find("item_image", 1, true))
+	form = status.formspec({state = "no_bench"})
+	assert(form:find("no bench", 1, true))
+	form = status.formspec({state = "ready", rows = {{item = COBBLE, need = 1, in_chests = 1, carried = 0, missing = 0}}})
+	assert(form:find("all the materials", 1, true) and not form:find("item_image", 1, true))
+	-- Enough rows to scroll.
+	local rows = {}
+	for i = 1, 20 do rows[i] = {item = "x:" .. i, need = 1, in_chests = 0, carried = 0, missing = 1} end
+	form = status.formspec({state = "requires_materials", rows = rows})
+	assert(form:find("scrollbar[", 1, true) and form:find("scroll_container_end[]", 1, true))
+	rows = {rows[1]}
+	form = status.formspec({state = "requires_materials", rows = rows})
+	assert(not form:find("scrollbar[", 1, true))
+end
+
+-- Losing the bench: vanilla takes the job, and this drops what it carried.
+do
+	local entity = hired()
+	stock.add(entity, COBBLE, 3)
+	world.dropped = {}
+	-- As vanilla's remove_job leaves it.
+	entity._jobsite, entity._profession = nil, "unemployed"
+	world.nodes["0,1,0"] = nil
+	advance(entity)
+	assert(not entity._villages_builder and #world.dropped == 1 and stock.total(entity) == 0)
+end
+
+-- A Builder keeps out of other trades' ways, and they out of its.
+do
+	local entity = hired()
+	local stone = {x = 5, y = 1, z = 5}
+	world.set(stone, "mcl_stonecutter:stonecutter")
+	vanilla.walks = {}
+	assert(def.gopath(entity, stone) == false and #vanilla.walks == 0)
+	assert(def.gopath(entity, BENCH_POS) == true)
+	local ok, why = market.eligible(entity)
+	assert(ok == false and why == "builder")
+end
+
+-- The flag comes back with the villager, and only for one with its bench.
+do
+	local entity = hired()
+	entity._villages_builder = nil
+	def.on_activate(entity, "", 0)
+	assert(entity._villages_builder)
+	local mason = villager({x = 1, y = 1, z = 1}, {_profession = "mason"})
+	def.on_activate(mason, "", 0)
+	assert(not mason._villages_builder)
+end
+
+print("builder: ok")

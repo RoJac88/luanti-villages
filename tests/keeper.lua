@@ -220,4 +220,15 @@ do
 	assert(farmhand._villages_keeper, "and takes it once there is none")
 end
 
+-- A Builder has its own bench, and the tavern does not poach it.
+do
+	local free = {x = 50, y = 0, z = 0}
+	nodes[key(free)] = "mcl_jukebox:jukebox"
+	metas[key(free)] = {}
+	local mason = villager("mason", {x = 49, y = 0, z = 0})
+	mason._profession, mason._villages_builder = "mason", true
+	assert(keeper.take_over(mason, free) == false and mason._profession == "mason")
+	assert(minetest.get_meta(free):get_string("villager") == "")
+end
+
 print("keeper.lua: ok")

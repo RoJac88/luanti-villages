@@ -1174,6 +1174,8 @@ local function cancel_goto(self, market_token)
 end
 
 return install, {
+	-- The one queue, for other long searches to share its time budget (builder.lua).
+	route_queue = route_queue,
 	nodes_for_reach = nodes_for_reach,
 	backoff_seconds = backoff_seconds,
 	cancel_goto = cancel_goto,
