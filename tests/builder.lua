@@ -490,6 +490,17 @@ do
 	for i = 1, 20 do rows[i] = {item = "x:" .. i, need = 1, in_chests = 0, carried = 0, missing = 1} end
 	form = status.formspec({state = "requires_materials", rows = rows})
 	assert(form:find("scrollbar[", 1, true) and form:find("scroll_container_end[]", 1, true))
+	assert(not form:find("Price each", 1, true), "no price column when nothing is on sale")
+	-- What is on sale says what one costs, in emeralds, and the button how many it buys.
+	rows = {
+		{item = "x:lantern", need = 3, in_chests = 0, carried = 0, missing = 3, price = 4},
+		{item = "x:bucket", need = 1, in_chests = 0, carried = 0, missing = 1, price = 1},
+	}
+	form = status.formspec({state = "requires_materials", rows = rows, currency = "mcl_core:emerald"})
+	assert(form:find("Price each", 1, true) and form:find("Buy 1", 1, true) and not form:find("Buy:", 1, true))
+	assert(form:find(";mcl_core:emerald]", 1, true))
+	assert(form:find("tooltip[buy_1;One costs 4 emeralds", 1, true))
+	assert(form:find("tooltip[buy_2;One costs 1 emerald.", 1, true))
 	rows = {rows[1]}
 	form = status.formspec({state = "requires_materials", rows = rows})
 	assert(not form:find("scrollbar[", 1, true))

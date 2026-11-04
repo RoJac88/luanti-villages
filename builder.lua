@@ -852,7 +852,7 @@ function M.report(self)
 	if not project then return {state = "choosing", bench = bench, at_work = common.is_work_time(self)} end
 	local report = {
 		state = project.state, building = project.building, site = project.pos, bench = bench,
-		at_work = common.is_work_time(self),
+		at_work = common.is_work_time(self), currency = materials.EMERALD,
 	}
 	if project.blocked_at and project.state == "blocked" then report.blocked = project.blocked_at end
 	report.stuck = session_of(self).stuck

@@ -44,6 +44,8 @@ Right-click the Builder in each state.
 
 With the Builder short of something on sale (a lamp's sea lantern, a farm's water, a belltower's bell):
 
+- The row shows its price per item and an emerald under `Price each`, and the button says `Buy 1`. Hovering
+  over it says what one costs.
 - With too few emeralds the window says so, and nothing is taken.
 - With enough, one is taken per item's price, the item appears in the chest by the bench, and the row
   updates. Once none is missing the Buy button goes.
