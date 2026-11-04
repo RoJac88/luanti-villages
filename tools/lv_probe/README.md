@@ -249,8 +249,14 @@ two chests are `chest_left` and `chest_right`, and water has `param2` 0, which t
 It then holds the clock at work, keeps villagers awake and sets each bench's project to a small house, which has a door, a bed and
 a chest, and follows it (`benches`). Up to 150 s for a site: who claimed the bench, the villagers about it, the project as saved, what
 the status window reports, and how long the window's text is, which shows it was built without an error. With a site, it puts the
-bill in the chests and gives the Builder up to 480 s: `built` is the steps left, the cells blocked and any `param2` that differs from
+bill in the chests and gives the Builder up to 1500 s: `built` is the steps left, the cells blocked and any `param2` that differs from
 the template once it is done, and `after` is the project it moved on to.
+
+Settings change the run, through `LV_PROBE_CONF_EXTRA`: `lv_probe_builder_building = church` picks the building,
+`lv_probe_builder_platform = true` first flattens ground beside the bench, for a building too big for what is there (seed 2001 has no
+site for a church), `lv_probe_builder_earthwork = true` makes a dirt bump and a dip on the chosen site, for the Builder to level first,
+with `filled` then what stands in the dip, and `lv_probe_builder_build_seconds` shortens the wait. `built.cells` lists what is left when
+time runs out, what is there instead and any object near it, and `trail` and `pouch` show where the Builder was and what it carried.
 
 ## Who takes which job
 
