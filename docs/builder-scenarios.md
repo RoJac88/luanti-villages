@@ -9,6 +9,10 @@ it builds. Use a world on VoxeLibre with this mod. The Lookup Tool (`doc_identif
 A Builder works only from 7000 to 15500, and only with a player within 48 nodes. Stay close by. To go
 faster, use `/time 7:00` and lower `living_villages_builder_block_seconds`.
 
+To skip gathering, stand near a Builder waiting for materials and run `/giveme build_project_materials`. You
+get what it is missing, less what you already hold, to put in a chest near its bench. If the nearest Builders
+aren't waiting, it warns you and gives nothing. It needs the `give` privilege, like any `/giveme`.
+
 ## The house
 
 Find a new village with `/living_villages_goto new`.
@@ -40,6 +44,8 @@ Right-click the Builder in each state.
 
 With the Builder short of something on sale (a lamp's sea lantern, a farm's water, a belltower's bell):
 
+- The row shows its price per item and an emerald under `Price each`, and the button says `Buy 1`. Hovering
+  over it says what one costs.
 - With too few emeralds the window says so, and nothing is taken.
 - With enough, one is taken per item's price, the item appears in the chest by the bench, and the row
   updates. Once none is missing the Buy button goes.

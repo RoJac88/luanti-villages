@@ -852,7 +852,7 @@ function M.report(self)
 	if not project then return {state = "choosing", bench = bench, at_work = common.is_work_time(self)} end
 	local report = {
 		state = project.state, building = project.building, site = project.pos, bench = bench,
-		at_work = common.is_work_time(self),
+		at_work = common.is_work_time(self), currency = materials.EMERALD,
 	}
 	if project.blocked_at and project.state == "blocked" then report.blocked = project.blocked_at end
 	report.stuck = session_of(self).stuck
@@ -923,6 +923,7 @@ end
 function M.install(def, navigation, index)
 	navigation_api, village_index = navigation, index
 	local status = dofile(core.get_modpath("living_villages") .. "/builder_status.lua")
+	dofile(core.get_modpath("living_villages") .. "/builder_giveme.lua").install(M)
 	local original_activate = def.on_activate
 	local original_custom = def.do_custom
 	local original_gopath = def.gopath

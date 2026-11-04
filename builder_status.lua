@@ -8,7 +8,7 @@ local S = core.get_translator and core.get_translator("living_villages") or func
 local M = {}
 
 local FORM = "living_villages:builder_status"
-local WIDTH, ROW = 11, 0.8
+local WIDTH, ROW = 12.5, 0.8
 
 local open = {}
 
@@ -102,6 +102,12 @@ function M.formspec(report, notice)
 	local list_height = 0
 	if show_rows then
 		local columns = {{4.9, S("Needed")}, {6.0, S("In chests")}, {7.2, S("Carried")}, {8.2, S("Missing")}}
+		for _, row in ipairs(rows) do
+			if row.price then
+				columns[#columns + 1] = {9.2, S("Price each")}
+				break
+			end
+		end
 		for _, column in ipairs(columns) do
 			parts[#parts + 1] = ("label[%.1f,%.2f;%s]"):format(column[1], list_top, escape(column[2]))
 		end
@@ -121,8 +127,13 @@ function M.formspec(report, notice)
 			if row.price then
 				local field = "buy_" .. i
 				buttons[field] = row.item
-				parts[#parts + 1] = ("button[8.5,%.2f;1.3,0.7;%s;%s]"):format(top, field,
-					escape(S("Buy: @1", tostring(row.price))))
+				parts[#parts + 1] = ("label[8.9,%.2f;%s]"):format(top + 0.35,
+					escape(core.colorize("#7fe08a", tostring(row.price))))
+				parts[#parts + 1] = ("item_image[9.35,%.2f;0.5,0.5;%s]"):format(top + 0.1, escape(report.currency))
+				parts[#parts + 1] = ("button[10.0,%.2f;1.3,0.7;%s;%s]"):format(top, field, escape(S("Buy 1")))
+				parts[#parts + 1] = ("tooltip[%s;%s]"):format(field, escape(row.price == 1
+					and S("One costs 1 emerald. It goes in the chest by the bench.")
+					or S("One costs @1 emeralds. It goes in the chest by the bench.", tostring(row.price))))
 			end
 		end
 		parts[#parts + 1] = "scroll_container_end[]"
@@ -140,7 +151,7 @@ function M.formspec(report, notice)
 	end
 	local height = y + 1.2
 	parts[#parts + 1] = ("button[%.1f,%.2f;2.2,0.7;refresh;%s]"):format(WIDTH - 2.6, height - 0.9, escape(S("Refresh")))
-	local head = ("formspec_version[4]size[%d,%.2f]label[0.4,0.35;%s]"):format(WIDTH, height, escape(S("Builder")))
+	local head = ("formspec_version[4]size[%.1f,%.2f]label[0.4,0.35;%s]"):format(WIDTH, height, escape(S("Builder")))
 	return head .. table.concat(parts), buttons
 end
 
