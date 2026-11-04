@@ -12,7 +12,15 @@
 --   choosing -> finding_site <-> no_site
 --                    |
 --                    v
---            requires_materials <-> ready
+--            requires_materials <-> collecting <-> building
+--                                        |             |
+--                                     blocked <--------+
+--                                                      v
+--                                     returning -> choosing
+--
+-- Like a farmer, it works out of range of vanilla's commute: while it has work to do
+-- activity_override answers for it, and its trips use the farm trip's fields, which
+-- navigation.lua and the modules that leave a working villager alone already know.
 local core = minetest
 local common = dofile(core.get_modpath("living_villages") .. "/common.lua")
 local census = dofile(core.get_modpath("living_villages") .. "/village_census.lua")
@@ -36,7 +44,16 @@ local CLAIM_RADIUS = 48
 local CLAIM_SECONDS = 10
 local UNREACHABLE_SECONDS = 300
 local TICK_SECONDS = 5
+local WORK_TICK_SECONDS = 1
 local MATERIALS_SECONDS = 10
+local COMPARE_SECONDS = 10
+local HOLD_SECONDS = 2
+local CHEST_REACH = 3
+local SKIP_SECONDS = 60
+local DEFER_SECONDS = 10
+local DEFAULT_REACH = 14
+local DEFAULT_CAPACITY = 256
+local DEFAULT_BLOCK_SECONDS = 1
 local SITE_RETRY_SECONDS = 60
 local VILLAGE_RADIUS = 128
 local DEFAULT_CHEST_RADIUS = 32
@@ -51,7 +68,7 @@ local sessions = setmetatable({}, {__mode = "k"})
 local function session_of(self)
 	local session = sessions[self]
 	if not session then
-		session = {next_at = 0, next_claim = 0}
+		session = {next_at = 0, next_claim = 0, skip = {}, hold_until = 0}
 		sessions[self] = session
 	end
 	return session
@@ -125,7 +142,6 @@ end
 local function seek_bench(self, session, now)
 	local pos = self.object:get_pos()
 	if not pos then return end
-	session.skip = session.skip or {}
 	local bench = nearest_free(pos, CLAIM_RADIUS, CLAIM_RADIUS, session.skip, now)
 	if not bench then return end
 	if vector.distance(pos, bench) < 2 then
@@ -146,6 +162,20 @@ end
 
 local function save_project(bench, project)
 	core.get_meta(bench):set_string(PROJECT, project and core.serialize(project) or "")
+end
+
+local function set_state(bench, project, state)
+	project.state = state
+	save_project(bench, project)
+end
+
+-- Tells a project in hand from one that is waiting, and the turn that works on it.
+local WORKING = {collecting = true, building = true, blocked = true, returning = true}
+local work
+
+local function is_solid_node(name)
+	local def = core.registered_nodes[name]
+	return def ~= nil and def.walkable ~= false and (def.liquidtype or "none") == "none"
 end
 
 local function schematic_entry(name)
@@ -361,6 +391,16 @@ local function check_materials(self, session, bench, project, now)
 	if now < (session.materials_at or 0) then return end
 	session.materials_at = now + MATERIALS_SECONDS
 	local report = M.materials_report(self, bench, project)
+	if project.started then
+		if report and #report.blocked == 0 and not report.short then
+			set_state(bench, project, "collecting")
+			session.queue = nil
+		elseif report and #report.blocked > 0 then
+			project.blocked_at = report.blocked[1]
+			set_state(bench, project, "blocked")
+		end
+		return
+	end
 	if not report or #report.blocked > 0 or (now >= (session.site_at or 0) and not site_still_good(bench, project)) then
 		session.retry_at = nil
 		project.state = "finding_site"
@@ -369,10 +409,353 @@ local function check_materials(self, session, bench, project, now)
 		return
 	end
 	if now >= (session.site_at or 0) then session.site_at = now + SITE_RETRY_SECONDS end
-	local state = report.short and "requires_materials" or "ready"
-	if project.state ~= state then
-		project.state = state
-		save_project(bench, project)
+	if report.short then return end
+	-- Nothing has been touched until now, so a project waiting for materials leaves no scar.
+	project.started = true
+	set_state(bench, project, "collecting")
+	session.queue = nil
+end
+
+local function reach_of()
+	return setting_number("living_villages_builder_reach", DEFAULT_REACH)
+end
+
+local function hold_still(self)
+	self.state = "stand"
+	self.order = "stand"
+	self.object:set_velocity(vector.zero())
+end
+
+local function release(self, session)
+	session.away = false
+	session.hold_until = 0
+	if self.order == "stand" then self.order = nil end
+end
+
+-- A trip by the farm trip's fields. Returns whether it set off; a place it cannot walk to
+-- is left alone for a while.
+local function walk_to(self, session, target, now)
+	self._villages_farm_target = vector.new(target)
+	self._villages_farm_route = nil
+	local started = self:gopath(target, function(entity)
+		entity._villages_farm_target = nil
+		entity._villages_farm_route = nil
+	end, true)
+	if started then return true end
+	session.skip[pos_key(target)] = now + SKIP_SECONDS
+	self._villages_farm_target = nil
+	self._villages_farm_route = nil
+	return false
+end
+
+local function footprint_of(project)
+	local measured = measure(project.building)
+	if not measured then return nil end
+	local size = template.rotated_size(measured.size, project.rotat)
+	return {
+		x0 = project.pos.x, z0 = project.pos.z,
+		x1 = project.pos.x + size.x - 1, z1 = project.pos.z + size.z - 1,
+	}
+end
+
+local function is_solid_at(pos)
+	local name = name_at(pos)
+	local def = name and core.registered_nodes[name]
+	return def ~= nil and def.walkable ~= false
+end
+
+local function is_clear_at(pos)
+	local name = name_at(pos)
+	if name == "air" then return true end
+	local def = name and core.registered_nodes[name]
+	return def ~= nil and def.walkable == false and (def.liquidtype or "none") == "none"
+end
+
+-- Where to stand in a column of the ring: a clear cell and the one above it, over ground.
+local function stand_in_column(x, z, floor_y)
+	for y = floor_y + 2, floor_y, -1 do
+		local cell = {x = x, y = y, z = z}
+		if is_clear_at(cell) and is_clear_at({x = x, y = y + 1, z = z})
+			and is_solid_at({x = x, y = y - 1, z = z}) then
+			return cell
+		end
+	end
+end
+
+-- The cell on the ring's outer row nearest `pos` it can reach it from. The outer row, so
+-- that a route ending a cell short of it still ends outside the footprint.
+local function ring_spot(session, box, floor_y, pos, now)
+	local ring = site_finder.config.ring
+	local spots = {}
+	for z = box.z0 - ring, box.z1 + ring do
+		for x = box.x0 - ring, box.x1 + ring do
+			if x == box.x0 - ring or x == box.x1 + ring or z == box.z0 - ring or z == box.z1 + ring then
+				spots[#spots + 1] = {x = x, z = z, d = (x - pos.x) ^ 2 + (z - pos.z) ^ 2}
+			end
+		end
+	end
+	table.sort(spots, function(a, b) return a.d < b.d end)
+	local reach = reach_of()
+	for _, spot in ipairs(spots) do
+		local cell = stand_in_column(spot.x, spot.z, floor_y)
+		if cell and vector.distance(cell, pos) <= reach and (session.skip[pos_key(cell)] or 0) <= now then
+			return cell
+		end
+	end
+end
+
+local function inside(box, pos)
+	return pos.x >= box.x0 - 0.5 and pos.x <= box.x1 + 0.5 and pos.z >= box.z0 - 0.5 and pos.z <= box.z1 + 0.5
+end
+
+-- Whether a player or mob stands in the cell.
+local function occupied(pos)
+	for _, object in ipairs(core.get_objects_inside_radius(pos, 2.5)) do
+		local entity = object.get_luaentity and object:get_luaentity()
+		if not (entity and entity.name == "__builtin:item") then
+			local at = object:get_pos()
+			if at and math.abs(at.x - pos.x) < 0.8 and math.abs(at.z - pos.z) < 0.8
+				and at.y > pos.y - 2 and at.y < pos.y + 0.5 then
+				return true
+			end
+		end
+	end
+	return false
+end
+
+-- What the next steps call for that the pouch does not hold, and the batch itself.
+local function wanted_for(self, missing)
+	local batch = template.next_batch(missing, setting_number("living_villages_builder_capacity", DEFAULT_CAPACITY))
+	local wanted, any = {}, false
+	for item, count in pairs(batch) do
+		local short = count - stock.count(self, item)
+		if short > 0 then
+			wanted[item] = short
+			any = true
+		end
+	end
+	return wanted, any, batch
+end
+
+local function chest_sound(pos)
+	core.sound_play("default_chest_close", {pos = pos, gain = 0.3, max_hear_distance = 16}, true)
+end
+
+-- Puts back what the batch has no use for, such as an empty bucket.
+local function deposit(self, chest, keep)
+	for item, count in pairs(self._villages_farm_pouch or {}) do
+		local spare = count - (keep and keep[item] or 0)
+		if spare > 0 then stock.put_in_chest(self, chest, item, spare) end
+	end
+end
+
+local function collect(self, session, bench, project, now)
+	local wanted, any, batch = wanted_for(self, session.queue)
+	if not any then
+		session.stuck = nil
+		set_state(bench, project, "building")
+		return
+	end
+	local here = self.object:get_pos()
+	local best, best_distance, out_of_reach
+	for _, chest in ipairs(stock.find_chests(bench, chest_radius())) do
+		local holds = false
+		for item in pairs(wanted) do
+			if stock.chest_count(chest, item) > 0 then holds = true end
+		end
+		if holds and (session.skip[pos_key(chest)] or 0) > now then
+			out_of_reach = true
+		elseif holds then
+			local distance = vector.distance(here, chest)
+			if not best or distance < best_distance then best, best_distance = chest, distance end
+		end
+	end
+	if not best then
+		-- Taken away since, or out of its reach for now.
+		session.stuck = out_of_reach and "chest" or nil
+		session.materials_at = 0
+		set_state(bench, project, "requires_materials")
+		return
+	end
+	if best_distance <= CHEST_REACH then
+		deposit(self, best, batch)
+		for item, count in pairs(wanted) do stock.take_from_chest(self, best, item, count) end
+		chest_sound(best)
+		session.hold_until = now + HOLD_SECONDS
+		return
+	end
+	if walk_to(self, session, best, now) then session.stuck = nil else session.stuck = "chest" end
+end
+
+local function finish_building(self, session, bench, project)
+	local key = pos_key(bench)
+	if village_index then
+		village_index.update_village(bench, VILLAGE_RADIUS, function(record)
+			census.add_built(record, project.building)
+			if record.reserved then record.reserved[key] = nil end
+		end)
+	end
+	core.log("action", string.format("[living_villages] builder %s finished a %s at %s",
+		tostring(self._id), project.building, core.pos_to_string(project.pos)))
+	session.queue = nil
+	set_state(bench, project, "returning")
+end
+
+local function return_leftovers(self, session, bench, now)
+	if stock.total(self) == 0 then
+		save_project(bench, nil)
+		return
+	end
+	local here = self.object:get_pos()
+	local chest = stock.find_chests(bench, chest_radius())[1]
+	if chest and (session.skip[pos_key(chest)] or 0) <= now then
+		if vector.distance(here, chest) > CHEST_REACH then
+			if walk_to(self, session, chest, now) then return end
+		else
+			deposit(self, chest)
+			chest_sound(chest)
+			session.hold_until = now + HOLD_SECONDS
+		end
+	end
+	-- No chest it can reach, or none with room: not worth keeping a whole village waiting for.
+	if stock.total(self) > 0 and (not chest or vector.distance(here, chest) <= CHEST_REACH
+		or (session.skip[pos_key(chest)] or 0) > now) then
+		stock.drop_all(self, here)
+	end
+end
+
+local function make_step(self, step, plan)
+	if step.kind == "cut" or step.kind == "clear" then
+		core.remove_node(step.pos)
+		core.sound_play("default_dig_crumbly", {pos = step.pos, gain = 0.5, max_hear_distance = 16}, true)
+		return true
+	end
+	for item, count in pairs(step.cost or {}) do
+		if stock.count(self, item) < count then return false end
+	end
+	for item, count in pairs(step.cost or {}) do stock.take(self, item, count) end
+	core.set_node(step.pos, step.node)
+	if step.top then
+		local top_missing = template.compare({
+			steps = {{kind = "place", pos = step.top.pos, node = step.top.node}},
+			surface_mat = plan.surface_mat, cut_at = plan.cut_at,
+		}, name_at)
+		if #top_missing > 0 then core.set_node(step.top.pos, step.top.node) end
+	end
+	for item, count in pairs(step.returns or {}) do stock.add(self, item, count) end
+	local def = core.registered_nodes[step.node.name]
+	local sound = def and def.sounds and def.sounds.place
+	if sound then core.sound_play(sound, {pos = step.pos, max_hear_distance = 16}, true) end
+	return true
+end
+
+-- The first step it can do now: past a cell someone stands in for a moment, though not
+-- to a liquid while anything else is left, or the water would run out of unfinished walls.
+local function next_step(session, now)
+	local passed = false
+	for _, step in ipairs(session.queue) do
+		if (session.deferred[pos_key(step.pos)] or 0) > now then
+			passed = true
+		elseif step.pass == template.PASS_LIQUID and passed then
+			return nil
+		else
+			return step
+		end
+	end
+end
+
+local function drop_from_queue(session, step)
+	for i, queued in ipairs(session.queue) do
+		if queued == step then
+			table.remove(session.queue, i)
+			return
+		end
+	end
+end
+
+local function build(self, session, bench, project, plan, now)
+	if now < (session.next_place or 0) then
+		session.hold_until = now + HOLD_SECONDS
+		return
+	end
+	local step = next_step(session, now)
+	if not step then return end
+	local here = self.object:get_pos()
+	local box = footprint_of(project)
+	local standing = session.spot and vector.distance(here, session.spot) <= CHEST_REACH and session.spot or here
+	if inside(box, here) or vector.distance(standing, step.pos) > reach_of() then
+		local spot = ring_spot(session, box, project.pos.y, step.pos, now)
+		if not spot then
+			session.stuck = "site"
+			return
+		end
+		session.spot = spot
+		if walk_to(self, session, spot, now) then session.stuck = nil else session.stuck = "site" end
+		return
+	end
+
+	-- It may have changed since the last look.
+	local missing, blocked = template.compare({
+		steps = {step}, surface_mat = plan.surface_mat, cut_at = plan.cut_at,
+	}, name_at)
+	if #blocked > 0 or core.is_protected(step.pos, "") then
+		project.blocked_at = step.pos
+		set_state(bench, project, "blocked")
+		return
+	end
+	if #missing == 0 then
+		drop_from_queue(session, step)
+		return
+	end
+	local placing_solid = step.node and is_solid_node(step.node.name)
+	if placing_solid and occupied(step.pos) then
+		session.deferred[pos_key(step.pos)] = now + DEFER_SECONDS
+		return
+	end
+	if not make_step(self, step, plan) then
+		set_state(bench, project, "collecting")
+		return
+	end
+	drop_from_queue(session, step)
+	session.stuck = nil
+	session.next_place = now + setting_number("living_villages_builder_block_seconds", DEFAULT_BLOCK_SECONDS)
+	session.hold_until = now + HOLD_SECONDS
+end
+
+-- A started project's turn: what is left is read from the world, not remembered.
+function work(self, session, bench, project, now)
+	session.deferred = session.deferred or {}
+	if project.state == "returning" then
+		return return_leftovers(self, session, bench, now)
+	end
+	local plan = plan_of(bench, project)
+	if not plan then
+		save_project(bench, nil)
+		return
+	end
+	local looked = false
+	if not session.queue or now >= (session.queue_at or 0) or #session.queue == 0 then
+		looked = true
+		local missing, blocked = template.compare(plan, name_at)
+		session.queue, session.queue_at = missing, now + COMPARE_SECONDS
+		if #blocked > 0 then
+			project.blocked_at = blocked[1]
+			set_state(bench, project, "blocked")
+			return
+		end
+		if #missing == 0 then return finish_building(self, session, bench, project) end
+	end
+	if project.state == "blocked" then
+		if looked then
+			project.blocked_at = nil
+			set_state(bench, project, "collecting")
+		end
+		return
+	end
+	if project.state == "collecting" then
+		collect(self, session, bench, project, now)
+	elseif project.state == "building" then
+		build(self, session, bench, project, plan, now)
 	end
 end
 
@@ -380,15 +763,22 @@ local function tick(self, session, bench, now)
 	local project = M.load_project(bench)
 	if not project then
 		choose(self, bench)
+		session.next_at = now + TICK_SECONDS
+		release(self, session)
 		return
 	end
 	if project.state == "finding_site" or project.state == "no_site" then
 		if not session.searching and now >= (session.retry_at or 0) then
 			start_search(self, session, bench, project)
 		end
-	elseif project.state == "requires_materials" or project.state == "ready" then
+	elseif project.state == "requires_materials" then
 		check_materials(self, session, bench, project, now)
+	else
+		work(self, session, bench, project, now)
 	end
+	session.away = WORKING[(M.load_project(bench) or {}).state] == true
+	if not session.away then release(self, session) end
+	session.next_at = now + (session.away and WORK_TICK_SECONDS or TICK_SECONDS)
 end
 
 -- Everything the status window shows.
@@ -401,6 +791,8 @@ function M.report(self)
 		state = project.state, building = project.building, site = project.pos, bench = bench,
 		at_work = common.is_work_time(self),
 	}
+	if project.blocked_at and project.state == "blocked" then report.blocked = project.blocked_at end
+	report.stuck = session_of(self).stuck
 	local request = site_request(bench, project.building)
 	if request then
 		report.size = {x = request.size.x, y = request.height + 1, z = request.size.z}
@@ -410,7 +802,7 @@ function M.report(self)
 		local found = M.materials_report(self, bench, project)
 		if found then
 			report.rows, report.left, report.total = found.rows, found.left, found.total
-			report.blocked = found.blocked[1]
+			report.blocked = report.blocked or found.blocked[1]
 			for _, row in ipairs(found.rows) do
 				row.price = row.missing > 0 and materials.SALES[row.item] or nil
 			end
@@ -455,6 +847,14 @@ function M.buy(self, player, item)
 	core.log("action", string.format("[living_villages] %s bought %s from builder %s for %d emeralds",
 		player:get_player_name(), item, tostring(self._id), price))
 	return true, placed and "in_chest" or "in_inventory"
+end
+
+-- common.activity_override: a Builder with a project in hand is not called back to its bench.
+function M.activity_override(villager, stage)
+	if stage ~= "work" then return nil end
+	local session = sessions[villager]
+	if session and session.away then return "build" end
+	return nil
 end
 
 function M.install(def, navigation, index)
@@ -502,13 +902,29 @@ function M.install(def, navigation, index)
 			end
 			return result
 		end
-		if not self._villages_builder or not common.is_work_time(self) then return result end
-		local bench = M.claimed_bench(self)
-		if not bench then return result end
+		if not self._villages_builder then return result end
 		local session = session_of(self)
-		if now >= session.next_at then
-			session.next_at = now + TICK_SECONDS
-			tick(self, session, bench, now)
+		local bench = M.claimed_bench(self)
+		if not bench or not common.is_work_time(self) then
+			if session.away then release(self, session) end
+			return result
+		end
+		-- The way the farmer does it: a trip that ended is looked at, and one still being
+		-- planned is waited for.
+		if self._villages_farm_target then
+			local route = self._villages_farm_route
+			if route and route.status == "planning" then return result end
+			if route and route.status == "retry" then
+				session.skip[pos_key(self._villages_farm_target)] = now + SKIP_SECONDS
+			end
+			self._villages_farm_target = nil
+			self._villages_farm_route = nil
+		end
+		if now >= session.next_at then tick(self, session, bench, now) end
+		if self.state ~= "gowp" and session.hold_until >= now then
+			hold_still(self)
+			-- As for a fishing session: do_states would turn a standing villager away.
+			return false
 		end
 		return result
 	end

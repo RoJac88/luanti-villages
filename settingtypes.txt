@@ -58,6 +58,16 @@ living_villages_loomless_house_chance (Share of small houses without a loom) flo
 # and villages already generated are not changed.
 living_villages_builder (Builders) bool true
 
+# How far a Builder can place a block from where it stands. It stays on the ground, so the
+# tallest buildings need about 14.
+living_villages_builder_reach (Builder's reach) float 14 8 32
+
+# Items a Builder carries on one trip from the chests.
+living_villages_builder_capacity (Builder's capacity) int 256 16 2048
+
+# Seconds a Builder takes over each block.
+living_villages_builder_block_seconds (Seconds per block) float 1 0.1 10
+
 # How far from its bench a Builder looks for materials in chests.
 living_villages_builder_chest_radius (Builder's chest radius) int 32 1 64
 

@@ -18,7 +18,10 @@ local STATE_TEXT = {
 	finding_site = S("Looking for a site."),
 	no_site = S("There is no suitable site for this building."),
 	requires_materials = S("Waiting for materials. Put them in a chest near its bench."),
-	ready = S("It has all the materials it needs."),
+	collecting = S("Fetching materials from the chests."),
+	building = S("Building."),
+	blocked = S("Something is in the way, so it has stopped."),
+	returning = S("Finished. Putting back what was left over."),
 }
 
 local BUY_MESSAGES = {
@@ -65,6 +68,14 @@ local function summary_lines(report)
 	end
 	if report.blocked then
 		lines[#lines + 1] = S("Something is in the way at @1.", core.pos_to_string(report.blocked))
+	end
+	if report.left and report.total and report.total > 0 and report.state ~= "requires_materials" then
+		lines[#lines + 1] = S("Done: @1 of @2 steps.", tostring(report.total - report.left), tostring(report.total))
+	end
+	if report.stuck == "chest" then
+		lines[#lines + 1] = S("It cannot get to the chest that has what it needs.")
+	elseif report.stuck == "site" then
+		lines[#lines + 1] = S("It cannot get to the site. Keep the ground around the site clear.")
 	end
 	if report.state ~= "no_bench" and report.at_work == false then
 		lines[#lines + 1] = S("It is off work now.")

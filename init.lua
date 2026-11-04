@@ -571,6 +571,7 @@ core.register_on_mods_loaded(function()
 	dofile(core.get_modpath("living_villages") .. "/farm_jobs.lua").install(def, navigation_api)
 	-- Outside farm_jobs, so that a Builder's house keeps its own villager from a composter.
 	local builder
+	-- Asked by activity_override, which is set further down.
 	if dofile(core.get_modpath("living_villages") .. "/builder_house.lua").enabled() then
 		builder = dofile(core.get_modpath("living_villages") .. "/builder.lua")
 		builder.install(def, navigation_api, village_index)
@@ -593,7 +594,7 @@ core.register_on_mods_loaded(function()
 	flock.install(def, core.registered_entities["mobs_mc:sheep"], bell, navigation_api)
 	common.activity_override = function(villager, stage)
 		return flock.activity_override(villager, stage) or farmer.activity_override(villager, stage)
-			or fisherman_override(villager, stage)
+			or fisherman_override(villager, stage) or (builder and builder.activity_override(villager, stage))
 	end
 	dofile(core.get_modpath("living_villages") .. "/well.lua").install(def)
 	-- The morning at the bell (#329), the well's visit at the bell; one of the two a morning.

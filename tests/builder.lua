@@ -17,6 +17,8 @@ world.defs[COBBLE] = {groups = {}}
 world.defs[CHEST].is_ground_content = false
 world.defs[WATER].liquidtype = "source"
 world.defs["air"].buildable_to = true
+world.defs["air"].walkable = false
+world.defs["mcl_buckets:bucket_empty"] = {groups = {}}
 
 local ground = "mcl_core:dirt_with_grass"
 local tallest = 3
@@ -25,6 +27,10 @@ local function name_of(x, y, z)
 	local node = world.nodes[x .. "," .. y .. "," .. z]
 	if node then return node.name end
 	return y <= 0 and ground or "air"
+end
+
+core.get_node_or_nil = function(pos)
+	return {name = name_of(pos.x, pos.y, pos.z)}
 end
 
 -- A VoxelManip that reads the world on demand, as a whole search area would be slow to copy.
@@ -288,31 +294,19 @@ do
 	advance(entity, 10)
 	assert(builder.load_project(BENCH_POS).state == "requires_materials")
 
-	-- Everything there: it has what it needs, and goes back when it stops being so.
+	-- Off work nothing moves.
 	support.chest(world, {x = -14, y = 1, z = 1}, CHEST, {COBBLE .. " 10", BUCKET})
-	advance(entity, 10)
-	assert(builder.load_project(BENCH_POS).state == "ready")
-	assert(builder.report(entity).state == "ready")
-	world.meta({x = -14, y = 1, z = 1}).inv:remove_item("main", COBBLE .. " 10")
-	advance(entity, 10)
-	assert(builder.load_project(BENCH_POS).state == "requires_materials")
-
-	-- Off work nothing moves; the next Builder picks it up from the bench.
-	local before = builder.load_project(BENCH_POS).state
 	world.time = 0.9
-	-- With what the first one carried, which does not pass to the next.
-	world.meta({x = -14, y = 1, z = 1}).inv:add_item("main", COBBLE .. " 12")
 	advance(entity, 20)
-	assert(builder.load_project(BENCH_POS).state == before)
+	assert(builder.load_project(BENCH_POS).state == "requires_materials")
 	assert(builder.report(entity).at_work == false)
 	world.time = 0.4
-	world.meta(BENCH_POS).fields.villager = nil
-	local successor = villager({x = 1, y = 1, z = 1}, {_bed = {x = 2, y = 1, z = 2}})
-	world.now = world.now + 100
-	def.do_custom(successor, 1)
-	assert(successor._villages_builder)
-	advance(successor, 10)
-	assert(builder.load_project(BENCH_POS).state == "ready")
+
+	-- Everything there: the work begins, and nothing has been touched before that.
+	assert(not builder.load_project(BENCH_POS).started)
+	advance(entity, 10)
+	local started = builder.load_project(BENCH_POS)
+	assert(started.state == "collecting" and started.started)
 end
 
 -- No site: it stays on the same building, and looks again in a while.
@@ -487,8 +481,10 @@ do
 	assert(not form:find("item_image", 1, true))
 	form = status.formspec({state = "no_bench"})
 	assert(form:find("no bench", 1, true))
-	form = status.formspec({state = "ready", rows = {{item = COBBLE, need = 1, in_chests = 1, carried = 0, missing = 0}}})
-	assert(form:find("all the materials", 1, true) and not form:find("item_image", 1, true))
+	form = status.formspec({state = "building", left = 10, total = 40, rows = {{item = COBBLE, need = 1, in_chests = 1, carried = 0, missing = 0}}})
+	assert(form:find("Done: 30 of 40", 1, true) and not form:find("item_image", 1, true))
+	form = status.formspec({state = "blocked", blocked = {x = 1, y = 2, z = 3}})
+	assert(form:find("(1,2,3)", 1, true))
 	-- Enough rows to scroll.
 	local rows = {}
 	for i = 1, 20 do rows[i] = {item = "x:" .. i, need = 1, in_chests = 0, carried = 0, missing = 1} end
@@ -532,6 +528,204 @@ do
 	local mason = villager({x = 1, y = 1, z = 1}, {_profession = "mason"})
 	def.on_activate(mason, "", 0)
 	assert(not mason._villages_builder)
+end
+
+-- Runs it until the test's condition, a second at a time.
+local function run_until(entity, done, limit)
+	for _ = 1, limit or 600 do
+		if done() then return true end
+		advance(entity, 1)
+	end
+	return done()
+end
+
+local function project_gone_or(state)
+	return function()
+		local project = builder.load_project(BENCH_POS)
+		return not project or project.state == state
+	end
+end
+
+-- A project with a site of the test's choosing, with some earthwork to do.
+local SITE = {x = 10, y = 0, z = 10}
+local function prepared(earthwork)
+	local entity = hired()
+	world.set({x = 2, y = 1, z = 0}, WOOD)
+	local project = {
+		state = "requires_materials", building = "hut", pos = SITE, rotat = "0",
+		surface_mat = "mcl_core:dirt_with_grass", earthwork = earthwork or {cuts = {}, fills = {}},
+	}
+	world.meta(BENCH_POS).fields.villages_project = core.serialize(project)
+	records[1] = {center = BENCH_POS, buildings = {{name = "hut", pos = BENCH_POS}}, reserved = {["0,1,0"] = {bench = BENCH_POS}}}
+	return entity
+end
+local function built_right()
+	for z = 0, 4 do
+		for y = 1, 2 do
+			for x = 0, 4 do
+				local name = world.name({x = SITE.x + x, y = y, z = SITE.z + z})
+				local wall = x == 0 or x == 4 or z == 0 or z == 4
+				local want = wall and COBBLE or (y == 1 and x == 2 and z == 2 and WATER) or "air"
+				if name ~= want then return false, name .. " wanted " .. want end
+			end
+		end
+	end
+	return true
+end
+
+-- The whole job, from a stocked chest: earthwork, then solids, then water last, all from the
+-- ring and in reach, one block a second, with the leftovers and the empty bucket put back.
+do
+	local bump, hole = {x = 11, y = 1, z = 11}, {x = 12, y = 0, z = 12}
+	local entity = prepared({cuts = {bump}, fills = {hole}})
+	world.set(bump, "mcl_core:dirt")
+	world.nodes["12,0,12"] = {name = "air"}
+	local chest = {x = 0, y = 1, z = 6}
+	support.chest(world, chest, CHEST)
+
+	-- Waiting for materials leaves the site as it was.
+	advance(entity, 11)
+	assert(builder.load_project(BENCH_POS).state == "requires_materials")
+	assert(world.name(bump) == "mcl_core:dirt" and world.name(hole) == "air")
+	assert(not builder.activity_override(entity, "work"), "it waits at its bench")
+
+	world.meta(chest).inv:add_item("main", COBBLE .. " 40")
+	world.meta(chest).inv:add_item("main", BUCKET)
+
+	local order = {}
+	local real_set, real_remove = core.set_node, core.remove_node
+	local furthest, last_at, fastest = 0, nil, 99
+	local function note(pos, kind)
+		order[#order + 1] = kind
+		furthest = math.max(furthest, vector.distance(entity.object:get_pos(), pos))
+		if last_at then fastest = math.min(fastest, world.now - last_at) end
+		last_at = world.now
+	end
+	core.set_node = function(pos, node)
+		note(pos, node.name)
+		return real_set(pos, node)
+	end
+	core.remove_node = function(pos)
+		note(pos, "removed")
+		return real_remove(pos)
+	end
+	assert(run_until(entity, project_gone_or("returning")))
+	assert(builder.activity_override(entity, "work") == "build", "not called back while it works")
+	assert(run_until(entity, function() return stock.total(entity) == 0 and not builder.load_project(BENCH_POS) end))
+	core.set_node, core.remove_node = real_set, real_remove
+
+	assert(built_right())
+	assert(order[1] == "removed" and order[2] == "mcl_core:dirt", "earthwork first")
+	assert(world.name(bump) == "air" and world.name(hole) == "mcl_core:dirt")
+	assert(order[#order] == WATER, "water last")
+	assert(furthest <= 14 and fastest >= 1, "in reach, and at its pace: " .. furthest .. " " .. fastest)
+	assert(stock.chest_count(chest, COBBLE) == 8, "what it did not use stays in the chest")
+	assert(stock.chest_count(chest, "mcl_buckets:bucket_empty") == 1, "and the bucket comes back")
+
+	-- It counts in the census, gives up its reservation, and moves on.
+	assert(records[1].built.hut == 1 and records[1].reserved["0,1,0"] == nil)
+	advance(entity, 6)
+	local following = builder.load_project(BENCH_POS)
+	assert(following.building == "hut" and following.state ~= "returning" and not following.started)
+	assert(not builder.activity_override(entity, "work"), "back to its bench while it thinks")
+end
+
+-- A small capacity means more trips, never too much carried at once, and the same result.
+do
+	world.settings.living_villages_builder_capacity = "10"
+	local entity = prepared()
+	local chest = {x = 0, y = 1, z = 6}
+	support.chest(world, chest, CHEST, {COBBLE .. " 32", BUCKET})
+	local heaviest = 0
+	assert(run_until(entity, function()
+		heaviest = math.max(heaviest, stock.total(entity))
+		return project_gone_or("returning")()
+	end, 900))
+	assert(heaviest == 10 and built_right())
+	world.settings.living_villages_builder_capacity = nil
+end
+
+-- Something foreign in a cell, once started: it stops and says where, and carries on when it goes.
+do
+	local entity = prepared()
+	local chest = {x = 0, y = 1, z = 6}
+	support.chest(world, chest, CHEST, {COBBLE .. " 32", BUCKET})
+	assert(run_until(entity, function() return builder.load_project(BENCH_POS).state == "building" end))
+	local cell = {x = SITE.x + 2, y = 2, z = SITE.z}
+	world.set(cell, "mcl_core:stone")
+	assert(run_until(entity, function() return builder.load_project(BENCH_POS).state == "blocked" end, 30))
+	local report = builder.report(entity)
+	assert(report.blocked and report.blocked.x == cell.x and report.blocked.y == cell.y and report.blocked.z == cell.z)
+	assert(builder.load_project(BENCH_POS).pos.x == SITE.x, "a started site is not given up")
+	world.nodes[cell.x .. ",2," .. cell.z] = nil
+	assert(run_until(entity, project_gone_or("returning")))
+	assert(built_right())
+end
+
+-- Griefing and a new Builder: nothing is remembered, so both just work from what is there.
+do
+	local entity = prepared()
+	local chest = {x = 0, y = 1, z = 6}
+	support.chest(world, chest, CHEST, {COBBLE .. " 20", BUCKET})
+	-- Not enough: it will not start.
+	advance(entity, 11)
+	assert(builder.load_project(BENCH_POS).state == "requires_materials")
+	world.meta(chest).inv:add_item("main", COBBLE .. " 13")
+	assert(run_until(entity, function()
+		return world.name({x = SITE.x + 4, y = 1, z = SITE.z}) == COBBLE
+	end))
+	-- Its successor, with its pouch dropped where the first died, finds the rest in the chest.
+	for item, count in pairs(entity._villages_farm_pouch) do
+		world.meta(chest).inv:add_item("main", item .. " " .. count)
+	end
+	entity._villages_farm_pouch = nil
+	world.meta(BENCH_POS).fields.villager = nil
+	local next_one = villager({x = 1, y = 1, z = 1}, {_bed = {x = 2, y = 1, z = 2}})
+	world.now = world.now + 100
+	def.do_custom(next_one, 1)
+	assert(next_one._villages_builder)
+	-- Someone takes a block away: it goes back.
+	world.nodes[(SITE.x + 4) .. ",1," .. SITE.z] = nil
+	assert(run_until(next_one, project_gone_or("returning")))
+	assert(built_right(), "rebuilt and finished by the next one")
+end
+
+-- A chest emptied mid-job sends it back to waiting; a mob in a cell only makes it wait.
+do
+	local entity = prepared()
+	local chest = {x = 0, y = 1, z = 6}
+	support.chest(world, chest, CHEST, {COBBLE .. " 32", BUCKET})
+	local first = {x = SITE.x, y = 1, z = SITE.z}
+	local mob = {get_pos = function() return {x = first.x, y = 1, z = first.z} end, get_luaentity = function() return {name = "mobs_mc:cow"} end}
+	table.insert(world.objects, mob)
+	assert(run_until(entity, function() return builder.load_project(BENCH_POS).state == "building" end))
+	for _ = 1, 8 do advance(entity, 1) end
+	assert(world.name(first) == "air", "not on top of a cow")
+	assert(world.name({x = SITE.x + 1, y = 1, z = SITE.z}) == COBBLE, "it goes on with the next")
+	mob.get_pos = function() return nil end
+
+	entity._villages_farm_pouch = nil
+	world.meta(chest).inv:remove_item("main", COBBLE .. " 64")
+	assert(run_until(entity, function() return builder.load_project(BENCH_POS).state == "requires_materials" end, 40))
+	assert(builder.load_project(BENCH_POS).started)
+	local report = builder.report(entity)
+	assert(report.state == "requires_materials" and report.rows[1].missing > 0)
+	for i = #world.objects, 1, -1 do
+		if world.objects[i] == mob then table.remove(world.objects, i) end
+	end
+end
+
+-- Nowhere to stand: it says so rather than wandering.
+do
+	local entity = prepared()
+	local chest = {x = 0, y = 1, z = 6}
+	support.chest(world, chest, CHEST, {COBBLE .. " 32", BUCKET})
+	assert(run_until(entity, function() return builder.load_project(BENCH_POS).state == "building" end))
+	entity.fail_walks = true
+	assert(run_until(entity, function() return builder.report(entity).stuck == "site" end, 60))
+	local form = dofile("builder_status.lua").formspec(builder.report(entity))
+	assert(form:find("cannot get to the site", 1, true))
+	entity.fail_walks = nil
 end
 
 print("builder: ok")

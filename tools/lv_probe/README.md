@@ -246,9 +246,11 @@ item or node a building would need that is not registered (`unknown`), and, per 
 `ground_layer.lua` swaps it. Three differences are expected: a generated `mcl_chests:chest` is `chest_small` by then, the house's
 two chests are `chest_left` and `chest_right`, and water has `param2` 0, which the generator resets.
 
-It then holds the clock at work and keeps villagers awake, and follows each bench for up to 150 s until its project has a site
-or has none (`benches`): who claimed it, the villagers about it, the project as saved, what the status window reports, and
-how long the window's text is, which shows it was built without an error.
+It then holds the clock at work, keeps villagers awake and sets each bench's project to a small house, which has a door, a bed and
+a chest, and follows it (`benches`). Up to 150 s for a site: who claimed the bench, the villagers about it, the project as saved, what
+the status window reports, and how long the window's text is, which shows it was built without an error. With a site, it puts the
+bill in the chests and gives the Builder up to 480 s: `built` is the steps left, the cells blocked and any `param2` that differs from
+the template once it is done, and `after` is the project it moved on to.
 
 ## Who takes which job
 
