@@ -923,6 +923,7 @@ end
 function M.install(def, navigation, index)
 	navigation_api, village_index = navigation, index
 	local status = dofile(core.get_modpath("living_villages") .. "/builder_status.lua")
+	dofile(core.get_modpath("living_villages") .. "/builder_giveme.lua").install(M)
 	local original_activate = def.on_activate
 	local original_custom = def.do_custom
 	local original_gopath = def.gopath

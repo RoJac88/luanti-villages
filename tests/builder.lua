@@ -802,4 +802,86 @@ do
 	entity.fail_walks = nil
 end
 
+-- /giveme build_project_materials: what the nearest waiting Builder lacks, and nothing else.
+do
+	local command = {params = "<ItemString>", func = function(_, param) return true, "engine: " .. param end}
+	core.registered_chatcommands = {giveme = command}
+	core.override_chatcommand = function(name, redefinition)
+		assert(name == "giveme")
+		for field, value in pairs(redefinition) do command[field] = value end
+	end
+	local giveme = dofile("builder_giveme.lua")
+	giveme.install(builder)
+	local near = {x = 2, y = 1, z = 2}
+	local player = shopper(near, 0)
+	core.get_player_by_name = function() return player end
+	local function run(param) return command.func("singleplayer", param) end
+
+	-- Anything else is the engine's.
+	local ok, message = run("mcl_core:dirt 5")
+	assert(ok and message == "engine: mcl_core:dirt 5")
+
+	-- Nobody near.
+	local before = #world.objects
+	for i = before, 1, -1 do world.objects[i] = nil end
+	ok, message = run("build_project_materials")
+	assert(not ok and message:find("No Builder", 1, true))
+
+	-- A Builder that is not waiting for materials: a warning, and nothing given.
+	local entity = hired()
+	assert(builder.report(entity).state ~= "requires_materials")
+	ok, message = run(" build_project_materials ")
+	assert(not ok and message:find("not waiting", 1, true) and message:find(builder.report(entity).state, 1, true))
+	assert(not player.inv:contains_item("main", COBBLE))
+
+	-- Waiting: only what the chests and the pouch do not cover.
+	advance(entity)
+	advance(entity)
+	assert(builder.report(entity).state == "requires_materials")
+	support.chest(world, {x = -14, y = 1, z = 0}, CHEST, {COBBLE .. " 20"})
+	stock.add(entity, COBBLE, 2)
+	ok, message = run("build_project_materials")
+	assert(ok and message:find("Added 11 items to your inventory", 1, true) and message:find("hut", 1, true), message)
+	assert(player.inv:contains_item("main", COBBLE .. " 10") and not player.inv:contains_item("main", COBBLE .. " 11"))
+	assert(player.inv:contains_item("main", BUCKET))
+
+	-- A second run gives no more, and nothing went to the chests or the state.
+	ok, message = run("build_project_materials")
+	assert(ok and message:find("already hold", 1, true) and not player.inv:contains_item("main", COBBLE .. " 11"))
+	assert(stock.chest_count({x = -14, y = 1, z = 0}, COBBLE) == 20 and stock.count(entity, COBBLE) == 2)
+	assert(builder.report(entity).state == "requires_materials")
+
+	-- What the player already holds is not given again: part of it, then more than enough.
+	player = shopper(near, 0)
+	player.inv:add_item("main", COBBLE .. " 4")
+	ok, message = run("build_project_materials")
+	assert(ok and message:find("Added 7 items", 1, true), message)
+	assert(player.inv:contains_item("main", COBBLE .. " 10") and not player.inv:contains_item("main", COBBLE .. " 11"))
+	player = shopper(near, 0)
+	player.inv:add_item("main", COBBLE .. " 15")
+	ok, message = run("build_project_materials")
+	assert(ok and message:find("Added 1 item to", 1, true), message)
+	assert(player.inv:contains_item("main", COBBLE .. " 15") and not player.inv:contains_item("main", COBBLE .. " 16"))
+	assert(player.inv:contains_item("main", BUCKET))
+
+	-- The nearest that is waiting, past one that is not: the state of the first does not stop it.
+	local idle = villager({x = 2, y = 1, z = 3})
+	idle._villages_builder = true
+	local report = builder.report
+	builder.report = function(self)
+		if self == idle then return {state = "building"} end
+		return report(self)
+	end
+	player = shopper(near, 0)
+	ok = run("build_project_materials")
+	assert(ok and player.inv:contains_item("main", BUCKET))
+	builder.report = report
+
+	-- An inventory with no room says what it left.
+	player = shopper(near, 0)
+	player.inv.lists.main = {}
+	ok, message = run("build_project_materials")
+	assert(ok and message:find("Added 0 items", 1, true) and message:find(COBBLE .. " 10", 1, true), message)
+end
+
 print("builder: ok")
