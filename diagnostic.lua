@@ -217,6 +217,7 @@ end
 local flock_status
 local farmer
 local gossip
+local builder
 
 local function work_status(villager, job_ok)
 	local route = villager._villages_job_route
@@ -539,6 +540,7 @@ local function show(player, villager)
 			.. ", stage " .. common.schedule_stage(nil, villager),
 		"Keeper: " .. keeper.status(villager),
 		"Cleric: " .. cleric.status(villager),
+		"Builder: " .. (builder and builder.status(villager) or "off"),
 		"Tavern visit: " .. (villager._villages_tavern_arrived and "at the tavern"
 			or villager._villages_tavern_target and ("heading to " .. pos_string(villager._villages_tavern_target))
 			or "none"),
@@ -592,7 +594,8 @@ local function permitted(player)
 		or core.check_player_privs(name, {debug = true})
 end
 
-local function install(_, flock, nav_api, farm_module, gossip_module)
+local function install(_, flock, nav_api, farm_module, gossip_module, builder_module)
+	builder = builder_module
 	flock_status = flock and flock.status
 	farmer = farm_module
 	gossip = gossip_module

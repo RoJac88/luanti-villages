@@ -66,6 +66,7 @@ end
 function M.eligible(villager, attempt)
 	if villager.child or villager._is_baby then return false, "child" end
 	if villager._villages_keeper then return false, "keeper" end
+	if villager._villages_builder then return false, "builder" end
 	if not villager._id then return false, "missing_id" end
 	if villager.following then return false, "following" end
 	local day = core.get_day_count and core.get_day_count()

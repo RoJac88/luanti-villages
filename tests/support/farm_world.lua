@@ -50,6 +50,23 @@ local function inventory()
 		end
 		return stack
 	end
+	function inv:room_for_item(list, item)
+		local stack = M.stack(item)
+		local room = 0
+		for _, slot in ipairs(lists[list] or {}) do
+			if slot.count == 0 then room = room + 64
+			elseif slot.name == stack.name then room = room + 64 - slot.count end
+		end
+		return room >= stack.count
+	end
+	function inv:contains_item(list, item)
+		local stack = M.stack(item)
+		local held = 0
+		for _, slot in ipairs(lists[list] or {}) do
+			if slot.name == stack.name then held = held + slot.count end
+		end
+		return held >= stack.count
+	end
 	function inv:remove_item(list, item)
 		local wanted = M.stack(item)
 		local taken = 0

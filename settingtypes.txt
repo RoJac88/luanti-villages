@@ -53,9 +53,20 @@ living_villages_child_grow_days (Child growth time, game days) float 12 0.1 100
 # builds none with a loom. Existing villages are unchanged.
 living_villages_loomless_house_chance (Share of small houses without a loom) float 0.5 0 1
 
-# New villages generate a Builder's house, with a bench to claim and a double chest. Off, they
-# generate without one. Villages already generated are not changed.
+# Villagers can claim a Builder's bench and add buildings to their village, and new villages
+# generate a Builder's house, with a bench and a double chest. Off, a bench is just a block,
+# and villages already generated are not changed.
 living_villages_builder (Builders) bool true
+
+# How far from its bench a Builder looks for materials in chests.
+living_villages_builder_chest_radius (Builder's chest radius) int 32 1 64
+
+# How far a Builder's site may be from any structure, to count as part of the village.
+living_villages_builder_site_gap (Builder's site gap) int 20 4 60
+
+# Dirt blocks a Builder may break, and separately place, to level a site that is almost
+# flat. They cost nothing and yield nothing. 0 means level sites only.
+living_villages_builder_earthwork_limit (Builder's earthwork limit) int 12 0 64
 
 # Sheep each shepherd with a loom keeps and herds (#215): they follow it about the
 # village by day and are left to graze while it is at church, the bell, the tavern or

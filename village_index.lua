@@ -1,7 +1,8 @@
 -- Play-testing aid: /living_villages_goto teleports to a tavern, or to where a
 -- village should generate, instead of flying around looking for one. The record of a
 -- village is also what a Builder goes by (village_census.lua): each building it
--- generated with. A record from before that has no `buildings`.
+-- generated with. A record from before that has no `buildings`. Builders add to it
+-- (`read_village`, `update_village`), and one in a village with no record starts its own.
 --
 -- Two sources, best first:
 -- - Villages seen generating while this mod is installed, recorded with
@@ -159,6 +160,26 @@ local function tried_sites(known)
 	return tried
 end
 
+-- The record of the village around pos, or nil if there is none within radius.
+local function read_village(pos, radius)
+	local entry, distance = nearest_known(load(), pos)
+	if entry and distance <= radius then return entry end
+	return nil
+end
+
+-- Changes that record, starting one centred on pos if there is none. Returns it.
+local function update_village(pos, radius, change)
+	local known = load()
+	local entry, distance = nearest_known(known, pos)
+	if not entry or distance > radius then
+		entry = {center = vector.new(pos)}
+		table.insert(known, entry)
+	end
+	change(entry)
+	save(KEY, known)
+	return entry
+end
+
 core.register_chatcommand("living_villages_goto", {
 	params = "[any|new]",
 	description = "Teleport to the nearest known tavern, else the nearest untried village site"
@@ -204,4 +225,6 @@ return {
 	low32 = low32,
 	chunk_origin = chunk_origin,
 	predicted_sites = predicted_sites,
+	read_village = read_village,
+	update_village = update_village,
 }

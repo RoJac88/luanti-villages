@@ -91,4 +91,19 @@ player_pos = vec(0, 0, 0)
 ok, message = command.func("p", "new")
 assert(ok and message:find("predicted"), "new skips known taverns")
 
+-- What a Builder keeps in a record: the nearest within reach, or a new one when there is none.
+do
+	assert(index.read_village(vec(100, 17, 0), 128).center.x == 100, "the village it is in")
+	assert(index.read_village(vec(90000, 0, 0), 128) == nil)
+	local count = #minetest.deserialize(stored)
+	local entry = index.update_village(vec(100, 17, 0), 128, function(record) record.built = {lamp = 1} end)
+	assert(entry.center.x == 100 and entry.built.lamp == 1)
+	assert(#minetest.deserialize(stored) == count, "nothing new")
+	assert(index.read_village(vec(100, 17, 0), 128).built.lamp == 1, "and it stays")
+	entry = index.update_village(vec(90000, 5, 0), 128, function(record) record.reserved = {} end)
+	assert(entry.center.x == 90000 and entry.reserved and entry.buildings == nil)
+	assert(#minetest.deserialize(stored) == count + 1)
+	assert(index.read_village(vec(90000, 5, 0), 128).center.x == 90000)
+end
+
 print("village_index.lua: ok")

@@ -59,7 +59,7 @@ function M.make_generic(self)
 		self._trades = nil
 		changed = true
 	end
-	for _, flag in ipairs({"_villages_fisherman", "_villages_keeper", "_villages_keeper_target"}) do
+	for _, flag in ipairs({"_villages_fisherman", "_villages_keeper", "_villages_keeper_target", "_villages_builder"}) do
 		if self[flag] then
 			self[flag] = nil
 			changed = true

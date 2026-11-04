@@ -264,6 +264,9 @@ local function sleep_position(bed, node)
 	return pos, yaw
 end
 
+-- Loaded below, at normal load: it wraps the generator, and there must be only one of it.
+local village_index
+
 core.register_on_mods_loaded(function()
 	local def = core.registered_entities["mobs_mc:villager"]
 	if not def then
@@ -566,6 +569,12 @@ core.register_on_mods_loaded(function()
 	cleric.install(def)
 	-- Outside every job above, which it keeps from an unemployed villager with a composter to go to.
 	dofile(core.get_modpath("living_villages") .. "/farm_jobs.lua").install(def, navigation_api)
+	-- Outside farm_jobs, so that a Builder's house keeps its own villager from a composter.
+	local builder
+	if dofile(core.get_modpath("living_villages") .. "/builder_house.lua").enabled() then
+		builder = dofile(core.get_modpath("living_villages") .. "/builder.lua")
+		builder.install(def, navigation_api, village_index)
+	end
 	-- Outside every role above, so none of them sees a child with a job (#262).
 	dofile(core.get_modpath("living_villages") .. "/child_jobs.lua").install(def)
 	-- One copy of seat.lua, so that its reservations cover both the tavern's
@@ -595,7 +604,7 @@ core.register_on_mods_loaded(function()
 	dofile(core.get_modpath("living_villages") .. "/conversation.lua").install(def, gossip)
 	-- Outermost, so it sees "walk" after everything else has had its say.
 	dofile(core.get_modpath("living_villages") .. "/wander.lua")(def)
-	dofile(core.get_modpath("living_villages") .. "/diagnostic.lua")(def, flock, navigation_api, farmer, gossip)
+	dofile(core.get_modpath("living_villages") .. "/diagnostic.lua")(def, flock, navigation_api, farmer, gossip, builder)
 	dofile(core.get_modpath("living_villages") .. "/paths.lua").install(def, path_storage)
 	dofile(core.get_modpath("living_villages") .. "/floor_guard.lua")(def)
 end)
@@ -619,7 +628,7 @@ if not dofile(core.get_modpath("living_villages") .. "/loomless_house.lua").inst
 	core.log("warning", "[living_villages] loomless houses not installed: settlements.place_schematics "
 		.. "or settlements.schematic_table is missing; every small house keeps its loom")
 end
-dofile(core.get_modpath("living_villages") .. "/village_index.lua")
+village_index = dofile(core.get_modpath("living_villages") .. "/village_index.lua")
 
 -- After church_site.lua: the planner reserves the church itself and replaces its wrapper.
 do

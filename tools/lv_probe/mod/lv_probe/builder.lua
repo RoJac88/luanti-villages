@@ -3,13 +3,20 @@
 -- and their inventories; any item a stock building costs that is not registered; and, for
 -- every building of the village, each cell where what building_template.lua predicts
 -- differs from what the generator placed, so that the rotated cells a Builder works from
--- are known to be the real ones. Only runs when lv_probe_builder is set.
+-- are known to be the real ones. Then, with the clock held at work and villagers kept awake,
+-- it follows the bench until a Builder has chosen a site: who claimed it, the project, and
+-- what its status window reports. Only runs when lv_probe_builder is set.
 local core = minetest
 
 local builder = {}
 
 local WAIT_SECONDS = 30
 local SAMPLES = 8
+local VILLAGER = "mobs_mc:villager"
+local BENCH = "living_villages:builder_block"
+local WATCH_SECONDS = 150
+local WATCH_STEP = 5
+local WORK_TIME = 0.4
 
 function builder.enabled()
 	return (tonumber(core.settings:get("lv_probe_builder")) or 0) > 0
@@ -88,14 +95,19 @@ local function compare_building(building, template)
 end
 
 -- The Builder's house: the bench, and each chest near it with its inventory.
-local function check_houses(info)
-	local houses = {}
+local function search_box(info)
 	local minp, maxp
 	for _, building in ipairs(info) do
 		local low, high = vector.offset(building.pos, -2, -2, -2), vector.offset(building.pos, 16, 16, 16)
 		minp = minp and {x = math.min(minp.x, low.x), y = math.min(minp.y, low.y), z = math.min(minp.z, low.z)} or low
 		maxp = maxp and {x = math.max(maxp.x, high.x), y = math.max(maxp.y, high.y), z = math.max(maxp.z, high.z)} or high
 	end
+	return minp, maxp
+end
+
+local function check_houses(info)
+	local houses = {}
+	local minp, maxp = search_box(info)
 	for _, bench in ipairs(core.find_nodes_in_area(minp, maxp, {"living_villages:builder_block"})) do
 		local chests = {}
 		local low, high = vector.offset(bench, -6, -2, -6), vector.offset(bench, 6, 2, 6)
@@ -109,6 +121,92 @@ local function check_houses(info)
 		houses[#houses + 1] = {bench = pos_text(bench), chests = chests}
 	end
 	return houses
+end
+
+core.register_on_mods_loaded(function()
+	if not builder.enabled() then return end
+	-- The server has no player, so mcl_mobs would freeze everything.
+	local class = mcl_mobs.mob_class
+	local original = class.player_in_active_range
+	class.player_in_active_range = function(self, ...)
+		if self.name == VILLAGER then return true end
+		return original(self, ...)
+	end
+	-- No holiday: the clock is held in the work stage of an ordinary day.
+	if mcl_moon then mcl_moon.get_moon_phase = function() return 1 end end
+end)
+
+local function villager_with_id(pos, id)
+	for _, object in ipairs(core.get_objects_inside_radius(pos, 64)) do
+		local entity = object:get_luaentity()
+		if entity and entity.name == VILLAGER and entity._id == id then return entity end
+	end
+end
+
+-- Everyone about the bench, as it might matter who did not claim it and why.
+local function people_near(pos)
+	local people = {}
+	for _, object in ipairs(core.get_objects_inside_radius(pos, 64)) do
+		local entity = object:get_luaentity()
+		if entity and entity.name == VILLAGER then
+			people[#people + 1] = {
+				id = entity._id, profession = entity._profession, child = entity.child or nil,
+				bed = entity._bed and pos_text(entity._bed) or nil,
+				jobsite = entity._jobsite and pos_text(entity._jobsite) or nil,
+				seek = entity._villages_farm_seek and pos_text(entity._villages_farm_seek) or nil,
+			}
+		end
+	end
+	return people
+end
+
+-- What one bench came to.
+local function bench_outcome(bench, roles, status_module)
+	local owner = core.get_meta(bench):get_string("villager")
+	local outcome = {
+		bench = pos_text(bench), owner = owner ~= "" and owner or nil, people = people_near(bench),
+		project = roles.load_project(bench),
+	}
+	local entity = owner ~= "" and villager_with_id(bench, owner)
+	if entity then
+		outcome.flag, outcome.profession, outcome.trades = entity._villages_builder, entity._profession, entity._trades
+		local report = roles.report(entity)
+		outcome.report = report
+		outcome.form_bytes = #status_module.formspec(report)
+	end
+	return outcome
+end
+
+-- Follows every bench until its project has a site or has none, or time is up.
+local function watch(area, record, emit, done)
+	local path = core.get_modpath("living_villages")
+	local roles = dofile(path .. "/builder.lua")
+	-- Only for formspec(): this copy's window is never shown, so its handler has no state.
+	local status_module = dofile(path .. "/builder_status.lua")
+	local benches = core.find_nodes_in_area(area.minp, area.maxp, {BENCH})
+	local started = core.get_gametime()
+	local function finish()
+		record.benches = {}
+		for _, bench in ipairs(benches) do
+			record.benches[#record.benches + 1] = bench_outcome(bench, roles, status_module)
+		end
+		record.watched_seconds = core.get_gametime() - started
+		core.log("action", string.format("[lv_builder] %d benches followed for %d s",
+			#benches, record.watched_seconds))
+		emit(record)
+		done()
+	end
+	local function step()
+		core.set_timeofday(WORK_TIME)
+		local waiting = false
+		for _, bench in ipairs(benches) do
+			local project = roles.load_project(bench)
+			if not project or project.state == "finding_site" then waiting = true end
+		end
+		if not waiting or core.get_gametime() - started >= WATCH_SECONDS then return finish() end
+		core.after(WATCH_STEP, step)
+	end
+	step()
 end
 
 function builder.run(_, info, emit, done)
@@ -128,8 +226,8 @@ function builder.run(_, info, emit, done)
 		end
 		core.log("action", string.format("[lv_builder] %d houses, %d buildings, %d cells differ",
 			#record.houses, #record.buildings, wrong))
-		emit(record)
-		done()
+		local minp, maxp = search_box(info)
+		watch({minp = minp, maxp = maxp}, record, emit, done)
 	end)
 end
 

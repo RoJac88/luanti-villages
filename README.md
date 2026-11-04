@@ -83,6 +83,14 @@ ordinary stairs and wooden doors. Iron doors still block them.
 - **Furniture:** newly generated taverns get two tables with plates and chairs. The furniture
   is added to the installed VoxeLibre version's own tavern layout when the tavern generates.
   Taverns that already exist aren't refurnished.
+- **Builders:** an unemployed adult that claims a free Builder's bench adds buildings to its
+  village, keeping the mix it generated with. New villages have a Builder's house with a bench and a
+  double chest, and the bench can be crafted for an older village. Right-click a Builder to see what
+  it is doing and exactly which materials it lacks. Put them in a chest within 32 nodes of the bench,
+  or buy the awkward ones (buckets of water or lava, flowers, sea lanterns, a bell) from the window for
+  emeralds. It looks for a site close to the village that fits as it stands, or with at most 12 dirt blocks
+  broken and 12 placed, and waits if there is none until you clear one.
+  - VoxeLibre can't register new professions, so a Builder is a mason underneath, with no trades.
 - **Keepers:** an unemployed adult that claims a free jukebox becomes a tavern keeper. The
   jukebox can be a tavern's or one a player placed. A keeper wears a brown apron and sells
   bread, baked potatoes, cooked fish, mushroom stew, and pumpkin pie through the ordinary
