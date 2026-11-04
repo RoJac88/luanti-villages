@@ -4,8 +4,8 @@
 -- every building of the village, each cell where what building_template.lua predicts
 -- differs from what the generator placed, so that the rotated cells a Builder works from
 -- are known to be the real ones. Then, with the clock held at work and villagers kept awake,
--- it sets each bench's project to a small house, which has a door, a bed and a chest, and
--- follows it: who claimed the bench, the site, what the status window reports, and, with the
+-- it sets each bench's project to a building (lv_probe_builder_building, by default a small
+-- house, which has a door and a bed) and follows it: who claimed the bench, the site, what the status window reports, and, with the
 -- bill put in the chests, whether what stands afterwards is what the template says, to the
 -- param2. Only runs when lv_probe_builder is set.
 local core = minetest
@@ -17,8 +17,8 @@ local SAMPLES = 8
 local VILLAGER = "mobs_mc:villager"
 local BENCH = "living_villages:builder_block"
 local WATCH_SECONDS = 150
-local BUILD_SECONDS = 480
-local BUILDING = "small_house"
+local DEFAULT_BUILD_SECONDS = 1500
+local DEFAULT_BUILDING = "small_house"
 local WATCH_STEP = 5
 local WORK_TIME = 0.4
 
@@ -199,6 +199,18 @@ local function stock_chests(bench, report)
 	return lost
 end
 
+-- Gives a level site something to do: a dirt bump on its floor and a dip in it, in the
+-- middle where a site's search would have allowed them, and the project's list of them.
+local function roughen(bench, project)
+	local at = project.pos
+	local bump = {x = at.x + 1, y = at.y + 1, z = at.z + 1}
+	local dip = {x = at.x + 2, y = at.y, z = at.z + 1}
+	core.set_node(bump, {name = "mcl_core:dirt"})
+	core.remove_node(dip)
+	project.earthwork = {cuts = {bump}, fills = {dip}}
+	core.get_meta(bench):set_string("villages_project", core.serialize(project))
+end
+
 -- Each cell where the finished building differs from its template: what the Builder placed
 -- against what the same plan asks for.
 local function check_built(project, template)
@@ -209,7 +221,20 @@ local function check_built(project, template)
 		floor_y = project.pos.y, surface_mat = project.surface_mat, earthwork = project.earthwork,
 	})
 	local missing, blocked = template.compare(plan, function(pos) return core.get_node(pos).name end)
-	local result = {left = #missing, blocked = #blocked, wrong_param2 = 0, samples = {}}
+	local result = {left = #missing, blocked = #blocked, wrong_param2 = 0, samples = {}, cells = {}}
+	-- What it has not done, what is there instead, and who stands around it.
+	for i = 1, math.min(#missing, SAMPLES) do
+		local step = missing[i]
+		local near = {}
+		for _, object in ipairs(core.get_objects_inside_radius(step.pos, 2.5)) do
+			local entity = object:get_luaentity()
+			near[#near + 1] = (entity and entity.name or "player") .. " " .. pos_text(vector.round(object:get_pos()))
+		end
+		result.cells[i] = {
+			pos = pos_text(step.pos), kind = step.kind, pass = step.pass, want = step.node and step.node.name,
+			found = core.get_node(step.pos).name, near = near,
+		}
+	end
 	for _, step in ipairs(plan.steps) do
 		if step.kind == "place" then
 			local node = core.get_node(step.pos)
@@ -225,6 +250,49 @@ local function check_built(project, template)
 	return result
 end
 
+-- A flat, clear piece of ground beside the bench, as a player makes for a Builder with no
+-- site. It may cut into what stands there: this world is thrown away.
+local function make_platform(bench)
+	local size = 24
+	local x0, z0 = bench.x + 10, bench.z + 10
+	-- Anyone standing there would be buried.
+	for _, object in ipairs(core.get_objects_inside_radius(bench, 80)) do
+		local at, entity = object:get_pos(), object:get_luaentity()
+		if entity and entity.name == VILLAGER and at.x >= x0 - 13 and at.x <= x0 + size + 13
+			and at.z >= z0 - 13 and at.z <= z0 + size + 13 then
+			object:set_pos(vector.offset(bench, 0, 1, 0))
+		end
+	end
+	for x = x0, x0 + size do
+		for z = z0, z0 + size do
+			for y = bench.y - 6, bench.y - 1 do
+				core.set_node({x = x, y = y, z = z}, {name = "mcl_core:dirt"})
+			end
+			core.set_node({x = x, y = bench.y, z = z}, {name = "mcl_core:dirt_with_grass"})
+			for y = bench.y + 1, bench.y + 24 do
+				core.remove_node({x = x, y = y, z = z})
+			end
+		end
+	end
+	-- Slopes up to it, or a Builder could not walk onto it.
+	for x = x0 - 12, x0 + size + 12 do
+		for z = z0 - 12, z0 + size + 12 do
+			local away = math.max(x0 - x, x - x0 - size, z0 - z, z - z0 - size)
+			if away > 0 then
+				local top = bench.y - away
+				for y = top, top - 12, -1 do
+					local name = core.get_node({x = x, y = y, z = z}).name
+					if name == "air" or name:find("leaves", 1, true) then
+						core.set_node({x = x, y = y, z = z}, {name = y == top and "mcl_core:dirt_with_grass" or "mcl_core:dirt"})
+					elseif y < top then
+						break
+					end
+				end
+			end
+		end
+	end
+end
+
 -- Follows every bench through its project, or until time is up.
 local function watch(area, record, emit, done)
 	local path = core.get_modpath("living_villages")
@@ -236,8 +304,9 @@ local function watch(area, record, emit, done)
 	local started = core.get_gametime()
 	local outcomes, sited = {}, {}
 	for _, bench in ipairs(benches) do
+		if core.settings:get_bool("lv_probe_builder_platform", false) then make_platform(bench) end
 		core.get_meta(bench):set_string("villages_project",
-			core.serialize({state = "finding_site", building = BUILDING}))
+			core.serialize({state = "finding_site", building = core.settings:get("lv_probe_builder_building") or DEFAULT_BUILDING}))
 	end
 	local function finish()
 		record.benches = {}
@@ -245,6 +314,9 @@ local function watch(area, record, emit, done)
 			local outcome = outcomes[i] or bench_outcome(bench, roles, status_module)
 			if sited[i] then
 				outcome.built = check_built(sited[i], template)
+				for _, cell in ipairs(sited[i].earthwork and sited[i].earthwork.fills or {}) do
+					outcome.filled = core.get_node(cell).name
+				end
 				outcome.after = roles.load_project(bench)
 			end
 			record.benches[#record.benches + 1] = outcome
@@ -262,7 +334,7 @@ local function watch(area, record, emit, done)
 		for i, bench in ipairs(benches) do
 			local project = roles.load_project(bench)
 			if sited[i] then
-				limit = WATCH_SECONDS + BUILD_SECONDS
+				limit = WATCH_SECONDS + (tonumber(core.settings:get("lv_probe_builder_build_seconds")) or DEFAULT_BUILD_SECONDS)
 				-- It moves on to another building, at another site, when this one is done.
 				if project and project.pos and vector.equals(project.pos, sited[i].pos)
 					and project.state ~= "returning" then
@@ -274,6 +346,7 @@ local function watch(area, record, emit, done)
 				local outcome = bench_outcome(bench, roles, status_module)
 				outcomes[i] = outcome
 				if outcome.report then
+					if core.settings:get_bool("lv_probe_builder_earthwork", false) then roughen(bench, project) end
 					outcome.not_stocked = stock_chests(bench, outcome.report)
 					sited[i] = project
 					waiting = true
@@ -283,6 +356,18 @@ local function watch(area, record, emit, done)
 			end
 		end
 		if not waiting or core.get_gametime() - started >= limit then return finish() end
+		for i, bench in ipairs(benches) do
+			local owner = core.get_meta(bench):get_string("villager")
+			local entity = owner ~= "" and villager_with_id(bench, owner)
+			if entity and sited[i] then
+				local trail = outcomes[i].trail or {}
+				outcomes[i].trail = trail
+				local at = pos_text(vector.round(entity.object:get_pos()))
+				if trail[#trail] ~= at then trail[#trail + 1] = at end
+				while #trail > 12 do table.remove(trail, 1) end
+				outcomes[i].pouch = entity._villages_farm_pouch
+			end
+		end
 		core.after(WATCH_STEP, step)
 	end
 	step()

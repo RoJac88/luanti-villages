@@ -645,6 +645,28 @@ do
 	world.settings.living_villages_builder_capacity = nil
 end
 
+-- With a short reach it does what it can from where it stands before walking on, and every
+-- layer still finishes before the one above it starts.
+do
+	world.settings.living_villages_builder_reach = "6"
+	local entity = prepared()
+	local chest = {x = 0, y = 1, z = 6}
+	support.chest(world, chest, CHEST, {COBBLE .. " 32", BUCKET})
+	local real_set = core.set_node
+	local top_layer_began, order_kept = false, true
+	core.set_node = function(pos, node)
+		if pos.y == 2 and node.name == COBBLE then top_layer_began = true end
+		if pos.y == 1 and node.name == COBBLE and top_layer_began then order_kept = false end
+		return real_set(pos, node)
+	end
+	local walks_before = #vanilla.walks
+	assert(run_until(entity, project_gone_or("returning")))
+	core.set_node = real_set
+	assert(built_right() and order_kept)
+	assert(#vanilla.walks - walks_before <= 10, "walks: " .. (#vanilla.walks - walks_before))
+	world.settings.living_villages_builder_reach = nil
+end
+
 -- Something foreign in a cell, once started: it stops and says where, and carries on when it goes.
 do
 	local entity = prepared()
@@ -696,7 +718,7 @@ do
 	local chest = {x = 0, y = 1, z = 6}
 	support.chest(world, chest, CHEST, {COBBLE .. " 32", BUCKET})
 	local first = {x = SITE.x, y = 1, z = SITE.z}
-	local mob = {get_pos = function() return {x = first.x, y = 1, z = first.z} end, get_luaentity = function() return {name = "mobs_mc:cow"} end}
+	local mob = {get_pos = function() return {x = first.x, y = 1, z = first.z} end, get_luaentity = function() return {name = "mobs_mc:cow", is_mob = true} end}
 	table.insert(world.objects, mob)
 	assert(run_until(entity, function() return builder.load_project(BENCH_POS).state == "building" end))
 	for _ = 1, 8 do advance(entity, 1) end
@@ -715,14 +737,66 @@ do
 	end
 end
 
--- Nowhere to stand: it says so rather than wandering.
+-- A chest's display entity is always there, and is no one to wait for (seen on a blacksmith,
+-- whose window sits over its chest). Someone who stays in the way is, and it says so.
+do
+	local entity = prepared()
+	local chest = {x = 0, y = 1, z = 6}
+	support.chest(world, chest, CHEST, {COBBLE .. " 32", BUCKET})
+	local below = {x = SITE.x, y = 1, z = SITE.z}
+	local display = {get_pos = function() return below end, get_luaentity = function() return {name = "mcl_chests:chest"} end}
+	table.insert(world.objects, display)
+	assert(run_until(entity, project_gone_or("returning")))
+	assert(built_right())
+	display.get_pos = function() return nil end
+
+	entity = prepared()
+	support.chest(world, chest, CHEST, {COBBLE .. " 32", BUCKET})
+	local water_cell = {x = SITE.x + 2, y = 1, z = SITE.z + 2}
+	local player = {get_pos = function() return below end, is_player = function() return true end}
+	table.insert(world.objects, player)
+	assert(run_until(entity, function() return builder.report(entity).stuck == "occupied" end))
+	assert(world.name(below) == "air", "not on top of a player")
+	assert(world.name(water_cell) == "air", "and the water waits for the walls")
+	assert(dofile("builder_status.lua").formspec(builder.report(entity)):find("standing where", 1, true))
+	player.get_pos = function() return nil end
+	assert(run_until(entity, project_gone_or("returning")))
+	assert(built_right())
+end
+
+-- A site it has never got to, however near its bench, is untouched, and it finds another.
+-- It keeps away from that one for a while, not for good.
 do
 	local entity = prepared()
 	local chest = {x = 0, y = 1, z = 6}
 	support.chest(world, chest, CHEST, {COBBLE .. " 32", BUCKET})
 	assert(run_until(entity, function() return builder.load_project(BENCH_POS).state == "building" end))
+	-- The chest is in reach of its first walk, so the failure is only to the site.
+	entity.fail_walks = true
+	assert(run_until(entity, function() return builder.load_project(BENCH_POS).state == "finding_site" end, 30))
+	local project = builder.load_project(BENCH_POS)
+	assert(project.pos == nil and not project.started and #project.avoid == 1)
+	assert(project.avoid[1].x0 == SITE.x and project.avoid[1].expires > world.now)
+	for z = 0, 4 do
+		for x = 0, 4 do assert(world.name({x = SITE.x + x, y = 1, z = SITE.z + z}) == "air", "not a block placed") end
+	end
+	entity.fail_walks = nil
+	assert(run_until(entity, function() return builder.load_project(BENCH_POS).pos ~= nil end, 90))
+	local next_site = builder.load_project(BENCH_POS).pos
+	assert(next_site.x + 4 < SITE.x - 3 or next_site.x > SITE.x + 7 or next_site.z + 4 < SITE.z - 3 or next_site.z > SITE.z + 7)
+end
+
+-- Nowhere to stand: it says so rather than wandering.
+do
+	local entity = prepared()
+	local chest = {x = 0, y = 1, z = 6}
+	support.chest(world, chest, CHEST, {COBBLE .. " 32", BUCKET})
+	assert(run_until(entity, function() return world.name({x = SITE.x, y = 1, z = SITE.z}) == COBBLE end))
+	-- From the ring it can reach all of this hut, so take it away first.
+	entity.object:set_pos({x = -30, y = 1, z = -30})
 	entity.fail_walks = true
 	assert(run_until(entity, function() return builder.report(entity).stuck == "site" end, 60))
+	assert(builder.load_project(BENCH_POS).pos.x == SITE.x, "what it has begun, it keeps")
 	local form = dofile("builder_status.lua").formspec(builder.report(entity))
 	assert(form:find("cannot get to the site", 1, true))
 	entity.fail_walks = nil

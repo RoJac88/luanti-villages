@@ -51,6 +51,9 @@ local HOLD_SECONDS = 2
 local CHEST_REACH = 3
 local SKIP_SECONDS = 60
 local DEFER_SECONDS = 10
+-- Walks to a site before giving up on one it has never reached, and how long it then keeps away.
+local SITE_ATTEMPTS = 5
+local AVOID_SECONDS = 1800
 local DEFAULT_REACH = 14
 local DEFAULT_CAPACITY = 256
 local DEFAULT_BLOCK_SECONDS = 1
@@ -239,6 +242,15 @@ local function reserve(bench, rect)
 	end)
 end
 
+-- Adds the sites this bench has found it cannot walk to, while it keeps away from them.
+local function with_avoided(rects, bench)
+	local now = core.get_gametime()
+	for _, rect in ipairs((M.load_project(bench) or {}).avoid or {}) do
+		if rect.expires > now then rects[#rects + 1] = rect end
+	end
+	return rects
+end
+
 local function site_request(bench, building)
 	local measured = measure(building)
 	if not measured then return nil end
@@ -256,7 +268,7 @@ local function site_request(bench, building)
 		range = config.range,
 		bench = bench,
 		center = center,
-		reserved = live_reservations(record, pos_key(bench)),
+		reserved = with_avoided(live_reservations(record, pos_key(bench)), bench),
 	}
 end
 
@@ -340,6 +352,12 @@ local function start_search(self, session, bench, project)
 		local current = M.load_project(bench)
 		if not current or current.building ~= project.building then return end
 		if not found then
+			-- Why, for whoever looks into a Builder that will not start.
+			local reasons = {}
+			for reason, count in pairs(report or {}) do reasons[#reasons + 1] = reason .. " " .. count end
+			table.sort(reasons)
+			core.log("action", string.format("[living_villages] builder %s found no site for a %s: %s",
+				tostring(self._id), project.building, table.concat(reasons, ", ")))
 			current.state = "no_site"
 			save_project(bench, current)
 			return
@@ -508,11 +526,12 @@ local function inside(box, pos)
 	return pos.x >= box.x0 - 0.5 and pos.x <= box.x1 + 0.5 and pos.z >= box.z0 - 0.5 and pos.z <= box.z1 + 0.5
 end
 
--- Whether a player or mob stands in the cell.
+-- Whether a player or mob stands in the cell. Only those: a dropped item or a chest's own
+-- display entity, which never goes away, is nothing to wait for.
 local function occupied(pos)
 	for _, object in ipairs(core.get_objects_inside_radius(pos, 2.5)) do
 		local entity = object.get_luaentity and object:get_luaentity()
-		if not (entity and entity.name == "__builtin:item") then
+		if not entity or entity.is_mob then
 			local at = object:get_pos()
 			if at and math.abs(at.x - pos.x) < 0.8 and math.abs(at.z - pos.z) < 0.8
 				and at.y > pos.y - 2 and at.y < pos.y + 0.5 then
@@ -585,6 +604,22 @@ local function collect(self, session, bench, project, now)
 		return
 	end
 	if walk_to(self, session, best, now) then session.stuck = nil else session.stuck = "chest" end
+end
+
+-- The search only reads the ground, so it can choose a site across a river or up a cliff.
+-- Nothing has been done to it yet, so it looks for another. The site is not ruled out for
+-- good, as the player may make a way there.
+local function give_up_site(self, session, bench, project, box)
+	core.log("action", string.format("[living_villages] builder %s cannot get to %s for a %s",
+		tostring(self._id), core.pos_to_string(project.pos), project.building))
+	box.expires = core.get_gametime() + AVOID_SECONDS
+	project.avoid = project.avoid or {}
+	table.insert(project.avoid, box)
+	project.pos, project.rotat, project.surface_mat, project.earthwork = nil, nil, nil, nil
+	project.started, project.reached = nil, nil
+	session.queue, session.spot, session.site_attempts, session.retry_at = nil, nil, 0, nil
+	session.stuck = nil
+	set_state(bench, project, "finding_site")
 end
 
 local function finish_building(self, session, bench, project)
@@ -664,6 +699,18 @@ local function next_step(session, now)
 	end
 end
 
+-- A step like this one, as good to do next, that it can reach from where it stands. Any
+-- order within a layer is safe, and walking round a building for each row is what takes time.
+local function reachable_alike(session, step, standing, reach, now)
+	for _, other in ipairs(session.queue) do
+		if other.pass == step.pass and other.kind == step.kind and other.pos.y == step.pos.y
+			and (session.deferred[pos_key(other.pos)] or 0) <= now
+			and vector.distance(standing, other.pos) <= reach then
+			return other
+		end
+	end
+end
+
 local function drop_from_queue(session, step)
 	for i, queued in ipairs(session.queue) do
 		if queued == step then
@@ -679,11 +726,26 @@ local function build(self, session, bench, project, plan, now)
 		return
 	end
 	local step = next_step(session, now)
-	if not step then return end
+	if not step then
+		session.stuck = "occupied"
+		return
+	end
 	local here = self.object:get_pos()
 	local box = footprint_of(project)
-	local standing = session.spot and vector.distance(here, session.spot) <= CHEST_REACH and session.spot or here
-	if inside(box, here) or vector.distance(standing, step.pos) > reach_of() then
+	local at_spot = session.spot and vector.distance(here, session.spot) <= CHEST_REACH
+	if at_spot and not project.reached then
+		project.reached = true
+		save_project(bench, project)
+	end
+	local standing = at_spot and session.spot or here
+	if project.reached and not inside(box, here) then
+		step = reachable_alike(session, step, standing, reach_of(), now) or step
+	end
+	if not project.reached or inside(box, here) or vector.distance(standing, step.pos) > reach_of() then
+		session.site_attempts = (session.site_attempts or 0) + 1
+		if not project.reached and session.site_attempts > SITE_ATTEMPTS then
+			return give_up_site(self, session, bench, project, box)
+		end
 		local spot = ring_spot(session, box, project.pos.y, step.pos, now)
 		if not spot then
 			session.stuck = "site"
@@ -693,6 +755,7 @@ local function build(self, session, bench, project, plan, now)
 		if walk_to(self, session, spot, now) then session.stuck = nil else session.stuck = "site" end
 		return
 	end
+	session.site_attempts = 0
 
 	-- It may have changed since the last look.
 	local missing, blocked = template.compare({

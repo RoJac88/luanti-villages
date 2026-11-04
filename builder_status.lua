@@ -74,6 +74,8 @@ local function summary_lines(report)
 	end
 	if report.stuck == "chest" then
 		lines[#lines + 1] = S("It cannot get to the chest that has what it needs.")
+	elseif report.stuck == "occupied" then
+		lines[#lines + 1] = S("Someone is standing where it needs to build.")
 	elseif report.stuck == "site" then
 		lines[#lines + 1] = S("It cannot get to the site. Keep the ground around the site clear.")
 	end
