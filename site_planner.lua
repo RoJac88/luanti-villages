@@ -6,8 +6,9 @@
 -- blocks of the height of the sites already approved beside it. It returns the
 -- same settlement_info, so terraform, paths and place_schematics are unchanged.
 --
--- It also reserves the church (#132) before the random pick, which replaces
--- church_site.lua's wrapper of create_site_plan, so install this after it.
+-- It also reserves the church (#132), then the Builder's house, before the random
+-- pick, which replaces church_site.lua's wrapper of create_site_plan, so install this
+-- after it.
 --
 -- A site whose footprint plus a margin overlaps a structure (a ruined portal, a
 -- pillager outpost; found by village_fragments.scan_structures, #141) is
@@ -31,6 +32,7 @@ M.config = {
 	neighbor_cells = 1.5, -- approved sites this close (in cells) are neighbors
 	min_buildings = 8, -- including the belltower
 	church_give_up = 60, -- candidates the church may miss before it is no longer reserved
+	builder_give_up = 60, -- and the Builder's house, counted apart
 	relocate_step = 8, relocate_rings = 4, relocate_points = 12, -- where the belltower may move to if the center fails
 	ring_points = 24,
 	angle_jitter = 5, -- degrees
@@ -298,11 +300,28 @@ function M.plan(maxp, minp, pr, env, config)
 	report.center = hall
 	counts[belltower.name] = 1
 
-	local church
-	for _, schem in ipairs(schematics) do
-		if schem.name == "church" then church = schem end
+	-- Built before anything is left to chance, in this order, each until it misses
+	-- too many candidates. The church's first because it is the bigger.
+	local reserved = {}
+	for _, wanted in ipairs({{name = "church", give_up = config.church_give_up},
+			{name = "builder_house", give_up = config.builder_give_up or config.church_give_up}}) do
+		for _, schem in ipairs(schematics) do
+			if schem.name == wanted.name then
+				reserved[#reserved + 1] = {schem = schem, give_up = wanted.give_up, misses = 0}
+			end
+		end
 	end
-	local church_misses = 0
+	local function has_building(name)
+		for _, placed in ipairs(plan) do
+			if placed.name == name then return true end
+		end
+		return false
+	end
+	local function next_reserved()
+		for _, wanted in ipairs(reserved) do
+			if not has_building(wanted.schem.name) and wanted.misses < wanted.give_up then return wanted end
+		end
+	end
 
 	local r = belltower.hsize
 	while r <= radius_max and #plan < number_of_buildings do
@@ -313,8 +332,8 @@ function M.plan(maxp, minp, pr, env, config)
 			local x = math.floor(hall.x + radius * math.cos(angle) + 0.5)
 			local z = math.floor(hall.z + radius * math.sin(angle) + 0.5)
 
-			local reserving = church and not has_church(plan) and church_misses < config.church_give_up
-			local order = reserving and {church} or shuffle(schematics, pr)
+			local reserving = next_reserved()
+			local order = reserving and {reserving.schem} or shuffle(schematics, pr)
 			local placed = false
 			for i = #order, 1, -1 do
 				local schem = order[i]
@@ -332,7 +351,7 @@ function M.plan(maxp, minp, pr, env, config)
 					end
 				end
 			end
-			if reserving and not placed then church_misses = church_misses + 1 end
+			if reserving and not placed then reserving.misses = reserving.misses + 1 end
 			if #plan >= number_of_buildings then break end
 		end
 		r = r + pr:next(2, 5)

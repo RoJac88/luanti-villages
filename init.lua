@@ -31,6 +31,7 @@ local market = dofile(core.get_modpath("living_villages") .. "/market.lua")
 dofile(core.get_modpath("living_villages") .. "/farm_compost.lua")
 -- Registers living_villages:pulpit, likewise.
 dofile(core.get_modpath("living_villages") .. "/pulpit.lua")
+dofile(core.get_modpath("living_villages") .. "/builder_block.lua")
 local MODEL = "living_villages_villager.b3d"
 local BASE = "living_villages_villager_base.png^living_villages_villager_plains.png"
 local SLEEP_BOX = {-0.25, 0, -0.25, 0.25, 0.3, 0.25}
@@ -604,6 +605,7 @@ dofile(core.get_modpath("living_villages") .. "/church_schematic.lua")
 dofile(core.get_modpath("living_villages") .. "/belltower_schematic.lua")
 dofile(core.get_modpath("living_villages") .. "/church_site.lua")
 dofile(core.get_modpath("living_villages") .. "/library_schematic.lua")
+dofile(core.get_modpath("living_villages") .. "/builder_house.lua").install(rawget(_G, "settlements"))
 -- Load order: after every module that edits a building's schematic (the ones above
 -- and belltower_schematic.lua, once it exists): ground_layer builds its variants
 -- from whatever mts holds when the first sandy building is placed.

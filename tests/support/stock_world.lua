@@ -5,6 +5,11 @@
 -- time. Run from the repository root.
 local defs = dofile("tests/fixtures/buildings/node_defs.lua")
 
+-- Two nodes of the Builder's house (builder_house.lua) that no stock schematic holds: a
+-- chest under the name it has once built, and the bench, a copy of the crafting table.
+defs["mcl_chests:chest_small"] = defs["mcl_chests:chest"]
+defs["living_villages:builder_block"] = defs["mcl_crafting_table:crafting_table"]
+
 local stock_world = {defs = defs}
 
 -- The village generator rewrites these names in every building it places

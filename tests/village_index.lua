@@ -67,6 +67,21 @@ settlements.place_schematics({{name = "belltower", pos = vec(500, 7, 0)}, {name 
 assert(placed == 2, "the original placement still runs")
 assert(logs[1]:find("no tavern") and logs[2]:find("tavern at %(510,7,4%)"))
 
+-- A village's record lists what it generated with, for a Builder to keep to.
+do
+	local known = minetest.deserialize(stored)
+	local record = known[#known]
+	assert(#record.buildings == 2 and record.buildings[2].name == "tavern")
+	assert(record.buildings[2].pos.x == 510 and record.buildings[1].pos.y == 7)
+	settlements.place_schematics({{name = "belltower", pos = vec(900, 5, 0), rotat = "90", surface_mat = "mcl_core:sand"}})
+	known = minetest.deserialize(stored)
+	record = known[#known]
+	assert(record.buildings[1].rotat == "90" and record.buildings[1].surface_mat == "mcl_core:sand")
+	table.remove(known)
+	stored = minetest.serialize(known)
+	logs = {}
+end
+
 ok, message = command.func("p", "")
 assert(ok and player_pos.x == 516 and player_pos.y == 19 and player_pos.z == 9, message)
 player_pos = vec(0, 0, 0)

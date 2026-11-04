@@ -30,7 +30,7 @@ local cell_string, check_route = check.cell_string, check.check_route
 
 local BUILDINGS = {
 	"belltower", "blacksmith", "butcher", "church", "farm", "lamp", "large_house",
-	"library", "medium_house", "small_house", "small_house_loomless", "tavern", "well",
+	"library", "medium_house", "small_house", "small_house_loomless", "tavern", "well", "builder_house",
 }
 local DIRECTIONS, ORIGIN, MARGIN = scene.DIRECTIONS, scene.ORIGIN, scene.MARGIN
 -- The time of day each kind of trip is scheduled for (common.lua's SCHEDULE).
@@ -111,7 +111,8 @@ local function test_building(name, rotation, doors_open, roads, slope)
 						kind = "jukebox", pos = pos, field = "_villages_tavern_target",
 						route_field = "_villages_tavern_route", timeofday = TAVERN,
 					})
-				elseif common.is_workstation_node(node_name) or node_name == "living_villages:pulpit" then
+				elseif common.is_workstation_node(node_name) or node_name == "living_villages:pulpit"
+					or node_name == "living_villages:builder_block" then
 					table.insert(targets, {
 						kind = "jobsite " .. node_name:match(":(.*)$"), pos = pos, field = "_jobsite",
 						route_field = "_villages_job_route", timeofday = WORK,

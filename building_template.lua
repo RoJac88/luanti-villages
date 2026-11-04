@@ -147,11 +147,14 @@ function M.plan(cells, options, engine)
 		elseif name == AIR then
 			steps[#steps + 1] = {kind = "clear", pos = cell.pos, pass = PASS_CLEAR}
 		elseif not materials.is_top_half(name) then
+			local pass = pass_of(name, engine)
 			local step = {
 				kind = "place",
 				pos = cell.pos,
-				pass = pass_of(name, engine),
-				node = {name = materials.placed(name), param2 = cell.param2},
+				pass = pass,
+				-- The generator resets water for its biome colour (fix_village_water): a
+				-- schematic's param2 is not what a generated source ends up with.
+				node = {name = materials.placed(name), param2 = pass == PASS_LIQUID and 0 or cell.param2},
 				cost = materials.cost(name),
 				returns = materials.returns(name),
 				on_floor = on_floor or nil,

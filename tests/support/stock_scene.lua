@@ -20,11 +20,26 @@ local FURNISHERS = {
 	belltower = "belltower_schematic.lua",
 }
 
+-- The Builder's house has no stock schematic to extract, so it comes from the mod.
+local function builder_house_fixture()
+	local schematic = dofile("builder_house.lua").schematic()
+	local names, ids, param2, index = {}, {}, {}, {}
+	for i, cell in ipairs(schematic.data) do
+		if not index[cell.name] then
+			names[#names + 1] = cell.name
+			index[cell.name] = #names - 1
+		end
+		ids[i], param2[i] = index[cell.name], cell.param2
+	end
+	return {size = schematic.size, names = names, ids = ids, param2 = param2}
+end
+
 -- Returns {world, size, rise, prefix, beds, outdoors}. slope is 1 for a basin,
 -- -1 for a plateau, nil for flat.
 function M.build(name, rotation, doors_open, roads, slope)
 	-- "small_house_loomless" is the small house furnished without its loom (#223).
-	local fixture = dofile("tests/fixtures/buildings/" .. name:gsub("_loomless$", "") .. ".lua")
+	local fixture = name == "builder_house" and builder_house_fixture()
+		or dofile("tests/fixtures/buildings/" .. name:gsub("_loomless$", "") .. ".lua")
 	local world = stock_world.new()
 	stock_world.install(world)
 	local furnish = {}
