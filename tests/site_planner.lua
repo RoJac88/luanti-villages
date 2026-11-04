@@ -304,6 +304,33 @@ local logged
 for _, line in ipairs(logs) do logged = logged or (line:find("buildings found sites", 1, true) and line:find("rejected", 1, true)) end
 assert(logged, "the village rejection logs its reasons")
 
+-- The Builder's house is reserved after the church, once, for all its max_num of 0.
+do
+	local both = world(function() return 10 end)
+	table.insert(both.settlements.schematic_table,
+		{name = "builder_house", hwidth = 9, hdepth = 10, hheight = 7, hsize = 13, max_num = 0})
+	local village = assert(plan(both))
+	local houses, church_at, house_at = 0, nil, nil
+	for i, entry in ipairs(village) do
+		if entry.name == "church" then church_at = i end
+		if entry.name == "builder_house" then houses, house_at = houses + 1, i end
+	end
+	assert(houses == 1, "one Builder's house: " .. houses)
+	assert(church_at and house_at > church_at, "the church comes first")
+
+	-- A house that fits nowhere gives way, and the village is built without it.
+	local nowhere = world(function() return 10 end)
+	table.insert(nowhere.settlements.schematic_table,
+		{name = "builder_house", hwidth = 9, hdepth = 10, hheight = 7, hsize = 200, max_num = 0})
+	village = assert(plan(nowhere), "a village without a Builder's house is still built")
+	local others = 0
+	for _, entry in ipairs(village) do
+		assert(entry.name ~= "builder_house")
+		if entry.name ~= "belltower" and entry.name ~= "church" then others = others + 1 end
+	end
+	assert(others > 0, "and the other buildings get their turn")
+end
+
 -- No church fits: the village is still built.
 local nochurch = world(function() return 10 end)
 for i, s in ipairs(nochurch.settlements.schematic_table) do

@@ -19,6 +19,7 @@
 # is used, never one a running game holds), LV_PROBE_LIMIT (seconds before giving up;
 # default 3600, or with a census sites x (census seconds + 120) + 600 if larger),
 # LV_PROBE_FARM=1 (with --with-mod) runs farmers' work on a stock farm and a bare plot beside each built village;
+# LV_PROBE_BUILDER=1 (with --with-mod) checks the Builder's house and building_template.lua against each built village;
 # LV_PROBE_JOBS=1 (with --with-mod) runs fishermen's barrels and the composter preference on a platform over each built village;
 # LV_PROBE_FLOCK=1 (with --with-mod) runs the shepherd flock day of each built village (#215;
 # LV_PROBE_FLOCK_EXTRA=N adds N synthetic shepherds),
@@ -98,6 +99,18 @@ if [ "$jobs" -gt 0 ] && { [ "$farm" -gt 0 ] || [ "$flock" -gt 0 ] || [ "$census"
 	echo "LV_PROBE_JOBS cannot be set with LV_PROBE_FARM, LV_PROBE_FLOCK or LV_PROBE_CENSUS" >&2
 	exit 2
 fi
+builder=${LV_PROBE_BUILDER:-0}
+case $builder in
+	''|*[!0-9]*) echo "LV_PROBE_BUILDER wants a whole number" >&2; exit 2 ;;
+esac
+if [ "$builder" -gt 0 ] && [ "$with_mod" != 1 ]; then
+	echo "LV_PROBE_BUILDER needs --with-mod" >&2
+	exit 2
+fi
+if [ "$builder" -gt 0 ] && { [ "$farm" -gt 0 ] || [ "$jobs" -gt 0 ] || [ "$flock" -gt 0 ] || [ "$census" -gt 0 ]; }; then
+	echo "LV_PROBE_BUILDER cannot be set with LV_PROBE_FARM, LV_PROBE_JOBS, LV_PROBE_FLOCK or LV_PROBE_CENSUS" >&2
+	exit 2
+fi
 
 label=$seed
 if [ -n "$chunk" ]; then label=$seed@$(echo "$chunk" | tr ',' '_'); fi
@@ -163,6 +176,7 @@ lv_probe_census = $census
 lv_probe_flock = $flock
 lv_probe_farm = $farm
 lv_probe_jobs = $jobs
+lv_probe_builder = $builder
 lv_probe_flock_extra = $flock_extra
 lv_probe_census_putter = ${LV_PROBE_CENSUS_PUTTER:-0}
 EOT
@@ -175,6 +189,7 @@ visits=$sites
 if [ -n "$chunk" ]; then visits=1; fi
 extra_seconds=$census
 if [ "$flock" -gt 0 ] || [ "$farm" -gt 0 ] || [ "$jobs" -gt 0 ]; then extra_seconds=800; fi
+if [ "$builder" -gt 0 ]; then extra_seconds=120; fi
 limit=${LV_PROBE_LIMIT:-$((visits * (extra_seconds + 120) + 600))}
 if [ -z "${LV_PROBE_LIMIT:-}" ] && [ "$limit" -lt 3600 ]; then limit=3600; fi
 server=

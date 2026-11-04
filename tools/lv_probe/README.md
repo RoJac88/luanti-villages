@@ -233,6 +233,19 @@ On Linux set `LUANTI=/usr/bin/luanti` and `LUANTI_USER=$HOME/.minetest` (or wher
 `mods` directory, as it is not part of VoxeLibre. A run overwrites the tracked `results/` file for its seed and chunk, so restore that
 afterwards with `git checkout` unless you mean to update it.
 
+## The Builder's house and templates
+
+```sh
+LV_PROBE_BUILDER=1 tools/lv_probe/run.sh 2001 --chunk -112,-992 --with-mod
+```
+
+`LV_PROBE_BUILDER=1` (needs `--with-mod`; not with `LV_PROBE_FARM`, `LV_PROBE_JOBS`, `LV_PROBE_FLOCK` or `LV_PROBE_CENSUS`)
+waits 30 s after each built village, then records the bench and the chests by it, with their inventory sizes (`houses`), any
+item or node a building would need that is not registered (`unknown`), and, per building, each cell where what
+`building_template.lua` predicts differs from what the generator placed (`buildings`). The ground layer is not compared, as
+`ground_layer.lua` swaps it. Three differences are expected: a generated `mcl_chests:chest` is `chest_small` by then, the house's
+two chests are `chest_left` and `chest_right`, and water has `param2` 0, which the generator resets.
+
 ## Who takes which job
 
 ```sh

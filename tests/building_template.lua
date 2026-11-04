@@ -220,6 +220,18 @@ for _, name in ipairs(BUILDINGS) do
 	end
 end
 
+-- A source takes no param2 from its schematic, which holds 7 where a generated one has 0.
+do
+	local sources = 0
+	for _, step in ipairs(plan_of("well", "90").steps) do
+		if step.kind == "place" and step.node.name == "mcl_core:water_source" then
+			sources = sources + 1
+			assert(step.node.param2 == 0)
+		end
+	end
+	assert(sources == 4)
+end
+
 -- Built from nothing on flat ground, every building comes out complete, for exactly its
 -- bill, at every rotation.
 for _, name in ipairs(BUILDINGS) do

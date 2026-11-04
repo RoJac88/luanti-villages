@@ -1,5 +1,7 @@
 -- Play-testing aid: /living_villages_goto teleports to a tavern, or to where a
--- village should generate, instead of flying around looking for one.
+-- village should generate, instead of flying around looking for one. The record of a
+-- village is also what a Builder goes by (village_census.lua): each building it
+-- generated with. A record from before that has no `buildings`.
 --
 -- Two sources, best first:
 -- - Villages seen generating while this mod is installed, recorded with
@@ -33,8 +35,13 @@ local function record(settlement_info)
 	local center = settlement_info[1] and settlement_info[1].pos
 	if not center then return end
 	local entry = {center = vector.new(center)}
+	entry.buildings = {}
 	for _, building in ipairs(settlement_info) do
 		if building.name == "tavern" then entry.tavern = vector.new(building.pos) end
+		entry.buildings[#entry.buildings + 1] = {
+			name = building.name, pos = vector.new(building.pos),
+			rotat = building.rotat, surface_mat = building.surface_mat,
+		}
 	end
 	local known = load()
 	table.insert(known, entry)
