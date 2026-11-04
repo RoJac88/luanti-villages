@@ -4,8 +4,10 @@
 -- every building of the village, each cell where what building_template.lua predicts
 -- differs from what the generator placed, so that the rotated cells a Builder works from
 -- are known to be the real ones. Then, with the clock held at work and villagers kept awake,
--- it follows the bench until a Builder has chosen a site: who claimed it, the project, and
--- what its status window reports. Only runs when lv_probe_builder is set.
+-- it sets each bench's project to a small house, which has a door, a bed and a chest, and
+-- follows it: who claimed the bench, the site, what the status window reports, and, with the
+-- bill put in the chests, whether what stands afterwards is what the template says, to the
+-- param2. Only runs when lv_probe_builder is set.
 local core = minetest
 
 local builder = {}
@@ -15,6 +17,8 @@ local SAMPLES = 8
 local VILLAGER = "mobs_mc:villager"
 local BENCH = "living_villages:builder_block"
 local WATCH_SECONDS = 150
+local BUILD_SECONDS = 480
+local BUILDING = "small_house"
 local WATCH_STEP = 5
 local WORK_TIME = 0.4
 
@@ -177,18 +181,73 @@ local function bench_outcome(bench, roles, status_module)
 	return outcome
 end
 
--- Follows every bench until its project has a site or has none, or time is up.
+-- Puts the whole bill in the chests by the bench, as a player would.
+local function stock_chests(bench, report)
+	local chests = core.find_nodes_in_area(vector.offset(bench, -6, -2, -6), vector.offset(bench, 6, 2, 6),
+		{"mcl_chests:chest_left", "mcl_chests:chest_right", "mcl_chests:chest_small"})
+	local lost = {}
+	for _, row in ipairs(report.rows or {}) do
+		local left = row.need
+		for _, chest in ipairs(chests) do
+			if left > 0 then
+				local stack = core.get_meta(chest):get_inventory():add_item("main", row.item .. " " .. left)
+				left = stack:get_count()
+			end
+		end
+		if left > 0 then lost[row.item] = left end
+	end
+	return lost
+end
+
+-- Each cell where the finished building differs from its template: what the Builder placed
+-- against what the same plan asks for.
+local function check_built(project, template)
+	local entry = entry_of(project.building)
+	local schematic = template.prepare_schematic(entry, project.surface_mat)
+	local cells = template.world_cells(schematic, project.pos, project.rotat)
+	local plan = template.plan(cells, {
+		floor_y = project.pos.y, surface_mat = project.surface_mat, earthwork = project.earthwork,
+	})
+	local missing, blocked = template.compare(plan, function(pos) return core.get_node(pos).name end)
+	local result = {left = #missing, blocked = #blocked, wrong_param2 = 0, samples = {}}
+	for _, step in ipairs(plan.steps) do
+		if step.kind == "place" then
+			local node = core.get_node(step.pos)
+			if node.param2 ~= step.node.param2 then
+				result.wrong_param2 = result.wrong_param2 + 1
+				if #result.samples < SAMPLES then
+					result.samples[#result.samples + 1] = pos_text(step.pos) .. " " .. step.node.name
+						.. " wants " .. step.node.param2 .. " has " .. node.param2
+				end
+			end
+		end
+	end
+	return result
+end
+
+-- Follows every bench through its project, or until time is up.
 local function watch(area, record, emit, done)
 	local path = core.get_modpath("living_villages")
 	local roles = dofile(path .. "/builder.lua")
+	local _, template = modules()
 	-- Only for formspec(): this copy's window is never shown, so its handler has no state.
 	local status_module = dofile(path .. "/builder_status.lua")
 	local benches = core.find_nodes_in_area(area.minp, area.maxp, {BENCH})
 	local started = core.get_gametime()
+	local outcomes, sited = {}, {}
+	for _, bench in ipairs(benches) do
+		core.get_meta(bench):set_string("villages_project",
+			core.serialize({state = "finding_site", building = BUILDING}))
+	end
 	local function finish()
 		record.benches = {}
-		for _, bench in ipairs(benches) do
-			record.benches[#record.benches + 1] = bench_outcome(bench, roles, status_module)
+		for i, bench in ipairs(benches) do
+			local outcome = outcomes[i] or bench_outcome(bench, roles, status_module)
+			if sited[i] then
+				outcome.built = check_built(sited[i], template)
+				outcome.after = roles.load_project(bench)
+			end
+			record.benches[#record.benches + 1] = outcome
 		end
 		record.watched_seconds = core.get_gametime() - started
 		core.log("action", string.format("[lv_builder] %d benches followed for %d s",
@@ -199,11 +258,31 @@ local function watch(area, record, emit, done)
 	local function step()
 		core.set_timeofday(WORK_TIME)
 		local waiting = false
-		for _, bench in ipairs(benches) do
+		local limit = WATCH_SECONDS
+		for i, bench in ipairs(benches) do
 			local project = roles.load_project(bench)
-			if not project or project.state == "finding_site" then waiting = true end
+			if sited[i] then
+				limit = WATCH_SECONDS + BUILD_SECONDS
+				-- It moves on to another building, at another site, when this one is done.
+				if project and project.pos and vector.equals(project.pos, sited[i].pos)
+					and project.state ~= "returning" then
+					waiting = true
+				end
+				if project then outcomes[i].last_state = project.state end
+			elseif project and project.state == "requires_materials" and project.pos then
+				-- Waited for its first look at the materials, so the bill reads as a player sees it.
+				local outcome = bench_outcome(bench, roles, status_module)
+				outcomes[i] = outcome
+				if outcome.report then
+					outcome.not_stocked = stock_chests(bench, outcome.report)
+					sited[i] = project
+					waiting = true
+				end
+			else
+				waiting = project == nil or project.state ~= "no_site"
+			end
 		end
-		if not waiting or core.get_gametime() - started >= WATCH_SECONDS then return finish() end
+		if not waiting or core.get_gametime() - started >= limit then return finish() end
 		core.after(WATCH_STEP, step)
 	end
 	step()
