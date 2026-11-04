@@ -48,6 +48,20 @@ and tries the composters again five minutes later if it's still unemployed.
   waits, and reels in. Fishing produces no items. Instead it restocks the fisherman's locked trades
   within its current tier. With no water in range it works at the barrel, like any other villager.
 
+### Reputation and gossip
+
+Villagers remember how you treat them and tell each other, as in Java Minecraft. There is no
+village score: each villager has its own opinion of each player, and what happened only reaches
+others when villagers finish a conversation, a little weaker each time it is retold.
+
+- Trading with a villager or curing a zombie villager lowers that villager's prices for you.
+  Hitting one raises its prices, and killing one raises them with every villager who saw it.
+- Prices change on a trade's first ingredient, and only for you.
+- Iron golems attack a player a villager near them thinks very badly of. Golems you built do not.
+- Grudges and favours fade with time, apart from the gratitude for a cure.
+
+`living_villages_gossip` turns it off. The Lookup Tool shows what a villager remembers.
+
 ### Getting around
 
 For trips to a bed, workstation, farm plot, or fishing spot, villagers first use VoxeLibre's

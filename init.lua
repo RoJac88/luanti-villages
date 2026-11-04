@@ -588,11 +588,13 @@ core.register_on_mods_loaded(function()
 	dofile(core.get_modpath("living_villages") .. "/well.lua").install(def)
 	-- The morning at the bell (#329), the well's visit at the bell; one of the two a morning.
 	dofile(core.get_modpath("living_villages") .. "/bell_hangout.lua").install(def, bell)
+	local gossip = dofile(core.get_modpath("living_villages") .. "/gossip.lua")
+	gossip.install(def, core.registered_entities["mobs_mc:iron_golem"], core.registered_entities["mobs_mc:villager_zombie"])
 	-- After the well and bell, which it only reads; before wander.lua, whose legs it stops.
-	dofile(core.get_modpath("living_villages") .. "/conversation.lua").install(def)
+	dofile(core.get_modpath("living_villages") .. "/conversation.lua").install(def, gossip)
 	-- Outermost, so it sees "walk" after everything else has had its say.
 	dofile(core.get_modpath("living_villages") .. "/wander.lua")(def)
-	dofile(core.get_modpath("living_villages") .. "/diagnostic.lua")(def, flock, navigation_api, farmer)
+	dofile(core.get_modpath("living_villages") .. "/diagnostic.lua")(def, flock, navigation_api, farmer, gossip)
 	dofile(core.get_modpath("living_villages") .. "/paths.lua").install(def, path_storage)
 	dofile(core.get_modpath("living_villages") .. "/floor_guard.lua")(def)
 end)

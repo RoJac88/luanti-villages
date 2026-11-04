@@ -233,7 +233,7 @@ blocked("sleep order", function(v) v.order = "sleep" end)
 blocked("church", function(v) v._villages_church = {} end)
 blocked("seat", function(v) v._villages_seat = {} end)
 blocked("tavern trip", function(v) v._villages_tavern_target = {} end)
-blocked("keeper", function(v) v._villages_keeper = true end)
+blocked("keeper before its day starts", function(v) v._villages_keeper = true end)
 blocked("following", function(v) v.following = {} end)
 blocked("trading", function(v) v._trading_players = {p = true} end)
 blocked("on the way to the well", function(v) v._villages_well = {} end)
@@ -316,7 +316,7 @@ tavern_blocked("going to a chair", function(v) v._villages_seat = {} end)
 tavern_blocked("seated", function(v) v._villages_seat, v._villages_seated = {}, true end)
 tavern_blocked("eating", function(v) v._villages_meal = {} end)
 tavern_blocked("waiting to be served", function(v) v._villages_seated_at = 1 end)
-tavern_blocked("keeper", function(v) v._villages_keeper = true end)
+tavern_blocked("keeper away from its jukebox", function(v) v._villages_keeper = true end)
 tavern_blocked("keeper seeking its jukebox", function(v) v._villages_keeper_target = {} end)
 -- A guest that takes a chair mid-talk ends it and keeps the order the tavern set.
 do
@@ -433,6 +433,118 @@ do
 	tick(c); tick(d)
 	assert(not c._villages_talk and not d._villages_talk and c.order == nil, "turning the setting off ends talks")
 	setting = true
+end
+
+-- A tavern keeper talks off shift, with whoever else is idle then, and never on shift.
+do
+	local function keepers()
+		clear()
+		local a, b = villager(0, 0), villager(2, 0)
+		a._villages_keeper, b._villages_keeper = true, true
+		return a, b
+	end
+	local a, b = keepers()
+	time = 7500 / 24000
+	assert(run_until_talking({a, b}), "keepers talk in their putter hour")
+	a, b = keepers()
+	time = 12000 / 24000
+	assert(run_until_talking({a, b}), "and in their free hours")
+	-- On shift but away from the jukebox: staff() has not given it "work" yet.
+	a, b = keepers()
+	time = 15000 / 24000
+	assert(not run_until_talking({a, b}), "not while heading back to the jukebox")
+	-- Others work through a keeper's free hours on an ordinary day.
+	clear()
+	local keeper, worker = villager(0, 0), villager(2, 0)
+	keeper._villages_keeper = true
+	time = 12000 / 24000
+	assert(not run_until_talking({keeper, worker}), "a worker in its work stage does not stop for a keeper")
+	-- On a holiday the same hours are the bell gathering, so a villager there is free.
+	clear()
+	keeper, worker = villager(0, 0), villager(2, 0)
+	keeper._villages_keeper, worker._villages_bell = true, {arrived = true}
+	day = 4
+	assert(run_until_talking({keeper, worker}), "a keeper off shift talks with a villager at the bell")
+	time, day = 6000 / 24000, 1
+end
+
+-- On shift at its jukebox a keeper talks with standing guests, and keeps its "work" order
+-- throughout: keeper.status answers "staffing the tavern", and so meals are served, only with it.
+do
+	clear()
+	local keeper, visitor = villager(0, 0), guest(villager(2, 0))
+	keeper._villages_keeper, keeper.order = true, "work"
+	time = TAVERN
+	assert(run_until_talking({keeper, visitor}), "a keeper on shift talks with a guest")
+	assert(keeper.order == "work", "the conversation leaves its order")
+	assert(visitor.order == "stand", "the guest holds as usual")
+	assert(tick(keeper) == false, "it holds still")
+	assert(keeper.order == "work" and keeper._villages_talk, "and still works while it talks")
+	assert(keeper.target_yaw, "it turns to the guest")
+	now = now + 30
+	tick(keeper); tick(visitor)
+	assert(not keeper._villages_talk and not visitor._villages_talk, "it ends as usual")
+	assert(keeper.order == "work", "with the order as it was")
+	assert(visitor.order == "stand", "the guest's stand was the tavern's, so it stays")
+
+	-- Taken away mid-talk: a trade, or the shift ending.
+	now = now + 400
+	assert(run_until_talking({keeper, visitor}))
+	keeper._trading_players = {p = true}
+	tick(keeper)
+	assert(not keeper._villages_talk and keeper.order == "work", "a trade takes it, still working")
+	keeper._trading_players = nil
+	tick(visitor)
+	now = now + 400
+	assert(run_until_talking({keeper, visitor}))
+	keeper.order = nil
+	tick(keeper)
+	assert(not keeper._villages_talk, "losing its order (off the jukebox) ends it")
+	time = 6000 / 24000
+end
+
+-- Gossip passes when a conversation runs its time, once for the group, and not otherwise.
+do
+	clear()
+	local exchanges = {}
+	local inner = {
+		on_activate = function() end, on_die = function() end, do_custom = function() end,
+		get_staticdata = function() return {} end,
+	}
+	conversation.install(inner, {exchange = function(members) exchanges[#exchanges + 1] = members end})
+	local function run(group)
+		for _ = 1, 400 do
+			for _, v in ipairs(group) do inner.do_custom(v, conversation.SCAN_MAX + 1) end
+			if group[1]._villages_talk then return end
+		end
+		assert(false, "no conversation formed")
+	end
+	local a, b = villager(0, 0), villager(2, 0)
+	run({a, b})
+	local partner = a._villages_talk.group.members
+	assert(#partner == 2)
+	inner.do_custom(a, 0.1)
+	assert(#exchanges == 0, "nothing passes while they talk")
+	now = now + 30
+	inner.do_custom(a, 0.1)
+	assert(#exchanges == 1 and #exchanges[1] == 2, "the first to finish passes it on for both")
+	local seen = {}
+	for _, member in ipairs(exchanges[1]) do seen[member] = true end
+	assert(seen[a] and seen[b], "both are in it")
+	inner.do_custom(b, 0.1)
+	assert(#exchanges == 1 and not b._villages_talk, "only once")
+
+	-- Interrupted: a walk takes a member before the time is up.
+	now = now + 1000
+	exchanges = {}
+	run({a, b})
+	a.state = "walk"
+	inner.do_custom(a, 0.1)
+	inner.do_custom(b, 0.1)
+	now = now + 30
+	inner.do_custom(b, 0.1)
+	a.state = "stand"
+	assert(#exchanges == 0, "an interrupted conversation passes nothing")
 end
 
 -- Reactivation: a reloaded villager starts with nothing.

@@ -81,8 +81,15 @@ living_villages_bell_hangout (Villagers gather at the bell) bool true
 living_villages_player_meals (Players are served a meal at tavern tables) bool true
 
 # Idle villagers standing near each other sometimes stop and face one another in
-# twos and threes for a few seconds, as if talking (#242). Atmosphere only.
+# twos and threes for a few seconds, as if talking (#242). Turned off, gossip does not spread either.
 living_villages_conversation (Villagers converse) bool true
+
+# Villagers remember how players treat them and tell each other when they talk, as in Java
+# Minecraft: trading and curing lower a player's prices with that villager, hitting and killing
+# raise them, and iron golems attack a player a nearby villager thinks very badly of. Golems a
+# player built never do. Turned off, nothing is noted or passed on and prices stay as they are;
+# what villagers already remember is kept.
+living_villages_gossip (Villagers gossip about players) bool true
 
 # The largest field a farmer tills around its composter, in plots. It only extends a field onto
 # dirt or grass beside it that water will keep wet, and never onto a path. A field already bigger
