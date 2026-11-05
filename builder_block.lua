@@ -1,5 +1,6 @@
 -- The Builder's bench, the block a villager claims to become a Builder. It looks like
--- a tinted crafting table and does nothing itself. Registered at load time, not from
+-- a tinted crafting table, with no crafting grid: its right-click is builder_bench_menu.lua's,
+-- which is installed only while Builders are on. Registered at load time, not from
 -- register_on_mods_loaded: register_node checks the current mod name.
 --
 -- A generated builder's house needs a double chest, and placing a schematic gives one

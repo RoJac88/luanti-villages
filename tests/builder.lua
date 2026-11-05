@@ -1050,6 +1050,27 @@ do
 	builder.set_source(BENCH_POS, CATALOG.SCHEMEDIT)
 	assert(builder.load_project(BENCH_POS).state == "building")
 
+	-- What the bench's window reads: the stock mix, with no weights, and what is next.
+	do
+		local stock_options = builder.options(BENCH_POS, "stock")
+		assert(#stock_options.rows >= 1 and stock_options.directory == nil)
+		local hut_row = stock_options.rows[1]
+		assert(hut_row.name == "hut" and hut_row.share == 1 and hut_row.is_next and hut_row.weight == nil)
+		assert(hut_row.size.x == 5 and hut_row.blocks > 0)
+
+		-- A directory's, with what was built and why one cannot be.
+		records[1] = records[1] or {center = BENCH_POS}
+		records[1].built_custom = {schemedit = {cabin = 2}, folder = {cabin = 9}}
+		local listed = builder.options(BENCH_POS, CATALOG.SCHEMEDIT)
+		assert(listed.directory == DIR and listed.manifest_problem == nil)
+		local by_name = {}
+		for _, row in ipairs(listed.rows) do by_name[row.name] = row end
+		assert(by_name.cabin.is_next and by_name.cabin.weight == 1 and by_name.cabin.share == 1 and by_name.cabin.built == 2)
+		assert(by_name.cabin.size.x == 3 and by_name.cabin.materials[1].item)
+		assert(by_name.alien.problem.code == "unknown_nodes" and not by_name.alien.is_next and by_name.alien.share == 0)
+		assert(#builder.options(BENCH_POS, CATALOG.FOLDER).rows == 0)
+	end
+
 	-- A copy whose nodes have gone is dropped rather than built with holes.
 	builder.set_source(BENCH_POS, nil)
 	files[CATALOG.snapshot_path("halien")] = "alien"

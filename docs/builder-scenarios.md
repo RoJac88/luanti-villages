@@ -101,3 +101,16 @@ Stock the chest.
 - Profession blocks are left out. Put a stonecutter or a lectern where one belongs, and an unemployed villager
   takes it. The church has no pulpit until you place one.
 - Its next building keeps the village's mix: `village_census.lua` counts what it built.
+
+## The bench's menu
+
+Right-click a bench. What the tests cannot show is how the window looks in a real client.
+
+1. **Layout:** the three tabs, the table's columns lining up with its header row, nothing overlapping the panel on the right, and a long schematic name or problem text staying inside its area.
+2. **Default tab:** one row per stock building, with shares, no weights and `>` on the next. **Build from these** is replaced by a green line while the tab is in use.
+3. **Schemedit tab:** export something with a Schematic Creator, press **Refresh** and it is listed. Select it: size, blocks and most-used materials show.
+4. **A schematic it cannot use:** one holding a portal node is marked `x` in red, and says which node.
+5. **Weights:** set one and press **Set**, or Enter in the field. The window stays open, the shares change and `<world>/schems/builder_projects.json` has it. Try `lots`: it says what a weight is and changes nothing.
+6. **Project folder tab:** opening it creates `<world>/builder_schems`.
+7. **Build from these:** with a project waiting for materials, it drops that project and picks from the new source. With one being built, that one is finished first.
+8. **Permissions:** without `server` the weight is a label. On a bench protected against you, tabs still work, but there is no button.
