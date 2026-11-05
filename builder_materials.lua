@@ -59,9 +59,14 @@ local CROPS = {
 	potato = "mcl_farming:potato_item",
 }
 
+-- A door's "b"ottom or "t"op half. Several mods register doors: mcl_bamboo, mcl_crimson...
+function M.is_door_half(name, half)
+	return name:match("^[%w_]+:.*_door_" .. half .. "_%d$") ~= nil
+end
+
 -- Second halves, paid for with their first half.
 local function is_free_half(name)
-	return name:match("^mcl_doors:.*_door_t_%d$") ~= nil or name:match("^mcl_beds:bed_.*_top$") ~= nil
+	return M.is_door_half(name, "t") or name:match("^mcl_beds:bed_.*_top$") ~= nil
 end
 
 function M.is_top_half(name)
@@ -69,7 +74,7 @@ function M.is_top_half(name)
 end
 
 function M.is_bottom_half(name)
-	return name:match("^mcl_doors:.*_door_b_%d$") ~= nil or name:match("^mcl_beds:bed_.*_bottom$") ~= nil
+	return M.is_door_half(name, "b") or name:match("^mcl_beds:bed_.*_bottom$") ~= nil
 end
 
 -- The crop a node is a stage of, or nil.
@@ -83,7 +88,7 @@ local function base_item(name)
 	if name == "mcl_villages:stonebrickcarved" then return "mcl_core:stonebrickcarved" end
 	if DIRT_FAMILY[name] or name == "mcl_farming:soil" or name == "mcl_farming:soil_wet" then return DIRT end
 
-	local door = name:match("^(mcl_doors:.*_door)_[bt]_%d$")
+	local door = name:match("^([%w_]+:.*_door)_[bt]_%d$")
 	if door then return door end
 	local trapdoor = name:match("^(mcl_doors:.*trapdoor)_open$")
 	if trapdoor then return trapdoor end
@@ -111,13 +116,11 @@ function M.identity(name)
 	local crop = crop_of(name)
 	if crop then return "crop:" .. crop end
 	-- A door's two halves share an item but are not the same cell.
-	if name:match("^mcl_doors:.*_door_t_%d$") then return base_item(name) .. ":top" end
+	if M.is_door_half(name, "t") then return base_item(name) .. ":top" end
 	return base_item(name)
 end
 
--- item name -> count, or nil if the node costs nothing.
-function M.cost(name)
-	if name == "air" or is_free_half(name) or M.excluded(name) then return nil end
+local function items_for(name)
 	if LIQUIDS[name] then return {[LIQUIDS[name]] = 1} end
 	local crop = crop_of(name)
 	if crop then return {[CROPS[crop]] = 1} end
@@ -125,6 +128,48 @@ function M.cost(name)
 	if flower then return {["mcl_flowerpots:flower_pot"] = 1, ["mcl_flowers:" .. flower] = 1} end
 	if name:match("^mcl_stairs:slab_.*_double$") then return {[base_item(name)] = 2} end
 	return {[base_item(name)] = 1}
+end
+
+-- item name -> count, or nil if the node costs nothing.
+function M.cost(name)
+	if name == "air" or is_free_half(name) or M.excluded(name) then return nil end
+	return items_for(name)
+end
+
+-- An item a player can hold: registered, and not one of the variants hidden from the
+-- creative inventory, such as a wall sign or a composter's fill level.
+local function holdable(item, engine)
+	local def = engine.registered_items and engine.registered_items[item] or engine.registered_nodes[item]
+	if not def then return false end
+	return not (def.groups and (def.groups.not_in_creative_inventory or 0) > 0)
+end
+
+-- The one item a node always drops, or nil. Random or empty drops say nothing.
+local function sure_drop(def)
+	local drop = def and def.drop
+	if type(drop) == "table" and drop.items and #drop.items == 1 and not drop.items[1].rarity then
+		drop = drop.items[1].items and #drop.items[1].items == 1 and drop.items[1].items[1]
+	end
+	return type(drop) == "string" and drop:match("^%S+") or nil
+end
+
+-- What a node of a player's schematic costs: the rule table above was written for stock
+-- buildings, so it is checked against what exists here. Job blocks are built and paid for,
+-- since a player who put one in a schematic wants it. Returns item name -> count, nil for
+-- a node that costs nothing, or nil and "no_item" for one no player can supply.
+function M.custom_cost(name, engine)
+	engine = engine or core
+	local def = engine.registered_nodes[name]
+	if name == "air" or is_free_half(name) or (def and def.liquidtype == "flowing") then return nil end
+	local cost = {}
+	for item, count in pairs(items_for(name)) do
+		if not holdable(item, engine) then
+			item = sure_drop(engine.registered_nodes[item] or def)
+			if not item or not holdable(item, engine) then return nil, "no_item" end
+		end
+		cost[item] = (cost[item] or 0) + count
+	end
+	return cost
 end
 
 -- What placing it hands back, as item name -> count, or nil.

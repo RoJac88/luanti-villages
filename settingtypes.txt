@@ -78,6 +78,11 @@ living_villages_builder_site_gap (Builder's site gap) int 20 4 60
 # flat. They cost nothing and yield nothing. 0 means level sites only.
 living_villages_builder_earthwork_limit (Builder's earthwork limit) int 12 0 64
 
+# Where a bench set to its project folder finds schematics, relative to the world folder. Mod
+# security stops a mod reading anywhere outside the world, symlinks included, so a path that
+# leaves it is refused and the default used.
+living_villages_builder_schem_dir (Builder's project folder) string builder_schems
+
 # Sheep each shepherd with a loom keeps and herds (#215): they follow it about the
 # village by day and are left to graze while it is at church, the bell, the tavern or
 # in bed. 0 turns shepherds' flocks off, sheep already marked are then let go, and

@@ -111,7 +111,7 @@ end
 local function top_half_of(cell, by_pos)
 	if not materials.is_bottom_half(cell.name) then return nil end
 	local pos = cell.pos
-	if cell.name:find("^mcl_doors:") then
+	if materials.is_door_half(cell.name, "b") then
 		return by_pos[key({x = pos.x, y = pos.y + 1, z = pos.z})]
 	end
 	local facing = FACING[cell.param2 % 4]
