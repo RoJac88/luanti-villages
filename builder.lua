@@ -210,11 +210,12 @@ local function measure(project)
 	local entry = schematic_entry(project.building)
 	local schematic = entry and template.prepare_schematic(entry, DEFAULT_SURFACE)
 	if not schematic then return nil end
-	local blocks = 0
+	local blocks, bill = 0, {}
 	for _, cell in ipairs(schematic.data) do
 		if cell.name ~= "air" then blocks = blocks + 1 end
+		for item, count in pairs(materials.cost(cell.name) or {}) do bill[item] = (bill[item] or 0) + count end
 	end
-	measures[id] = {size = schematic.size, blocks = blocks}
+	measures[id] = {size = schematic.size, blocks = blocks, materials = catalog.sorted_materials(bill)}
 	return measures[id]
 end
 
@@ -380,8 +381,8 @@ local function pick_from(scan, record, source)
 end
 
 -- What a bench could build from a source, for its menu: {rows, directory, manifest_problem}.
--- A row is {name, share, built, is_next, size, blocks}, and for a directory weight, materials
--- and problem too. The stock buildings have no weights: a village's mix sets their shares.
+-- A row is {name, share, built, is_next, size, blocks, materials}, and for a directory weight,
+-- problem and image too. The stock buildings have no weights: a village's mix sets their shares.
 function M.options(bench, source)
 	local record = village_index and village_index.read_village(bench, VILLAGE_RADIUS)
 	local rows = {}
@@ -394,7 +395,7 @@ function M.options(bench, source)
 			rows[#rows + 1] = {
 				name = entry.name, weight = entry.weight, share = entry.share, built = built[entry.name] or 0,
 				is_next = entry.name == next_name, problem = entry.problem,
-				size = measured.size, blocks = measured.blocks, materials = measured.materials,
+				size = measured.size, blocks = measured.blocks, materials = measured.materials, image = entry.image,
 			}
 		end
 		return {rows = rows, directory = scan.directory, manifest_problem = scan.manifest_problem}
@@ -408,7 +409,7 @@ function M.options(bench, source)
 		local measured = measure({building = name}) or {}
 		rows[#rows + 1] = {
 			name = name, share = share, built = counts[name] or 0, is_next = name == next_name,
-			size = measured.size, blocks = measured.blocks,
+			size = measured.size, blocks = measured.blocks, materials = measured.materials,
 		}
 	end
 	table.sort(rows, function(a, b) return a.name < b.name end)

@@ -7,6 +7,7 @@ local BENCH = "living_villages:builder_block"
 local settings, files, dirs, shown, closed = {}, {}, {}, {}, 0
 local protected, privileged, bench_there, overrides, receive, leave = false, true, true, nil, nil, nil
 local stored = {}
+local media, media_accepted = {}, true
 
 minetest = {
 	get_modpath = function(name)
@@ -27,6 +28,10 @@ minetest = {
 		return found
 	end,
 	read_schematic = function() return nil end,
+	dynamic_add_media = function(args, callback)
+		media[#media + 1] = {args = args, callback = callback}
+		return media_accepted
+	end,
 	safe_file_write = function(path, content) files[path] = content return true end,
 	write_json = function(value) stored[#stored + 1] = value return "json" .. #stored end,
 	parse_json = function(text) return stored[tonumber(text:match("%d+") or 0)] end,
@@ -296,6 +301,84 @@ do
 	send({refresh = "Refresh"})
 	assert(has(last(), "Cottage") and not has(last(), "Shed"))
 	rows.schemedit = kept
+end
+
+-- A picture: sent on selection, shown on arrival, in place of the materials and in its shape.
+do
+	local DIR = directories[catalog.SCHEMEDIT]
+	local PNG = "\137PNG\r\n\26\n\0\0\0\13IHDR\0\0\1\144\0\0\0\200"
+	files[DIR .. "/cottage.png"] = PNG
+	-- Off the cottage before it has a picture, so that nothing goes out yet.
+	send({refresh = "Refresh"})
+	send({projects = "CHG:3:1"})
+	local with_image = rows.schemedit[1]
+	with_image.image = "cottage.png"
+	media = {}
+	send({projects = "CHG:3:1"})
+	assert(#media == 0, "nothing is sent for what nobody looks at")
+	send({projects = "CHG:2:1"})
+	assert(#media == 1 and media[1].args.to_player == "ann" and media[1].args.filepath == DIR .. "/cottage.png")
+	local texture = media[1].args.filename
+	assert(texture:find("^living_villages_preview_") and texture:find("%.png$"))
+	assert(not has(last(), "]image[9") and has(last(), "50 Cobblestone"), "materials until it arrives")
+
+	-- Looking again while it is on its way does not send it again.
+	send({projects = "CHG:2:1"})
+	assert(#media == 1, "not sent while on its way")
+
+	-- Selecting something else meanwhile: its arrival does not pull the window back.
+	send({projects = "CHG:3:1"})
+	local count = #shown
+	media[1].callback("ann")
+	assert(#shown == count)
+	send({projects = "CHG:2:1"})
+	assert(#media == 1, "not sent twice")
+	assert(has(last(), texture) and not has(last(), "50 Cobblestone"))
+	-- 400 by 200 in a 5 by 2.7 box.
+	assert(has(last(), "image[9.60,2.42;5.00,2.50;" .. texture .. "]"))
+
+	-- Arriving while it is being looked at shows it at once.
+	files[DIR .. "/cottage.png"] = PNG .. "edited"
+	send({refresh = "Refresh"})
+	assert(#media == 2 and not has(last(), "]image[9"))
+	count = #shown
+	media[2].callback("ann")
+	assert(#shown == count + 1 and has(last(), media[2].args.filename))
+
+	-- Another player gets their own copy.
+	overrides.fields.on_rightclick(BENCH_POS, nil, player("bob"), "stack")
+	send({tabs = "2"}, player("bob"))
+	assert(media[3].args.to_player == "bob")
+	leave(player("bob"))
+	-- Not one that closed the window before it came.
+	overrides.fields.on_rightclick(BENCH_POS, nil, player("cy"), "stack")
+	send({tabs = "2"}, player("cy"))
+	send({quit = "true"}, player("cy"))
+	count = #shown
+	media[#media].callback("cy")
+	assert(#shown == count)
+
+	-- Leaving forgets what a client was sent.
+	click()
+	send({tabs = "2"})
+	local before = #media
+	leave(player())
+	click()
+	send({tabs = "2"})
+	assert(#media == before + 1, "a client back again needs it again")
+
+	-- What the engine refuses, or no real picture, leaves the materials.
+	files[DIR .. "/cottage.png"] = PNG .. "again"
+	media_accepted = false
+	send({refresh = "Refresh"})
+	assert(not has(last(), "]image[9") and has(last(), "50 Cobblestone"))
+	media_accepted = true
+	before = #media
+	files[DIR .. "/cottage.png"] = "not a picture at all"
+	send({refresh = "Refresh"})
+	assert(#media == before and not has(last(), "]image[9") and has(last(), "50 Cobblestone"))
+	with_image.image = nil
+	files[DIR .. "/cottage.png"] = nil
 end
 
 -- Too far, or the bench gone: the window closes and nothing is done.

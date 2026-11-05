@@ -7,15 +7,20 @@
 -- inline), rotated by the engine itself onto a VoxelManip that is never written back.
 -- That is the one way to get the rotated param2 exactly as a generated building has it.
 --
--- The steps go in four passes, so nothing is set before what it hangs on:
+-- The steps go in passes, so nothing is set before what it hangs on:
 -- 0 earthwork and clearing, 1 solid nodes bottom-up, 2 attached nodes and pairs,
--- 3 liquids, which would run out of unfinished walls.
+-- 3 liquids, which would run out of unfinished walls; in a player's schematic,
+-- 4 soil, which dries out without its water, and 5 what grows in it; and last,
+-- 6 job blocks and beds, which bring villagers in to claim them.
 local core = minetest
 local materials = dofile(core.get_modpath("living_villages") .. "/builder_materials.lua")
 
 local M = {}
 
-local PASS_CLEAR, PASS_SOLID, PASS_ATTACHED, PASS_LIQUID = 0, 1, 2, 3
+local PASS_CLEAR, PASS_SOLID, PASS_ATTACHED, PASS_LIQUID, PASS_SOIL, PASS_ROOTED = 0, 1, 2, 3, 4, 5
+-- A villager who claims a job block or a bed in an unfinished building works or sleeps in
+-- the way, and wears paths across it.
+local PASS_CLAIMED = 6
 M.PASS_CLEAR, M.PASS_SOLID, M.PASS_ATTACHED, M.PASS_LIQUID = PASS_CLEAR, PASS_SOLID, PASS_ATTACHED, PASS_LIQUID
 
 local AIR = "air"
@@ -192,6 +197,19 @@ function M.plan(cells, options, engine)
 			steps[#steps + 1] = {kind = "clear", pos = cell.pos, pass = PASS_CLEAR}
 		elseif not materials.is_top_half(name) then
 			local pass = pass_of(name, engine)
+			-- Soil with no water by it soon dries to dirt, so a player's beds wait for their water,
+			-- and what grows in them for the beds.
+			if materials.draws_villagers(name) then
+				pass = PASS_CLAIMED
+			elseif custom and materials.is_soil(name) then
+				pass = PASS_SOIL
+			elseif custom and pass == PASS_ATTACHED then
+				local below = by_pos[key({x = cell.pos.x, y = cell.pos.y - 1, z = cell.pos.z})]
+				if below and materials.is_soil(below.name) then pass = PASS_ROOTED end
+			end
+			-- A player's node can be free, where materials.cost would charge for it.
+			local cost
+			if custom then cost = materials.custom_cost(name, engine) else cost = materials.cost(name) end
 			local step = {
 				kind = "place",
 				pos = cell.pos,
@@ -199,7 +217,7 @@ function M.plan(cells, options, engine)
 				-- The generator resets water for its biome colour (fix_village_water): a
 				-- schematic's param2 is not what a generated source ends up with.
 				node = {name = materials.placed(name), param2 = pass == PASS_LIQUID and 0 or cell.param2},
-				cost = custom and materials.custom_cost(name, engine) or materials.cost(name),
+				cost = cost,
 				custom = custom,
 				returns = materials.returns(name),
 				on_floor = on_floor or nil,
@@ -280,6 +298,24 @@ local function stands(step, found, engine)
 	return step.custom and same_cost(step.cost, materials.custom_cost(found, engine)) or false
 end
 
+local function is_solid(name, engine)
+	local def = engine.registered_nodes[name]
+	return def ~= nil and def.groups ~= nil and (def.groups.solid or 0) > 0
+end
+
+-- A player's soil has to be soil. Dirt counts as the same thing built in a stock building, where
+-- soil stands above the ground and only ever dries, but a bed at floor level would then pass as
+-- the grass already there, and the crops on it would die and be paid for again and again.
+-- Returns whether it is done, and whether it can be done now. Dirt under something solid stays
+-- dirt whatever is done to it, so it counts as done.
+local function soil_state(step, found, get_name, engine)
+	if materials.is_soil(found) then return true, true end
+	if not (materials.is_ground(found) or is_open(found, engine)) then return false, false end
+	local above = get_name({x = step.pos.x, y = step.pos.y + 1, z = step.pos.z})
+	if materials.is_ground(found) and above and is_solid(above, engine) then return true, true end
+	return false, true
+end
+
 -- Compares a plan with the world. `get_name(pos)` returns a node's name there, or nil
 -- for an unloaded one. Returns what is left to do, in order, and the positions where
 -- something foreign is in the way. Unloaded cells count as neither.
@@ -302,10 +338,17 @@ function M.compare(plan, get_name, engine)
 						blocked[#blocked + 1] = step.pos
 					end
 				end
+			elseif step.custom and materials.is_soil(step.node.name) then
+				local done, possible = soil_state(step, found, get_name, engine)
+				if not possible then
+					blocked[#blocked + 1] = step.pos
+				elseif not done then
+					missing[#missing + 1] = step
+				end
 			else
 				local top_found = step.top and get_name(step.top.pos)
 				if not stands(step, found, engine) then
-					local ground = materials.is_dirt(found) or found == plan.surface_mat
+					local ground = materials.is_ground(found) or found == plan.surface_mat
 					local replaceable = is_open(found, engine) or (step.on_floor and ground)
 						or (plan.cut_at[key(step.pos)] and materials.is_dirt(found))
 					if replaceable then

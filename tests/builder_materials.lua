@@ -176,6 +176,11 @@ do
 	-- Hidden variants cost what they drop, a table of one sure thing included.
 	custom("mcl_signs:wall_sign", "mcl_signs:sign")
 	custom("mcl_composters:composter_3", "mcl_composters:composter")
+	-- Soil is the ground worked, for nothing.
+	assert(materials.is_soil("mcl_farming:soil_wet") and materials.is_soil("mcl_farming:soil"))
+	assert(not materials.is_soil("mcl_core:dirt"))
+	local soil_cost, soil_problem = materials.custom_cost("mcl_farming:soil_wet", engine)
+	assert(soil_cost == nil and soil_problem == nil)
 	-- Flowing liquid runs from its source, for nothing.
 	local cost, problem = materials.custom_cost("mcl_core:water_flowing", engine)
 	assert(cost == nil and problem == nil)

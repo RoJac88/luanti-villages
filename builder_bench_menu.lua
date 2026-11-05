@@ -1,6 +1,7 @@
 -- The window a right-click on a Builder's bench opens: which schematics the bench builds from
 -- (the stock buildings, schemedit's directory or the project folder), what each source holds
--- with its share of what gets built, and each building's weight. A tab only looks; a button
+-- with its share of what gets built, each building's weight, and a picture of it if it has one
+-- (builder_preview.lua) or else what it is mostly made of. A tab only looks; a button
 -- puts that source to use, so a player can see what is in one first.
 --
 -- Weights belong to a directory, so they change every bench using it, and need the server
@@ -10,6 +11,7 @@
 local core = minetest
 local S = core.get_translator and core.get_translator("living_villages") or function(message) return message end
 local catalog = dofile(core.get_modpath("living_villages") .. "/builder_catalog.lua")
+local preview = dofile(core.get_modpath("living_villages") .. "/builder_preview.lua")
 
 local M = {}
 
@@ -20,6 +22,7 @@ local BENCH = "living_villages:builder_block"
 local MAX_DISTANCE = 12
 local WIDTH, HEIGHT = 15, 10
 local MATERIALS_SHOWN = 4
+local PICTURE_WIDTH, PICTURE_HEIGHT = 5, 2.7
 local ROW_COLOR, HEADER_COLOR, PROBLEM_COLOR = "#ffffff", "#c8c8c8", "#ff8a80"
 
 local TABS = {
@@ -104,6 +107,11 @@ local function detail_parts(view, row)
 		y = y + 0.42
 	end
 	line(core.colorize("#ffff80", pretty(row.name)))
+	if view.preview then
+		local width, height = preview.fit(view.preview.width, view.preview.height, PICTURE_WIDTH, PICTURE_HEIGHT)
+		parts[#parts + 1] = ("image[%.2f,%.2f;%.2f,%.2f;%s]"):format(x, y - 0.15, width, height, escape(view.preview.texture))
+		y = y + PICTURE_HEIGHT
+	end
 	if row.size then
 		line(S("Size: @1 by @2, @3 high", tostring(row.size.x), tostring(row.size.z), tostring(row.size.y)))
 	end
@@ -113,11 +121,12 @@ local function detail_parts(view, row)
 	if row.is_next then line(core.colorize("#7fe08a", S("Next to be built"))) end
 	if row.problem then
 		y = y + 0.05
-		parts[#parts + 1] = ("textarea[%.2f,%.2f;%.2f,1.6;;;%s]"):format(x, y, w,
+		parts[#parts + 1] = ("textarea[%.2f,%.2f;%.2f,%.1f;;;%s]"):format(x, y, w, view.preview and 1.2 or 1.6,
 			escape(core.colorize(PROBLEM_COLOR, problem_text(row.problem))))
 		y = y + 1.7
 	end
-	if row.materials and #row.materials > 0 then
+	-- The picture takes their place: there is no room for both above the weight.
+	if not view.preview and row.materials and #row.materials > 0 then
 		y = y + 0.1
 		for i = 1, math.min(MATERIALS_SHOWN, #row.materials) do
 			local material = row.materials[i]
@@ -228,8 +237,18 @@ local function load_options(context)
 	end
 end
 
-local function show(name, context, notice)
+local show
+show = function(name, context, notice)
 	local directory = context.options.directory
+	local selected = context.selected and row_of(context.options, context.selected)
+	local picture
+	if selected and selected.image and directory then
+		local wanted = context.selected
+		picture = preview.request(name, directory .. "/" .. selected.image, function()
+			-- It may have moved on, or closed the window, while the picture was on its way.
+			if open[name] == context and context.selected == wanted then show(name, context) end
+		end)
+	end
 	local world = core.get_worldpath()
 	local place = directory
 	if directory and directory:sub(1, #world) == world then place = "<world>" .. directory:sub(#world + 1) end
@@ -238,6 +257,7 @@ local function show(name, context, notice)
 		in_use = context.builder.source_of(context.bench) or M.STOCK,
 		options = context.options,
 		selected = context.selected,
+		preview = picture,
 		notice = notice,
 		place = place,
 		schemedit_installed = core.get_modpath("schemedit") ~= nil,
@@ -332,7 +352,10 @@ function M.install(builder)
 		handle_fields(player, fields)
 		return true
 	end)
-	core.register_on_leaveplayer(function(player) open[player:get_player_name()] = nil end)
+	core.register_on_leaveplayer(function(player)
+		open[player:get_player_name()] = nil
+		preview.forget(player:get_player_name())
+	end)
 end
 
 return M

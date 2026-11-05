@@ -271,6 +271,19 @@ do
 	end
 end
 
+-- A picture beside a schematic, whatever the case of its suffix. PNG beats JPEG.
+do
+	files[DIR .. "/cottage.jpeg"], files[DIR .. "/cottage.PNG"] = "x", "x"
+	files[DIR .. "/tower.JPG"] = "x"
+	files[DIR .. "/stray.png"], files[DIR .. "/shed.txt"] = "x", "x"
+	local result = catalog.scan(catalog.SCHEMEDIT)
+	assert(entry_of(result, "cottage").image == "cottage.PNG")
+	assert(entry_of(result, "tower").image == "tower.JPG")
+	assert(entry_of(result, "shed").image == nil and entry_of(result, "stray") == nil)
+	files[DIR .. "/cottage.jpeg"], files[DIR .. "/cottage.PNG"], files[DIR .. "/tower.JPG"] = nil, nil, nil
+	files[DIR .. "/stray.png"], files[DIR .. "/shed.txt"] = nil, nil
+end
+
 -- All weights 0: nothing to pick, and nothing divided by zero.
 do
 	local projects = {}

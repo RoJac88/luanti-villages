@@ -90,6 +90,14 @@ ordinary stairs and wooden doors. Iron doors still block them.
   or buy the awkward ones (buckets of water or lava, flowers, sea lanterns, a bell) from the window for
   emeralds. It looks for a site close to the village that fits as it stands, or with at most 12 dirt blocks
   broken and 12 placed, and waits if there is none until you clear one.
+  - Right-click its bench to choose what it builds from: the stock buildings, the schematics you exported
+    with [schemedit](https://codeberg.org/Wuzzy/minetest_schemedit) (`<world>/schems`), or a project folder
+    (`<world>/builder_schems`, or the `living_villages_builder_schem_dir` setting; it must be inside the world).
+    Each directory's `builder_projects.json` holds a weight per building, editable in the window with the
+    `server` privilege: the village is built towards those shares. A schematic's node and slice probabilities
+    and voids are honoured, and job blocks in it are built, unlike in stock buildings. Put `<name>.png` or
+    `.jpg` next to `<name>.mts` for a picture in the window, up to 2 MiB; without one it lists the main materials.
+    The window says why a schematic cannot be used, such as blocks this world lacks or ones out of the Builder's reach.
   - VoxeLibre can't register new professions, so a Builder is a mason underneath, with no trades.
 - **Keepers:** an unemployed adult that claims a free jukebox becomes a tavern keeper. The
   jukebox can be a tavern's or one a player placed. A keeper wears a brown apron and sells

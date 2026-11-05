@@ -113,6 +113,31 @@ function M.set_weight(directory, name, value, engine)
 	return true
 end
 
+-- The picture beside each schematic of a directory, name -> file. PNG beats JPEG.
+local IMAGE_ORDER = {png = 1, jpg = 2, jpeg = 3}
+local function images_in(directory, engine)
+	local images, ranks = {}, {}
+	for _, file in ipairs(engine.get_dir_list(directory, false) or {}) do
+		local name, suffix = file:match("^(.+)%.(%w+)$")
+		local rank = suffix and IMAGE_ORDER[suffix:lower()]
+		if rank and (not ranks[name] or rank < ranks[name]) then
+			images[name], ranks[name] = file, rank
+		end
+	end
+	return images
+end
+
+-- An item -> count table as a list, most-used first, then by name.
+function M.sorted_materials(bill)
+	local list = {}
+	for item, count in pairs(bill) do list[#list + 1] = {item = item, count = count} end
+	table.sort(list, function(a, b)
+		if a.count ~= b.count then return a.count > b.count end
+		return a.item < b.item
+	end)
+	return list
+end
+
 local function sorted_keys(set)
 	local keys = {}
 	for key in pairs(set) do keys[#keys + 1] = key end
@@ -150,14 +175,9 @@ function M.measure(schematic, engine)
 			end
 		end
 	end
-	local materials_list = {}
-	for item, count in pairs(bill) do materials_list[#materials_list + 1] = {item = item, count = count} end
-	table.sort(materials_list, function(a, b)
-		if a.count ~= b.count then return a.count > b.count end
-		return a.item < b.item
-	end)
 	return {
-		size = {x = size.x, y = size.y, z = size.z}, blocks = blocks, reach = reach, materials = materials_list,
+		size = {x = size.x, y = size.y, z = size.z}, blocks = blocks, reach = reach,
+		materials = M.sorted_materials(bill),
 		unknown = sorted_keys(unknown), no_item = sorted_keys(no_item),
 	}
 end
@@ -224,7 +244,7 @@ function M.take_snapshot(directory, name, engine)
 end
 
 -- Everything a menu shows of a source: {directory, entries, manifest_problem}. An entry is
--- {name, weight, share, hash, measured, problem}, sorted by name. Shares sum to 1 over what
+-- {name, weight, share, hash, measured, problem, image}, sorted by name. Shares sum to 1 over what
 -- can be built; a building that cannot be built, or has weight 0, has a share of 0.
 function M.scan(source, engine)
 	engine = engine or core
@@ -233,12 +253,14 @@ function M.scan(source, engine)
 	local manifest, manifest_problem = M.read_manifest(directory, engine)
 	manifest = manifest or {}
 	local reach = setting_number(engine, "living_villages_builder_reach", site.config.reach)
+	local images = images_in(directory, engine)
 	local entries, total = {}, 0
 	for _, name in ipairs(M.list(directory, engine)) do
 		local measured, problem, hash = examine(directory .. "/" .. name .. ".mts", engine)
 		problem = problem or M.problem_of(measured, reach)
 		local entry = {
 			name = name, weight = weight_of(manifest, name), share = 0, hash = hash, measured = measured, problem = problem,
+			image = images[name],
 		}
 		if not problem then total = total + entry.weight end
 		entries[#entries + 1] = entry
