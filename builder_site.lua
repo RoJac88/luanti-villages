@@ -19,6 +19,9 @@ local M = {}
 M.config = {
 	limit = 12, -- dirt blocks broken, and placed, for one site
 	ring = 2, -- cells round the footprint a Builder walks and works from
+	-- How far it places a block from. The stock church's highest glass is 14.42 from flat
+	-- ground in the ring, and a block it cannot reach leaves it stuck for good.
+	reach = 15,
 	ring_step = 1, -- how far that ground may be off the floor
 	margin = 3, -- a site stays this far from a structure
 	gap = 20, -- and this close to one

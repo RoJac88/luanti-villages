@@ -40,6 +40,12 @@ costs("mcl_core:dirt_with_grass", "mcl_core:dirt")
 costs("mcl_farming:soil_wet", "mcl_core:dirt")
 
 -- Pairs cost one, on the first half.
+costs("mcl_bamboo:bamboo_door_b_3", "mcl_bamboo:bamboo_door")
+assert(materials.cost("mcl_crimson:warped_door_t_1") == nil)
+assert(materials.is_bottom_half("mcl_bamboo:bamboo_door_b_1") and materials.is_top_half("mcl_bamboo:bamboo_door_t_1"))
+assert(not materials.is_bottom_half("mcl_doors:trapdoor") and not materials.is_top_half("mcl_core:cobble"))
+assert(materials.identity("mcl_bamboo:bamboo_door_t_2") == materials.identity("mcl_bamboo:bamboo_door_t_1"))
+assert(materials.identity("mcl_bamboo:bamboo_door_t_1") ~= materials.identity("mcl_bamboo:bamboo_door_b_1"))
 costs("mcl_doors:wooden_door_b_1", "mcl_doors:wooden_door")
 assert(materials.cost("mcl_doors:wooden_door_t_1") == nil)
 costs("mcl_beds:bed_red_bottom", "mcl_beds:bed_red_bottom")
@@ -133,6 +139,51 @@ for _, building in ipairs(BUILDINGS) do
 				end
 			end
 		end
+	end
+end
+
+-- A player's schematic: the same costs, checked against what exists, with job blocks paid for.
+do
+	local engine = {
+		registered_nodes = {
+			["mcl_core:cobble"] = {groups = {}},
+			["mcl_core:water_flowing"] = {liquidtype = "flowing", groups = {not_in_creative_inventory = 1}},
+			["mcl_core:water_source"] = {liquidtype = "source", groups = {}},
+			["mcl_buckets:bucket_water"] = {groups = {}},
+			["mcl_loom:loom"] = {groups = {}},
+			["living_villages:builder_block"] = {groups = {}},
+			["mcl_signs:wall_sign"] = {groups = {not_in_creative_inventory = 1}, drop = "mcl_signs:sign 1"},
+			["mcl_signs:sign"] = {groups = {}},
+			["mcl_composters:composter_3"] = {groups = {not_in_creative_inventory = 1},
+				drop = {items = {{items = {"mcl_composters:composter"}}}}},
+			["mcl_composters:composter"] = {groups = {}},
+			["mcl_portals:portal"] = {groups = {not_in_creative_inventory = 1}, drop = ""},
+			["hidden:lucky"] = {groups = {not_in_creative_inventory = 1},
+				drop = {items = {{items = {"mcl_core:cobble"}, rarity = 2}}}},
+			["hidden:to_hidden"] = {groups = {not_in_creative_inventory = 1}, drop = "hidden:lucky"},
+		},
+	}
+	local function custom(name, item)
+		local cost = assert(materials.custom_cost(name, engine), name .. " has no cost")
+		assert(cost[item] == 1 and next(cost, item) == nil, name)
+	end
+	custom("mcl_core:cobble", "mcl_core:cobble")
+	custom("mcl_core:water_source", "mcl_buckets:bucket_water")
+	-- Job blocks are built, here and only here.
+	custom("mcl_loom:loom", "mcl_loom:loom")
+	custom("living_villages:builder_block", "living_villages:builder_block")
+	assert(materials.cost("mcl_loom:loom") == nil)
+	-- Hidden variants cost what they drop, a table of one sure thing included.
+	custom("mcl_signs:wall_sign", "mcl_signs:sign")
+	custom("mcl_composters:composter_3", "mcl_composters:composter")
+	-- Flowing liquid runs from its source, for nothing.
+	local cost, problem = materials.custom_cost("mcl_core:water_flowing", engine)
+	assert(cost == nil and problem == nil)
+	assert(materials.custom_cost("air", engine) == nil)
+	-- What no player can supply.
+	for _, name in ipairs({"mcl_portals:portal", "hidden:lucky", "hidden:to_hidden"}) do
+		cost, problem = materials.custom_cost(name, engine)
+		assert(cost == nil and problem == "no_item", name)
 	end
 end
 

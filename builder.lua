@@ -54,7 +54,6 @@ local DEFER_SECONDS = 10
 -- Walks to a site before giving up on one it has never reached, and how long it then keeps away.
 local SITE_ATTEMPTS = 5
 local AVOID_SECONDS = 1800
-local DEFAULT_REACH = 14
 local DEFAULT_CAPACITY = 256
 local DEFAULT_BLOCK_SECONDS = 1
 local SITE_RETRY_SECONDS = 60
@@ -435,7 +434,7 @@ local function check_materials(self, session, bench, project, now)
 end
 
 local function reach_of()
-	return setting_number("living_villages_builder_reach", DEFAULT_REACH)
+	return setting_number("living_villages_builder_reach", site_finder.config.reach)
 end
 
 local function hold_still(self)
