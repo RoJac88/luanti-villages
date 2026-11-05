@@ -1057,6 +1057,7 @@ do
 		local hut_row = stock_options.rows[1]
 		assert(hut_row.name == "hut" and hut_row.share == 1 and hut_row.is_next and hut_row.weight == nil)
 		assert(hut_row.size.x == 5 and hut_row.blocks > 0)
+		assert(hut_row.materials[1].item == COBBLE and hut_row.materials[1].count > 1, "what it is mostly made of")
 
 		-- A directory's, with what was built and why one cannot be.
 		records[1] = records[1] or {center = BENCH_POS}

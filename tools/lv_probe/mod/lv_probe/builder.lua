@@ -351,6 +351,9 @@ local function write_cabin()
 	local directory = core.get_worldpath() .. "/schems"
 	core.mkdir(directory)
 	assert(core.safe_file_write(directory .. "/" .. CABIN .. ".mts", core.serialize_schematic(cabin(), "mts", {})))
+	local pixels = {}
+	for i = 1, 12 do pixels[i] = {r = 200, g = 150, b = 100, a = 255} end
+	assert(core.safe_file_write(directory .. "/" .. CABIN .. ".png", core.encode_png(4, 3, pixels)))
 end
 
 -- Puts a marker in a void cell above the floor, once building has begun and it cannot spoil
@@ -406,10 +409,20 @@ local function watch(area, record, emit, done)
 		local menu = dofile(path .. "/builder_bench_menu.lua")
 		local bench_def = core.registered_nodes[BENCH]
 		record.bench_menu = {rightclick = bench_def and bench_def.on_rightclick ~= nil, sources = {}}
+		if custom then
+			local picture = io.open(core.get_worldpath() .. "/schems/" .. CABIN .. ".png", "rb")
+			local kind, width, height = dofile(path .. "/builder_preview.lua").identify(picture:read("*a"))
+			picture:close()
+			record.bench_menu.picture = {kind = kind, width = width, height = height}
+		end
 		for _, source in ipairs({menu.STOCK, catalog.SCHEMEDIT, catalog.FOLDER}) do
 			if benches[1] then
 				local options = roles.options(benches[1], source)
 				local shown = {name = source, rows = #options.rows}
+				if options.rows[1] then
+					shown.image = options.rows[1].image
+					shown.materials = options.rows[1].materials and #options.rows[1].materials
+				end
 				shown.form_bytes = #menu.formspec({
 					source = source, in_use = source, options = options,
 					selected = options.rows[1] and options.rows[1].name, place = "<world>", can_use = true, can_edit = true,

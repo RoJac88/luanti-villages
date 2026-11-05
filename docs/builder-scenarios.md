@@ -113,4 +113,5 @@ Right-click a bench. What the tests cannot show is how the window looks in a rea
 5. **Weights:** set one and press **Set**, or Enter in the field. The window stays open, the shares change and `<world>/schems/builder_projects.json` has it. Try `lots`: it says what a weight is and changes nothing.
 6. **Project folder tab:** opening it creates `<world>/builder_schems`.
 7. **Build from these:** with a project waiting for materials, it drops that project and picks from the new source. With one being built, that one is finished first.
-8. **Permissions:** without `server` the weight is a label. On a bench protected against you, tabs still work, but there is no button.
+8. **Pictures:** put `cottage.png` next to `cottage.mts`, press **Refresh** and select it. The picture appears in the side panel in place of the materials, in its own shape, with nothing overlapping. Replace the file and press **Refresh**: the new one shows. A text file renamed `cottage.png` leaves the materials showing.
+9. **Permissions:** without `server` the weight is a label. On a bench protected against you, tabs still work, but there is no button.
