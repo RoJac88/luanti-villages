@@ -401,6 +401,22 @@ local function watch(area, record, emit, done)
 			end
 			record.benches[#record.benches + 1] = outcome
 		end
+		-- The bench's window, as far as a server can tell: it took the right-click, and each
+		-- source reads and renders. Whether the form looks right takes a client.
+		local menu = dofile(path .. "/builder_bench_menu.lua")
+		local bench_def = core.registered_nodes[BENCH]
+		record.bench_menu = {rightclick = bench_def and bench_def.on_rightclick ~= nil, sources = {}}
+		for _, source in ipairs({menu.STOCK, catalog.SCHEMEDIT, catalog.FOLDER}) do
+			if benches[1] then
+				local options = roles.options(benches[1], source)
+				local shown = {name = source, rows = #options.rows}
+				shown.form_bytes = #menu.formspec({
+					source = source, in_use = source, options = options,
+					selected = options.rows[1] and options.rows[1].name, place = "<world>", can_use = true, can_edit = true,
+				})
+				record.bench_menu.sources[#record.bench_menu.sources + 1] = shown
+			end
+		end
 		record.watched_seconds = core.get_gametime() - started
 		core.log("action", string.format("[lv_builder] %d benches followed for %d s",
 			#benches, record.watched_seconds))

@@ -368,10 +368,7 @@ function M.set_source(bench, source)
 	end
 end
 
--- The next schematic of a source. Nothing to build is said in the status window, and never
--- quietly made up with stock buildings the player turned away from.
-local function choose_custom(self, session, bench, source, record)
-	local scan = catalog.scan(source)
+local function pick_from(scan, record, source)
 	local weights, totals = {}, {}
 	for _, entry in ipairs(scan.entries) do
 		if not entry.problem and entry.weight > 0 then
@@ -379,7 +376,50 @@ local function choose_custom(self, session, bench, source, record)
 			totals[entry.name] = entry.measured.blocks
 		end
 	end
-	local name = census.pick_custom(weights, census.custom_counts(record, source), totals)
+	return census.pick_custom(weights, census.custom_counts(record, source), totals)
+end
+
+-- What a bench could build from a source, for its menu: {rows, directory, manifest_problem}.
+-- A row is {name, share, built, is_next, size, blocks}, and for a directory weight, materials
+-- and problem too. The stock buildings have no weights: a village's mix sets their shares.
+function M.options(bench, source)
+	local record = village_index and village_index.read_village(bench, VILLAGE_RADIUS)
+	local rows = {}
+	if source == catalog.SCHEMEDIT or source == catalog.FOLDER then
+		local scan = catalog.scan(source)
+		local built = census.custom_counts(record, source)
+		local next_name = pick_from(scan, record, source)
+		for _, entry in ipairs(scan.entries) do
+			local measured = entry.measured or {}
+			rows[#rows + 1] = {
+				name = entry.name, weight = entry.weight, share = entry.share, built = built[entry.name] or 0,
+				is_next = entry.name == next_name, problem = entry.problem,
+				size = measured.size, blocks = measured.blocks, materials = measured.materials,
+			}
+		end
+		return {rows = rows, directory = scan.directory, manifest_problem = scan.manifest_problem}
+	end
+	local settlements = rawget(_G, "settlements")
+	local schematic_table = settlements and settlements.schematic_table
+	local shares = census.shares(record, schematic_table) or {}
+	local counts = census.current(record)
+	local next_name = census.pick(record, schematic_table, totals_of_buildings())
+	for name, share in pairs(shares) do
+		local measured = measure({building = name}) or {}
+		rows[#rows + 1] = {
+			name = name, share = share, built = counts[name] or 0, is_next = name == next_name,
+			size = measured.size, blocks = measured.blocks,
+		}
+	end
+	table.sort(rows, function(a, b) return a.name < b.name end)
+	return {rows = rows}
+end
+
+-- The next schematic of a source. Nothing to build is said in the status window, and never
+-- quietly made up with stock buildings the player turned away from.
+local function choose_custom(self, session, bench, source, record)
+	local scan = catalog.scan(source)
+	local name = pick_from(scan, record, source)
 	session.no_projects = name == nil or nil
 	if not name then return end
 	local hash = catalog.take_snapshot(scan.directory, name)
@@ -1002,6 +1042,7 @@ function M.install(def, navigation, index)
 	navigation_api, village_index = navigation, index
 	local status = dofile(core.get_modpath("living_villages") .. "/builder_status.lua")
 	dofile(core.get_modpath("living_villages") .. "/builder_giveme.lua").install(M)
+	if core.override_item then dofile(core.get_modpath("living_villages") .. "/builder_bench_menu.lua").install(M) end
 	local original_activate = def.on_activate
 	local original_custom = def.do_custom
 	local original_gopath = def.gopath
