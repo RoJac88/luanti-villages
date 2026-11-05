@@ -25,8 +25,6 @@ M.MAX_FILE_BYTES = 1024 * 1024
 -- Every cell becomes a table in a Builder's plan, on the main thread.
 M.MAX_VOLUME = 64000
 
-local DEFAULT_REACH = 14
-
 local function setting_number(engine, name, default)
 	return tonumber(engine.settings and engine.settings:get(name)) or default
 end
@@ -212,7 +210,7 @@ function M.scan(source, engine)
 	if not directory then return nil end
 	local manifest, manifest_problem = M.read_manifest(directory, engine)
 	manifest = manifest or {}
-	local reach = setting_number(engine, "living_villages_builder_reach", DEFAULT_REACH)
+	local reach = setting_number(engine, "living_villages_builder_reach", site.config.reach)
 	local entries, total = {}, 0
 	for _, name in ipairs(M.list(directory, engine)) do
 		local measured, problem, hash = examine(directory .. "/" .. name .. ".mts", engine)

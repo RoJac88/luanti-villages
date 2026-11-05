@@ -59,8 +59,8 @@ living_villages_loomless_house_chance (Share of small houses without a loom) flo
 living_villages_builder (Builders) bool true
 
 # How far a Builder can place a block from where it stands. It stays on the ground, so the
-# tallest buildings need about 14.
-living_villages_builder_reach (Builder's reach) float 14 8 32
+# stock church needs 15 on flat ground.
+living_villages_builder_reach (Builder's reach) float 15 8 32
 
 # Items a Builder carries on one trip from the chests.
 living_villages_builder_capacity (Builder's capacity) int 256 16 2048

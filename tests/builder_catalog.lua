@@ -58,6 +58,7 @@ minetest.safe_file_write = function(path, content)
 end
 
 local catalog = dofile("builder_catalog.lua")
+local site = dofile("builder_site.lua")
 
 -- A size.x by size.y by size.z block of one node.
 local function solid(x, y, z, name, prob)
@@ -181,13 +182,7 @@ for _, building in ipairs({
 	local data = {}
 	for i, id in ipairs(fixture.ids) do data[i] = {name = fixture.names[id + 1], prob = 254} end
 	local measured = catalog.measure({size = fixture.size, data = data})
-	local problem = catalog.problem_of(measured, 14)
-	-- Two panes of the church's glass are 14.42 from flat ground in the ring, so the default
-	-- reach of 14 falls just short of them. The check reports what ring_spot would do.
-	if building == "church" then
-		assert(problem.code == "out_of_reach" and problem.needs == 15)
-		problem = catalog.problem_of(measured, 15)
-	end
+	local problem = catalog.problem_of(measured, site.config.reach)
 	assert(problem == nil, building .. ": " .. (problem and problem.code or "") .. " "
 		.. table.concat(problem and problem.nodes or {tostring(problem and problem.needs)}, ", "))
 end
