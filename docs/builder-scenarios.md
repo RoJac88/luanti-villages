@@ -79,7 +79,12 @@ Stock the chest.
 - It places solid blocks from the bottom up, then torches, doors and crops. Water and lava go in last and
   stay inside the walls.
 - Stand in a cell it wants. It works round you and comes back to it.
-- At 15500 it stops, and goes on the next day.
+- Above 5 blocks over the floor it works from scaffolding (a church's upper walls and roof, a lighthouse). It
+  puts up a column one cell out from the walls, climbs it a block at a time and stands level with the layer
+  it lays, turning to each block. When the work moves along it comes down, taking the column with it, and
+  puts up another further round. The window says "Working from the scaffolding". No scaffolding is on the
+  bill and none is left when it finishes, nor dropped.
+- At 15500 it stops, and goes on the next day. Up a column, it climbs down first and takes the column away.
 
 ## Things going wrong
 
@@ -88,6 +93,9 @@ Stock the chest.
 - Put a stone in a cell it has yet to build. It stops at `blocked` and the window gives the position. Remove
   the stone and it carries on.
 - Kill it mid-build. Its pouch drops. Put that back in the chest, and whoever takes the bench next carries on.
+- Kill it up a column. The column stays until whoever takes the bench next walks over and takes it down,
+  before anything else, without dropping any scaffolding.
+- Put a block over a column it is climbing. It stops under it, comes down and tries a column elsewhere.
 - Before it has placed anything, wall off the site. It gives up on that site, untouched, and finds another,
   and `debug.txt` says so. It can choose that site again after 30 minutes.
 - Once it has begun, wall off the site or the chest. The window says it can't get there, and it keeps the site.

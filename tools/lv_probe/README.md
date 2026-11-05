@@ -257,7 +257,10 @@ Settings change the run, through `LV_PROBE_CONF_EXTRA`: `lv_probe_builder_buildi
 site for a church), `lv_probe_builder_earthwork = true` makes a dirt bump and a dip on the chosen site, for the Builder to level first,
 with `filled` then what stands in the dip, `lv_probe_builder_schematic = true` sets each bench to `<world>/schems` holding a test
 schematic with job blocks, a bamboo door, a void, cells of chance and flowing water, with `void_holds` then the marker put in the void
-once building began (`mcl_core:goldblock` if it was left alone), and `lv_probe_builder_build_seconds` shortens the wait. `built.cells` lists what is left when
+once building began (`mcl_core:goldblock` if it was left alone), and `lv_probe_builder_build_seconds` shortens the wait.
+`LV_PROBE_SCHEMATIC=<file.mts>`, with `lv_probe_builder_schematic = true`, puts that file (and its `.png`, if beside it) in
+`<world>/schems` in place of the test schematic. `scaffold` gives the columns the Builder climbed, its highest level, the seconds
+it was seen climbing, and the scaffolding left standing near the site afterwards (`left`, which should be 0). `built.cells` lists what is left when
 time runs out, what is there instead and any object near it, and `trail` and `pouch` show where the Builder was and what it carried.
 
 ## Who takes which job

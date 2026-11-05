@@ -28,7 +28,13 @@ local function world()
 			return {name = map[key(pos)] or (pos.y <= 0 and "mcl_core:stone" or "air")}
 		end,
 		set_node = function(pos, node) map[key(pos)] = node.name end,
-		remove_node = function(pos) map[key(pos)] = "air" end,
+		-- remove_node would run scaffolding's on_destruct, which drops every block above as an item.
+		remove_node = function() error("removed, not swapped") end,
+		swap_node = function(pos, node)
+			local above = {x = pos.x, y = pos.y + 1, z = pos.z}
+			assert(map[key(above)] ~= SCAFFOLD, "taken from the top down")
+			map[key(pos)] = node.name
+		end,
 	}, {__index = engine})
 	return villager, map, stub
 end
@@ -84,6 +90,25 @@ do
 	climb.go_to(villager, 5)
 	run(villager, stub, 3)
 	assert(climb.arrived(villager) and villager.pos.y == 5.5 and placed == 0, "climbs what stands")
+
+	-- Taking it down from part way takes what stands above too, so nothing is left in the air.
+	climb.go_to(villager, 2)
+	run(villager, stub, 3)
+	villager._villages_climb.dismantle = true
+	climb.go_to(villager, 1)
+	run(villager, stub, 2)
+	assert(climb.arrived(villager) and villager.pos.y == 1.5)
+	assert(map[key({x = 3, y = 1, z = -2})] == SCAFFOLD, "it still stands on one")
+	for y = 2, 5 do assert(map[key({x = 3, y = y, z = -2})] == "air", "taken " .. y) end
+end
+
+-- A column left behind, taken down from the ground.
+do
+	local _, map, stub = world()
+	for y = 1, 3 do map[key({x = 0, y = y, z = 0})] = SCAFFOLD end
+	assert(climb.take_down({x = 0, y = 1, z = 0}, stub) == 3)
+	for y = 1, 3 do assert(map[key({x = 0, y = y, z = 0})] == "air") end
+	assert(climb.take_down({x = 0, y = 1, z = 0}, stub) == 0, "nothing left to take")
 end
 
 -- Something over its head, or in the way of the next block: it stops below, and says where.

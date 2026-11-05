@@ -97,7 +97,24 @@ local function hut()
 	return {size = {x = 5, y = 3, z = 5}, data = data}
 end
 TEST_HUT = hut
-core.serialize_schematic = function() return "schematic = TEST_HUT()" end
+-- A 5 by 5 tower of cobble, 9 high on its ground layer: high enough for scaffolding.
+function TEST_TOWER()
+	local data = {}
+	for z = 0, 4 do
+		for y = 0, 9 do
+			for x = 0, 4 do
+				local name = "air"
+				if y == 0 then name = "mcl_core:dirt"
+				elseif x == 0 or x == 4 or z == 0 or z == 4 then name = COBBLE end
+				data[#data + 1] = {name = name, prob = 255, param2 = 0}
+			end
+		end
+	end
+	return {size = {x = 5, y = 10, z = 5}, data = data}
+end
+core.serialize_schematic = function(mts)
+	return mts == "tower.mts" and "schematic = TEST_TOWER()" or "schematic = TEST_HUT()"
+end
 
 local stored = {}
 core.serialize = function(value)
@@ -127,7 +144,10 @@ core.register_on_player_receive_fields = function(fn) receive = fn end
 core.register_on_leaveplayer = function() end
 
 settlements = {
-	schematic_table = {{name = "hut", mts = "hut.mts", max_num = 1}, {name = "builder_house", mts = "hut.mts", max_num = 0}},
+	schematic_table = {
+		{name = "hut", mts = "hut.mts", max_num = 1}, {name = "builder_house", mts = "hut.mts", max_num = 0},
+		{name = "tower", mts = "tower.mts", max_num = 0},
+	},
 	surface_mat = {["mcl_core:dirt_with_grass"] = true, ["mcl_core:sand"] = true},
 }
 
@@ -145,10 +165,18 @@ local index = {
 	end,
 }
 
+local climb = dofile("builder_climb.lua")
+local SCAFFOLD = climb.SCAFFOLD
+world.defs[SCAFFOLD] = {groups = {}, walkable = false, climbable = true}
+
 local vanilla = {clicks = 0, walks = {}}
 local def = {
 	on_activate = function() end,
-	do_custom = function() return true end,
+	-- As init.lua's: a villager up a column is held there, and vanilla's AI left out.
+	do_custom = function(self, dtime)
+		if climb.step(self, dtime) then return false end
+		return true
+	end,
 	on_rightclick = function() vanilla.clicks = vanilla.clicks + 1 end,
 	gopath = function(self, target, arrived)
 		vanilla.walks[#vanilla.walks + 1] = target
@@ -165,6 +193,7 @@ local function villager(pos, fields)
 	serial = serial + 1
 	local entity = support.farmer(world, pos, {_id = "v" .. serial, _profession = "unemployed"})
 	entity.gopath = def.gopath
+	entity.object.set_acceleration = function() end
 	for field, value in pairs(fields or {}) do entity[field] = value end
 	return entity
 end
@@ -817,6 +846,138 @@ do
 	local form = dofile("builder_status.lua").formspec(builder.report(entity))
 	assert(form:find("cannot get to the site", 1, true))
 	entity.fail_walks = nil
+end
+
+-- Scaffolding: a tower's blocks above 5 go in from columns on the ring's inner row, at the
+-- height of the layer, and the columns are taken down after, cost nothing and drop nothing.
+local TOWER = {x = 10, y = 0, z = 10}
+local function prepared_tower(cobble)
+	local entity = hired()
+	tallest = 12
+	local project = {
+		state = "requires_materials", building = "tower", pos = TOWER, rotat = "0",
+		surface_mat = "mcl_core:dirt_with_grass", earthwork = {cuts = {}, fills = {}},
+	}
+	world.meta(BENCH_POS).fields.villages_project = core.serialize(project)
+	records[1] = {center = BENCH_POS, buildings = {{name = "hut", pos = BENCH_POS}}, reserved = {["0,1,0"] = {bench = BENCH_POS}}}
+	local chest = {x = 0, y = 1, z = 6}
+	support.chest(world, chest, CHEST, {COBBLE .. " " .. (cobble or 150)})
+	return entity, chest
+end
+local function tower_right()
+	for z = 0, 4 do
+		for y = 1, 9 do
+			for x = 0, 4 do
+				local name = world.name({x = TOWER.x + x, y = y, z = TOWER.z + z})
+				local want = (x == 0 or x == 4 or z == 0 or z == 4) and COBBLE or "air"
+				if name ~= want then return false, name .. " wanted " .. want end
+			end
+		end
+	end
+	return true
+end
+local function scaffolding_left()
+	local left = 0
+	for key, node in pairs(world.nodes) do
+		if node.name == SCAFFOLD then left = left + 1 end
+	end
+	return left
+end
+
+do
+	local entity, chest = prepared_tower()
+	local dropped = #world.dropped
+	local real_set = core.set_node
+	local columns, high, low, wrong = {}, 0, 0, {}
+	local status_seen = false
+	core.set_node = function(pos, node)
+		local state = climb.of(entity)
+		if node.name == SCAFFOLD then
+			local ring = pos.x == 9 or pos.x == 15 or pos.z == 9 or pos.z == 15
+			local inner = pos.x >= 9 and pos.x <= 15 and pos.z >= 9 and pos.z <= 15
+			if not (ring and inner) then wrong[#wrong + 1] = "column at " .. core.pos_to_string(pos) end
+			columns[pos.x .. "," .. pos.z] = true
+		elseif node.name == COBBLE then
+			if pos.y > 5 then
+				high = high + 1
+				local at = entity.object:get_pos()
+				if not state then
+					wrong[#wrong + 1] = "from the ground at " .. core.pos_to_string(pos)
+				elseif at.y ~= pos.y - 0.5 then
+					wrong[#wrong + 1] = "feet at " .. at.y .. " for " .. pos.y
+				elseif state.yaw ~= math.atan2(state.x - pos.x, pos.z - state.z) then
+					wrong[#wrong + 1] = "not facing " .. core.pos_to_string(pos)
+				end
+				if builder.report(entity).scaffold then status_seen = true end
+			else
+				low = low + 1
+				if state then wrong[#wrong + 1] = "from scaffolding at " .. core.pos_to_string(pos) end
+			end
+		end
+		return real_set(pos, node)
+	end
+	assert(run_until(entity, project_gone_or("returning"), 1500))
+	assert(run_until(entity, function() return not builder.load_project(BENCH_POS) end, 300))
+	core.set_node = real_set
+	assert(tower_right())
+	assert(#wrong == 0, wrong[1])
+	assert(high == 64 and low == 80, high .. " " .. low)
+	local count = 0
+	for _ in pairs(columns) do count = count + 1 end
+	assert(count >= 4, "it moves round the tower: " .. count .. " columns")
+	assert(status_seen, "the window says so")
+	assert(scaffolding_left() == 0, "the columns come down")
+	assert(not climb.of(entity), "and so does it")
+	assert(stock.chest_count(chest, COBBLE) == 6, "the scaffolding is not on the bill")
+	assert(stock.chest_count(chest, SCAFFOLD) == 0 and stock.total(entity) == 0)
+	assert(#world.dropped == dropped, "nothing dropped")
+	local form = dofile("builder_status.lua").formspec({state = "building", scaffold = true})
+	assert(form:find("Working from the scaffolding.", 1, true))
+	tallest = 3
+end
+
+-- Off work up a column: it comes down, taking the column, and climbs again in the morning.
+do
+	local entity = prepared_tower()
+	assert(run_until(entity, function()
+		local state = climb.of(entity)
+		return state and state.level >= 4 and climb.arrived(entity)
+	end, 1500))
+	assert(builder.load_project(BENCH_POS).scaffold, "the column is kept in the project")
+	world.time = 0.9
+	assert(run_until(entity, function() return not climb.of(entity) end, 30))
+	assert(scaffolding_left() == 0 and not builder.load_project(BENCH_POS).scaffold)
+	assert(entity.object:get_pos().y == 0.5, "on the ground")
+	world.time = 0.4
+	assert(run_until(entity, project_gone_or("returning"), 1500))
+	assert(tower_right())
+	tallest = 3
+end
+
+-- A column left by a Builder that went, with no one on it: whoever carries on takes it down
+-- first, from the ground, and it drops nothing.
+do
+	local entity = prepared_tower()
+	local dropped = #world.dropped
+	for y = 1, 6 do world.set({x = 9, y = y, z = 12}, SCAFFOLD) end
+	local project = builder.load_project(BENCH_POS)
+	project.scaffold = {x = 9, z = 12, ground = 0}
+	world.meta(BENCH_POS).fields.villages_project = core.serialize(project)
+	-- As it is ready to work, not waiting on materials.
+	assert(run_until(entity, function() return scaffolding_left() == 0 end, 120))
+	assert(not builder.load_project(BENCH_POS).scaffold and #world.dropped == dropped)
+	-- A record of a column that has gone already costs no walk.
+	project = builder.load_project(BENCH_POS)
+	project.scaffold = {x = 9, z = 12, ground = 0}
+	world.meta(BENCH_POS).fields.villages_project = core.serialize(project)
+	local walks = #vanilla.walks
+	advance(entity, 1)
+	assert(not builder.load_project(BENCH_POS).scaffold)
+	for i = walks + 1, #vanilla.walks do
+		local to = vanilla.walks[i]
+		assert(not (to.x == 9 and to.z == 12), "no walk to a column that has gone")
+	end
+	tallest = 3
 end
 
 -- /giveme build_project_materials: what the nearest waiting Builder lacks, and nothing else.
