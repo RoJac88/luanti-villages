@@ -94,4 +94,42 @@ assert(census.pick({}, {}) == nil)
 assert(census.pick({}) == nil)
 assert(census.pick({buildings = {{name = "builder_house"}}}) == nil)
 
+-- A player's schematics: the mix of the weights, on what was built from them alone.
+do
+	local weights = {cottage = 3, shed = 1}
+	local counts, order = {}, {}
+	for _ = 1, 8 do
+		local name = census.pick_custom(weights, counts)
+		order[#order + 1] = name
+		counts[name] = (counts[name] or 0) + 1
+	end
+	assert(counts.cottage == 6 and counts.shed == 2, "the shares hold")
+	local run, longest = 0, 0
+	for _, name in ipairs(order) do
+		run = name == "cottage" and run + 1 or 0
+		longest = math.max(longest, run)
+	end
+	assert(longest <= 3, "no long streak of the heaviest")
+
+	-- A tie goes to the smaller, then the name, whatever the order.
+	assert(census.pick_custom({a = 1, b = 1}, {}, {a = 20, b = 10}) == "b")
+	assert(census.pick_custom({a = 1, b = 1}, {}) == "a")
+
+	-- A count of something no longer offered does not skew the rest.
+	assert(census.pick_custom({a = 1, b = 3}, {gone = 50, a = 1, b = 1}) == "b")
+
+	assert(census.pick_custom({}, {}) == nil)
+
+	-- Each source counts apart, and leaves the stock mix alone.
+	local record = {buildings = {{name = "small_house"}}}
+	census.add_built_custom(record, "schemedit", "small_house")
+	census.add_built_custom(record, "schemedit", "small_house")
+	census.add_built_custom(record, "folder", "tower")
+	assert(census.custom_counts(record, "schemedit").small_house == 2)
+	assert(census.custom_counts(record, "folder").small_house == nil)
+	assert(next(census.custom_counts(nil, "folder")) == nil)
+	local _, total = census.current(record)
+	assert(total == 1 and record.built == nil)
+end
+
 print("village_census: ok")

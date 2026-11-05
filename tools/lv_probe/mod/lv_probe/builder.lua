@@ -8,6 +8,11 @@
 -- house, which has a door and a bed) and follows it: who claimed the bench, the site, what the status window reports, and, with the
 -- bill put in the chests, whether what stands afterwards is what the template says, to the
 -- param2. Only runs when lv_probe_builder is set.
+--
+-- With lv_probe_builder_schematic each bench is set to schemedit's directory instead, holding one
+-- schematic written here with what stock buildings lack: job blocks, another mod's door, a void,
+-- cells of chance and flowing water. What stands afterwards is compared with a fresh reading of
+-- the project's copy, so a roll that changed would show as work left to do.
 local core = minetest
 
 local builder = {}
@@ -213,12 +218,22 @@ end
 
 -- Each cell where the finished building differs from its template: what the Builder placed
 -- against what the same plan asks for.
-local function check_built(project, template)
-	local entry = entry_of(project.building)
-	local schematic = template.prepare_schematic(entry, project.surface_mat)
-	local cells = template.world_cells(schematic, project.pos, project.rotat)
+local function custom_cells(project, template, catalog)
+	local schematic = template.prepare_custom(catalog.snapshot_path(project.schem), project.seed)
+	return template.world_cells(schematic, project.pos, project.rotat, nil, true)
+end
+
+local function check_built(project, template, catalog)
+	local custom = project.schem ~= nil
+	local cells
+	if custom then
+		cells = custom_cells(project, template, catalog)
+	else
+		local schematic = template.prepare_schematic(entry_of(project.building), project.surface_mat)
+		cells = template.world_cells(schematic, project.pos, project.rotat)
+	end
 	local plan = template.plan(cells, {
-		floor_y = project.pos.y, surface_mat = project.surface_mat, earthwork = project.earthwork,
+		floor_y = project.pos.y, surface_mat = project.surface_mat, earthwork = project.earthwork, custom = custom,
 	})
 	local missing, blocked = template.compare(plan, function(pos) return core.get_node(pos).name end)
 	local result = {left = #missing, blocked = #blocked, wrong_param2 = 0, samples = {}, cells = {}}
@@ -293,6 +308,62 @@ local function make_platform(bench)
 	end
 end
 
+local CABIN = "lv_probe_cabin"
+
+-- 7 by 5 by 7: a ground layer, cobble walls, a wood roof, and inside, what is being tested.
+local function cabin()
+	local inside = {
+		["1,1,1"] = {name = "mcl_loom:loom"},
+		["5,1,1"] = {name = "mcl_composters:composter_3"},
+		["1,1,5"] = {name = "mcl_core:water_source"},
+		["2,1,5"] = {name = "mcl_core:water_flowing"},
+		["3,1,0"] = {name = "mcl_bamboo:bamboo_door_b_1"},
+		["3,2,0"] = {name = "mcl_bamboo:bamboo_door_t_1"},
+		["5,1,5"] = {name = "air", prob = 0},
+		["5,2,5"] = {name = "air", prob = 0},
+		["4,3,3"] = {name = "mcl_stairs:stair_wood_outer"},
+		["1,2,0"] = {name = "mcl_core:glass", prob = 128},
+		["5,2,0"] = {name = "mcl_core:glass", prob = 128},
+		["1,2,6"] = {name = "mcl_core:glass", prob = 128},
+		["5,2,6"] = {name = "mcl_core:glass", prob = 128},
+	}
+	local data = {}
+	for z = 0, 6 do
+		for y = 0, 4 do
+			for x = 0, 6 do
+				local cell = inside[x .. "," .. y .. "," .. z]
+				if not cell then
+					local wall = x == 0 or x == 6 or z == 0 or z == 6
+					local name = "air"
+					if y == 0 then name = "mcl_core:dirt"
+					elseif y == 4 then name = "mcl_core:wood"
+					elseif wall then name = "mcl_core:cobble" end
+					cell = {name = name}
+				end
+				data[#data + 1] = {name = cell.name, prob = cell.prob or 254, param2 = 0}
+			end
+		end
+	end
+	return {size = {x = 7, y = 5, z = 7}, data = data}
+end
+
+local function write_cabin()
+	local directory = core.get_worldpath() .. "/schems"
+	core.mkdir(directory)
+	assert(core.safe_file_write(directory .. "/" .. CABIN .. ".mts", core.serialize_schematic(cabin(), "mts", {})))
+end
+
+-- Puts a marker in a void cell above the floor, once building has begun and it cannot spoil
+-- the site. Returns where, so that it can be looked for afterwards.
+local function mark_void(project, template, catalog)
+	for _, cell in ipairs(custom_cells(project, template, catalog)) do
+		if cell.name == "ignore" and cell.pos.y == project.pos.y + 1 then
+			core.set_node(cell.pos, {name = "mcl_core:goldblock"})
+			return cell.pos
+		end
+	end
+end
+
 -- Follows every bench through its project, or until time is up.
 local function watch(area, record, emit, done)
 	local path = core.get_modpath("living_villages")
@@ -300,20 +371,29 @@ local function watch(area, record, emit, done)
 	local _, template = modules()
 	-- Only for formspec(): this copy's window is never shown, so its handler has no state.
 	local status_module = dofile(path .. "/builder_status.lua")
+	local catalog = dofile(path .. "/builder_catalog.lua")
+	local custom = core.settings:get_bool("lv_probe_builder_schematic", false)
+	if custom then write_cabin() end
 	local benches = core.find_nodes_in_area(area.minp, area.maxp, {BENCH})
 	local started = core.get_gametime()
-	local outcomes, sited = {}, {}
+	local outcomes, sited, voids = {}, {}, {}
 	for _, bench in ipairs(benches) do
 		if core.settings:get_bool("lv_probe_builder_platform", false) then make_platform(bench) end
-		core.get_meta(bench):set_string("villages_project",
-			core.serialize({state = "finding_site", building = core.settings:get("lv_probe_builder_building") or DEFAULT_BUILDING}))
+		if custom then
+			core.get_meta(bench):set_string("villages_project", "")
+			roles.set_source(bench, catalog.SCHEMEDIT)
+		else
+			core.get_meta(bench):set_string("villages_project",
+				core.serialize({state = "finding_site", building = core.settings:get("lv_probe_builder_building") or DEFAULT_BUILDING}))
+		end
 	end
 	local function finish()
 		record.benches = {}
 		for i, bench in ipairs(benches) do
 			local outcome = outcomes[i] or bench_outcome(bench, roles, status_module)
 			if sited[i] then
-				outcome.built = check_built(sited[i], template)
+				outcome.built = check_built(sited[i], template, catalog)
+				if voids[i] then outcome.void_holds = core.get_node(voids[i]).name end
 				for _, cell in ipairs(sited[i].earthwork and sited[i].earthwork.fills or {}) do
 					outcome.filled = core.get_node(cell).name
 				end
@@ -341,6 +421,9 @@ local function watch(area, record, emit, done)
 					waiting = true
 				end
 				if project then outcomes[i].last_state = project.state end
+				if custom and not voids[i] and project and project.state == "building" then
+					voids[i] = mark_void(sited[i], template, catalog)
+				end
 			elseif project and project.state == "requires_materials" and project.pos then
 				-- Waited for its first look at the materials, so the bill reads as a player sees it.
 				local outcome = bench_outcome(bench, roles, status_module)

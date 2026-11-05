@@ -57,13 +57,10 @@ function M.current(record)
 	return counts, total
 end
 
--- The type to build next, or nil. `block_totals` (optional, name -> blocks) breaks a tie
--- toward the smaller building, then the name settles it, so the pick does not depend on
--- table order and a reload picks the same.
-function M.pick(record, schematic_table, block_totals)
-	local shares = M.shares(record, schematic_table)
-	if not shares then return nil end
-	local counts, total = M.current(record)
+-- The name furthest short of its share with one more building, or nil. `block_totals`
+-- (optional, name -> blocks) breaks a tie toward the smaller building, then the name settles
+-- it, so the pick does not depend on table order and a reload picks the same.
+local function largest_deficit(shares, counts, total, block_totals)
 	local best, best_deficit
 	local EPSILON = 1e-9
 	for name, share in pairs(shares) do
@@ -82,6 +79,42 @@ function M.pick(record, schematic_table, block_totals)
 		if better then best, best_deficit = name, deficit end
 	end
 	return best
+end
+
+-- The stock type to build next, or nil.
+function M.pick(record, schematic_table, block_totals)
+	local shares = M.shares(record, schematic_table)
+	if not shares then return nil end
+	local counts, total = M.current(record)
+	return largest_deficit(shares, counts, total, block_totals)
+end
+
+-- What a village has built from a source of schematics, name -> count.
+function M.custom_counts(record, source)
+	return record and record.built_custom and record.built_custom[source] or {}
+end
+
+-- The schematic to build next from `weights` (name -> weight above 0), or nil. Only what was
+-- built from these counts: against a whole village, with its stock buildings, the mix would
+-- come out right only after dozens of the heaviest in a row.
+function M.pick_custom(weights, counts, block_totals)
+	local sum, total, shares = 0, 0, {}
+	for _, weight in pairs(weights) do sum = sum + weight end
+	if sum <= 0 then return nil end
+	for name, weight in pairs(weights) do
+		shares[name] = weight / sum
+		total = total + (counts[name] or 0)
+	end
+	return largest_deficit(shares, counts, total, block_totals)
+end
+
+-- Kept apart from `built`, so that the stock mix is the same whatever a bench has done, and a
+-- schematic may share a stock building's name.
+function M.add_built_custom(record, source, name)
+	record.built_custom = record.built_custom or {}
+	local counts = record.built_custom[source] or {}
+	record.built_custom[source] = counts
+	counts[name] = (counts[name] or 0) + 1
 end
 
 -- A finished building counts from now on.

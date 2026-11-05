@@ -255,7 +255,9 @@ the template once it is done, and `after` is the project it moved on to.
 Settings change the run, through `LV_PROBE_CONF_EXTRA`: `lv_probe_builder_building = church` picks the building,
 `lv_probe_builder_platform = true` first flattens ground beside the bench, for a building too big for what is there (seed 2001 has no
 site for a church), `lv_probe_builder_earthwork = true` makes a dirt bump and a dip on the chosen site, for the Builder to level first,
-with `filled` then what stands in the dip, and `lv_probe_builder_build_seconds` shortens the wait. `built.cells` lists what is left when
+with `filled` then what stands in the dip, `lv_probe_builder_schematic = true` sets each bench to `<world>/schems` holding a test
+schematic with job blocks, a bamboo door, a void, cells of chance and flowing water, with `void_holds` then the marker put in the void
+once building began (`mcl_core:goldblock` if it was left alone), and `lv_probe_builder_build_seconds` shortens the wait. `built.cells` lists what is left when
 time runs out, what is there instead and any object near it, and `trail` and `pouch` show where the Builder was and what it carried.
 
 ## Who takes which job

@@ -65,6 +65,33 @@ function M.prepare_schematic(entry, surface_mat, engine)
 	return schematic
 end
 
+-- The rolls of a player's schematic. Its probabilities would otherwise be rolled afresh at
+-- each placement, and what is left to build is worked out by placing it, so a restart would
+-- find a different building half done. A project's seed makes them once and for all: each cell
+-- and slice ends up always (255) or never (0). A read schematic's probs run 0..254, in twos.
+local function roll_probabilities(schematic, seed)
+	local state = seed % 4294967296
+	local function settled(prob)
+		prob = prob or 255
+		if prob >= 254 then return 255 end
+		if prob <= 0 then return 0 end
+		state = (state * 1664525 + 1013904223) % 4294967296
+		return math.floor(state / 65536) % 254 < prob and 255 or 0
+	end
+	for _, cell in ipairs(schematic.data) do cell.prob = settled(cell.prob) end
+	for _, slice in ipairs(schematic.yslice_prob or {}) do slice.prob = settled(slice.prob) end
+end
+
+-- A player's schematic as a project builds it: with its own names, since it is what the
+-- player made, and its rolls settled by `seed`.
+function M.prepare_custom(path, seed, engine)
+	engine = engine or core
+	local schematic = engine.read_schematic(path, {write_yslice_prob = "low"})
+	if not (schematic and schematic.size and schematic.data) then return nil end
+	roll_probabilities(schematic, seed)
+	return schematic
+end
+
 -- The size a schematic takes up at a rotation ("0", "90", "180", "270").
 function M.rotated_size(size, rotation)
 	if rotation == "90" or rotation == "270" then return {x = size.z, y = size.y, z = size.x} end
@@ -74,12 +101,19 @@ end
 -- Every cell of the schematic at pos (its minimum corner, as a generated building's
 -- pos is), as the engine would place it. Nothing reaches the map: the VoxelManip is
 -- read and dropped. Returns a list of {pos, name, param2}, or nil if it cannot be placed.
-function M.world_cells(schematic, pos, rotation, engine)
+-- With `blank`, what the schematic does not place reads as "ignore", which a plan leaves
+-- alone. Otherwise a void would read as whatever happens to be there.
+function M.world_cells(schematic, pos, rotation, engine, blank)
 	engine = engine or core
 	local size = M.rotated_size(schematic.size, rotation)
 	local p2 = {x = pos.x + size.x - 1, y = pos.y + size.y - 1, z = pos.z + size.z - 1}
 	local vm = engine.get_voxel_manip()
 	local emin, emax = vm:read_from_map(pos, p2)
+	if blank then
+		local cleared = vm:get_data()
+		for i = 1, #cleared do cleared[i] = engine.CONTENT_IGNORE end
+		vm:set_data(cleared)
+	end
 	if not engine.place_schematic_on_vmanip(vm, pos, schematic, rotation, nil, true) then return nil end
 	local data, param2 = vm:get_data(), vm:get_param2_data()
 	local nx, ny = emax.x - emin.x + 1, emax.y - emin.y + 1
@@ -132,9 +166,19 @@ end
 -- The ground layer stands in for the ground that is there, so it is neither built nor
 -- paid for, unless it is more than ground (a belltower's posts). Profession blocks
 -- are left out; the cell is not even kept clear, as the player may add one at any time.
+--
+-- With options.custom the cells are a player's schematic. Profession blocks are built, since
+-- the player put them there, and flowing liquid is left to run from its source.
 function M.plan(cells, options, engine)
 	engine = engine or core
-	local floor_y, surface_mat = options.floor_y, options.surface_mat
+	local floor_y, surface_mat, custom = options.floor_y, options.surface_mat, options.custom
+	local function skipped(name)
+		if custom then
+			local def = engine.registered_nodes[name]
+			return def ~= nil and def.liquidtype == "flowing"
+		end
+		return materials.excluded(name)
+	end
 	local by_pos = {}
 	for _, cell in ipairs(cells) do by_pos[key(cell.pos)] = cell end
 
@@ -142,7 +186,7 @@ function M.plan(cells, options, engine)
 	for _, cell in ipairs(cells) do
 		local name, on_floor = cell.name, cell.pos.y == floor_y
 		if materials.identity(name) == materials.DIRT then wanted_dirt[key(cell.pos)] = true end
-		if materials.excluded(name) or name == "ignore" or (on_floor and is_ground_cell(name, surface_mat)) then
+		if skipped(name) or name == "ignore" or (on_floor and is_ground_cell(name, surface_mat)) then
 			-- Nothing to do here.
 		elseif name == AIR then
 			steps[#steps + 1] = {kind = "clear", pos = cell.pos, pass = PASS_CLEAR}
@@ -155,7 +199,8 @@ function M.plan(cells, options, engine)
 				-- The generator resets water for its biome colour (fix_village_water): a
 				-- schematic's param2 is not what a generated source ends up with.
 				node = {name = materials.placed(name), param2 = pass == PASS_LIQUID and 0 or cell.param2},
-				cost = materials.cost(name),
+				cost = custom and materials.custom_cost(name, engine) or materials.cost(name),
+				custom = custom,
 				returns = materials.returns(name),
 				on_floor = on_floor or nil,
 			}
@@ -217,6 +262,24 @@ local function matches(wanted, found)
 	return materials.identity(wanted) == materials.identity(found)
 end
 
+local function same_cost(a, b)
+	if not a or not b then return false end
+	for item, count in pairs(a) do
+		if b[item] ~= count then return false end
+	end
+	for item in pairs(b) do
+		if not a[item] then return false end
+	end
+	return true
+end
+
+-- Whether a step's node stands here. A player's schematic can hold states the rule table has
+-- never met, a filling composter or a lit smoker: what costs the same is the same thing built.
+local function stands(step, found, engine)
+	if matches(step.node.name, found) then return true end
+	return step.custom and same_cost(step.cost, materials.custom_cost(found, engine)) or false
+end
+
 -- Compares a plan with the world. `get_name(pos)` returns a node's name there, or nil
 -- for an unloaded one. Returns what is left to do, in order, and the positions where
 -- something foreign is in the way. Unloaded cells count as neither.
@@ -241,7 +304,7 @@ function M.compare(plan, get_name, engine)
 				end
 			else
 				local top_found = step.top and get_name(step.top.pos)
-				if not matches(step.node.name, found) then
+				if not stands(step, found, engine) then
 					local ground = materials.is_dirt(found) or found == plan.surface_mat
 					local replaceable = is_open(found, engine) or (step.on_floor and ground)
 						or (plan.cut_at[key(step.pos)] and materials.is_dirt(found))
