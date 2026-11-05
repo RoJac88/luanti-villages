@@ -6,6 +6,7 @@ local is_sleep_time = common.is_sleep_time
 local is_standing_space = common.is_standing_space
 local is_suffocating = common.is_suffocating
 local far_trips = dofile(core.get_modpath("living_villages") .. "/far_trips.lua")
+local builder_climb = dofile(core.get_modpath("living_villages") .. "/builder_climb.lua")
 -- core.register_entity requires the loading mod's own name-prefix context
 -- (register.lua's check_modname_prefix reads core.get_current_modname()),
 -- which is only valid during a mod's own normal load -- not from inside the
@@ -529,6 +530,13 @@ core.register_on_mods_loaded(function()
 				mob_set_yaw(self, yaw)
 				return false
 			end
+		end
+
+		-- Up a Builder's scaffolding, held there as a sleeper is in bed, and for the same
+		-- reasons: vanilla's AI would walk it off, and physics would drop it (builder_climb.lua).
+		if builder_climb.step(self, dtime) then
+			tick_visual(self)
+			return false
 		end
 
 		-- Vanilla's get_activity() takes no villager, so name this one for it:
