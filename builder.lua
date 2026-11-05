@@ -28,6 +28,7 @@ local materials = dofile(core.get_modpath("living_villages") .. "/builder_materi
 local site_finder = dofile(core.get_modpath("living_villages") .. "/builder_site.lua")
 local stock = dofile(core.get_modpath("living_villages") .. "/farm_stock.lua")
 local template = dofile(core.get_modpath("living_villages") .. "/building_template.lua")
+local catalog = dofile(core.get_modpath("living_villages") .. "/builder_catalog.lua")
 
 local M = {}
 
@@ -35,6 +36,9 @@ local BENCH = "living_villages:builder_block"
 M.BENCH = BENCH
 local PROFESSION = "mason"
 local PROJECT = "villages_project"
+-- Which schematics this bench builds from: catalog.SCHEMEDIT, catalog.FOLDER, or nothing
+-- for the stock buildings, so that a bench from before this existed goes on as it did.
+local SOURCE = "villages_source"
 
 -- A villager whose bed is this near a free bench takes it at once, ahead of any other
 -- job, since farm_jobs.lua would otherwise send it off to the nearest composter for good.
@@ -187,30 +191,38 @@ local function schematic_entry(name)
 	end
 end
 
--- Each building's size and how many blocks it takes, the latter for the census to break
--- ties with. Fixed once read, and reading one means serializing its schematic.
+-- A building's size and how many blocks it takes, the latter for the census to break ties
+-- with. Fixed once read, and reading one means serializing its schematic. `project` needs only
+-- its building, or its copy of a schematic (schem): that holds its own measure, keyed by content.
+-- A copy whose nodes have since gone, with their mod, measures as nothing, so it is dropped
+-- rather than built with holes.
 local measures = {}
-local function measure(name)
-	if measures[name] ~= nil then return measures[name] or nil end
-	local entry = schematic_entry(name)
-	local schematic = entry and template.prepare_schematic(entry, DEFAULT_SURFACE)
-	if not schematic then
-		measures[name] = false
-		return nil
+local function measure(project)
+	local id = project.schem or project.building
+	if measures[id] ~= nil then return measures[id] or nil end
+	measures[id] = false
+	if project.schem then
+		local schematic = core.read_schematic(catalog.snapshot_path(project.schem), {})
+		local measured = schematic and catalog.measure(schematic)
+		if measured and #measured.unknown == 0 and #measured.no_item == 0 then measures[id] = measured end
+		return measures[id] or nil
 	end
+	local entry = schematic_entry(project.building)
+	local schematic = entry and template.prepare_schematic(entry, DEFAULT_SURFACE)
+	if not schematic then return nil end
 	local blocks = 0
 	for _, cell in ipairs(schematic.data) do
 		if cell.name ~= "air" then blocks = blocks + 1 end
 	end
-	measures[name] = {size = schematic.size, blocks = blocks}
-	return measures[name]
+	measures[id] = {size = schematic.size, blocks = blocks}
+	return measures[id]
 end
 
 local function totals_of_buildings()
 	local totals = {}
 	local settlements = rawget(_G, "settlements")
 	for _, entry in ipairs(settlements and settlements.schematic_table or {}) do
-		local measured = measure(entry.name)
+		local measured = measure({building = entry.name})
 		totals[entry.name] = measured and measured.blocks
 	end
 	return totals
@@ -250,8 +262,8 @@ local function with_avoided(rects, bench)
 	return rects
 end
 
-local function site_request(bench, building)
-	local measured = measure(building)
+local function site_request(bench, project)
+	local measured = measure(project)
 	if not measured then return nil end
 	local config = site_finder.config
 	local record = village_index and village_index.read_village(bench, VILLAGE_RADIUS)
@@ -284,16 +296,22 @@ local plans = {}
 local function plan_of(bench, project)
 	if not project.pos then return nil end
 	local earthwork = project.earthwork or {}
-	local id = table.concat({project.building, pos_key(project.pos), project.rotat, tostring(project.surface_mat),
-		#(earthwork.cuts or {}), #(earthwork.fills or {})}, "|")
+	local id = table.concat({project.building, tostring(project.schem), tostring(project.seed), pos_key(project.pos),
+		project.rotat, tostring(project.surface_mat), #(earthwork.cuts or {}), #(earthwork.fills or {})}, "|")
 	local cached = plans[pos_key(bench)]
 	if cached and cached.id == id then return cached.plan end
-	local entry = schematic_entry(project.building)
-	local schematic = entry and template.prepare_schematic(entry, project.surface_mat)
-	local cells = schematic and template.world_cells(schematic, project.pos, project.rotat)
+	local custom = project.schem ~= nil
+	local schematic
+	if not custom then
+		local entry = schematic_entry(project.building)
+		schematic = entry and template.prepare_schematic(entry, project.surface_mat)
+	elseif measure(project) then
+		schematic = template.prepare_custom(catalog.snapshot_path(project.schem), project.seed)
+	end
+	local cells = schematic and template.world_cells(schematic, project.pos, project.rotat, nil, custom)
 	if not cells then return nil end
 	local plan = template.plan(cells, {
-		floor_y = project.pos.y, surface_mat = project.surface_mat, earthwork = project.earthwork,
+		floor_y = project.pos.y, surface_mat = project.surface_mat, earthwork = project.earthwork, custom = custom,
 	})
 	plans[pos_key(bench)] = {id = id, plan = plan}
 	return plan
@@ -327,8 +345,60 @@ function M.materials_report(self, bench, project)
 	}
 end
 
-local function choose(self, bench)
+function M.source_of(bench)
+	local source = core.get_meta(bench):get_string(SOURCE)
+	if source == catalog.SCHEMEDIT or source == catalog.FOLDER then return source end
+	return nil
+end
+
+-- A project nothing has been done for yet is dropped, so the new source takes effect at once.
+-- One under way is finished first.
+local NOT_STARTED = {finding_site = true, no_site = true, requires_materials = true}
+function M.set_source(bench, source)
+	if source ~= catalog.SCHEMEDIT and source ~= catalog.FOLDER then source = nil end
+	if M.source_of(bench) == source then return end
+	core.get_meta(bench):set_string(SOURCE, source or "")
+	local project = M.load_project(bench)
+	if not (project and NOT_STARTED[project.state]) then return end
+	save_project(bench, nil)
+	if village_index then
+		village_index.update_village(bench, VILLAGE_RADIUS, function(record)
+			if record.reserved then record.reserved[pos_key(bench)] = nil end
+		end)
+	end
+end
+
+-- The next schematic of a source. Nothing to build is said in the status window, and never
+-- quietly made up with stock buildings the player turned away from.
+local function choose_custom(self, session, bench, source, record)
+	local scan = catalog.scan(source)
+	local weights, totals = {}, {}
+	for _, entry in ipairs(scan.entries) do
+		if not entry.problem and entry.weight > 0 then
+			weights[entry.name] = entry.weight
+			totals[entry.name] = entry.measured.blocks
+		end
+	end
+	local name = census.pick_custom(weights, census.custom_counts(record, source), totals)
+	session.no_projects = name == nil or nil
+	if not name then return end
+	local hash = catalog.take_snapshot(scan.directory, name)
+	if not hash then
+		core.log("error", "[living_villages] could not copy schematic " .. name .. " for a project")
+		return
+	end
+	save_project(bench, {
+		state = "finding_site", building = name, source = source, schem = hash,
+		seed = math.random(0, 2147483647),
+	})
+	core.log("action", string.format("[living_villages] builder %s will put up %s from %s", tostring(self._id), name, source))
+end
+
+local function choose(self, session, bench)
 	local record = village_index and village_index.read_village(bench, VILLAGE_RADIUS)
+	local source = M.source_of(bench)
+	if source then return choose_custom(self, session, bench, source, record) end
+	session.no_projects = nil
 	local settlements = rawget(_G, "settlements")
 	local building = census.pick(record, settlements and settlements.schematic_table, totals_of_buildings())
 	if not building then return end
@@ -337,7 +407,7 @@ local function choose(self, bench)
 end
 
 local function start_search(self, session, bench, project)
-	local request = site_request(bench, project.building)
+	local request = site_request(bench, project)
 	if not request then
 		save_project(bench, nil)
 		return
@@ -349,7 +419,7 @@ local function start_search(self, session, bench, project)
 		session.retry_at = core.get_gametime() + SITE_RETRY_SECONDS
 		session.site_report = report
 		local current = M.load_project(bench)
-		if not current or current.building ~= project.building then return end
+		if not current or current.building ~= project.building or current.schem ~= project.schem then return end
 		if not found then
 			-- Why, for whoever looks into a Builder that will not start.
 			local reasons = {}
@@ -393,7 +463,7 @@ end
 -- A site nothing has been done to yet is free to go bad: a player may have built there in
 -- the meantime. Then it finds another.
 local function site_still_good(bench, project)
-	local request = site_request(bench, project.building)
+	local request = site_request(bench, project)
 	if not request then return false end
 	local turned = project.rotat == "90" or project.rotat == "270"
 	local w = turned and request.size.z or request.size.x
@@ -466,7 +536,7 @@ local function walk_to(self, session, target, now)
 end
 
 local function footprint_of(project)
-	local measured = measure(project.building)
+	local measured = measure(project)
 	if not measured then return nil end
 	local size = template.rotated_size(measured.size, project.rotat)
 	return {
@@ -625,7 +695,11 @@ local function finish_building(self, session, bench, project)
 	local key = pos_key(bench)
 	if village_index then
 		village_index.update_village(bench, VILLAGE_RADIUS, function(record)
-			census.add_built(record, project.building)
+			if project.schem then
+				census.add_built_custom(record, project.source, project.building)
+			else
+				census.add_built(record, project.building)
+			end
 			if record.reserved then record.reserved[key] = nil end
 		end)
 	end
@@ -824,7 +898,7 @@ end
 local function tick(self, session, bench, now)
 	local project = M.load_project(bench)
 	if not project then
-		choose(self, bench)
+		choose(self, session, bench)
 		session.next_at = now + TICK_SECONDS
 		release(self, session)
 		return
@@ -848,14 +922,19 @@ function M.report(self)
 	local bench = M.claimed_bench(self)
 	if not bench then return {state = "no_bench"} end
 	local project = M.load_project(bench)
-	if not project then return {state = "choosing", bench = bench, at_work = common.is_work_time(self)} end
+	if not project then
+		return {
+			state = "choosing", bench = bench, at_work = common.is_work_time(self),
+			no_projects = session_of(self).no_projects,
+		}
+	end
 	local report = {
 		state = project.state, building = project.building, site = project.pos, bench = bench,
 		at_work = common.is_work_time(self), currency = materials.EMERALD,
 	}
 	if project.blocked_at and project.state == "blocked" then report.blocked = project.blocked_at end
 	report.stuck = session_of(self).stuck
-	local request = site_request(bench, project.building)
+	local request = site_request(bench, project)
 	if request then
 		report.size = {x = request.size.x, y = request.height + 1, z = request.size.z}
 		report.range = request.range

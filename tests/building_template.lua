@@ -567,4 +567,118 @@ do
 	assert(template.prepare_schematic(entry, "mcl_core:sand", engine) == nil)
 end
 
+-- A player's schematic: rolls settle once per seed, and voids and slices with them.
+do
+	local function source()
+		local data = {}
+		for i = 1, 400 do data[i] = {name = "mcl_core:cobble", prob = 128, param2 = 0} end
+		data[1].prob, data[2].prob, data[3].prob = 254, 0, 255
+		data[4].name = "mcl_stairs:stair_wood_outer"
+		data[4].prob = 254
+		return {size = {x = 20, y = 1, z = 20}, data = data, yslice_prob = {{ypos = 0, prob = 2}}}
+	end
+	local asked
+	local engine = {read_schematic = function(path, options)
+		asked = options
+		return path == "x.mts" and source() or nil
+	end}
+	local a = assert(template.prepare_custom("x.mts", 42, engine))
+	assert(asked.write_yslice_prob == "low", "slices are asked for")
+	assert(a.data[1].prob == 255 and a.data[2].prob == 0 and a.data[3].prob == 255, "certain cells stay certain")
+	assert(a.data[4].name == "mcl_stairs:stair_wood_outer", "a player's stairs are not swapped")
+	local placed = 0
+	for _, cell in ipairs(a.data) do
+		assert(cell.prob == 0 or cell.prob == 255)
+		if cell.prob == 255 then placed = placed + 1 end
+	end
+	assert(placed > 150 and placed < 250, "about half: " .. placed)
+	assert(a.yslice_prob[1].prob == 0 or a.yslice_prob[1].prob == 255)
+
+	-- The same seed is the same building, as a restart needs; another may differ.
+	local same, different = template.prepare_custom("x.mts", 42, engine), template.prepare_custom("x.mts", 43, engine)
+	local differs = false
+	for i, cell in ipairs(a.data) do
+		assert(same.data[i].prob == cell.prob)
+		differs = differs or different.data[i].prob ~= cell.prob
+	end
+	assert(differs)
+	assert(template.prepare_custom("other.mts", 1, engine) == nil)
+end
+
+-- Blanking: what is not placed reads as ignore, and the map's own nodes do not show through.
+do
+	local ID = {ignore = 1, air = 2, ["mcl_core:cobble"] = 3}
+	local NAME = {"ignore", "air", "mcl_core:cobble"}
+	local vm = {}
+	function vm:read_from_map(a, b)
+		self.data = {}
+		for i = 1, (b.x - a.x + 1) * (b.y - a.y + 1) * (b.z - a.z + 1) do self.data[i] = ID.air end
+		return a, b
+	end
+	function vm:get_data() return self.data end
+	function vm:set_data(data) self.data = data end
+	function vm:get_param2_data() return {0, 0} end
+	local engine = {
+		CONTENT_IGNORE = ID.ignore,
+		get_voxel_manip = function() return vm end,
+		get_name_from_content_id = function(id) return NAME[id] end,
+		place_schematic_on_vmanip = function(manip)
+			manip.data[1] = ID["mcl_core:cobble"]
+			return true
+		end,
+	}
+	local schematic = {size = {x = 2, y = 1, z = 1}, data = {}}
+	local pos = {x = 0, y = 0, z = 0}
+	local cells = template.world_cells(schematic, pos, "0", engine, true)
+	assert(cells[1].name == "mcl_core:cobble" and cells[2].name == "ignore")
+	assert(template.world_cells(schematic, pos, "0", engine)[2].name == "air", "stock reads the map, as before")
+end
+
+-- A plan of a player's schematic: job blocks are built and paid for, voids and flows left alone.
+do
+	local engine = {
+		registered_nodes = {
+			["mcl_core:cobble"] = {groups = {}},
+			["mcl_loom:loom"] = {groups = {}},
+			["mcl_core:water_flowing"] = {liquidtype = "flowing", groups = {not_in_creative_inventory = 1}},
+			["mcl_composters:composter"] = {groups = {}},
+			["mcl_composters:composter_3"] = {groups = {not_in_creative_inventory = 1}, drop = "mcl_composters:composter"},
+			["mcl_smoker:smoker"] = {groups = {}},
+			["mcl_core:stone"] = {groups = {}},
+			air = {buildable_to = true, groups = {}},
+		},
+		get_item_group = function() return 0 end,
+	}
+	local function at(x) return {x = x, y = 5, z = 0} end
+	local cells = {
+		{pos = at(0), name = "mcl_loom:loom", param2 = 0},
+		{pos = at(1), name = "ignore", param2 = 0},
+		{pos = at(2), name = "mcl_core:water_flowing", param2 = 0},
+		{pos = at(3), name = "mcl_composters:composter_3", param2 = 0},
+		{pos = at(4), name = "mcl_core:cobble", param2 = 0},
+	}
+	local options = {floor_y = 0, surface_mat = "mcl_core:dirt_with_grass", custom = true}
+	local plan = template.plan(cells, options, engine)
+	assert(#plan.steps == 3, #plan.steps)
+	local bill = template.bill(plan.steps)
+	assert(bill["mcl_loom:loom"] == 1 and bill["mcl_composters:composter"] == 1 and bill["mcl_core:cobble"] == 1)
+
+	-- The same cells in a stock building leave the job blocks out.
+	options.custom = nil
+	local stock_bill = template.bill(template.plan(cells, options, engine).steps)
+	assert(stock_bill["mcl_loom:loom"] == nil and stock_bill["mcl_composters:composter"] == nil)
+
+	-- A composter a farmer has since used is still the composter built; a stone is not.
+	options.custom = true
+	plan = template.plan({cells[4]}, options, engine)
+	for found, done in pairs({
+		["mcl_composters:composter"] = true, ["mcl_composters:composter_3"] = true, air = false,
+	}) do
+		local missing, blocked = template.compare(plan, function() return found end, engine)
+		assert((#missing == 0) == done and #blocked == 0, found)
+	end
+	local _, blocked = template.compare(plan, function() return "mcl_core:stone" end, engine)
+	assert(#blocked == 1)
+end
+
 print("building_template: ok")

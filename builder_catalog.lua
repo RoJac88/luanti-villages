@@ -201,6 +201,28 @@ local function examine(path, engine)
 	return measured_by_hash[hash], nil, hash
 end
 
+-- A project builds from its own copy, named for its content, so re-exporting or deleting the
+-- file cannot change a building half up. Copies are never removed: a bench in an unloaded block
+-- may still need one, and they are small.
+function M.snapshot_path(hash, engine)
+	engine = engine or core
+	return engine.get_worldpath() .. "/living_villages/project_schems/" .. hash .. ".mts"
+end
+
+-- Copies a schematic for a project. Returns the hash of what was copied, which is what the
+-- project must name, or nil if it could not be.
+function M.take_snapshot(directory, name, engine)
+	engine = engine or core
+	local file = io.open(directory .. "/" .. name .. ".mts", "rb")
+	if not file then return nil end
+	local content = file:read("*a")
+	file:close()
+	local hash = engine.sha1(content)
+	engine.mkdir(engine.get_worldpath() .. "/living_villages/project_schems")
+	if not engine.safe_file_write(M.snapshot_path(hash, engine), content) then return nil end
+	return hash
+end
+
 -- Everything a menu shows of a source: {directory, entries, manifest_problem}. An entry is
 -- {name, weight, share, hash, measured, problem}, sorted by name. Shares sum to 1 over what
 -- can be built; a building that cannot be built, or has weight 0, has a share of 0.

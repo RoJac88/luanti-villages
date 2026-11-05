@@ -55,9 +55,15 @@ core.get_voxel_manip = function()
 			local y, x = math.floor(rest / nx), rest % nx
 			return id_of(name_of(minp.x + x, minp.y + y, minp.z + z))
 		end})
+		-- A building's own box is small enough to copy, and a blank needs its length.
+		local volume = nx * ny * (maxp.z - minp.z + 1)
+		if volume <= 4096 then
+			for i = 1, volume do rawset(self.data, i, self.data[i]) end
+		end
 		return minp, maxp
 	end
 	function vm:get_data() return self.data end
+	function vm:set_data(data) self.data = data end
 	function vm:get_param2_data() return setmetatable({}, {__index = function() return 0 end}) end
 	return vm
 end
@@ -69,7 +75,7 @@ core.place_schematic_on_vmanip = function(vm, pos, schematic)
 		local index = i - 1
 		local x, y, z = index % size.x, math.floor(index / size.x) % size.y, math.floor(index / (size.x * size.y))
 		local at = (pos.z + z - minp.z) * ny * nx + (pos.y + y - minp.y) * nx + (pos.x + x - minp.x) + 1
-		rawset(vm.data, at, id_of(cell.name))
+		if cell.prob ~= 0 then rawset(vm.data, at, id_of(cell.name)) end
 	end
 	return true
 end
@@ -893,6 +899,168 @@ do
 	player.inv.lists.main = {}
 	ok, message = run("build_project_materials")
 	assert(ok and message:find("Added 0 items", 1, true) and message:find(COBBLE .. " 10", 1, true), message)
+end
+
+-- A bench set to a directory of schematics.
+do
+	local WORLD = "/world"
+	local DIR = WORLD .. "/schems"
+	local files, schematics = {}, {}
+	local LOOM, FLOWING = "mcl_loom:loom", "mcl_core:water_flowing"
+	world.defs[LOOM] = {groups = {}}
+	world.defs[FLOWING] = {groups = {not_in_creative_inventory = 1}, liquidtype = "flowing"}
+
+	local real_open = io.open
+	io.open = function(path, mode)
+		local content = files[path]
+		if not path:find("^" .. WORLD) then return real_open(path, mode) end
+		if content == nil then return nil end
+		return {
+			seek = function(_, whence) return whence == "end" and #content or 0 end,
+			read = function() return content end,
+			close = function() end,
+		}
+	end
+	core.get_worldpath = function() return WORLD end
+	core.mkdir = function() return true end
+	core.sha1 = function(content) return "h" .. content:gsub("%W", "_") end
+	core.safe_file_write = function(path, content)
+		files[path] = content
+		return true
+	end
+	core.parse_json = function() return nil end
+	core.get_dir_list = function(directory)
+		local found = {}
+		for path in pairs(files) do
+			local dir, file = path:match("^(.*)/([^/]+)$")
+			if dir == directory then found[#found + 1] = file end
+		end
+		return found
+	end
+	core.read_schematic = function(path)
+		local make = schematics[files[path]]
+		return make and make()
+	end
+	-- A ground layer, a floor of one row, a loom, a void over a node of the world's, a stair
+	-- a stock swap would turn to a slab, and flowing water.
+	local PRESERVED = "mcl_core:wood"
+	local function cabin()
+		local data = {}
+		for z = 0, 2 do
+			for y = 0, 1 do
+				for x = 0, 2 do
+					local name, prob = "air", 254
+					if y == 0 then name = "mcl_core:dirt"
+					elseif x == 0 and z == 0 then name = LOOM
+					elseif x == 1 and z == 0 then name, prob = "air", 0
+					elseif x == 2 and z == 0 then name = FLOWING
+					elseif x == 0 and z == 1 then name = COBBLE end
+					data[#data + 1] = {name = name, prob = prob, param2 = 0}
+				end
+			end
+		end
+		return {size = {x = 3, y = 2, z = 3}, data = data}
+	end
+	local function add(name, make)
+		files[DIR .. "/" .. name .. ".mts"] = name
+		schematics[name] = make
+	end
+	add("cabin", cabin)
+	local CATALOG = dofile("builder_catalog.lua")
+
+	-- Set it and the next project comes from there, from its own copy.
+	local entity = hired()
+	local before = builder.load_project(BENCH_POS)
+	assert(before.building == "hut" and before.state == "finding_site")
+	assert(builder.source_of(BENCH_POS) == nil)
+	builder.set_source(BENCH_POS, CATALOG.SCHEMEDIT)
+	assert(builder.source_of(BENCH_POS) == CATALOG.SCHEMEDIT)
+	assert(builder.load_project(BENCH_POS) == nil, "a project nothing was done for is dropped")
+	advance(entity, 6)
+	local project = builder.load_project(BENCH_POS)
+	assert(project.building == "cabin" and project.source == CATALOG.SCHEMEDIT, tostring(project.building))
+	assert(project.schem == "hcabin" and project.seed)
+	assert(files[CATALOG.snapshot_path("hcabin")] == "cabin", "copied")
+
+	-- Deleting the original changes nothing for a project that has its copy.
+	files[DIR .. "/cabin.mts"] = nil
+	assert(run_until(entity, project_gone_or("requires_materials")))
+	project = builder.load_project(BENCH_POS)
+	assert(project.state == "requires_materials" and project.pos, project.state)
+
+	-- The bill has the job block, and neither the void nor the flow.
+	local report = builder.report(entity)
+	local needs = {}
+	for _, row in ipairs(report.rows) do needs[row.item] = row.need end
+	assert(needs[LOOM] == 1 and needs[COBBLE] == 1, "job block and wall")
+	assert(not needs[FLOWING] and not needs["mcl_buckets:bucket_water"])
+
+	-- Well clear of the site, which a chest in the footprint would spoil.
+	local chest = {x = project.pos.x + 9, y = 1, z = project.pos.z}
+	support.chest(world, chest, CHEST)
+	world.meta(chest).inv:add_item("main", COBBLE .. " 1")
+	world.meta(chest).inv:add_item("main", LOOM .. " 1")
+	assert(run_until(entity, function() return builder.load_project(BENCH_POS).state ~= "requires_materials" end))
+	local kept = builder.load_project(BENCH_POS).pos
+	assert(kept and kept.x == project.pos.x and kept.z == project.pos.z, "the same site")
+
+	-- A node put in the void cell once work is under way is left standing, and in the way of
+	-- nothing. The stub places a schematic unrotated, so the cell is known.
+	local origin = project.pos
+	local void_at = {x = origin.x + 1, y = origin.y + 1, z = origin.z}
+	world.set(void_at, PRESERVED)
+	assert(run_until(entity, function() return not builder.load_project(BENCH_POS) end, 900), "it finishes")
+	assert(world.name(void_at) == PRESERVED, "a void leaves what is there")
+	assert(world.name({x = origin.x, y = origin.y + 1, z = origin.z}) == LOOM, "the job block is built")
+	assert(world.name({x = origin.x, y = origin.y + 1, z = origin.z + 1}) == COBBLE)
+	assert(world.name({x = origin.x + 2, y = origin.y + 1, z = origin.z}) == "air", "no flow is placed")
+	assert(stock.chest_count(chest, LOOM) == 0, "and paid for")
+
+	-- It counts apart from the stock mix.
+	assert(records[1].built_custom.schemedit.cabin == 1)
+	assert(not (records[1].built and records[1].built.cabin))
+
+	-- A directory with nothing to build says so, and does not fall back on stock buildings.
+	entity = hired()
+	files = {}
+	builder.set_source(BENCH_POS, CATALOG.SCHEMEDIT)
+	advance(entity, 6)
+	assert(builder.load_project(BENCH_POS) == nil)
+	report = builder.report(entity)
+	assert(report.state == "choosing" and report.no_projects)
+
+	-- Unknown nodes keep a schematic from being picked.
+	add("alien", function()
+		return {size = {x = 1, y = 1, z = 1}, data = {{name = "nope:gone", prob = 254, param2 = 0}}}
+	end)
+	advance(entity, 6)
+	assert(builder.load_project(BENCH_POS) == nil and builder.report(entity).no_projects)
+
+	-- Back to stock, and the note goes.
+	builder.set_source(BENCH_POS, "nonsense")
+	assert(builder.source_of(BENCH_POS) == nil)
+	advance(entity, 6)
+	assert(builder.load_project(BENCH_POS).building == "hut" and not builder.report(entity).no_projects)
+
+	-- A project already building is finished first: only one not started gives way.
+	add("cabin", cabin)
+	project = builder.load_project(BENCH_POS)
+	project.state = "building"
+	world.meta(BENCH_POS).fields.villages_project = core.serialize(project)
+	builder.set_source(BENCH_POS, CATALOG.SCHEMEDIT)
+	assert(builder.load_project(BENCH_POS).state == "building")
+
+	-- A copy whose nodes have gone is dropped rather than built with holes.
+	builder.set_source(BENCH_POS, nil)
+	files[CATALOG.snapshot_path("halien")] = "alien"
+	local stranded = {state = "finding_site", building = "alien", source = CATALOG.SCHEMEDIT, schem = "halien", seed = 1}
+	world.meta(BENCH_POS).fields.villages_project = core.serialize(stranded)
+	world.now = world.now + 100
+	advance(entity, 6)
+	local after = builder.load_project(BENCH_POS)
+	assert(not after or after.building ~= "alien", "dropped")
+
+	io.open = real_open
 end
 
 print("builder: ok")
