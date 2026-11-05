@@ -634,6 +634,92 @@ do
 	assert(template.world_cells(schematic, pos, "0", engine)[2].name == "air", "stock reads the map, as before")
 end
 
+-- A player's soil has to be soil, or the crops on it die and cost again.
+do
+	local SOIL, GRASS, DIRT = "mcl_farming:soil_wet", "mcl_core:dirt_with_grass", "mcl_core:dirt"
+	local engine = {
+		registered_nodes = {
+			[SOIL] = {groups = {}}, ["mcl_farming:soil"] = {groups = {}},
+			[GRASS] = {groups = {solid = 1}}, [DIRT] = {groups = {solid = 1}},
+			["mcl_core:stone"] = {groups = {solid = 1}},
+			["mcl_farming:wheat_1"] = {groups = {attached_node = 1}, buildable_to = false},
+			["mcl_farming:wheat"] = {groups = {attached_node = 1}},
+			air = {buildable_to = true, groups = {}},
+		},
+		get_item_group = function() return 0 end,
+	}
+	local cell = {pos = {x = 0, y = 0, z = 0}, name = SOIL, param2 = 0}
+	local options = {floor_y = 0, surface_mat = GRASS, custom = true}
+	local plan = template.plan({cell}, options, engine)
+	assert(#plan.steps == 1 and plan.steps[1].cost == nil, "free")
+	assert(next(template.bill(plan.steps)) == nil)
+	local function look(found, above)
+		return template.compare(plan, function(pos)
+			if pos.y == 0 then return found end
+			return above or "air"
+		end, engine)
+	end
+	-- Grass or bare dirt is work to do, not the job done.
+	assert(#look(GRASS) == 1 and #look(DIRT) == 1 and #look("air") == 1)
+	-- Either wetness is done.
+	assert(#look(SOIL) == 0 and #look("mcl_farming:soil") == 0)
+	-- With a crop on it, it stays work to do; under a solid block it can never be soil, so it is done.
+	assert(#look(DIRT, "mcl_farming:wheat_1") == 1)
+	local missing, blocked = look(DIRT, "mcl_core:stone")
+	assert(#missing == 0 and #blocked == 0)
+	-- A path villagers wore across the bed is still ground to till.
+	engine.registered_nodes["mcl_core:grass_path"] = {groups = {}}
+	missing, blocked = look("mcl_core:grass_path")
+	assert(#missing == 1 and #blocked == 0, "a worn path is ground")
+	-- Something else in the way is in the way.
+	missing, blocked = look("mcl_core:stone")
+	assert(#missing == 0 and #blocked == 1)
+
+	-- Water first, so the beds do not dry out, then the beds, then what grows in them.
+	local WATER = "mcl_core:water_source"
+	engine.registered_nodes[WATER] = {liquidtype = "source", groups = {}}
+	engine.get_item_group = function(name, group)
+		return (engine.registered_nodes[name] and engine.registered_nodes[name].groups[group]) or 0
+	end
+	local ordered = template.plan({
+		{pos = {x = 0, y = 1, z = 0}, name = "mcl_farming:wheat", param2 = 0},
+		{pos = {x = 0, y = 0, z = 0}, name = SOIL, param2 = 0},
+		{pos = {x = 1, y = 0, z = 0}, name = WATER, param2 = 0},
+		{pos = {x = 2, y = 1, z = 0}, name = "mcl_core:stone", param2 = 0},
+	}, options, engine).steps
+	assert(ordered[1].node.name == "mcl_core:stone")
+	assert(ordered[2].node.name == WATER)
+	assert(ordered[3].node.name == SOIL)
+	assert(ordered[4].node.name:match("wheat"))
+
+	-- Job blocks and beds come last, after the crops, so nobody claims them half built.
+	engine.registered_nodes["mcl_composters:composter"] = {groups = {}}
+	engine.registered_nodes["mcl_beds:bed_red_bottom"] = {groups = {}}
+	engine.registered_nodes["mcl_beds:bed_red_top"] = {groups = {}}
+	ordered = template.plan({
+		{pos = {x = 3, y = 1, z = 0}, name = "mcl_composters:composter", param2 = 0},
+		{pos = {x = 4, y = 1, z = 0}, name = "mcl_beds:bed_red_bottom", param2 = 1},
+		{pos = {x = 5, y = 1, z = 0}, name = "mcl_beds:bed_red_top", param2 = 1},
+		{pos = {x = 0, y = 1, z = 0}, name = "mcl_farming:wheat", param2 = 0},
+		{pos = {x = 0, y = 0, z = 0}, name = SOIL, param2 = 0},
+	}, options, engine).steps
+	assert(#ordered == 4, "the bed is one step")
+	assert(ordered[2].node.name:match("wheat"))
+	assert(ordered[3].node.name == "mcl_composters:composter" or ordered[3].node.name == "mcl_beds:bed_red_bottom")
+	assert(ordered[4].node.name == "mcl_composters:composter" or ordered[4].node.name == "mcl_beds:bed_red_bottom")
+	assert(ordered[3].node.name ~= ordered[4].node.name)
+	assert(ordered[3].top or ordered[4].top, "the bed keeps its top half")
+	-- A stock building goes on as it did: it pays for soil, and dirt there counts as built.
+	options.custom = nil
+	plan = template.plan({cell}, options, engine)
+	assert(plan.steps[1].cost ~= nil)
+	assert(#look(DIRT) == 0)
+	-- A floor block over a worn path replaces it, as it would the grass.
+	plan = template.plan({{pos = {x = 0, y = 0, z = 0}, name = "mcl_core:stone", param2 = 0}}, options, engine)
+	missing, blocked = look("mcl_core:grass_path")
+	assert(#missing == 1 and #blocked == 0, "a floor goes over a worn path")
+end
+
 -- A plan of a player's schematic: job blocks are built and paid for, voids and flows left alone.
 do
 	local engine = {

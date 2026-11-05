@@ -34,6 +34,12 @@ function M.is_dirt(name)
 	return DIRT_FAMILY[name] == true
 end
 
+-- The ground as a building's floor finds it: dirt, or a path villagers have worn into the
+-- grass, which they will do across a site while it waits for its floor.
+function M.is_ground(name)
+	return DIRT_FAMILY[name] == true or name == "mcl_core:grass_path"
+end
+
 -- Jobsites vanilla's table does not know: the keeper's (keeper.lua), the cleric's
 -- (cleric.lua) and the Builder's own.
 local EXCLUDED = {
@@ -44,6 +50,11 @@ local EXCLUDED = {
 
 function M.excluded(name)
 	return EXCLUDED[name] == true or common.is_workstation_node(name) == true
+end
+
+-- What a villager comes to claim: a job block (a stock building leaves those out), or a bed.
+function M.draws_villagers(name)
+	return M.excluded(name) or name:match("^mcl_beds:bed_") ~= nil
 end
 
 -- Liquids come in a bucket, and the empty bucket is the Builder's to return.
@@ -153,14 +164,20 @@ local function sure_drop(def)
 	return type(drop) == "string" and drop:match("^%S+") or nil
 end
 
+-- Farmland: dirt worked with a hoe, which dries back to dirt with nothing growing on it.
+function M.is_soil(name)
+	return name == "mcl_farming:soil" or name == "mcl_farming:soil_wet"
+end
+
 -- What a node of a player's schematic costs: the rule table above was written for stock
 -- buildings, so it is checked against what exists here. Job blocks are built and paid for,
--- since a player who put one in a schematic wants it. Returns item name -> count, nil for
+-- since a player who put one in a schematic wants it. Soil is free: it is the ground
+-- worked, and a bed can dry out and need doing again before its water is in. Returns item name -> count, nil for
 -- a node that costs nothing, or nil and "no_item" for one no player can supply.
 function M.custom_cost(name, engine)
 	engine = engine or core
 	local def = engine.registered_nodes[name]
-	if name == "air" or is_free_half(name) or (def and def.liquidtype == "flowing") then return nil end
+	if name == "air" or is_free_half(name) or M.is_soil(name) or (def and def.liquidtype == "flowing") then return nil end
 	local cost = {}
 	for item, count in pairs(items_for(name)) do
 		if not holdable(item, engine) then
