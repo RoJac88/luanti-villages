@@ -252,8 +252,9 @@ local function check_built(project, template, catalog)
 	end
 	for _, step in ipairs(plan.steps) do
 		if step.kind == "place" then
+			-- Only a block that is there can face the wrong way: one not placed yet is air.
 			local node = core.get_node(step.pos)
-			if node.param2 ~= step.node.param2 then
+			if node.name == step.node.name and node.param2 ~= step.node.param2 then
 				result.wrong_param2 = result.wrong_param2 + 1
 				if #result.samples < SAMPLES then
 					result.samples[#result.samples + 1] = pos_text(step.pos) .. " " .. step.node.name
