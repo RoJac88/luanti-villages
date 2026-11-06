@@ -51,7 +51,8 @@ local function problem_text(problem)
 	elseif code == "too_tall" then
 		return S("Too tall: at most @1 high.", tostring(problem.limit))
 	elseif code == "out_of_reach" then
-		return S("A Builder reaches @1, and this needs @2.", tostring(problem.reach), tostring(problem.needs))
+		return S("Too wide for a Builder: it reaches @1, and this needs @2.",
+			tostring(problem.reach), tostring(problem.needs))
 	elseif code == "file_too_big" then
 		return S("The file is too large to read.")
 	end

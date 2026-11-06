@@ -284,7 +284,8 @@ local function make_platform(bench)
 				core.set_node({x = x, y = y, z = z}, {name = "mcl_core:dirt"})
 			end
 			core.set_node({x = x, y = bench.y, z = z}, {name = "mcl_core:dirt_with_grass"})
-			for y = bench.y + 1, bench.y + 24 do
+			-- As high as the site search reads (builder_site.lua's above), for the tallest building.
+			for y = bench.y + 1, bench.y + 40 do
 				core.remove_node({x = x, y = y, z = z})
 			end
 		end

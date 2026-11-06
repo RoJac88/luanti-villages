@@ -19,14 +19,18 @@ local M = {}
 M.config = {
 	limit = 12, -- dirt blocks broken, and placed, for one site
 	ring = 2, -- cells round the footprint a Builder walks and works from
-	-- How far it places a block from. The stock church's highest glass is 14.42 from flat
-	-- ground in the ring, and a block it cannot reach leaves it stuck for good.
+	-- How far it places a block from: from the ring's outer row for a low block, and for a high
+	-- one from scaffolding level with it (scaffold_height), so only across. A block it cannot
+	-- reach leaves it stuck for good, so this bounds how wide a building may be.
 	reach = 15,
+	scaffold_height = 5, -- a block this far above the floor or less is placed from the ground
 	ring_step = 1, -- how far that ground may be off the floor
 	margin = 3, -- a site stays this far from a structure
 	gap = 20, -- and this close to one
 	range = 80, -- from the bench: vanilla gives up a jobsite left 100 behind
-	below = 12, above = 24, -- how far from the bench the ground may lie, and the map is read
+	-- How far from the bench the ground may lie, and the map is read: room above for the tallest
+	-- building (builder_catalog.lua's MAX_HEIGHT) on ground a little above the bench.
+	below = 12, above = 40,
 }
 
 -- Reads the area once. name_at(x, y, z) is the node there, or nil if it is unloaded or

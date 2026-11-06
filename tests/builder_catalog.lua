@@ -139,7 +139,8 @@ do
 	assert(list[2].item == "mcl_core:brick_block" and list[3].item == "mcl_core:wood")
 end
 
--- Reach is from the ring's outer row, at standing height, to the worst block.
+-- Reach is from the ring's outer row, at standing height, to the worst low block, and from a
+-- column on the ring's inner row, level with it, to the worst high one.
 do
 	-- One block: 2 across (the ring), level with where it stands at y 1 once raised.
 	local flat = solid(1, 2, 1)
@@ -147,8 +148,19 @@ do
 	assert(near(catalog.measure(flat).reach, 2))
 	-- The middle of a 9 wide floor at y 0 is 4 + 2 across and 1 down.
 	assert(near(catalog.measure(solid(9, 1, 9)).reach, math.sqrt(37)))
-	-- A column's top at y 11, 10 up from the standing height.
-	assert(near(catalog.measure(solid(1, 12, 1)).reach, math.sqrt(4 + 100)))
+	-- A column 12 high: its worst low block is at y 5, 4 up; above that, from scaffolding, 1 across.
+	assert(near(catalog.measure(solid(1, 12, 1)).reach, math.sqrt(4 + 16)))
+	-- With scaffolding only above 10, y 10 is reached from the ground.
+	assert(near(catalog.measure(solid(1, 12, 1), nil, 10).reach, math.sqrt(4 + 81)))
+	-- A 21 wide roof at y 20: its middle is 10 in from a side, 11 from the column.
+	local roof = solid(21, 21, 21)
+	for i, cell in ipairs(roof.data) do
+		local y = math.floor((i - 1) / 21) % 21
+		if y ~= 20 then cell.name = "air" end
+	end
+	assert(near(catalog.measure(roof).reach, 11))
+	-- So a building 32 high can be built, which it could not when height counted.
+	assert(near(catalog.measure(solid(5, 32, 5)).reach, math.sqrt(16 + 16)))
 end
 
 -- Each way a schematic can be turned down.
@@ -163,8 +175,9 @@ do
 	assert(problem({no_item = {"a:b"}}).code == "no_item")
 	assert(problem({blocks = 0}).code == "empty")
 	assert(problem({size = {x = 50, y = 20, z = 65}}).code == "too_big")
-	assert(problem({size = {x = 5, y = 25, z = 5}}).code == "too_tall")
-	assert(problem({size = {x = 5, y = 24, z = 5}}) == nil)
+	assert(problem({size = {x = 5, y = 33, z = 5}}).code == "too_tall")
+	assert(problem({size = {x = 5, y = 32, z = 5}}) == nil)
+	assert(catalog.MAX_HEIGHT <= site.config.above, "the site search reads high enough")
 	local far = problem({reach = 18.2})
 	assert(far.code == "out_of_reach" and far.needs == 19 and far.reach == 14)
 	assert(problem({reach = 14}) == nil)

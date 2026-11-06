@@ -69,8 +69,6 @@ local VILLAGE_RADIUS = 128
 local DEFAULT_CHEST_RADIUS = 32
 local BUY_DISTANCE = 10
 local DEFAULT_SURFACE = "mcl_core:dirt_with_grass"
--- A block more than this above the floor goes in from scaffolding.
-local DEFAULT_SCAFFOLD_HEIGHT = 5
 -- How much further across than the nearest column a column may be from a block and still be
 -- worked from: enough to do a stretch of wall from each, not so much that it never moves on.
 local SCAFFOLD_SLACK = 3
@@ -652,7 +650,8 @@ end
 -- costs the player nothing. The column standing is kept in the project, so that one left by a
 -- Builder that went (died, unloaded, lost the bench) is taken down by whoever carries on.
 local function scaffold_height()
-	return setting_number("living_villages_builder_scaffold_height", DEFAULT_SCAFFOLD_HEIGHT)
+	-- A block more than this above the floor goes in from scaffolding.
+	return setting_number("living_villages_builder_scaffold_height", site_finder.config.scaffold_height)
 end
 
 local function is_high(project, step)
@@ -672,8 +671,9 @@ local function column_serves(box, column, pos)
 	return across(column, pos) <= depth_of(box, pos) + SCAFFOLD_SLACK
 end
 
--- The cell on the ring's inner row nearest `pos` to put a column up in.
+-- The cell on the ring's inner row nearest `pos` to put a column up in, in reach of it.
 local function column_spot(session, box, floor_y, pos, now)
+	local reach = reach_of()
 	local spots = {}
 	for z = box.z0 - 1, box.z1 + 1 do
 		for x = box.x0 - 1, box.x1 + 1 do
@@ -684,7 +684,7 @@ local function column_spot(session, box, floor_y, pos, now)
 	end
 	table.sort(spots, function(a, b) return a.d < b.d end)
 	for _, spot in ipairs(spots) do
-		if not column_serves(box, spot, pos) then return nil end
+		if not column_serves(box, spot, pos) or spot.d > reach then return nil end
 		local cell = stand_in_column(spot.x, spot.z, floor_y)
 		if cell and (session.skip[pos_key(cell)] or 0) <= now then return cell end
 	end
