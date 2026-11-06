@@ -24,6 +24,8 @@ M.MAX_WEIGHT = 1000
 M.MAX_FILE_BYTES = 1024 * 1024
 -- Every cell becomes a table in a Builder's plan, on the main thread.
 M.MAX_VOLUME = 64000
+-- Layers, the ground layer included. builder_site.lua reads the map high enough for this.
+M.MAX_HEIGHT = 32
 
 local function setting_number(engine, name, default)
 	return tonumber(engine.settings and engine.settings:get(name)) or default
@@ -147,9 +149,12 @@ end
 
 -- The facts of a schematic table (read_schematic's: x fastest, then y, then z; a prob of 0
 -- is a void, which places nothing). Cells that may place count, however unlikely.
--- `reach` is how far a Builder must reach, from the ring it works from, for its worst block.
-function M.measure(schematic, engine)
+-- `reach` is how far a Builder must reach for its worst block: a low one from the ring's outer
+-- row, standing on the ground, and a high one (above `scaffold_height`) from a column on the
+-- ring's inner row, standing level with it (builder.lua).
+function M.measure(schematic, engine, scaffold_height)
 	engine = engine or core
+	scaffold_height = scaffold_height or site.config.scaffold_height
 	local size = schematic.size
 	local ring = site.config.ring
 	local unknown, no_item, bill = {}, {}, {}
@@ -168,9 +173,14 @@ function M.measure(schematic, engine)
 					local x = (i - 1) % size.x
 					local y = math.floor((i - 1) / size.x) % size.y
 					local z = math.floor((i - 1) / (size.x * size.y))
-					-- It stands on the ground at y 1, in the ring's outer row.
-					local across = math.min(x, size.x - 1 - x, z, size.z - 1 - z) + ring
-					reach = math.max(reach, math.sqrt(across * across + (y - 1) * (y - 1)))
+					local depth = math.min(x, size.x - 1 - x, z, size.z - 1 - z)
+					if y > scaffold_height then
+						reach = math.max(reach, depth + 1)
+					else
+						-- It stands on the ground at y 1, in the ring's outer row.
+						local across = depth + ring
+						reach = math.max(reach, math.sqrt(across * across + (y - 1) * (y - 1)))
+					end
 				end
 			end
 		end
@@ -189,8 +199,7 @@ function M.problem_of(measured, reach)
 	if measured.blocks == 0 then return {code = "empty"} end
 	local size = measured.size
 	if size.x * size.y * size.z > M.MAX_VOLUME then return {code = "too_big", limit = M.MAX_VOLUME} end
-	-- builder_site.lua reads the map this far above the bench, and turns down anything taller.
-	if size.y > site.config.above then return {code = "too_tall", limit = site.config.above} end
+	if size.y > M.MAX_HEIGHT then return {code = "too_tall", limit = M.MAX_HEIGHT} end
 	if measured.reach > reach then return {code = "out_of_reach", needs = math.ceil(measured.reach), reach = reach} end
 	return nil
 end
@@ -211,14 +220,17 @@ local function examine(path, engine)
 	local content = file:read("*a")
 	file:close()
 	local hash = engine.sha1(content)
-	if measured_by_hash[hash] == nil then
+	-- What is high, and so its reach, depends on the scaffold height.
+	local height = setting_number(engine, "living_villages_builder_scaffold_height", site.config.scaffold_height)
+	local key = hash .. "|" .. height
+	if measured_by_hash[key] == nil then
 		-- Never place a directory's schematic by path: the engine would then keep serving
 		-- that copy for the path, whatever the file later becomes.
 		local ok, schematic = pcall(engine.read_schematic, path, {})
-		measured_by_hash[hash] = ok and schematic and schematic.data and M.measure(schematic, engine) or false
+		measured_by_hash[key] = ok and schematic and schematic.data and M.measure(schematic, engine, height) or false
 	end
-	if not measured_by_hash[hash] then return nil, {code = "unreadable"}, hash end
-	return measured_by_hash[hash], nil, hash
+	if not measured_by_hash[key] then return nil, {code = "unreadable"}, hash end
+	return measured_by_hash[key], nil, hash
 end
 
 -- A project builds from its own copy, named for its content, so re-exporting or deleting the

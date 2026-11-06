@@ -81,9 +81,10 @@ Stock the chest.
 - Stand in a cell it wants. It works round you and comes back to it.
 - Above 5 blocks over the floor it works from scaffolding (a church's upper walls and roof, a lighthouse). It
   puts up a column one cell out from the walls, climbs it a block at a time and stands level with the layer
-  it lays, turning to each block. When the work moves along it comes down, taking the column with it, and
-  puts up another further round. The window says "Working from the scaffolding". No scaffolding is on the
-  bill and none is left when it finishes, nor dropped.
+  it lays, turning to each block. From each column it lays the stretch of wall it can reach on every layer
+  up to the top, then comes down, taking the column with it, and puts up another further round. The window
+  says "Working from the scaffolding". No scaffolding is on the bill and none is left when it finishes, nor
+  dropped.
 - At 15500 it stops, and goes on the next day. Up a column, it climbs down first and takes the column away.
 
 ## Things going wrong

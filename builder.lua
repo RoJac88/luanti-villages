@@ -60,17 +60,15 @@ local DEFER_SECONDS = 10
 local SITE_ATTEMPTS = 5
 local AVOID_SECONDS = 1800
 local DEFAULT_CAPACITY = 256
--- Two blocks a second. Game time is whole seconds and it works once a second, so a block due
+-- Four blocks a second. Game time is whole seconds and it works once a second, so a block due
 -- before the next second goes in on the same turn (MAX_PER_TURN).
-local DEFAULT_BLOCK_SECONDS = 0.5
+local DEFAULT_BLOCK_SECONDS = 0.25
 local MAX_PER_TURN = 4
 local SITE_RETRY_SECONDS = 60
 local VILLAGE_RADIUS = 128
 local DEFAULT_CHEST_RADIUS = 32
 local BUY_DISTANCE = 10
 local DEFAULT_SURFACE = "mcl_core:dirt_with_grass"
--- A block more than this above the floor goes in from scaffolding.
-local DEFAULT_SCAFFOLD_HEIGHT = 5
 -- How much further across than the nearest column a column may be from a block and still be
 -- worked from: enough to do a stretch of wall from each, not so much that it never moves on.
 local SCAFFOLD_SLACK = 3
@@ -647,12 +645,13 @@ end
 
 -- Scaffolding. A block high up goes in from a column the Builder puts up on the ring's inner
 -- row, next to the work, and climbs (builder_climb.lua): it stands level with the layer it
--- lays, faces each block, and when the work moves out of the column's way it comes down,
+-- lays, faces each block, works its way up the stretch the column serves, and then comes down,
 -- taking the column with it, walks along and puts up another. The scaffolding is its own and
 -- costs the player nothing. The column standing is kept in the project, so that one left by a
 -- Builder that went (died, unloaded, lost the bench) is taken down by whoever carries on.
 local function scaffold_height()
-	return setting_number("living_villages_builder_scaffold_height", DEFAULT_SCAFFOLD_HEIGHT)
+	-- A block more than this above the floor goes in from scaffolding.
+	return setting_number("living_villages_builder_scaffold_height", site_finder.config.scaffold_height)
 end
 
 local function is_high(project, step)
@@ -672,8 +671,9 @@ local function column_serves(box, column, pos)
 	return across(column, pos) <= depth_of(box, pos) + SCAFFOLD_SLACK
 end
 
--- The cell on the ring's inner row nearest `pos` to put a column up in.
+-- The cell on the ring's inner row nearest `pos` to put a column up in, in reach of it.
 local function column_spot(session, box, floor_y, pos, now)
+	local reach = reach_of()
 	local spots = {}
 	for z = box.z0 - 1, box.z1 + 1 do
 		for x = box.x0 - 1, box.x1 + 1 do
@@ -684,7 +684,7 @@ local function column_spot(session, box, floor_y, pos, now)
 	end
 	table.sort(spots, function(a, b) return a.d < b.d end)
 	for _, spot in ipairs(spots) do
-		if not column_serves(box, spot, pos) then return nil end
+		if not column_serves(box, spot, pos) or spot.d > reach then return nil end
 		local cell = stand_in_column(spot.x, spot.z, floor_y)
 		if cell and (session.skip[pos_key(cell)] or 0) <= now then return cell end
 	end
@@ -967,15 +967,31 @@ local function place_step(self, session, bench, project, plan, step, now)
 	return true
 end
 
--- A high step like this one, as good to do next, that the column serves.
+-- Whether a block can go in above the layer still being laid: a block that falls only over one
+-- already there.
+local function supported(step)
+	if core.get_item_group(step.node.name, "falling_node") == 0 then return true end
+	return is_solid_at({x = step.pos.x, y = step.pos.y - 1, z = step.pos.z})
+end
+
+-- The high step to do next from this column: one like `step`, on its layer, or else the lowest
+-- above it the column serves. Climbing is what takes time, so up a column it lays the stretch
+-- of wall the column serves on every layer, not one layer a climb. Only solid blocks go in
+-- ahead of the layer: what hangs on a wall, sits on soil or pours waits for its layer.
 local function served_alike(session, project, box, step, column, now)
+	local best
 	for _, other in ipairs(session.queue) do
-		if other.pass == step.pass and other.kind == step.kind and other.pos.y == step.pos.y
+		local y = other.pos.y
+		if other.pass == step.pass and other.kind == step.kind and y >= step.pos.y
+			and (not best or y < best.pos.y)
+			and (y == step.pos.y or (other.pass == template.PASS_SOLID and other.kind == "place" and supported(other)))
 			and (session.deferred[pos_key(other.pos)] or 0) <= now
 			and is_high(project, other) and column_serves(box, column, other.pos) then
-			return other
+			if y == step.pos.y then return other end
+			best = other
 		end
 	end
+	return best
 end
 
 -- A turn up a column: up or down to the step's layer, or down and off if the work has moved on.

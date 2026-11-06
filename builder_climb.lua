@@ -18,8 +18,10 @@ local core = minetest
 local M = {}
 
 M.SCAFFOLD = "mcl_bamboo:scaffolding"
--- Nodes a second, a little slower than walking.
+-- Nodes a second, a little slower than walking, putting each block in on the way up; twice that
+-- up blocks already standing, and on the way down.
 M.SPEED = 1.5
+M.FAST_SPEED = 3
 
 local function is_clear(name, engine)
 	if name == "air" then return true end
@@ -105,7 +107,6 @@ function M.advance(climb, dtime, get_name, engine)
 	local changes = {}
 	local resting = feet_y(climb, climb.level)
 	if climb.level == climb.target and climb.y == resting then return changes, false end
-	local moved = M.SPEED * dtime
 	if climb.target > climb.level or climb.y > resting then
 		-- Upward: onto the block in its own cell, once that block is there and its head has room.
 		local next_level = climb.level + 1
@@ -119,7 +120,8 @@ function M.advance(climb, dtime, get_name, engine)
 				return changes, false
 			end
 			local below = get_name(block)
-			if below ~= M.SCAFFOLD then
+			climb.fast = below == M.SCAFFOLD or nil
+			if not climb.fast then
 				if not (below and is_clear(below, engine)) then
 					climb.blocked = block
 					return changes, false
@@ -128,13 +130,13 @@ function M.advance(climb, dtime, get_name, engine)
 			end
 		end
 		local top = feet_y(climb, next_level)
-		climb.y = math.min(top, climb.y + moved)
+		climb.y = math.min(top, climb.y + (climb.fast and M.FAST_SPEED or M.SPEED) * dtime)
 		if climb.y == top then climb.level = next_level end
 	else
 		-- Downward, into the block below, and that block's top is the next one down.
 		local next_level = climb.level - 1
 		local bottom = feet_y(climb, next_level)
-		climb.y = math.max(bottom, climb.y - moved)
+		climb.y = math.max(bottom, climb.y - M.FAST_SPEED * dtime)
 		if climb.y == bottom then
 			if climb.dismantle then
 				local left = {x = climb.x, y = climb.ground + climb.level, z = climb.z}

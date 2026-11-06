@@ -620,7 +620,7 @@ local function built_right()
 end
 
 -- The whole job, from a stocked chest: earthwork, then solids, then water last, all from the
--- ring and in reach, two blocks a second, with the leftovers and the empty bucket put back.
+-- ring and in reach, four blocks a second, with the leftovers and the empty bucket put back.
 do
 	local bump, hole = {x = 11, y = 1, z = 11}, {x = 12, y = 0, z = 12}
 	local entity = prepared({cuts = {bump}, fills = {hole}})
@@ -663,11 +663,11 @@ do
 	assert(order[1] == "removed" and order[2] == "mcl_core:dirt", "earthwork first")
 	assert(world.name(bump) == "air" and world.name(hole) == "mcl_core:dirt")
 	assert(order[#order] == WATER, "water last")
-	-- Its pace: never more than 2 in a second, and it does go faster than one a second.
+	-- Its pace: never more than 4 in a second, and it does reach 4.
 	local doubles = 0
 	for second, count in pairs(per_second) do
-		assert(count <= 2, "too fast at " .. second)
-		if count == 2 then doubles = doubles + 1 end
+		assert(count <= 4, "too fast at " .. second)
+		if count == 4 then doubles = doubles + 1 end
 	end
 	assert(furthest <= 14 and doubles > 0, "in reach, and at its pace: " .. furthest .. " " .. doubles)
 	assert(stock.chest_count(chest, COBBLE) == 8, "what it did not use stays in the chest")
@@ -894,7 +894,7 @@ do
 	local dropped = #world.dropped
 	local real_set = core.set_node
 	local columns, high, low, wrong = {}, 0, 0, {}
-	local status_seen = false
+	local climbs, status_seen = 0, false
 	core.set_node = function(pos, node)
 		local state = climb.of(entity)
 		if node.name == SCAFFOLD then
@@ -902,6 +902,7 @@ do
 			local inner = pos.x >= 9 and pos.x <= 15 and pos.z >= 9 and pos.z <= 15
 			if not (ring and inner) then wrong[#wrong + 1] = "column at " .. core.pos_to_string(pos) end
 			columns[pos.x .. "," .. pos.z] = true
+			if pos.y == 1 then climbs = climbs + 1 end
 		elseif node.name == COBBLE then
 			if pos.y > 5 then
 				high = high + 1
@@ -930,6 +931,8 @@ do
 	local count = 0
 	for _ in pairs(columns) do count = count + 1 end
 	assert(count >= 4, "it moves round the tower: " .. count .. " columns")
+	-- Up a column it does the stretch of wall it serves on every layer, not one layer a climb.
+	assert(climbs == count, climbs .. " climbs of " .. count .. " columns")
 	assert(status_seen, "the window says so")
 	assert(scaffolding_left() == 0, "the columns come down")
 	assert(not climb.of(entity), "and so does it")

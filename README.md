@@ -99,7 +99,9 @@ ordinary stairs and wooden doors. Iron doors still block them.
     `server` privilege: the village is built towards those shares. A schematic's node and slice probabilities
     and voids are honoured, and job blocks in it are built, unlike in stock buildings. Put `<name>.png` or
     `.jpg` next to `<name>.mts` for a picture in the window, up to 2 MiB; without one it lists the main materials.
-    The window says why a schematic cannot be used, such as blocks this world lacks or ones out of the Builder's reach.
+    The window says why a schematic cannot be used, such as blocks this world lacks. A schematic can be up to 32
+    layers high, ground layer included. Its width is what limits it: the Builder works from the outside, so the
+    middle of each layer must be within its reach (`living_villages_builder_reach`, 15: about 25 across).
   - VoxeLibre can't register new professions, so a Builder is a mason underneath, with no trades.
 - **Keepers:** an unemployed adult that claims a free jukebox becomes a tavern keeper. The
   jukebox can be a tavern's or one a player placed. A keeper wears a brown apron and sells
