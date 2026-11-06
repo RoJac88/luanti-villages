@@ -466,6 +466,8 @@ local function watch(area, record, emit, done)
 					and project.state ~= "returning" then
 					waiting = true
 				end
+				-- Finished up a column, it is still on the way down, taking the column with it.
+				if project and project.scaffold then waiting = true end
 				if project then outcomes[i].last_state = project.state end
 				if custom and not voids[i] and project and project.state == "building" then
 					voids[i] = mark_void(sited[i], template, catalog)
