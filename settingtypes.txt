@@ -62,11 +62,16 @@ living_villages_builder (Builders) bool true
 # stock church needs 15 on flat ground.
 living_villages_builder_reach (Builder's reach) float 15 8 32
 
+# A Builder lays blocks higher than this above a building's floor from scaffolding: it puts up
+# a column next to the work, climbs it, and takes it down after. The scaffolding is its own
+# and costs nothing.
+living_villages_builder_scaffold_height (Builder's scaffold height) int 5 2 32
+
 # Items a Builder carries on one trip from the chests.
 living_villages_builder_capacity (Builder's capacity) int 256 16 2048
 
-# Seconds a Builder takes over each block.
-living_villages_builder_block_seconds (Seconds per block) float 1 0.1 10
+# Seconds a Builder takes over each block. The default, 0.5, is two blocks a second.
+living_villages_builder_block_seconds (Seconds per block) float 0.5 0.25 10
 
 # How far from its bench a Builder looks for materials in chests.
 living_villages_builder_chest_radius (Builder's chest radius) int 32 1 64

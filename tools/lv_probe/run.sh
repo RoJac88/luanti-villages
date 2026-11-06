@@ -123,6 +123,14 @@ world=$work/world_$label
 rm -rf "$world"
 rm -f "$results/$label.jsonl"
 mkdir -p "$world/worldmods" "$results"
+# A schematic of the caller's for the Builder (lv_probe_builder_schematic), with its picture if
+# one lies beside it, in place of the probe's own.
+if [ -n "${LV_PROBE_SCHEMATIC:-}" ]; then
+	mkdir -p "$world/schems"
+	cp "$LV_PROBE_SCHEMATIC" "$world/schems/"
+	picture=${LV_PROBE_SCHEMATIC%.mts}.png
+	if [ -f "$picture" ]; then cp "$picture" "$world/schems/"; fi
+fi
 cp -R "$here/mod/lv_probe" "$world/worldmods/lv_probe"
 cp "$mod_dir/village_index.lua" "$world/worldmods/lv_probe/village_index.lua"
 # The probe's definition of an overhang is the mod's (#219), from this checkout whatever mod

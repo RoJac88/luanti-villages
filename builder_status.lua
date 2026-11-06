@@ -57,6 +57,9 @@ local function summary_lines(report)
 	if report.building then
 		lines[#lines + 1] = S("Building: @1", pretty_building(report.building))
 	end
+	if report.scaffold then
+		lines[#lines + 1] = S("Working from the scaffolding.")
+	end
 	if report.state == "no_site" and report.size then
 		lines[#lines + 1] = S("It needs near-level ground @1 by @2, clear to @3 high, with 2 clear cells round it,",
 			tostring(report.size.x), tostring(report.size.z), tostring(report.size.y))

@@ -347,8 +347,16 @@ local function cabin()
 	return {size = {x = 7, y = 5, z = 7}, data = data}
 end
 
+-- A schematic run.sh put there (LV_PROBE_SCHEMATIC) is built instead.
+local function given_schematic()
+	for _, file in ipairs(core.get_dir_list(core.get_worldpath() .. "/schems", false) or {}) do
+		if file:match("%.mts$") then return file end
+	end
+end
+
 local function write_cabin()
 	local directory = core.get_worldpath() .. "/schems"
+	if given_schematic() then return end
 	core.mkdir(directory)
 	assert(core.safe_file_write(directory .. "/" .. CABIN .. ".mts", core.serialize_schematic(cabin(), "mts", {})))
 	local pixels = {}
@@ -379,7 +387,7 @@ local function watch(area, record, emit, done)
 	if custom then write_cabin() end
 	local benches = core.find_nodes_in_area(area.minp, area.maxp, {BENCH})
 	local started = core.get_gametime()
-	local outcomes, sited, voids = {}, {}, {}
+	local outcomes, sited, voids, scaffolds = {}, {}, {}, {}
 	for _, bench in ipairs(benches) do
 		if core.settings:get_bool("lv_probe_builder_platform", false) then make_platform(bench) end
 		if custom then
@@ -401,6 +409,14 @@ local function watch(area, record, emit, done)
 					outcome.filled = core.get_node(cell).name
 				end
 				outcome.after = roles.load_project(bench)
+				-- Scaffolding: the columns it put up and how high it climbed, and what is left standing.
+				local scaffold = scaffolds[i] or {columns = {}, top = 0, seconds = 0}
+				local box = sited[i].pos
+				local found = core.find_nodes_in_area(vector.offset(box, -40, -2, -40), vector.offset(box, 40, 40, 40),
+					{"mcl_bamboo:scaffolding"})
+				local columns = 0
+				for _ in pairs(scaffold.columns) do columns = columns + 1 end
+				outcome.scaffold = {columns = columns, top = scaffold.top, seconds = scaffold.seconds, left = #found}
 			end
 			record.benches[#record.benches + 1] = outcome
 		end
@@ -409,8 +425,9 @@ local function watch(area, record, emit, done)
 		local menu = dofile(path .. "/builder_bench_menu.lua")
 		local bench_def = core.registered_nodes[BENCH]
 		record.bench_menu = {rightclick = bench_def and bench_def.on_rightclick ~= nil, sources = {}}
-		if custom then
-			local picture = io.open(core.get_worldpath() .. "/schems/" .. CABIN .. ".png", "rb")
+		local picture = custom and io.open(core.get_worldpath() .. "/schems/"
+			.. (given_schematic() or CABIN .. ".mts"):gsub("%.mts$", ".png"), "rb")
+		if picture then
 			local kind, width, height = dofile(path .. "/builder_preview.lua").identify(picture:read("*a"))
 			picture:close()
 			record.bench_menu.picture = {kind = kind, width = width, height = height}
@@ -449,6 +466,8 @@ local function watch(area, record, emit, done)
 					and project.state ~= "returning" then
 					waiting = true
 				end
+				-- Finished up a column, it is still on the way down, taking the column with it.
+				if project and project.scaffold then waiting = true end
 				if project then outcomes[i].last_state = project.state end
 				if custom and not voids[i] and project and project.state == "building" then
 					voids[i] = mark_void(sited[i], template, catalog)
@@ -478,6 +497,14 @@ local function watch(area, record, emit, done)
 				if trail[#trail] ~= at then trail[#trail + 1] = at end
 				while #trail > 12 do table.remove(trail, 1) end
 				outcomes[i].pouch = entity._villages_farm_pouch
+				local climb = entity._villages_climb
+				if climb then
+					local scaffold = scaffolds[i] or {columns = {}, top = 0, seconds = 0}
+					scaffolds[i] = scaffold
+					scaffold.columns[climb.x .. "," .. climb.z] = true
+					scaffold.top = math.max(scaffold.top, climb.level)
+					scaffold.seconds = scaffold.seconds + WATCH_STEP
+				end
 			end
 		end
 		core.after(WATCH_STEP, step)

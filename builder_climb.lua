@@ -7,7 +7,7 @@
 -- of it: at level n its feet are on the n-th block, n cells above the ground cell it started
 -- from. Going up it places the block it is about to stand on, in the cell it stands in, then
 -- rises onto it; going down it sinks into the block below and, when told to, takes away the one
--- it left. Its body needs two clear cells above the block it stands on.
+-- it left, and anything left standing above it. Its body needs two clear cells above the block it stands on.
 --
 -- The climb lives in self._villages_climb, which mcl_mobs saves with the rest of self
 -- (api.lua's get_staticdata), so a villager unloaded up a column comes back on it, not under it.
@@ -84,6 +84,21 @@ function M.release(self)
 	return true
 end
 
+-- Takes away a column from `base` up, top first. Swapped out, not removed: scaffolding's own
+-- on_destruct (mcl_bamboo) breaks every block above the one removed and drops each as an item,
+-- and the Builder's scaffolding is its own, not the player's. Returns how many it took.
+function M.take_down(base, engine)
+	engine = engine or core
+	local blocks = {}
+	for y = base.y, base.y + 255 do
+		local node = engine.get_node_or_nil({x = base.x, y = y, z = base.z})
+		if not node or node.name ~= M.SCAFFOLD then break end
+		blocks[#blocks + 1] = {x = base.x, y = y, z = base.z}
+	end
+	for i = #blocks, 1, -1 do engine.swap_node(blocks[i], {name = "air"}) end
+	return #blocks
+end
+
 -- One step of the climb, worked out without moving anything: where the feet go, and the column's
 -- changes, as {place = pos} or {remove = pos}. `get_name(pos)` reads the map.
 function M.advance(climb, dtime, get_name, engine)
@@ -146,7 +161,7 @@ function M.step(self, dtime, engine)
 		if change.place then
 			engine.set_node(change.place, {name = M.SCAFFOLD})
 		else
-			engine.remove_node(change.remove)
+			M.take_down(change.remove, engine)
 		end
 	end
 	local object = self.object

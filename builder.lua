@@ -29,6 +29,7 @@ local site_finder = dofile(core.get_modpath("living_villages") .. "/builder_site
 local stock = dofile(core.get_modpath("living_villages") .. "/farm_stock.lua")
 local template = dofile(core.get_modpath("living_villages") .. "/building_template.lua")
 local catalog = dofile(core.get_modpath("living_villages") .. "/builder_catalog.lua")
+local climb = dofile(core.get_modpath("living_villages") .. "/builder_climb.lua")
 
 local M = {}
 
@@ -59,12 +60,20 @@ local DEFER_SECONDS = 10
 local SITE_ATTEMPTS = 5
 local AVOID_SECONDS = 1800
 local DEFAULT_CAPACITY = 256
-local DEFAULT_BLOCK_SECONDS = 1
+-- Two blocks a second. Game time is whole seconds and it works once a second, so a block due
+-- before the next second goes in on the same turn (MAX_PER_TURN).
+local DEFAULT_BLOCK_SECONDS = 0.5
+local MAX_PER_TURN = 4
 local SITE_RETRY_SECONDS = 60
 local VILLAGE_RADIUS = 128
 local DEFAULT_CHEST_RADIUS = 32
 local BUY_DISTANCE = 10
 local DEFAULT_SURFACE = "mcl_core:dirt_with_grass"
+-- A block more than this above the floor goes in from scaffolding.
+local DEFAULT_SCAFFOLD_HEIGHT = 5
+-- How much further across than the nearest column a column may be from a block and still be
+-- worked from: enough to do a stretch of wall from each, not so much that it never moves on.
+local SCAFFOLD_SLACK = 3
 
 local navigation_api, village_index
 
@@ -636,6 +645,95 @@ local function inside(box, pos)
 	return pos.x >= box.x0 - 0.5 and pos.x <= box.x1 + 0.5 and pos.z >= box.z0 - 0.5 and pos.z <= box.z1 + 0.5
 end
 
+-- Scaffolding. A block high up goes in from a column the Builder puts up on the ring's inner
+-- row, next to the work, and climbs (builder_climb.lua): it stands level with the layer it
+-- lays, faces each block, and when the work moves out of the column's way it comes down,
+-- taking the column with it, walks along and puts up another. The scaffolding is its own and
+-- costs the player nothing. The column standing is kept in the project, so that one left by a
+-- Builder that went (died, unloaded, lost the bench) is taken down by whoever carries on.
+local function scaffold_height()
+	return setting_number("living_villages_builder_scaffold_height", DEFAULT_SCAFFOLD_HEIGHT)
+end
+
+local function is_high(project, step)
+	return step.pos.y - project.pos.y > scaffold_height()
+end
+
+local function across(a, b)
+	return math.sqrt((a.x - b.x) ^ 2 + (a.z - b.z) ^ 2)
+end
+
+-- How far across a block is from the nearest cell of the ring's inner row.
+local function depth_of(box, pos)
+	return math.max(1, math.min(pos.x - box.x0 + 1, box.x1 + 1 - pos.x, pos.z - box.z0 + 1, box.z1 + 1 - pos.z))
+end
+
+local function column_serves(box, column, pos)
+	return across(column, pos) <= depth_of(box, pos) + SCAFFOLD_SLACK
+end
+
+-- The cell on the ring's inner row nearest `pos` to put a column up in.
+local function column_spot(session, box, floor_y, pos, now)
+	local spots = {}
+	for z = box.z0 - 1, box.z1 + 1 do
+		for x = box.x0 - 1, box.x1 + 1 do
+			if x == box.x0 - 1 or x == box.x1 + 1 or z == box.z0 - 1 or z == box.z1 + 1 then
+				spots[#spots + 1] = {x = x, z = z, d = across({x = x, z = z}, pos)}
+			end
+		end
+	end
+	table.sort(spots, function(a, b) return a.d < b.d end)
+	for _, spot in ipairs(spots) do
+		if not column_serves(box, spot, pos) then return nil end
+		local cell = stand_in_column(spot.x, spot.z, floor_y)
+		if cell and (session.skip[pos_key(cell)] or 0) <= now then return cell end
+	end
+end
+
+-- Sends a climbing Builder down, taking its column. Returns whether it is back on the ground
+-- and let go; then the column is struck off the project.
+local function come_down(self, bench)
+	local state = climb.of(self)
+	if not state then return true end
+	state.dismantle, state.leaving = true, true
+	if state.target ~= 0 then climb.go_to(self, 0) end
+	if not (climb.arrived(self) and climb.release(self)) then return false end
+	local project = bench and M.load_project(bench)
+	if project and project.scaffold then
+		project.scaffold = nil
+		save_project(bench, project)
+	end
+	return true
+end
+
+-- A column from before, with no one on it: taken down before anything else. Returns whether
+-- that took the turn.
+local function clear_old_scaffold(self, session, bench, project, now)
+	local column = project.scaffold
+	local base = {x = column.x, y = column.ground + 1, z = column.z}
+	local name = name_at(base)
+	if name and name ~= climb.SCAFFOLD then
+		project.scaffold = nil
+		save_project(bench, project)
+		return false
+	end
+	if name and across(self.object:get_pos(), base) <= CHEST_REACH then
+		climb.take_down(base)
+		core.sound_play("default_dig_choppy", {pos = base, gain = 0.5, max_hear_distance = 16}, true)
+		project.scaffold = nil
+		save_project(bench, project)
+		session.hold_until = now + HOLD_SECONDS
+		return true
+	end
+	if not walk_to(self, session, base, now) then
+		-- Better left standing than the building left waiting on it.
+		project.scaffold = nil
+		save_project(bench, project)
+		return false
+	end
+	return true
+end
+
 -- Whether a player or mob stands in the cell. Only those: a dropped item or a chest's own
 -- display entity, which never goes away, is nothing to wait for.
 local function occupied(pos)
@@ -834,43 +932,9 @@ local function drop_from_queue(session, step)
 	end
 end
 
-local function build(self, session, bench, project, plan, now)
-	if now < (session.next_place or 0) then
-		session.hold_until = now + HOLD_SECONDS
-		return
-	end
-	local step = next_step(session, now)
-	if not step then
-		session.stuck = "occupied"
-		return
-	end
-	local here = self.object:get_pos()
-	local box = footprint_of(project)
-	local at_spot = session.spot and vector.distance(here, session.spot) <= CHEST_REACH
-	if at_spot and not project.reached then
-		project.reached = true
-		save_project(bench, project)
-	end
-	local standing = at_spot and session.spot or here
-	if project.reached and not inside(box, here) then
-		step = reachable_alike(session, step, standing, reach_of(), now) or step
-	end
-	if not project.reached or inside(box, here) or vector.distance(standing, step.pos) > reach_of() then
-		session.site_attempts = (session.site_attempts or 0) + 1
-		if not project.reached and session.site_attempts > SITE_ATTEMPTS then
-			return give_up_site(self, session, bench, project, box)
-		end
-		local spot = ring_spot(session, box, project.pos.y, step.pos, now)
-		if not spot then
-			session.stuck = "site"
-			return
-		end
-		session.spot = spot
-		if walk_to(self, session, spot, now) then session.stuck = nil else session.stuck = "site" end
-		return
-	end
-	session.site_attempts = 0
-
+-- Places a step from where it stands, once it has looked that nothing has changed there.
+-- Returns true if it placed it.
+local function place_step(self, session, bench, project, plan, step, now)
 	-- It may have changed since the last look.
 	local missing, blocked = template.compare({
 		steps = {step}, surface_mat = plan.surface_mat, cut_at = plan.cut_at,
@@ -895,13 +959,134 @@ local function build(self, session, bench, project, plan, now)
 	end
 	drop_from_queue(session, step)
 	session.stuck = nil
-	session.next_place = now + setting_number("living_villages_builder_block_seconds", DEFAULT_BLOCK_SECONDS)
+	-- Counted on from when the last block was due, not from now, so that a fraction of a second
+	-- carries over; but never from more than a second back, so idling saves nothing up.
+	local due = math.max(session.next_place or now, now - 1)
+	session.next_place = due + setting_number("living_villages_builder_block_seconds", DEFAULT_BLOCK_SECONDS)
 	session.hold_until = now + HOLD_SECONDS
+	return true
+end
+
+-- A high step like this one, as good to do next, that the column serves.
+local function served_alike(session, project, box, step, column, now)
+	for _, other in ipairs(session.queue) do
+		if other.pass == step.pass and other.kind == step.kind and other.pos.y == step.pos.y
+			and (session.deferred[pos_key(other.pos)] or 0) <= now
+			and is_high(project, other) and column_serves(box, column, other.pos) then
+			return other
+		end
+	end
+end
+
+-- A turn up a column: up or down to the step's layer, or down and off if the work has moved on.
+local function build_climbing(self, session, bench, project, plan, step, box, now)
+	local state = climb.of(self)
+	session.stuck = nil
+	session.hold_until = now + HOLD_SECONDS
+	if state.blocked then
+		-- Something over the column: try another.
+		session.skip[pos_key({x = state.x, y = state.ground + 1, z = state.z})] = now + SKIP_SECONDS
+		come_down(self, bench)
+		return
+	end
+	if state.leaving then
+		come_down(self, bench)
+		return
+	end
+	if not climb.arrived(self) then return end
+	step = served_alike(session, project, box, step, state, now) or step
+	local level = math.max(0, step.pos.y - state.ground - 1)
+	local standing = {x = state.x, y = state.ground + level + 1, z = state.z}
+	if not is_high(project, step) or not column_serves(box, state, step.pos)
+		or vector.distance(standing, step.pos) > reach_of() then
+		come_down(self, bench)
+		return
+	end
+	if level ~= state.level then
+		climb.go_to(self, level)
+		return
+	end
+	climb.face(self, step.pos)
+	return place_step(self, session, bench, project, plan, step, now)
+end
+
+-- A high step from the ground: to a column's cell, and up.
+local function build_high(self, session, bench, project, step, box, now)
+	local column = column_spot(session, box, project.pos.y, step.pos, now)
+	if not column then
+		session.stuck = "site"
+		return
+	end
+	local here = self.object:get_pos()
+	if across(here, column) <= 1.2 and math.abs(here.y - (column.y - 0.5)) < 1 then
+		self.object:set_pos({x = column.x, y = column.y - 0.5, z = column.z})
+		local state = climb.start(self, math.max(0, step.pos.y - column.y), {dismantle = true})
+		project.scaffold = {x = state.x, z = state.z, ground = state.ground}
+		project.reached = true
+		save_project(bench, project)
+		session.site_attempts, session.stuck = 0, nil
+		session.hold_until = now + HOLD_SECONDS
+		return
+	end
+	session.site_attempts = (session.site_attempts or 0) + 1
+	if not project.reached and session.site_attempts > SITE_ATTEMPTS then
+		return give_up_site(self, session, bench, project, box)
+	end
+	session.spot = column
+	if walk_to(self, session, column, now) then session.stuck = nil else session.stuck = "site" end
+end
+
+local function build(self, session, bench, project, plan, now)
+	if now < (session.next_place or 0) then
+		session.hold_until = now + HOLD_SECONDS
+		return
+	end
+	local step = next_step(session, now)
+	if not step then
+		session.stuck = "occupied"
+		return
+	end
+	local box = footprint_of(project)
+	if climb.of(self) then return build_climbing(self, session, bench, project, plan, step, box, now) end
+	local here = self.object:get_pos()
+	local at_spot = session.spot and vector.distance(here, session.spot) <= CHEST_REACH
+	if at_spot and not project.reached then
+		project.reached = true
+		save_project(bench, project)
+	end
+	local standing = at_spot and session.spot or here
+	if project.reached and not inside(box, here) then
+		step = reachable_alike(session, step, standing, reach_of(), now) or step
+	end
+	if is_high(project, step) then return build_high(self, session, bench, project, step, box, now) end
+	if not project.reached or inside(box, here) or vector.distance(standing, step.pos) > reach_of() then
+		session.site_attempts = (session.site_attempts or 0) + 1
+		if not project.reached and session.site_attempts > SITE_ATTEMPTS then
+			return give_up_site(self, session, bench, project, box)
+		end
+		local spot = ring_spot(session, box, project.pos.y, step.pos, now)
+		if not spot then
+			session.stuck = "site"
+			return
+		end
+		session.spot = spot
+		if walk_to(self, session, spot, now) then session.stuck = nil else session.stuck = "site" end
+		return
+	end
+	session.site_attempts = 0
+	return place_step(self, session, bench, project, plan, step, now)
 end
 
 -- A started project's turn: what is left is read from the world, not remembered.
 function work(self, session, bench, project, now)
 	session.deferred = session.deferred or {}
+	-- Anything but building is done on the ground.
+	if climb.of(self) and project.state ~= "building" then
+		session.hold_until = now + HOLD_SECONDS
+		come_down(self, bench)
+		return
+	end
+	if project.scaffold and not climb.of(self) and clear_old_scaffold(self, session, bench, project, now) then return end
 	if project.state == "returning" then
 		return return_leftovers(self, session, bench, now)
 	end
@@ -932,7 +1117,12 @@ function work(self, session, bench, project, now)
 	if project.state == "collecting" then
 		collect(self, session, bench, project, now)
 	elseif project.state == "building" then
-		build(self, session, bench, project, plan, now)
+		for _ = 1, MAX_PER_TURN do
+			if not build(self, session, bench, project, plan, now) or project.state ~= "building"
+				or now < session.next_place or #session.queue == 0 then
+				break
+			end
+		end
 	end
 end
 
@@ -975,6 +1165,7 @@ function M.report(self)
 	}
 	if project.blocked_at and project.state == "blocked" then report.blocked = project.blocked_at end
 	report.stuck = session_of(self).stuck
+	report.scaffold = climb.of(self) ~= nil
 	local request = site_request(bench, project)
 	if request then
 		report.size = {x = request.size.x, y = request.height + 1, z = request.size.z}
@@ -1075,7 +1266,14 @@ function M.install(def, navigation, index)
 			stock.drop_all(self, self.object:get_pos())
 			core.log("action", string.format("[living_villages] villager %s is no longer a builder", tostring(self._id)))
 		end
-		if result == false or self.following or self.state == "gowp" then return result end
+		-- Up a column, init.lua holds it there and returns false. Off work, or out of a job, it
+		-- comes down; otherwise it works on from up there.
+		local climbing = climb.of(self) ~= nil
+		if climbing and (not self._villages_builder or not M.claimed_bench(self) or not common.is_work_time(self)) then
+			come_down(self, M.claimed_bench(self))
+			return false
+		end
+		if (result == false and not climbing) or self.following or self.state == "gowp" then return result end
 		if eligible(self) then
 			if not self._villages_farm_seek and (common.is_work_time(self) or common.schedule_stage(nil, self) == "free") then
 				local session = session_of(self)
@@ -1105,6 +1303,7 @@ function M.install(def, navigation, index)
 			self._villages_farm_route = nil
 		end
 		if now >= session.next_at then tick(self, session, bench, now) end
+		if climb.of(self) then return false end
 		if self.state ~= "gowp" and session.hold_until >= now then
 			hold_still(self)
 			-- As for a fishing session: do_states would turn a standing villager away.

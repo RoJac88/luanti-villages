@@ -89,7 +89,9 @@ ordinary stairs and wooden doors. Iron doors still block them.
   it is doing and exactly which materials it lacks. Put them in a chest within 32 nodes of the bench,
   or buy the awkward ones (buckets of water or lava, flowers, sea lanterns, a bell) from the window for
   emeralds. It looks for a site close to the village that fits as it stands, or with at most 12 dirt blocks
-  broken and 12 placed, and waits if there is none until you clear one.
+  broken and 12 placed, and waits if there is none until you clear one. Blocks more than 5 above the floor
+  (`living_villages_builder_scaffold_height`) it lays from scaffolding: its own, free, put up next to the
+  work and taken down after.
   - Right-click its bench to choose what it builds from: the stock buildings, the schematics you exported
     with [schemedit](https://codeberg.org/Wuzzy/minetest_schemedit) (`<world>/schems`), or a project folder
     (`<world>/builder_schems`, or the `living_villages_builder_schem_dir` setting; it must be inside the world).
