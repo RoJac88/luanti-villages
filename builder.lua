@@ -645,7 +645,7 @@ end
 
 -- Scaffolding. A block high up goes in from a column the Builder puts up on the ring's inner
 -- row, next to the work, and climbs (builder_climb.lua): it stands level with the layer it
--- lays, faces each block, and when the work moves out of the column's way it comes down,
+-- lays, faces each block, works its way up the stretch the column serves, and then comes down,
 -- taking the column with it, walks along and puts up another. The scaffolding is its own and
 -- costs the player nothing. The column standing is kept in the project, so that one left by a
 -- Builder that went (died, unloaded, lost the bench) is taken down by whoever carries on.
@@ -967,15 +967,31 @@ local function place_step(self, session, bench, project, plan, step, now)
 	return true
 end
 
--- A high step like this one, as good to do next, that the column serves.
+-- Whether a block can go in above the layer still being laid: a block that falls only over one
+-- already there.
+local function supported(step)
+	if core.get_item_group(step.node.name, "falling_node") == 0 then return true end
+	return is_solid_at({x = step.pos.x, y = step.pos.y - 1, z = step.pos.z})
+end
+
+-- The high step to do next from this column: one like `step`, on its layer, or else the lowest
+-- above it the column serves. Climbing is what takes time, so up a column it lays the stretch
+-- of wall the column serves on every layer, not one layer a climb. Only solid blocks go in
+-- ahead of the layer: what hangs on a wall, sits on soil or pours waits for its layer.
 local function served_alike(session, project, box, step, column, now)
+	local best
 	for _, other in ipairs(session.queue) do
-		if other.pass == step.pass and other.kind == step.kind and other.pos.y == step.pos.y
+		local y = other.pos.y
+		if other.pass == step.pass and other.kind == step.kind and y >= step.pos.y
+			and (not best or y < best.pos.y)
+			and (y == step.pos.y or (other.pass == template.PASS_SOLID and other.kind == "place" and supported(other)))
 			and (session.deferred[pos_key(other.pos)] or 0) <= now
 			and is_high(project, other) and column_serves(box, column, other.pos) then
-			return other
+			if y == step.pos.y then return other end
+			best = other
 		end
 	end
+	return best
 end
 
 -- A turn up a column: up or down to the step's layer, or down and off if the work has moved on.

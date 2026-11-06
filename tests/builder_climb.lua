@@ -64,10 +64,12 @@ do
 	-- It can't let go up there.
 	assert(climb.release(villager) == false and climb.of(villager))
 
-	-- Down again, taking the column with it.
+	-- Down again, taking the column with it, twice as fast as it went up.
 	villager._villages_climb.dismantle = true
 	climb.go_to(villager, 0)
-	run(villager, stub, 4)
+	run(villager, stub, 1)
+	assert(villager.pos.y > 0.5 and villager.pos.y < 2, "down at its own pace: " .. villager.pos.y)
+	run(villager, stub, 1)
 	assert(climb.arrived(villager) and villager.pos.y == 0.5)
 	for y = 1, 4 do assert(map[key({x = 3, y = y, z = -2})] == "air", "taken " .. y) end
 	assert(climb.release(villager) and not climb.of(villager))
@@ -88,7 +90,9 @@ do
 	local set_node = stub.set_node
 	stub.set_node = function(pos, node) placed = placed + 1 set_node(pos, node) end
 	climb.go_to(villager, 5)
-	run(villager, stub, 3)
+	run(villager, stub, 1)
+	assert(villager.pos.y > 3 and villager.pos.y < 5.5, "faster up what stands: " .. villager.pos.y)
+	run(villager, stub, 1)
 	assert(climb.arrived(villager) and villager.pos.y == 5.5 and placed == 0, "climbs what stands")
 
 	-- Taking it down from part way takes what stands above too, so nothing is left in the air.

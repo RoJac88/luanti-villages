@@ -894,7 +894,7 @@ do
 	local dropped = #world.dropped
 	local real_set = core.set_node
 	local columns, high, low, wrong = {}, 0, 0, {}
-	local status_seen = false
+	local climbs, status_seen = 0, false
 	core.set_node = function(pos, node)
 		local state = climb.of(entity)
 		if node.name == SCAFFOLD then
@@ -902,6 +902,7 @@ do
 			local inner = pos.x >= 9 and pos.x <= 15 and pos.z >= 9 and pos.z <= 15
 			if not (ring and inner) then wrong[#wrong + 1] = "column at " .. core.pos_to_string(pos) end
 			columns[pos.x .. "," .. pos.z] = true
+			if pos.y == 1 then climbs = climbs + 1 end
 		elseif node.name == COBBLE then
 			if pos.y > 5 then
 				high = high + 1
@@ -930,6 +931,8 @@ do
 	local count = 0
 	for _ in pairs(columns) do count = count + 1 end
 	assert(count >= 4, "it moves round the tower: " .. count .. " columns")
+	-- Up a column it does the stretch of wall it serves on every layer, not one layer a climb.
+	assert(climbs == count, climbs .. " climbs of " .. count .. " columns")
 	assert(status_seen, "the window says so")
 	assert(scaffolding_left() == 0, "the columns come down")
 	assert(not climb.of(entity), "and so does it")
