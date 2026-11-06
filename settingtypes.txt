@@ -70,8 +70,8 @@ living_villages_builder_scaffold_height (Builder's scaffold height) int 5 2 32
 # Items a Builder carries on one trip from the chests.
 living_villages_builder_capacity (Builder's capacity) int 256 16 2048
 
-# Seconds a Builder takes over each block. The default, 0.67, is three blocks every two seconds.
-living_villages_builder_block_seconds (Seconds per block) float 0.67 0.25 10
+# Seconds a Builder takes over each block. The default, 0.5, is two blocks a second.
+living_villages_builder_block_seconds (Seconds per block) float 0.5 0.25 10
 
 # How far from its bench a Builder looks for materials in chests.
 living_villages_builder_chest_radius (Builder's chest radius) int 32 1 64

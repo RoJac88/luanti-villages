@@ -60,9 +60,9 @@ local DEFER_SECONDS = 10
 local SITE_ATTEMPTS = 5
 local AVOID_SECONDS = 1800
 local DEFAULT_CAPACITY = 256
--- Three blocks every two seconds. Game time is whole seconds and it works once a second, so a
--- block due before the next second goes in on the same turn (MAX_PER_TURN).
-local DEFAULT_BLOCK_SECONDS = 2 / 3
+-- Two blocks a second. Game time is whole seconds and it works once a second, so a block due
+-- before the next second goes in on the same turn (MAX_PER_TURN).
+local DEFAULT_BLOCK_SECONDS = 0.5
 local MAX_PER_TURN = 4
 local SITE_RETRY_SECONDS = 60
 local VILLAGE_RADIUS = 128

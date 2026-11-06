@@ -620,7 +620,7 @@ local function built_right()
 end
 
 -- The whole job, from a stocked chest: earthwork, then solids, then water last, all from the
--- ring and in reach, three blocks every two seconds, with the leftovers and the empty bucket put back.
+-- ring and in reach, two blocks a second, with the leftovers and the empty bucket put back.
 do
 	local bump, hole = {x = 11, y = 1, z = 11}, {x = 12, y = 0, z = 12}
 	local entity = prepared({cuts = {bump}, fills = {hole}})
@@ -663,10 +663,10 @@ do
 	assert(order[1] == "removed" and order[2] == "mcl_core:dirt", "earthwork first")
 	assert(world.name(bump) == "air" and world.name(hole) == "mcl_core:dirt")
 	assert(order[#order] == WATER, "water last")
-	-- Its pace: never more than 2 in a second, nor 3 in two, and it does go faster than one a second.
+	-- Its pace: never more than 2 in a second, and it does go faster than one a second.
 	local doubles = 0
 	for second, count in pairs(per_second) do
-		assert(count <= 2 and count + (per_second[second + 1] or 0) <= 3, "too fast at " .. second)
+		assert(count <= 2, "too fast at " .. second)
 		if count == 2 then doubles = doubles + 1 end
 	end
 	assert(furthest <= 14 and doubles > 0, "in reach, and at its pace: " .. furthest .. " " .. doubles)
