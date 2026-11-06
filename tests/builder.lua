@@ -620,7 +620,7 @@ local function built_right()
 end
 
 -- The whole job, from a stocked chest: earthwork, then solids, then water last, all from the
--- ring and in reach, one block a second, with the leftovers and the empty bucket put back.
+-- ring and in reach, three blocks every two seconds, with the leftovers and the empty bucket put back.
 do
 	local bump, hole = {x = 11, y = 1, z = 11}, {x = 12, y = 0, z = 12}
 	local entity = prepared({cuts = {bump}, fills = {hole}})
@@ -640,12 +640,11 @@ do
 
 	local order = {}
 	local real_set, real_remove = core.set_node, core.remove_node
-	local furthest, last_at, fastest = 0, nil, 99
+	local furthest, per_second = 0, {}
 	local function note(pos, kind)
 		order[#order + 1] = kind
 		furthest = math.max(furthest, vector.distance(entity.object:get_pos(), pos))
-		if last_at then fastest = math.min(fastest, world.now - last_at) end
-		last_at = world.now
+		per_second[world.now] = (per_second[world.now] or 0) + 1
 	end
 	core.set_node = function(pos, node)
 		note(pos, node.name)
@@ -664,7 +663,13 @@ do
 	assert(order[1] == "removed" and order[2] == "mcl_core:dirt", "earthwork first")
 	assert(world.name(bump) == "air" and world.name(hole) == "mcl_core:dirt")
 	assert(order[#order] == WATER, "water last")
-	assert(furthest <= 14 and fastest >= 1, "in reach, and at its pace: " .. furthest .. " " .. fastest)
+	-- Its pace: never more than 2 in a second, nor 3 in two, and it does go faster than one a second.
+	local doubles = 0
+	for second, count in pairs(per_second) do
+		assert(count <= 2 and count + (per_second[second + 1] or 0) <= 3, "too fast at " .. second)
+		if count == 2 then doubles = doubles + 1 end
+	end
+	assert(furthest <= 14 and doubles > 0, "in reach, and at its pace: " .. furthest .. " " .. doubles)
 	assert(stock.chest_count(chest, COBBLE) == 8, "what it did not use stays in the chest")
 	assert(stock.chest_count(chest, "mcl_buckets:bucket_empty") == 1, "and the bucket comes back")
 

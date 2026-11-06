@@ -60,7 +60,10 @@ local DEFER_SECONDS = 10
 local SITE_ATTEMPTS = 5
 local AVOID_SECONDS = 1800
 local DEFAULT_CAPACITY = 256
-local DEFAULT_BLOCK_SECONDS = 1
+-- Three blocks every two seconds. Game time is whole seconds and it works once a second, so a
+-- block due before the next second goes in on the same turn (MAX_PER_TURN).
+local DEFAULT_BLOCK_SECONDS = 2 / 3
+local MAX_PER_TURN = 4
 local SITE_RETRY_SECONDS = 60
 local VILLAGE_RADIUS = 128
 local DEFAULT_CHEST_RADIUS = 32
@@ -930,6 +933,7 @@ local function drop_from_queue(session, step)
 end
 
 -- Places a step from where it stands, once it has looked that nothing has changed there.
+-- Returns true if it placed it.
 local function place_step(self, session, bench, project, plan, step, now)
 	-- It may have changed since the last look.
 	local missing, blocked = template.compare({
@@ -955,8 +959,12 @@ local function place_step(self, session, bench, project, plan, step, now)
 	end
 	drop_from_queue(session, step)
 	session.stuck = nil
-	session.next_place = now + setting_number("living_villages_builder_block_seconds", DEFAULT_BLOCK_SECONDS)
+	-- Counted on from when the last block was due, not from now, so that a fraction of a second
+	-- carries over; but never from more than a second back, so idling saves nothing up.
+	local due = math.max(session.next_place or now, now - 1)
+	session.next_place = due + setting_number("living_villages_builder_block_seconds", DEFAULT_BLOCK_SECONDS)
 	session.hold_until = now + HOLD_SECONDS
+	return true
 end
 
 -- A high step like this one, as good to do next, that the column serves.
@@ -999,7 +1007,7 @@ local function build_climbing(self, session, bench, project, plan, step, box, no
 		return
 	end
 	climb.face(self, step.pos)
-	place_step(self, session, bench, project, plan, step, now)
+	return place_step(self, session, bench, project, plan, step, now)
 end
 
 -- A high step from the ground: to a column's cell, and up.
@@ -1066,7 +1074,7 @@ local function build(self, session, bench, project, plan, now)
 		return
 	end
 	session.site_attempts = 0
-	place_step(self, session, bench, project, plan, step, now)
+	return place_step(self, session, bench, project, plan, step, now)
 end
 
 -- A started project's turn: what is left is read from the world, not remembered.
@@ -1109,7 +1117,12 @@ function work(self, session, bench, project, now)
 	if project.state == "collecting" then
 		collect(self, session, bench, project, now)
 	elseif project.state == "building" then
-		build(self, session, bench, project, plan, now)
+		for _ = 1, MAX_PER_TURN do
+			if not build(self, session, bench, project, plan, now) or project.state ~= "building"
+				or now < session.next_place or #session.queue == 0 then
+				break
+			end
+		end
 	end
 end
 
