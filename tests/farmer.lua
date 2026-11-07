@@ -224,6 +224,35 @@ for i = 1, 27 do full:set_stack("main", i, "mcl_core:stone 64") end
 step(3)
 assert(pouch("mcl_farming:carrot_item") == 30)
 
+-- Its surplus goes to the chest nearest its composter, not the one nearest itself, so a
+-- player can move it off a chest such as a Builder's by placing one nearer.
+setup({_villages_farm_pouch = {["mcl_bone_meal:bone_meal"] = 4, ["mcl_farming:carrot_item"] = 30}})
+local builders = support.chest(world, {x = 7, y = 2, z = 0})
+local placed = support.chest(world, {x = -6, y = 2, z = 0})
+step()
+assert(#farmer.walks == 1 and farmer.walks[1].x == -6, "the chest nearer the composter")
+step()
+assert(placed:get_stack("main", 1):to_string() == "mcl_farming:carrot_item 14")
+assert(builders:get_stack("main", 1):is_empty(), "the other chest is left alone")
+
+-- That chest full, it waits rather than fill another.
+setup({_villages_farm_pouch = {["mcl_bone_meal:bone_meal"] = 4, ["mcl_farming:carrot_item"] = 30}})
+builders = support.chest(world, {x = 8, y = 2, z = 0})
+placed = support.chest(world, {x = -6, y = 2, z = 0})
+for i = 1, 27 do placed:set_stack("main", i, "mcl_core:stone 64") end
+step(6)
+assert(builders:get_stack("main", 1):is_empty() and pouch("mcl_farming:carrot_item") == 30)
+
+-- Both halves of a double chest are its own.
+setup({_villages_farm_pouch = {["mcl_bone_meal:bone_meal"] = 4, ["mcl_farming:carrot_item"] = 30}})
+local near_half = support.chest(world, {x = 2, y = 2, z = 0}, "mcl_chests:chest_left")
+local far_half = support.chest(world, {x = 3, y = 2, z = 0}, "mcl_chests:chest_right")
+builders = support.chest(world, {x = 4, y = 2, z = 0})
+for i = 1, 27 do near_half:set_stack("main", i, "mcl_core:stone 64") end
+step(6)
+assert(far_half:get_stack("main", 1):to_string() == "mcl_farming:carrot_item 14")
+assert(builders:get_stack("main", 1):is_empty())
+
 -- With no chest it never places one and leaves no food on the ground: surplus goes to the composter, and a full pouch waits with the crop standing.
 setup({_villages_farm_pouch = {["mcl_farming:carrot_item"] = 116, ["mcl_farming:wheat_seeds"] = 8}})
 local waiting = plot(1, 1, "mcl_farming:wheat")
