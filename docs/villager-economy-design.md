@@ -103,9 +103,9 @@ gap, which the player can override as today.
 
 `economy_clock.lua`. Each villager keeps `_villages_econ_clock`, seconds of game
 time it has been economically active, and `_villages_econ_stamp`, the game time it
-last advanced it. Every `STAMP_SECONDS` (10) of game time, while `do_custom` runs and
-mcl_mobs has not suspended the villager, the clock advances by the time since the
-stamp. A gap of `AWAY_GAP` (120 s) or more since the last stamp (the villager was
+last advanced it. Every `STAMP_SECONDS` (10) of game time, while a player is within
+mcl_mobs' active range (mcl_mobs runs `do_custom` for a suspended villager too, so the
+range is asked), the clock advances by the time since the stamp. A gap of `AWAY_GAP` (120 s) or more since the last stamp (the villager was
 unloaded or suspended) is not added. This is `builder_away.lua`'s stamp, used for the
 opposite purpose: the Builder pays for the gap, the economy skips it.
 
@@ -460,7 +460,8 @@ branch, and each leaves the game playable with `living_villages_economy` on or o
 
 | # | Ticket | Depends on |
 |---|---|---|
-| 1 | Economic clock, hunger, tavern pantry, paid dinners and paid player meals | — |
+| 1a | Economic clock, hunger, dinners and paid player meals from a pantry where a tavern has one | — |
+| 1b | Pantry chest in generated taverns; the keeper's supply trips and cooking | 1a |
 | 2 | `possessions.lua`: pouch for every villager, emeralds, stash claim and succession, starting stock | — |
 | 3 | `tools/extract_trades/`, `trade_prices.lua`, `ledger.lua` (pure) | 2 |
 | 4 | Farmer's distribution rules; fisherman's fish; shepherd's shearing | 1, 2, 3 |
@@ -473,20 +474,40 @@ branch, and each leaves the game playable with `living_villages_economy` on or o
 | 11 | Quarrier, porter, trade trips; the Builder buys from villagers | 6, 7 |
 | 12 | Peddler; holiday market sells real surplus | 6, 11 |
 
-### 1. Clock, hunger and the tavern
+### 1a. Clock, hunger and pantry dinners
 
-`economy_clock.lua`; falling points in `food.lua`; eating at home from the pouch;
-the keeper's pantry claim and cooking; `meal.lua` serves from the pantry and moves
-the guest's emeralds to the keeper (with no emeralds yet, before ticket 2, guests eat
-free from the pantry); `player_meals.lua` charges the player. Done when a probe run
-shows food points falling, dinners emptying the pantry, an empty pantry serving
-nothing, and an unloaded village's points unchanged on return.
+`economy_clock.lua`; falling points and hunger states in `food.lua`;
+`tavern_pantry.lua` (the chests within 6 of the jukebox); `meal.lua` serves only what
+the pantry holds and feeds the villager guest; `player_meals.lua` charges the player
+into the pantry. Villagers have no emeralds before ticket 2, so they eat from the
+pantry free. Hunger only sets the state here: its effects come with the tickets that
+add what they act on (production in 4 and 8, prices and restocks in 8 and 9).
+
+The stock tavern has no chest, and nothing refills a pantry before 1b. A tavern
+without a pantry therefore serves as it always has: a display that feeds no villager
+and costs no player anything. Existing villages keep their dinners, and a player who
+puts a chest by the jukebox and stocks it gets a working tavern.
+
+Done when the tests show points falling with the clock and not without it, a pantry
+dinner feeding its guest and emptying the pantry, an empty pantry serving nothing,
+and a player paying into the pantry or not being served.
+
+### 1b. Pantry supply
+
+`tavern_schematic.lua` adds a chest by the jukebox of newly generated taverns, with a
+starting stock. The keeper, in its free hours, walks to the work chest of the nearest
+farmer (within 48 of the jukebox) and carries food back to the pantry up to a target,
+and cooks raw crops into its menu items (three wheat to a loaf, a potato to a baked
+potato) over its shift. Ticket 4 later turns the fetching into buying. Done when a
+probe run shows a generated tavern's pantry kept stocked by a working farm.
 
 ### 2. Possessions
 
 Pouch API in `possessions.lua` over `_villages_farm_pouch`, `farm_stock.lua` on top
 of it, stash claim by `villages_owner`, succession on bed change, starting stock,
-drop on death for every villager. Done when every villager carries a stock after
+drop on death for every villager. `keeper.lua`'s `take_over` clears
+`_villages_farm_pouch` with the old job's fields; once the pouch holds a villager's
+belongings it must keep it instead. Done when every villager carries a stock after
 first activation and a dead villager's pouch drops.
 
 ### 3. Prices and ledger
