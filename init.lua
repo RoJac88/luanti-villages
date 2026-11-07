@@ -609,6 +609,10 @@ core.register_on_mods_loaded(function()
 	dofile(core.get_modpath("living_villages") .. "/bell_hangout.lua").install(def, bell)
 	local gossip = dofile(core.get_modpath("living_villages") .. "/gossip.lua")
 	gossip.install(def, core.registered_entities["mobs_mc:iron_golem"], core.registered_entities["mobs_mc:villager_zombie"])
+	-- Sounds, particles and a steady shake for the cure, whose vanilla cues are easy to miss.
+	if core.registered_entities["mobs_mc:villager_zombie"] then
+		dofile(core.get_modpath("living_villages") .. "/cure_feedback.lua").install(core.registered_entities["mobs_mc:villager_zombie"])
+	end
 	-- After the well and bell, which it only reads; before wander.lua, whose legs it stops.
 	dofile(core.get_modpath("living_villages") .. "/conversation.lua").install(def, gossip)
 	-- Outermost, so it sees "walk" after everything else has had its say.
