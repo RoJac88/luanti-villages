@@ -1,13 +1,13 @@
--- The tavern's pantry (docs/villager-economy-design.md, ticket 1a): the chests within
+-- The tavern's pantry (docs/villager-economy-design.md, ticket 1): the chests within
 -- RADIUS of a jukebox. Where a tavern has one, dinner is real: meal.lua serves only
 -- what the pantry holds, takes each plate out of it, feeds the villager guest, and a
 -- player pays for the meal into it. The pantry is the keeper's till as well as its
 -- larder, so the emeralds stay in the world where anyone can see them.
 --
--- A tavern with no chest serves as it always has: a display that feeds no villager
--- and costs no player anything. The stock tavern has none, so existing villages keep
--- their dinners until a pantry is put in (by a player now, by the schematic and the
--- keeper's supply trips in ticket 1b).
+-- Every generated tavern has one: the stock schematic's chest stands 3 behind the
+-- jukebox. The keeper keeps it stocked from the farms and cooks in it
+-- (keeper_supply.lua). A tavern with no chest, a player's own, serves as it always
+-- has: a display that feeds no villager and costs no player anything.
 local core = minetest
 local clock = dofile(core.get_modpath("living_villages") .. "/economy_clock.lua")
 local stock = dofile(core.get_modpath("living_villages") .. "/farm_stock.lua")
