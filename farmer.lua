@@ -158,6 +158,20 @@ local function chests_of(self, session, now)
 	return session.chests
 end
 
+-- Where its surplus goes: the chest nearest its composter, both halves if it is a double
+-- chest, and no other. A player who wants it out of some chest, a Builder's say, places
+-- one nearer, and a full one makes it wait rather than fill the next. Chests only touch
+-- when they are halves of one, as the kinds it uses merge.
+local function own_chest(chests)
+	local first = chests[1]
+	if not first then return {} end
+	local own = {first}
+	for i = 2, #chests do
+		if vector.distance(chests[i], first) == 1 then table.insert(own, chests[i]) end
+	end
+	return own
+end
+
 -- Something a farm yields that it has no use for, such as a poison potato. With no
 -- chest to put it in it stays where it fell, rather than filling the pouch for good.
 local function harvest(self, pos, session, now)
@@ -390,7 +404,7 @@ local function plot_jobs(self, session, farm, now)
 			end,
 			on_walk = function() round_progress(session, now, 0, 1) end,
 		},
-		{positions = chests, wanted = #chests > 0 and wants_to_deposit(self), work = deposit},
+		{positions = own_chest(chests), wanted = #chests > 0 and wants_to_deposit(self), work = deposit},
 		{positions = farm.mature, wanted = stock.has_harvest_room(self), work = harvest},
 		{positions = farm.empty, wanted = seeds, work = plant},
 		{
