@@ -98,7 +98,7 @@ nodes[key(jukebox)] = "mcl_jukebox:jukebox"
 nodes[key(pantry_chest)] = "mcl_chests:chest_small"
 nodes[key(composter)] = "mcl_composters:composter_3"
 nodes[key(farm_chest)] = "mcl_chests:chest_small"
-inventories[key(pantry_chest)] = {}
+inventories[key(pantry_chest)] = {["mcl_core:emerald"] = 1}
 inventories[key(farm_chest)] = {["mcl_farming:bread"] = 4, ["mcl_farming:wheat_item"] = 30, ["mcl_farming:potato_item"] = 10}
 metas[key(jukebox)] = {villager = "kate"}
 metas[key(composter)] = {villager = "fred"}
@@ -125,6 +125,8 @@ local chests = pantry.chests(jukebox)
 assert(chests and #chests == 1 and supply.meals(chests) == 0)
 supply.step(kate, now)
 assert(trip and vector.equals(trip.target, farm_chest), "walks to the farmer's chest")
+assert(kate._villages_farm_pouch["mcl_core:emerald"] == 1 and not inventories[key(pantry_chest)]["mcl_core:emerald"],
+	"takes the pantry's emeralds to pay with")
 assert(kate._villages_supply_target, "an errand for far_trips.lua")
 -- Takes up to 24, bread first, then potatoes, then wheat.
 arrive_at(farm_chest)
@@ -132,6 +134,11 @@ assert(kate._villages_farm_pouch["mcl_farming:bread"] == 4)
 assert(kate._villages_farm_pouch["mcl_farming:potato_item"] == 10)
 assert(kate._villages_farm_pouch["mcl_farming:wheat_item"] == 10)
 assert(inventories[key(farm_chest)]["mcl_farming:wheat_item"] == 20 and not kate._villages_supply_target)
+-- It owes more than the one emerald it has: it pays that, and takes the food anyway.
+local owed = supply.worth({["mcl_farming:bread"] = 4, ["mcl_farming:potato_item"] = 10, ["mcl_farming:wheat_item"] = 10})
+assert(owed >= 1, "worth " .. owed)
+assert(inventories[key(farm_chest)]["mcl_core:emerald"] == 1 and not kate._villages_farm_pouch["mcl_core:emerald"])
+inventories[key(farm_chest)]["mcl_core:emerald"] = nil
 
 -- At the next check it carries the food back to the pantry.
 supply.step(kate, now + 1)
@@ -143,6 +150,13 @@ arrive_at(pantry_chest)
 assert(inventories[key(pantry_chest)]["mcl_farming:bread"] == 4)
 assert(inventories[key(pantry_chest)]["mcl_farming:wheat_item"] == 10)
 assert(next(kate._villages_farm_pouch) == nil, "pouch emptied")
+-- What it did not spend goes back.
+kate._villages_farm_pouch = {["mcl_core:emerald"] = 2, ["mcl_farming:bread"] = 1}
+supply.step(kate, now + supply.CHECK_SECONDS)
+arrive_at(pantry_chest)
+assert(inventories[key(pantry_chest)]["mcl_core:emerald"] == 2 and inventories[key(pantry_chest)]["mcl_farming:bread"] == 5)
+inventories[key(pantry_chest)]["mcl_core:emerald"], inventories[key(pantry_chest)]["mcl_farming:bread"] = nil, 4
+kate._villages_supply_next = nil
 -- 4 loaves, 10 potatoes and three loaves' worth of wheat: enough, so no trip.
 assert(supply.meals(chests) == 17)
 now = now + supply.CHECK_SECONDS
@@ -184,6 +198,17 @@ nodes[key(near_composter)] = "mcl_composters:composter"
 metas[key(near_composter)] = {villager = "gus"}
 assert(vector.equals(supply.source(jukebox, chests), farm_chest), "skips the pantry nearest gus's composter")
 nodes[key(near_composter)] = nil
+
+-- A fisherman's claimed barrel with cod is a source too, nearer than the farm.
+local barrel = {x = 10, y = 0, z = 0}
+nodes[key(barrel)] = "mcl_barrels:barrel_closed"
+inventories[key(barrel)] = {["mcl_fishing:fish_raw"] = 5}
+assert(vector.equals(supply.source(jukebox, chests), farm_chest), "an unclaimed barrel is no source")
+metas[key(barrel)] = {villager = "finn"}
+assert(vector.equals(supply.source(jukebox, chests), barrel))
+inventories[key(barrel)] = {["mcl_fishing:salmon_raw"] = 5}
+assert(vector.equals(supply.source(jukebox, chests), farm_chest), "no cod, no trip there")
+nodes[key(barrel)] = nil
 
 -- A farm with nothing to fetch: no trip, and it checks again later.
 inventories[key(farm_chest)] = {["mcl_farming:carrot_item"] = 40}
