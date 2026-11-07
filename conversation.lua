@@ -5,7 +5,7 @@
 -- 8-25 s, then go on. They talk where they stand and walk to nowhere, there is no
 -- animation for it (the model has stand, walk and sleep), and nothing of it is saved
 -- or placed. A conversation that runs its full time passes on gossip (gossip.lua) and
--- market news (market_news.lua).
+-- market news (market_news.lua), and then its members may trade (exchange.lua).
 --
 -- A villager that is standing, free of every other system's errand, rolls
 -- CHANCE every few seconds; on a win it looks for idle neighbours within
@@ -264,7 +264,7 @@ local function hold(self, talk, pos)
 	return false
 end
 
-local function install(def, gossip, news)
+local function install(def, gossip, news, trade)
 	local original_activate = def.on_activate
 	local original_custom = def.do_custom
 	local original_staticdata = def.get_staticdata
@@ -304,12 +304,13 @@ local function install(def, gossip, news)
 				if hold(self, talk, pos) == false then return false end
 				-- Only a conversation that ran its time: the first to finish speaks for the group.
 				local group = talk.group
-				if (gossip or news) and not group.shared and not group.over and now() >= group.until_time then
+				if (gossip or news or trade) and not group.shared and not group.over and now() >= group.until_time then
 					group.shared = true
 					local members = others_of(self, talk)
 					members[#members + 1] = self
 					if gossip then gossip.exchange(members) end
 					if news then news.exchange(members) end
+					if trade then trade.exchange(members) end
 				end
 				leave(self, "finished")
 			else

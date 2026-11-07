@@ -306,6 +306,15 @@ with `food.show_handover`'s animation. Three channels, in order:
 3. **Holiday market.** `market.lua` stalls show the seller's real surplus instead of
    its profession's two fixed goods, and browsers buy at stalls.
 
+Ticket 6 settles the first channel (`exchange.lua`). Each pair makes the one trade
+that gains the two of them most, buyer's value less seller's, over the goods the buyer
+needs and the seller has spare and carries (a stash is not at hand). Emerald
+payments are whole: a sale worth under one emerald grows to the fewest items that make
+one, if the seller has them spare, and either payment goes through only when the buyer
+values what it gets at no less than it pays and the seller at no more. Barter pays in
+the one good the seller needs that leaves the buyer the most. The views are worked out
+afresh for each pair, so a trade earlier in the same conversation counts.
+
 ## The farmer's food
 
 `farmer.lua`'s `hand_over` gives food only to:
@@ -327,7 +336,7 @@ With the economy off it feeds everyone free, as before.
   stands 3 behind it. The keeper fetches food for it from the farms' chests and the
   fishermen's barrels, and from ticket 4 buys it: it takes up to 8 emeralds from the
   pantry and leaves what it takes is worth at vanilla's prices, rounded, in the work
-  chest. While villagers dine free (until ticket 6) a pantry has little money, so the
+  chest. While villagers dine free (until ticket 8) a pantry has little money, so the
   keeper takes the food even when it cannot pay all of it.
 - **Cooking.** The keeper turns raw pantry items into its menu items over its shift:
   bread from wheat, baked potatoes from potatoes, cooked fish from raw fish.
@@ -544,7 +553,7 @@ beyond the inspector showing each villager's top needs and surplus
 `farmer.lua` household, handout and selling; the keeper buying at work chests and
 barrels; eating from belongings and stash; fish per cycle into the barrel; shearing.
 Villagers still dine at the tavern free: only farmers and fishermen earn yet, so
-paying would run everyone else's emeralds out before ticket 6 gives them an income.
+paying would run everyone else's emeralds out before ticket 8 gives them something to sell.
 Done when a farmer sells bread to a neighbour for emeralds, the keeper pays for what
 it fetches, and a farmer still feeds its children free.
 
@@ -557,7 +566,9 @@ most of a village within two game days.
 ### 6. Exchange
 
 `exchange.lua` settlement; end-of-conversation trades. Done when two villagers who
-meet trade goods both value and their pouches show it.
+meet trade goods both value and their pouches show it. Villagers still dine at the
+tavern free: trading moves goods between them, but most professions make nothing to
+sell until ticket 8, so paying for dinner waits for that ticket.
 
 ### 7. Labour
 

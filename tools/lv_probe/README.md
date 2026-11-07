@@ -97,6 +97,11 @@ days at the default time speed is `LV_PROBE_CENSUS=2400`:
 LV_PROBE_CENSUS=2460 LV_PROBE_CONF_EXTRA="lv_probe_news = true" tools/lv_probe/run.sh 2007 --chunk 208,768 --with-mod
 ```
 
+A new village has nothing to trade yet (economy ticket 6): every villager starts hungry, with emeralds and its
+profession's kit. `lv_probe_seed_goods = <item> <count>` (in `LV_PROBE_CONF_EXTRA`, with `lv_probe_news`) puts that
+many in every other adult's belongings at the start, so trades at the end of conversations show as `trade:` lines in
+the server log.
+
 `LV_PROBE_CENSUS_PUTTER=SECONDS` (with a census) holds the morning Putter stage for the first SECONDS of the
 census, then work time, and adds `wells` to the census line (`wells.lua`): the wells `well.lua` found, villagers
 that set off for one (`villagers_bound`), arrived and left, `stays` (seconds from first arrival to leaving),

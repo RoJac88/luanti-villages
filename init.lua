@@ -617,7 +617,8 @@ core.register_on_mods_loaded(function()
 	end
 	-- After the well and bell, which it only reads; before wander.lua, whose legs it stops.
 	local market_news = dofile(core.get_modpath("living_villages") .. "/market_news.lua")
-	dofile(core.get_modpath("living_villages") .. "/conversation.lua").install(def, gossip, market_news)
+	local market_exchange = dofile(core.get_modpath("living_villages") .. "/exchange.lua")
+	dofile(core.get_modpath("living_villages") .. "/conversation.lua").install(def, gossip, market_news, market_exchange)
 	-- Outermost, so it sees "walk" after everything else has had its say.
 	dofile(core.get_modpath("living_villages") .. "/wander.lua")(def)
 	dofile(core.get_modpath("living_villages") .. "/diagnostic.lua")(def, flock, navigation_api, farmer, gossip, builder)
