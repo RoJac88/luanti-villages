@@ -102,6 +102,11 @@ ordinary stairs and wooden doors. Iron doors still block them.
     The window says why a schematic cannot be used, such as blocks this world lacks. A schematic can be up to 32
     layers high, ground layer included. Its width is what limits it: the Builder works from the outside, so the
     middle of each layer must be within its reach (`living_villages_builder_reach`, 15: about 25 across).
+  - It keeps going while you are away, more slowly. Villagers stop when no player is near, so when you come
+    back, the work hours you were away for are turned into blocks at half the pace this Builder kept on this
+    building while you were there (`living_villages_builder_away_factor`), from what is in the chests. Only a
+    building it was already putting up when you left gets any: it never starts one, or gets past something in
+    the way, while you are gone. Staying near is always quicker.
   - VoxeLibre can't register new professions, so a Builder is a mason underneath, with no trades.
 - **Keepers:** an unemployed adult that claims a free jukebox becomes a tavern keeper. The
   jukebox can be a tavern's or one a player placed. A keeper wears a brown apron and sells

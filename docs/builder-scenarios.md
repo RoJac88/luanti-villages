@@ -102,6 +102,27 @@ Stock the chest.
   and `debug.txt` says so. It can choose that site again after 30 minutes.
 - Once it has begun, wall off the site or the chest. The window says it can't get there, and it keeps the site.
 
+## Time away
+
+What the tests cannot show is a real unload: the villager and its bench saved with the map block and
+loaded again. Watch `debug.txt` for `was away` and `while away`.
+
+1. **Away mid-build:** stock the chest for the whole building, watch it build for at least 5 minutes, then fly
+   well out of range (over 100 nodes) for a game day and come back. More of the building is up than when you
+   left, but less than it would have done had you stayed, and the window says how many blocks went in while no
+   one was near. It carries on from there.
+2. **Long away:** do the same with a small building and stay away for several days. It is finished, with the
+   leftovers still in the Builder's pouch until it puts them back, and the next building waits for you.
+3. **Short chests:** leave the chest with part of what it needs. It places what the chest holds and stops at
+   `requires_materials`. Top the chest up and leave again: nothing more goes in until it has started again
+   while you watched.
+4. **Not started:** fill the chest for a project waiting for materials and leave at once. Nothing is built while
+   you are away; it starts when you are back.
+5. **In the way:** leave a stone in a cell it has yet to build. Nothing is built while you are away.
+6. **Asleep:** come back at night. The blocks go in although the Builder is in bed, and it stays there.
+7. **A new Builder:** kill the Builder mid-build and leave. When you come back and another villager takes the
+   bench, nothing has been built for the time you were away.
+
 ## What it built
 
 - The copy looks like the building it is modelled on, with its rotation and the village's surface.

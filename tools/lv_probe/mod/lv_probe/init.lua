@@ -416,7 +416,7 @@ local function finish_site(site, outcome)
 			record.seed, record.chunk = seed, result.chunk
 			local f = io.open(RESULT_FILE, "a")
 			if f then f:write(core.write_json(record), "\n") f:close() end
-		end, finish)
+		end, finish, site.blocks)
 	end
 	if outcome == "built" and site.info and jobs_probe.enabled() then
 		return jobs_probe.run(site.area, function(record)

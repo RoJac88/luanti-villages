@@ -74,6 +74,12 @@ living_villages_builder_capacity (Builder's capacity) int 256 16 2048
 # Seconds a Builder takes over each block. The default, 0.25, is four blocks a second, the most.
 living_villages_builder_block_seconds (Seconds per block) float 0.25 0.25 10
 
+# While no player is near, a Builder's villager is unloaded and stops. When one comes back, the
+# work hours it was away for are turned into blocks at this fraction of the pace it kept on the
+# same project while watched, if it was building then, from what is in its chests. So staying
+# near is always quicker. 0 turns it off.
+living_villages_builder_away_factor (Builder's pace while away) float 0.5 0 0.9
+
 # How far from its bench a Builder looks for materials in chests.
 living_villages_builder_chest_radius (Builder's chest radius) int 32 1 64
 

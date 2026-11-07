@@ -1055,6 +1055,162 @@ do
 	tallest = 3
 end
 
+-- Time away (builder_away.lua). A villager is unloaded while no player is near; when one comes
+-- back it is a new entity with the same saved fields, and so a new session. At the test's
+-- 0.4 of a day and time_speed 72 (20 ticks a second), a 600 s gap holds 130 s of work: 9600
+-- ticks back to 7000 today, and none in yesterday's evening. A watched pace of half a block a
+-- second, kept at half while away, is 4 s a block: 32 blocks, the hut's walls, with 2 s over.
+local WATCHED = {ground = {seconds = 300, placed = 150}, high = {seconds = 0, placed = 0}, pending = 0}
+local function away_scene(fields)
+	fields = fields or {}
+	local entity = prepared()
+	local chest = {x = 0, y = 1, z = 6}
+	support.chest(world, chest, CHEST, fields.stock or {COBBLE .. " 32", BUCKET})
+	local project = builder.load_project(BENCH_POS)
+	project.state = fields.state or "building"
+	project.started, project.reached = true, true
+	project.live = fields.live or deep(WATCHED)
+	project.away = {at = world.now, id = fields.id or entity._id, ok = fields.ok ~= false}
+	world.meta(BENCH_POS).fields.villages_project = core.serialize(project)
+	world.now = world.now + (fields.gap or 600)
+	world.time = fields.time or 0.4
+	local back = villager(entity.object:get_pos(), {
+		_id = entity._id, _jobsite = entity._jobsite, _profession = "mason", _villages_builder = true, _bed = entity._bed,
+	})
+	return back, chest
+end
+local function walls_built()
+	local count = 0
+	for z = 0, 4 do
+		for y = 1, 2 do
+			for x = 0, 4 do
+				if world.name({x = SITE.x + x, y = y, z = SITE.z + z}) == COBBLE then count = count + 1 end
+			end
+		end
+	end
+	return count
+end
+local function water_in()
+	return world.name({x = SITE.x + 2, y = 1, z = SITE.z + 2}) == WATER
+end
+
+-- What it did while away goes in the moment it is back, paid from the chest, at the fraction of
+-- its watched pace; what is left of the time is kept for next time.
+do
+	local back, chest = away_scene()
+	def.do_custom(back, 1)
+	local project = builder.load_project(BENCH_POS)
+	assert(walls_built() == 32 and not water_in(), "walls: " .. walls_built())
+	assert(stock.chest_count(chest, COBBLE) == 0, "paid from the chest")
+	assert(project.state == "building" and project.away_built == 32)
+	assert(math.abs(project.away_credit - 2) < 1e-6, tostring(project.away_credit))
+	assert(builder.report(back).away_built == 32, "the window says so")
+	assert(project.away.at == world.now and project.away.id == back._id, "and it notes the time again")
+	-- It carries on live from there.
+	assert(run_until(back, project_gone_or("returning")))
+	assert(built_right())
+end
+
+-- Long enough away, it finishes, and counts in the census as if watched; no more than that, as
+-- the next building waits for the player's materials.
+do
+	local back = away_scene({gap = 1200})
+	def.do_custom(back, 1)
+	local project = builder.load_project(BENCH_POS)
+	assert(built_right() and project.state == "returning")
+	assert(records[1].built.hut == 1 and records[1].reserved["0,1,0"] == nil)
+end
+
+-- The chests run short: it stops there, and the time left is lost, not saved up for when the
+-- player fills them.
+do
+	local back = away_scene({stock = {COBBLE .. " 10", BUCKET}, gap = 1200})
+	def.do_custom(back, 1)
+	local project = builder.load_project(BENCH_POS)
+	assert(walls_built() == 10 and project.away_built == 10)
+	assert(project.away_credit == nil and project.state == "building")
+end
+
+-- A foreign node anywhere in it: as watched, it does nothing, and says where.
+do
+	local back = away_scene({gap = 1200})
+	local cell = {x = SITE.x + 2, y = 2, z = SITE.z}
+	world.set(cell, "mcl_core:stone")
+	def.do_custom(back, 1)
+	local project = builder.load_project(BENCH_POS)
+	assert(project.state == "blocked" and vector.distance(project.blocked_at, cell) == 0)
+	assert(walls_built() == 0 and not project.away_built)
+end
+
+-- Someone standing in a cell: it goes on past it, as watched, but leaves the water, which
+-- would run out of the gap.
+do
+	local back = away_scene({gap = 1200})
+	local cell = {x = SITE.x, y = 1, z = SITE.z + 2}
+	local mob = {get_pos = function() return vector.new(cell) end, get_luaentity = function() return {name = "mobs_mc:cow", is_mob = true} end}
+	table.insert(world.objects, mob)
+	def.do_custom(back, 1)
+	table.remove(world.objects)
+	local project = builder.load_project(BENCH_POS)
+	-- It stands two cells high.
+	local above = {x = cell.x, y = 2, z = cell.z}
+	assert(walls_built() == 30 and not water_in(), "walls: " .. walls_built())
+	assert(world.name(cell) == "air" and world.name(above) == "air")
+	assert(project.state == "building" and project.away_credit == nil)
+end
+
+-- Nothing for a project not under way when the player left: not started, though everything is
+-- in the chests; noted as not getting on (stuck, or blocked); someone else's; no pace yet; too
+-- short a gap; or a gap with no work hours in it.
+do
+	for _, case in ipairs({
+		{state = "requires_materials"}, {ok = false}, {state = "blocked"}, {id = "someone else"},
+		{live = {ground = {seconds = 200, placed = 100}, high = {seconds = 0, placed = 0}, pending = 0}},
+		{gap = 100}, {gap = 300, time = 0.9},
+	}) do
+		local back = away_scene(case)
+		def.do_custom(back, 1)
+		local project = builder.load_project(BENCH_POS)
+		assert(walls_built() == 0 and not project.away_built, "nothing")
+	end
+	world.time = 0.4
+end
+
+-- Its watched pace: every second of work on the project and every block placed, noted with
+-- the time, and whether it was getting on.
+do
+	local entity = prepared()
+	local chest = {x = 0, y = 1, z = 6}
+	support.chest(world, chest, CHEST, {COBBLE .. " 32", BUCKET})
+	assert(run_until(entity, function() return walls_built() >= 8 end))
+	advance(entity, 10)
+	local project = builder.load_project(BENCH_POS)
+	local live = project.live
+	assert(live.ground.placed + live.high.placed >= 8 and live.ground.seconds > 0, "counted")
+	assert(project.away.id == entity._id and project.away.at == world.now)
+	assert(project.away.ok == (project.state == "building" or project.state == "collecting"))
+	-- A walk is work too, though vanilla's walk returns before the Builder's turn.
+	local function total()
+		local kept = builder.load_project(BENCH_POS).live
+		return kept.ground.seconds + kept.high.seconds + kept.pending
+	end
+	local before = total()
+	entity.state = "gowp"
+	for _ = 1, 4 do advance(entity, 5) end
+	entity.state = "stand"
+	assert(total() >= before + 15, "walking counted: " .. before .. " " .. total())
+	-- Off work it is not counting.
+	world.time = 0.9
+	advance(entity, 10)
+	live = builder.load_project(BENCH_POS).live
+	local seconds = live.ground.seconds + live.pending
+	advance(entity, 30)
+	advance(entity, 10)
+	live = builder.load_project(BENCH_POS).live
+	assert(live.ground.seconds + live.pending == seconds, "nothing off work")
+	world.time = 0.4
+end
+
 -- /giveme build_project_materials: what the nearest waiting Builder lacks, and nothing else.
 do
 	local command = {params = "<ItemString>", func = function(_, param) return true, "engine: " .. param end}

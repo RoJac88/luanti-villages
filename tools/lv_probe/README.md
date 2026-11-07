@@ -262,6 +262,12 @@ once building began (`mcl_core:goldblock` if it was left alone), and `lv_probe_b
 `<world>/schems` in place of the test schematic. `scaffold` gives the columns the Builder climbed, its highest level, the seconds
 it was seen climbing, and the scaffolding left standing near the site afterwards (`left`, which should be 0). `built.cells` lists what is left when
 time runs out, what is there instead and any object near it, and `trail` and `pouch` show where the Builder was and what it carried.
+`lv_probe_builder_away = SECONDS` tests time away (`builder_away.lua`): once the first bench's Builder has a watched pace and is
+building, the village's forceloaded blocks are freed for that long, so the Builder and its bench are saved and unloaded as when a
+player leaves, and then loaded again. `away` gives when the villager went (`unloaded_after`), whether it came back and noted the
+time (`reloaded`), the gap and its work seconds, the watched `rates`, what it placed while away (`away_built`, from the project)
+against `at_most` (its pace at the away factor) and `watched_would` (its full pace), the time kept (`credit`) and the steps left
+before and after.
 
 ## Who takes which job
 

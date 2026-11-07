@@ -75,6 +75,9 @@ local function summary_lines(report)
 	if report.blocked then
 		lines[#lines + 1] = S("Something is in the way at @1.", core.pos_to_string(report.blocked))
 	end
+	if report.away_built then
+		lines[#lines + 1] = S("While no one was near, it placed @1 blocks.", tostring(report.away_built))
+	end
 	if report.left and report.total and report.total > 0 and report.state ~= "requires_materials" then
 		lines[#lines + 1] = S("Done: @1 of @2 steps.", tostring(report.total - report.left), tostring(report.total))
 	end

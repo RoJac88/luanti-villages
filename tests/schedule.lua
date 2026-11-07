@@ -145,4 +145,24 @@ day = 5
 assert(common.schedule_stage(at(8000), villager) == "work")
 assert(common.schedule_stage(at(14000), keeper) == "staff" and common.schedule_stage(at(13999), keeper) == "free")
 
+-- Work seconds in a stretch of past game time (builder.lua's time away), at the default
+-- time_speed of 72: 20 ticks a second. Day 4 is a holiday, with no work.
+local function close(a, b) return math.abs(a - b) < 1e-6 end
+day, time = 5, at(9000)
+assert(close(common.work_seconds(100), 100), "all of it at work")
+assert(close(common.work_seconds(0), 0) and close(common.work_seconds(-5), 0))
+time = at(6000)
+assert(close(common.work_seconds(100), 0), "before work")
+time = at(16000)
+assert(close(common.work_seconds(150), 125), "the end of the day's work")
+day, time = 6, at(1000)
+assert(close(common.work_seconds(500), 25), "back past midnight into yesterday's work")
+day, time = 7, at(12000)
+assert(close(common.work_seconds(3600), 1100), "three days back, the holiday left out")
+assert(close(common.work_seconds(3600, keeper), 650), "a keeper staffs on a holiday too")
+time = at(15000)
+assert(close(common.work_seconds(50, keeper), 50), "a keeper's staffing counts")
+assert(close(common.work_seconds(50, cleric), 50))
+assert(common.work_seconds(1e9) > 0, "a long absence is counted, as far back as it goes")
+
 print("schedule.lua: ok")
