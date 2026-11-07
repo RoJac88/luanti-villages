@@ -13,6 +13,11 @@
 -- schematic written here with what stock buildings lack: job blocks, another mod's door, a void,
 -- cells of chance and flowing water. What stands afterwards is compared with a fresh reading of
 -- the project's copy, so a roll that changed would show as work left to do.
+--
+-- With lv_probe_builder_away = SECONDS, once the first bench's Builder has built long enough to
+-- have a watched pace, the village's forceloaded blocks are freed for that long, so the Builder
+-- and its bench are saved and unloaded as when a player leaves, and then loaded again. `away`
+-- records what it placed for that time (from the project), against the most its pace allowed.
 local core = minetest
 
 local builder = {}
@@ -378,9 +383,13 @@ local function mark_void(project, template, catalog)
 end
 
 -- Follows every bench through its project, or until time is up.
-local function watch(area, record, emit, done)
+local function watch(area, record, emit, done, blocks)
 	local path = core.get_modpath("living_villages")
 	local roles = dofile(path .. "/builder.lua")
+	local pace = dofile(path .. "/builder_away.lua")
+	local common = dofile(path .. "/common.lua")
+	local away_seconds = tonumber(core.settings:get("lv_probe_builder_away")) or 0
+	local away = away_seconds > 0 and blocks and {phase = "watching", seconds = away_seconds} or nil
 	local _, template = modules()
 	-- Only for formspec(): this copy's window is never shown, so its handler has no state.
 	local status_module = dofile(path .. "/builder_status.lua")
@@ -455,8 +464,68 @@ local function watch(area, record, emit, done)
 		emit(record)
 		done()
 	end
+	-- Away and back again. Returns true while that is going on, when nothing else is looked at:
+	-- an unloaded bench reads as having no project.
+	local function away_step()
+		local now = core.get_gametime()
+		if away.phase == "gone" then
+			-- Inactive blocks keep their nodes in memory a while, but their objects go at once.
+			if not away.unloaded_after and not villager_with_id(benches[1], away.owner) then
+				away.unloaded_after = now - away.left
+			end
+			if now - away.left < away.seconds then return true end
+			for _, block in ipairs(blocks) do core.forceload_block(block, true) end
+			away.phase, away.back = "back", now
+			return true
+		end
+		if away.phase ~= "back" then return false end
+		local project = roles.load_project(benches[1])
+		local noted = project and project.away
+		local reloaded = noted and noted.at > away.noted_at
+		if not reloaded and now - away.back < 120 then return true end
+		local result = {
+			seconds = away.seconds, unloaded_after = away.unloaded_after, reloaded = reloaded == true,
+			left_before = away.left_before, rates = away.rates, state_before = away.state,
+		}
+		if reloaded then
+			local gap = noted.at - away.noted_at
+			local work = common.work_seconds(gap)
+			local factor = pace.factor(core.settings:get("living_villages_builder_away_factor"))
+			result.gap, result.work_seconds = gap, work
+			result.at_most = math.floor(work * away.rates.ground * factor)
+			result.watched_would = math.floor(work * away.rates.ground)
+			result.away_built, result.credit, result.state_after = project.away_built, project.away_credit, project.state
+			result.left_after = check_built(sited[1], select(2, modules()), dofile(path .. "/builder_catalog.lua")).left
+		end
+		record.away = result
+		core.log("action", string.format("[lv_builder] away %d s (unloaded after %s s): placed %s while away, at most %s;"
+			.. " watched it would have placed %s; steps left %s -> %s", away.seconds, tostring(away.unloaded_after),
+			tostring(result.away_built), tostring(result.at_most), tostring(result.watched_would),
+			tostring(result.left_before), tostring(result.left_after)))
+		away.phase = "done"
+		return false
+	end
+
+	-- Goes away once the Builder has a pace and is getting on.
+	local function maybe_leave()
+		local project = roles.load_project(benches[1])
+		local rates = project and pace.rates(project.live)
+		if not (sited[1] and rates and project.away and project.away.ok and project.state == "building") then return false end
+		away.left, away.noted_at, away.rates, away.state = core.get_gametime(), project.away.at, rates, project.state
+		away.owner = core.get_meta(benches[1]):get_string("villager")
+		away.left_before = check_built(sited[1], select(2, modules()), dofile(path .. "/builder_catalog.lua")).left
+		for _, block in ipairs(blocks) do core.forceload_free_block(block, true) end
+		away.phase = "gone"
+		core.log("action", string.format("[lv_builder] leaving for %d s with %d steps left, watched pace %.2f a second",
+			away.seconds, away.left_before, rates.ground))
+		return true
+	end
+
 	local function step()
 		core.set_timeofday(WORK_TIME)
+		if away and (away_step() or (away.phase == "watching" and maybe_leave())) then
+			return core.after(WATCH_STEP, step)
+		end
 		local waiting = false
 		local limit = WATCH_SECONDS
 		for i, bench in ipairs(benches) do
@@ -488,6 +557,7 @@ local function watch(area, record, emit, done)
 				waiting = project == nil or project.state ~= "no_site"
 			end
 		end
+		if away and away.left then limit = limit + away.seconds end
 		if not waiting or core.get_gametime() - started >= limit then return finish() end
 		for i, bench in ipairs(benches) do
 			local owner = core.get_meta(bench):get_string("villager")
@@ -514,7 +584,7 @@ local function watch(area, record, emit, done)
 	step()
 end
 
-function builder.run(_, info, emit, done)
+function builder.run(_, info, emit, done, blocks)
 	local materials, template = modules()
 	core.after(WAIT_SECONDS, function()
 		local record = {
@@ -532,7 +602,7 @@ function builder.run(_, info, emit, done)
 		core.log("action", string.format("[lv_builder] %d houses, %d buildings, %d cells differ",
 			#record.houses, #record.buildings, wrong))
 		local minp, maxp = search_box(info)
-		watch({minp = minp, maxp = maxp}, record, emit, done)
+		watch({minp = minp, maxp = maxp}, record, emit, done, blocks)
 	end)
 end
 

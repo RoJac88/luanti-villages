@@ -133,19 +133,19 @@ end
 -- tod is core.get_timeofday()'s 0..1 fraction; omit it for the current time.
 -- villager picks that villager's own timetable; omit it for the common one.
 -- A thunderstorm sends everyone to bed at any hour.
+local function schedule_of(villager, holiday)
+	if holiday then
+		if villager and villager._villages_keeper then return HOLIDAY_KEEPER_SCHEDULE end
+		if villager and villager._profession == "cleric" then return HOLIDAY_CLERIC_SCHEDULE end
+		return HOLIDAY_SCHEDULE
+	end
+	if villager and villager._villages_keeper then return KEEPER_SCHEDULE end
+	return SCHEDULE
+end
+
 local function stage_at(tod, villager)
 	if is_thunder() then return "sleep" end
-	local schedule = SCHEDULE
-	if is_holiday() then
-		schedule = HOLIDAY_SCHEDULE
-		if villager and villager._villages_keeper then
-			schedule = HOLIDAY_KEEPER_SCHEDULE
-		elseif villager and villager._profession == "cleric" then
-			schedule = HOLIDAY_CLERIC_SCHEDULE
-		end
-	elseif villager and villager._villages_keeper then
-		schedule = KEEPER_SCHEDULE
-	end
+	local schedule = schedule_of(villager, is_holiday())
 	local ticks = ((tod or core.get_timeofday()) * 24000) % 24000
 	local stage = schedule[#schedule].stage
 	for _, entry in ipairs(schedule) do
@@ -159,6 +159,38 @@ local function stage_at(tod, villager)
 		return "home"
 	end
 	return stage
+end
+
+local WORK_STAGES = {work = true, staff = true}
+local MAX_DAYS_BACK = 1000
+
+-- How many of the last `seconds` of game time fell in the villager's work stages, from the
+-- clock alone: each day's own timetable, holiday or not, counted back from the time of day
+-- now. Thunder is left out, and so is a night skipped in bed, which game time never saw.
+local function work_seconds(seconds, villager)
+	local speed = tonumber(core.settings and core.settings:get("time_speed")) or 72
+	if not seconds or seconds <= 0 or speed <= 0 then return 0 end
+	local per_second = 24000 * speed / 86400
+	local span = seconds * per_second
+	local finish = ((core.get_timeofday() * 24000) % 24000)
+	local total, day = 0, 0
+	while span > 0 and day > -MAX_DAYS_BACK do
+		local start = math.max(0, finish - span)
+		local schedule = schedule_of(villager, is_holiday(day))
+		-- Each stage runs to the next one's start; the last wraps round to the first's.
+		for i, entry in ipairs(schedule) do
+			if WORK_STAGES[entry.stage] then
+				local stops = schedule[i + 1] and schedule[i + 1].start or 24000
+				total = total + math.max(0, math.min(finish, stops) - math.max(start, entry.start))
+				if not schedule[i + 1] then
+					total = total + math.max(0, math.min(finish, schedule[1].start) - start)
+				end
+			end
+		end
+		span = span - (finish - start)
+		finish, day = 24000, day - 1
+	end
+	return total / per_second
 end
 
 -- What VoxeLibre's do_activity (mobs_mc/villager.lua) should do in each
@@ -241,6 +273,7 @@ M = {
 	end_seat_walk = end_seat_walk,
 	schedule_stage = stage_at,
 	is_holiday = is_holiday,
+	work_seconds = work_seconds,
 	-- Replacement for VoxeLibre's get_activity(tod), which villager.lua
 	-- declares without `local` and looks up as a global on every call.
 	-- activity_override(villager, stage), when set, may answer instead (flock.lua keeps

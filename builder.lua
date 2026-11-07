@@ -30,6 +30,7 @@ local stock = dofile(core.get_modpath("living_villages") .. "/farm_stock.lua")
 local template = dofile(core.get_modpath("living_villages") .. "/building_template.lua")
 local catalog = dofile(core.get_modpath("living_villages") .. "/builder_catalog.lua")
 local climb = dofile(core.get_modpath("living_villages") .. "/builder_climb.lua")
+local away = dofile(core.get_modpath("living_villages") .. "/builder_away.lua")
 
 local M = {}
 
@@ -72,6 +73,13 @@ local DEFAULT_SURFACE = "mcl_core:dirt_with_grass"
 -- How much further across than the nearest column a column may be from a block and still be
 -- worked from: enough to do a stretch of wall from each, not so much that it never moves on.
 local SCAFFOLD_SLACK = 3
+-- Time away (builder_away.lua): how often a loaded Builder notes the time in its project, the
+-- least gap that counts as having been away, how many blocks of what it did meanwhile go in
+-- each server step, and the longest a moment of work may count for, so an unload never does.
+local STAMP_SECONDS = 10
+local AWAY_GAP = 120
+local AWAY_PER_STEP = 100
+local TALLY_MAX_SECONDS = 5
 
 local navigation_api, village_index
 
@@ -81,7 +89,7 @@ local sessions = setmetatable({}, {__mode = "k"})
 local function session_of(self)
 	local session = sessions[self]
 	if not session then
-		session = {next_at = 0, next_claim = 0, skip = {}, hold_until = 0}
+		session = {next_at = 0, next_claim = 0, skip = {}, hold_until = 0, live = away.new_tally()}
 		sessions[self] = session
 	end
 	return session
@@ -933,6 +941,7 @@ local function finish_building(self, session, bench, project)
 	core.log("action", string.format("[living_villages] builder %s finished a %s at %s",
 		tostring(self._id), project.building, core.pos_to_string(project.pos)))
 	session.queue = nil
+	session.live = away.new_tally()
 	set_state(bench, project, "returning")
 end
 
@@ -959,10 +968,13 @@ local function return_leftovers(self, session, bench, now)
 	end
 end
 
-local function make_step(self, step, plan)
+-- `quiet` for the blocks of its time away, which go in many at once.
+local function make_step(self, step, plan, quiet)
 	if step.kind == "cut" or step.kind == "clear" then
 		core.remove_node(step.pos)
-		core.sound_play("default_dig_crumbly", {pos = step.pos, gain = 0.5, max_hear_distance = 16}, true)
+		if not quiet then
+			core.sound_play("default_dig_crumbly", {pos = step.pos, gain = 0.5, max_hear_distance = 16}, true)
+		end
 		return true
 	end
 	for item, count in pairs(step.cost or {}) do
@@ -979,7 +991,7 @@ local function make_step(self, step, plan)
 	end
 	for item, count in pairs(step.returns or {}) do stock.add(self, item, count) end
 	local def = core.registered_nodes[step.node.name]
-	local sound = def and def.sounds and def.sounds.place
+	local sound = not quiet and def and def.sounds and def.sounds.place
 	if sound then core.sound_play(sound, {pos = step.pos, max_hear_distance = 16}, true) end
 	return true
 end
@@ -1047,6 +1059,7 @@ local function place_step(self, session, bench, project, plan, step, now)
 	end
 	drop_from_queue(session, step)
 	session.stuck = nil
+	away.add_placed(session.live, is_high(project, step))
 	-- Counted on from when the last block was due, not from now, so that a fraction of a second
 	-- carries over; but never from more than a second back, so idling saves nothing up.
 	local due = math.max(session.next_place or now, now - 1)
@@ -1246,6 +1259,147 @@ function work(self, session, bench, project, now)
 	end
 end
 
+-- Time away (builder_away.lua). A loaded Builder notes the time in its project every few
+-- seconds, with whether it was getting on: collecting or building, at a site it has reached,
+-- and not stuck. Its villager is unloaded while no player is near, so the first note after a
+-- gap is the player coming back, and the gap's work hours are turned into blocks at a
+-- fraction of the pace it kept on this project while watched. A project it had not started,
+-- or was blocked or stuck on, gets nothing: the player must be there to see it under way.
+local GETTING_ON = {collecting = true, building = true}
+
+-- Takes from the chests what the step costs beyond what it carries. Returns whether it has it all.
+local function pay(self, job, step)
+	for item, count in pairs(step.cost or {}) do
+		local short = count - stock.count(self, item)
+		for _, chest in ipairs(job.chests) do
+			if short <= 0 then break end
+			local held = stock.chest_count(chest, item)
+			if held > 0 then short = short - stock.take_from_chest(self, chest, item, math.min(held, short)) end
+		end
+		if short > 0 then return false end
+	end
+	return true
+end
+
+local function load_site(bench, project)
+	if not core.load_area then return end
+	local box = footprint_of(project)
+	local measured = measure(project)
+	if box and measured then
+		core.load_area({x = box.x0 - 3, y = project.pos.y - 1, z = box.z0 - 3},
+			{x = box.x1 + 3, y = project.pos.y + measured.size.y + 1, z = box.z1 + 3})
+	end
+	local radius = chest_radius()
+	core.load_area(vector.subtract(bench, radius), vector.add(bench, radius))
+end
+
+local function start_catch_up(self, session, bench, project, gap)
+	if not GETTING_ON[project.state] then return end
+	local rates = away.rates(project.live)
+	if not rates then return end
+	local budget = common.work_seconds(gap, self) + (project.away_credit or 0)
+	if budget <= 0 then return end
+	local plan = plan_of(bench, project)
+	if not plan then return end
+	load_site(bench, project)
+	local missing, blocked = template.compare(plan, name_at)
+	-- Blocked or done already: the live turn says so.
+	if #blocked > 0 or #missing == 0 then return end
+	session.catch_up = {
+		steps = missing, at = 1, budget = budget, rates = rates, built = 0, passed = false,
+		factor = away.factor(core.settings and core.settings:get("living_villages_builder_away_factor")),
+		chests = stock.find_chests(bench, chest_radius()),
+	}
+	core.log("action", string.format("[living_villages] builder %s was away %d s, %d of them at work",
+		tostring(self._id), gap, math.floor(budget)))
+end
+
+-- `credit` is what is left of its time when that ran out before the next block, kept for the
+-- next time; when anything else stopped it, the rest is lost.
+local function end_catch_up(self, session, bench, project, credit)
+	local job = session.catch_up
+	session.catch_up = nil
+	session.queue = nil
+	project.away_credit = credit
+	if job.built > 0 then
+		project.away_built = job.built
+		core.log("action", string.format("[living_villages] builder %s placed %d blocks of a %s while away",
+			tostring(self._id), job.built, project.building))
+	end
+	if project.state ~= "blocked" and not job.passed then
+		local plan = plan_of(bench, project)
+		local missing = plan and template.compare(plan, name_at)
+		if missing and #missing == 0 then return finish_building(self, session, bench, project) end
+	end
+	save_project(bench, project)
+end
+
+-- Places the next of what it did while away, a server step's worth at a time, by the live
+-- rules: in order, stopping at a foreign node, past a cell someone stands in, liquids last,
+-- and paid for from what it carries and the chests by its bench.
+local function catch_up(self, session, bench)
+	local job = session.catch_up
+	local project = M.load_project(bench)
+	local plan = project and GETTING_ON[project.state] and plan_of(bench, project)
+	if not plan then
+		session.catch_up = nil
+		return
+	end
+	local placed = 0
+	while job.at <= #job.steps and placed < AWAY_PER_STEP do
+		local step = job.steps[job.at]
+		if step.pass == template.PASS_LIQUID and job.passed then
+			return end_catch_up(self, session, bench, project, nil)
+		end
+		local cost = away.cost(job.rates, job.factor, is_high(project, step))
+		if job.budget < cost then return end_catch_up(self, session, bench, project, job.budget) end
+		local missing, blocked = template.compare({
+			steps = {step}, surface_mat = plan.surface_mat, cut_at = plan.cut_at,
+		}, name_at)
+		if #blocked > 0 or core.is_protected(step.pos, "") then
+			project.blocked_at = step.pos
+			project.state = "blocked"
+			return end_catch_up(self, session, bench, project, nil)
+		end
+		if #missing > 0 then
+			if step.node and is_solid_node(step.node.name) and occupied(step.pos) then
+				job.passed = true
+			elseif not pay(self, job, step) or not make_step(self, step, plan, true) then
+				-- The chests ran out: what it would have done next waits for the player.
+				return end_catch_up(self, session, bench, project, nil)
+			else
+				job.budget = job.budget - cost
+				job.built = job.built + 1
+				placed = placed + 1
+			end
+		end
+		job.at = job.at + 1
+	end
+	if job.at > #job.steps then end_catch_up(self, session, bench, project, nil) end
+end
+
+local function stamp(self, session, bench, now)
+	if now < (session.stamp_at or 0) then return end
+	session.stamp_at = now + STAMP_SECONDS
+	local project = M.load_project(bench)
+	if not project then return end
+	local noted = project.away
+	if not session.stamped and noted and now - noted.at >= AWAY_GAP then
+		-- The window tells of the last time away only.
+		project.away_built = nil
+		if noted.ok and noted.id == self._id then start_catch_up(self, session, bench, project, now - noted.at) end
+	end
+	session.stamped = true
+	project.live = project.live or away.new_tally()
+	away.merge(project.live, session.live)
+	session.live = away.new_tally()
+	project.away = {
+		at = now, id = self._id,
+		ok = GETTING_ON[project.state] == true and project.reached == true and session.stuck == nil,
+	}
+	save_project(bench, project)
+end
+
 local function tick(self, session, bench, now)
 	local project = M.load_project(bench)
 	if not project then
@@ -1285,6 +1439,7 @@ function M.report(self)
 	}
 	if project.blocked_at and project.state == "blocked" then report.blocked = project.blocked_at end
 	report.stuck = session_of(self).stuck
+	report.away_built = project.away_built
 	report.scaffold = climb.of(self) ~= nil
 	local request = site_request(bench, project)
 	if request then
@@ -1393,6 +1548,23 @@ function M.install(def, navigation, index)
 			come_down(self, M.claimed_bench(self))
 			return false
 		end
+		-- Ahead of the returns for a walk or a rest: the time is noted asleep too, and a walk is
+		-- work as much as placing a block is.
+		local bench = self._villages_builder and not self.child and M.claimed_bench(self)
+		if bench then
+			local session = session_of(self)
+			stamp(self, session, bench, now)
+			if session.catch_up then
+				catch_up(self, session, bench)
+				if climbing then return false end
+				return result
+			end
+			local working = session.away and common.is_work_time(self)
+			if working and session.tallied_at then
+				away.add_seconds(session.live, math.min(now - session.tallied_at, TALLY_MAX_SECONDS))
+			end
+			session.tallied_at = working and now or nil
+		end
 		if (result == false and not climbing) or self.following or self.state == "gowp" then return result end
 		if eligible(self) then
 			if not self._villages_farm_seek and (common.is_work_time(self) or common.schedule_stage(nil, self) == "free") then
@@ -1406,7 +1578,6 @@ function M.install(def, navigation, index)
 		end
 		if not self._villages_builder then return result end
 		local session = session_of(self)
-		local bench = M.claimed_bench(self)
 		if not bench or not common.is_work_time(self) then
 			if session.away then release(self, session) end
 			return result
