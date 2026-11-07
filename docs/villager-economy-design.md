@@ -176,14 +176,15 @@ Children do not get hungry. Their household feeds them once a day, as now
 
 `ledger.lua`, pure: no engine calls beyond what is passed in.
 
-**Base prices.** `trade_prices.lua` is a checked-in table of an emerald base price
-per item, extracted from VoxeLibre's profession trade tables by
-`tools/extract_trades/`. The tables are a `local` in `mobs_mc/villager.lua` and are
-not exposed, so the tool evaluates that block with stubs, as
-`tools/extract_schematics/` regenerates fixtures, and is rerun when the supported
-VoxeLibre version changes. A buy offer of N items for 1 emerald prices an item at
-1/N; a sell offer of E emeralds for N items at E/N. Where an item has both, the base
-is their geometric mean. Items in no table (logs, cobble, saplings, sticks' sources)
+**Base prices.** `trade_tables.lua` is a checked-in copy of VoxeLibre's profession
+trade tables, extracted by `tools/extract_trades/`. The tables are a `local` in
+`mobs_mc/villager.lua` and are not exposed, so the tool cuts that block out and
+evaluates it with stubs; it is rerun when the supported VoxeLibre version changes,
+and `tests/trade_tables.lua` fails when the installed VoxeLibre no longer matches.
+`ledger.lua` derives prices from the raw trades when first asked. A buy offer of N
+items for E emeralds prices an item at E/N; a sell offer of N items for E emeralds
+(and perhaps a second ingredient, at its own price) at the same. Where an item has
+both, the base is their geometric mean. Items in no table (logs, cobble, saplings, sticks' sources)
 get a short hand-written table in `ledger.lua`, consistent with their crafting
 yield (planks at a quarter of a log, and so on).
 
@@ -220,7 +221,7 @@ Every good in the village has a source in this section or comes from a player.
 Professions with no work loop craft at their jobsite. `production.lua` holds one
 recipe list per profession: outputs from that profession's sell offers, inputs from
 the real crafting recipe where there is one. A test checks every output against the
-profession's trade table in `trade_prices.lua`. Over work-stage economic clock time
+profession's trade table in `trade_tables.lua`. Over work-stage economic clock time
 spent at its jobsite, a villager makes recipe outputs at
 `living_villages_craft_seconds` per item (default 120), taking the inputs from its
 pouch and stash. With no inputs it makes nothing. Examples, illustrative until the
@@ -456,7 +457,7 @@ Existing fields reused: `_villages_food`, `_villages_fed_day`. Node metadata:
 Each new module gets a test in `tests/` that stubs the engine, as the existing ones
 do. `ledger.lua`, `production.lua`'s recipes, `economy_clock.lua`'s gap rule and
 `exchange.lua`'s settlement are pure and tested directly. A test checks every
-recipe output against `trade_prices.lua`. `tools/lv_probe` gains an `LV_PROBE_ECONOMY`
+recipe output against `trade_tables.lua`. `tools/lv_probe` gains an `LV_PROBE_ECONOMY`
 mode that runs a village for several game days and logs per-day production,
 consumption, trades, news spread and food levels, so pacing can be tuned on real
 villages. `docs/economy-scenarios.md` holds manual in-game checks for what neither
@@ -471,7 +472,7 @@ branch, and each leaves the game playable with `living_villages_economy` on or o
 |---|---|---|
 | 1 | Economic clock, hunger, pantry dinners, paid player meals, the keeper's supply trips and cooking | — |
 | 2 | `possessions.lua`: pouch for every villager, emeralds, stash claim and succession, starting stock | — |
-| 3 | `tools/extract_trades/`, `trade_prices.lua`, `ledger.lua` (pure) | 2 |
+| 3 | `tools/extract_trades/`, `trade_tables.lua`, `ledger.lua` (pure) | 2 |
 | 4 | Farmer's distribution rules; fisherman's fish; shepherd's shearing | 1, 2, 3 |
 | 5 | Market news in gossip | 3 |
 | 6 | End-of-conversation exchange | 4, 5 |
@@ -519,7 +520,9 @@ work chest is, and drops its belongings on death.
 ### 3. Prices and ledger
 
 The extraction tool, the generated table, the hand table for unlisted items, and
-`ledger.lua`'s targets, need, surplus and value. Pure; no behaviour change yet.
+`ledger.lua`'s targets, need, surplus and value. Pure; no behaviour change yet,
+beyond the inspector showing each villager's top needs and surplus
+(`possessions.assess`, from its belongings, stash and food).
 
 ### 4. Food distribution and real goods
 

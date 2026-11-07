@@ -520,6 +520,8 @@ local function show(player, villager)
 		"Economic clock: " .. math.floor(economy_clock.read(villager)) .. " s",
 		"Belongings: " .. possessions.status(villager),
 		"Stash: " .. possessions.stash_status(villager),
+		"Needs: " .. (select(1, possessions.ledger_status(villager))),
+		"Surplus: " .. (select(2, possessions.ledger_status(villager))),
 		"Gossip: " .. (gossip and gossip.status(villager) or "off"),
 		"Jobsite route: " .. route_status(villager._villages_job_route),
 		"Jobsite planner: " .. planner_status(villager._villages_job_route),
