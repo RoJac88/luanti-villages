@@ -12,6 +12,8 @@ local keeper = dofile(core.get_modpath("living_villages") .. "/keeper.lua")
 local cleric = dofile(core.get_modpath("living_villages") .. "/cleric.lua")
 -- Only for its status line: this copy's reservation table is never used.
 local seat = dofile(core.get_modpath("living_villages") .. "/seat.lua")
+local food = dofile(core.get_modpath("living_villages") .. "/food.lua")
+local economy_clock = dofile(core.get_modpath("living_villages") .. "/economy_clock.lua")
 local BIRTH_RADIUS = 24
 local BIRTH_HEIGHT = 12
 local BIRTH_INTERVAL_DAYS = 2
@@ -513,7 +515,8 @@ local function show(player, villager)
 		"Flock: " .. (flock_status and flock_status(villager) or "off"),
 		"Farm: " .. (farmer and farmer.status(villager) or "off"),
 		"Farm pouch: " .. (farmer and farmer.pouch_status(villager) or "off"),
-		"Food: " .. (villager._villages_food or 0) .. " points",
+		"Food: " .. math.floor(food.points(villager) * 10 + 0.5) / 10 .. " points (" .. food.state(villager) .. ")",
+		"Economic clock: " .. math.floor(economy_clock.read(villager)) .. " s",
 		"Gossip: " .. (gossip and gossip.status(villager) or "off"),
 		"Jobsite route: " .. route_status(villager._villages_job_route),
 		"Jobsite planner: " .. planner_status(villager._villages_job_route),

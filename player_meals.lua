@@ -6,6 +6,11 @@
 -- early has only what the bites gave. One meal per player per tavern per game
 -- day, kept in memory (a restart may reset it).
 --
+-- In a tavern with a pantry (tavern_pantry.lua) the meal comes out of it and the
+-- player pays living_villages_player_meal_price emeralds (1) from their main
+-- inventory into it before it is served; a player who cannot pay is not served, and
+-- the log says so. A tavern with no pantry serves free, as before.
+--
 -- Sitting is found by watching mcl_cozy.players, not by wrapping mcl_cozy.sit:
 -- mcl_decor's chairs took mcl_cozy.sit by value as their on_rightclick, so a
 -- wrapper would never be called. seat.lua already makes a villager give up a
@@ -28,6 +33,8 @@ local SATURATION = 1.5
 -- when a long server step stretches the interval. A bite is worth a tenth, and the
 -- meal never gives more than HUNGER, so a slow server still feeds in full.
 local BITES = 10
+local EMERALD = "mcl_core:emerald"
+local DEFAULT_PRICE = 1
 
 local meal
 local M = {}
@@ -70,6 +77,26 @@ local function feed(diner)
 	if share > 0 then mcl_hunger.saturate(diner.name, share) end
 end
 
+local function price()
+	local value = core.settings and tonumber(core.settings:get("living_villages_player_meal_price"))
+	return math.max(math.floor(value or DEFAULT_PRICE), 0)
+end
+
+local function payment(name)
+	local player = core.get_player_by_name(name)
+	return player and player:get_inventory(), EMERALD .. " " .. price()
+end
+
+local function can_pay(name)
+	local inv, cost = payment(name)
+	return inv ~= nil and inv:contains_item("main", cost)
+end
+
+local function pay(name)
+	local inv, cost = payment(name)
+	if inv then inv:remove_item("main", cost) end
+end
+
 local function say(diner, text)
 	if diner.said == text then return end
 	diner.said = text
@@ -104,6 +131,9 @@ local function start(name, chair, seat)
 		end,
 		_villages_meal_day = eaten[diner.eaten_key],
 		_villages_on_bite = function() feed(diner) end,
+		_villages_price = price(),
+		_villages_can_pay = function() return can_pay(name) end,
+		_villages_pay = function() pay(name) end,
 		object = core.get_player_by_name(name),
 	}
 end

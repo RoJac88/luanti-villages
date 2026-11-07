@@ -620,6 +620,8 @@ core.register_on_mods_loaded(function()
 	dofile(core.get_modpath("living_villages") .. "/diagnostic.lua")(def, flock, navigation_api, farmer, gossip, builder)
 	dofile(core.get_modpath("living_villages") .. "/paths.lua").install(def, path_storage)
 	dofile(core.get_modpath("living_villages") .. "/floor_guard.lua")(def)
+	-- Outermost of all, so the economic clock runs whatever an inner do_custom returns.
+	dofile(core.get_modpath("living_villages") .. "/economy_clock.lua").install(def)
 end)
 
 dofile(core.get_modpath("living_villages") .. "/tavern_schematic.lua")

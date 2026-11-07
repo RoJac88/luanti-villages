@@ -14,11 +14,19 @@
 -- object, _villages_meal_day, and optionally _villages_mouth_at
 -- (a function giving the mouth position) and _villages_on_bite, called on each bite).
 --
+-- Where the tavern has a pantry (tavern_pantry.lua), the meal is real: only what the
+-- pantry holds is served, the plate's item comes out of it, a villager guest gets its
+-- food points (food.lua) when served, and a diner with a price (a player,
+-- player_meals.lua) pays into the pantry first. Without one, the meal is a display, as
+-- it always was.
+--
 -- Load this once, at top-level load time (init.lua): it registers the entity,
 -- which Luanti allows only then, and the plate holds are its own in-memory
 -- table.
 local core = minetest
 local keeper = dofile(core.get_modpath("living_villages") .. "/keeper.lua")
+local food = dofile(core.get_modpath("living_villages") .. "/food.lua")
+local pantry = dofile(core.get_modpath("living_villages") .. "/tavern_pantry.lua")
 local ENTITY = "living_villages:meal"
 local PLATE = "mcl_itemframes:plate"
 -- A guest waits this long after sitting down before it is served.
@@ -196,7 +204,29 @@ function M.explain(self, jukebox)
 	local last = served[key(jukebox)]
 	if last and now() - last < SERVE_SECONDS then return "the keeper is serving another plate" end
 	if #menu() == 0 then return "the menu is empty" end
+	local chests = pantry.chests(jukebox)
+	if chests then
+		if #pantry.available(chests, menu()) == 0 then return "the pantry is empty" end
+		local price = self._villages_price or 0
+		if price > 0 and not self._villages_can_pay() then return "the diner cannot pay " .. price .. " emerald(s)" end
+		if price > 0 and not pantry.has_room(chests, pantry.EMERALD, price) then return "the pantry has no room for the payment" end
+	end
 	return "ready to serve"
+end
+
+-- Takes the meal out of the pantry and the payment into it. False if either fails,
+-- having changed nothing.
+local function settle(self, chests, item)
+	local price = self._villages_price or 0
+	if price > 0 and (not self._villages_can_pay() or not pantry.has_room(chests, pantry.EMERALD, price)) then
+		return false
+	end
+	if not pantry.take(chests, item) then return false end
+	if price > 0 then
+		self._villages_pay()
+		pantry.put(chests, pantry.EMERALD, price)
+	end
+	return true
 end
 
 local function serve(self, jukebox)
@@ -205,7 +235,8 @@ local function serve(self, jukebox)
 	local last = served[key(jukebox)]
 	if last and now() - last < SERVE_SECONDS then return end
 	if not keeper_on_duty(jukebox) then return end
-	local items = menu()
+	local chests = pantry.chests(jukebox)
+	local items = chests and pantry.available(chests, menu()) or menu()
 	if #items == 0 then return end
 	local item = items[math.random(#items)]
 	clear_orphans(pos)
@@ -215,11 +246,19 @@ local function serve(self, jukebox)
 		plates[key(pos)] = nil
 		return
 	end
+	if chests and not settle(self, chests, item) then
+		object:remove()
+		plates[key(pos)] = nil
+		return
+	end
 	served[key(jukebox)] = now()
 	-- Counted from the moment it is served, so a meal cut short by standing
 	-- up, a reload or a player's item still spends the evening's meal.
 	self._villages_meal_day = core.get_day_count()
 	self._villages_meal = {plate = pos, item = item, served_at = now(), object = object, bite_in = 0}
+	-- A villager guest is fed when served; a player diner (no luaentity of its own)
+	-- by its bites.
+	if chests and not self._villages_on_bite then food.receive(self, item) end
 end
 
 -- Each tick while seated at dinner, after the seat has been held.
