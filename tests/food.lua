@@ -54,4 +54,48 @@ for _, item in ipairs(food.FOODS) do
 	assert(food.receive(eater, item) and eater._villages_food > 0, item)
 end
 
+-- Hunger: points fall by 4 a game day of the villager's economic clock (a game day is
+-- 1200 s at the default time_speed of 72), never below 0, worked out when read.
+local hungry = {_villages_food = 12, _villages_econ_clock = 0}
+assert(food.points(hungry) == 12 and food.state(hungry) == "full")
+hungry._villages_econ_clock = 600
+assert(math.abs(food.points(hungry) - 10) < 1e-9, "half a day: 2 points")
+assert(food.state(hungry) == "fed")
+hungry._villages_econ_clock = 600 + 1200 * 2
+assert(math.abs(food.points(hungry) - 2) < 1e-9 and food.state(hungry) == "hungry")
+hungry._villages_econ_clock = 600 + 1200 * 10
+assert(food.points(hungry) == 0 and food.state(hungry) == "starving", "never below 0")
+assert(food.receive(hungry, "mcl_farming:bread") and food.points(hungry) == 4, "eating starts from now")
+-- The clock standing still (no player near) leaves the points alone.
+assert(food.points(hungry) == 4)
+-- Tavern foods have values.
+assert(food.receive(hungry, "mcl_farming:pumpkin_pie") and food.points(hungry) == 10)
+
+-- A villager first seen has nothing taken for time before it was.
+local newcomer = {_villages_food = 8, _villages_econ_clock = 5000}
+assert(food.points(newcomer) == 8)
+
+-- A faster day takes more per clock second; time standing still takes nothing.
+world.settings.time_speed = 144
+hungry._villages_econ_clock = hungry._villages_econ_clock + 300
+assert(math.abs(food.points(hungry) - 8) < 1e-9, "a quarter of a 600 s day")
+world.settings.time_speed = 0
+hungry._villages_econ_clock = hungry._villages_econ_clock + 3000
+assert(math.abs(food.points(hungry) - 8) < 1e-9)
+world.settings.time_speed = nil
+
+-- The rate is a setting; 0, or the economy off, turns hunger off.
+world.settings.living_villages_hunger_per_day = "0"
+hungry._villages_econ_clock = hungry._villages_econ_clock + 1200
+assert(math.abs(food.points(hungry) - 8) < 1e-9)
+world.settings.living_villages_hunger_per_day = nil
+world.settings.living_villages_economy = false
+hungry._villages_econ_clock = hungry._villages_econ_clock + 1200
+assert(math.abs(food.points(hungry) - 8) < 1e-9)
+world.settings.living_villages_economy = nil
+
+-- Children do not get hungry.
+child._villages_econ_clock = 100000
+assert(food.state(child) == "fed" and not child._villages_food)
+
 print("food.lua: ok")

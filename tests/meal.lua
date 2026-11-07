@@ -321,7 +321,7 @@ mcl_cozy = {players = {}}
 local pm = dofile("player_meals.lua")
 local pm_seat = dofile("seat.lua")
 local on_leave
-minetest.settings = {get_bool = function(_, _, default) return default end}
+minetest.settings = {get_bool = function(_, _, default) return default end, get = function() return nil end}
 minetest.register_globalstep = function() end
 local logs = {}
 minetest.log = function(_, text) table.insert(logs, text) end
@@ -571,5 +571,106 @@ def.do_custom(ben, 0.1)
 assert(not ben._villages_seated, "villager gives the chair to the player")
 step(5)
 assert(eating() and meals_shown() == 1, "player served")
+
+-- A pantry (tavern_pantry.lua): a chest within reach of the jukebox makes dinner real.
+mcl_cozy.players.pat = nil
+step(0.4)
+for _, entity in ipairs(entities) do entity.removed = true end
+local chest = {x = -2, y = 0, z = 0}
+nodes[key(chest)] = "mcl_chests:chest"
+local pantry_items = {}
+local function inventory_of(list)
+	local function parse(item)
+		local name, count = item:match("^(%S+)%s*(%d*)")
+		return name, tonumber(count) or 1
+	end
+	return {
+		get_size = function() return 27 end,
+		get_list = function()
+			local stacks_out = {}
+			for name, count in pairs(list) do
+				table.insert(stacks_out, {get_name = function() return name end, get_count = function() return count end})
+			end
+			return stacks_out
+		end,
+		contains_item = function(_, _, item)
+			local name, count = parse(item)
+			return (list[name] or 0) >= count
+		end,
+		remove_item = function(_, _, item)
+			local name, count = parse(item)
+			local moved = math.min(list[name] or 0, count)
+			list[name] = (list[name] or 0) - moved
+			if list[name] == 0 then list[name] = nil end
+			return {get_count = function() return moved end}
+		end,
+		room_for_item = function() return true end,
+		add_item = function(_, _, item)
+			local name, count = parse(item)
+			list[name] = (list[name] or 0) + count
+			return {get_count = function() return 0 end}
+		end,
+	}
+end
+local plain_meta = minetest.get_meta
+minetest.get_meta = function(pos)
+	local meta = plain_meta(pos)
+	if key(pos) == key(chest) then meta.get_inventory = function() return inventory_of(pantry_items) end end
+	return meta
+end
+minetest.is_protected = function() return false end
+
+-- A villager guest: nothing in the pantry, nothing served.
+day = day + 1
+local vera = {_id = "vera", _villages_seat = {table = tabletop}}
+vera.object = {get_pos = function() return {x = 2, y = 0, z = 0} end}
+now = now + 10
+meal.tick(vera, 0.1, jukebox)
+now = now + 5
+meal.tick(vera, 0.1, jukebox)
+assert(not vera._villages_meal and meal.explain(vera, jukebox) == "the pantry is empty")
+-- A loaf in the pantry: served, taken out, and it feeds her.
+pantry_items["mcl_farming:bread"] = 1
+meal.tick(vera, 0.1, jukebox)
+assert(vera._villages_meal and vera._villages_meal.item == "mcl_farming:bread", "served from the pantry")
+assert(pantry_items["mcl_farming:bread"] == nil, "taken out of the pantry")
+assert(vera._villages_food == 4, "fed when served")
+now = now + 20
+meal.tick(vera, 0.1, jukebox)
+assert(not vera._villages_meal)
+
+-- A player pays an emerald into the pantry for the meal.
+day = day + 1
+local purses = {}
+local plain_player = player
+player = function(name, h)
+	local object = plain_player(name, h)
+	purses[name] = purses[name] or {}
+	object.get_inventory = function() return inventory_of(purses[name]) end
+	return object
+end
+player("pat", 5)
+purses.pat["mcl_core:emerald"] = 1
+pantry_items["mcl_farming:potato_item_baked"] = 1
+sit("pat", west)
+step(5)
+assert(eating(), "a paying player is served")
+assert(purses.pat["mcl_core:emerald"] == nil and pantry_items["mcl_core:emerald"] == 1, "paid into the pantry")
+assert(pantry_items["mcl_farming:potato_item_baked"] == nil, "the meal came out of the pantry")
+step(14)
+assert(hunger.pat == 8, "fed by the bites as before")
+mcl_cozy.players.pat = nil
+step(0.4)
+
+-- No emerald: not served, and the report says why. Nothing is used up.
+day = day + 1
+player("pat", 5)
+pantry_items["mcl_farming:bread"] = 2
+sit("pat", west)
+step(6)
+assert(not eating() and pm.report("pat"):find("cannot pay"), pm.report("pat"))
+assert(pantry_items["mcl_farming:bread"] == 2 and pantry_items["mcl_core:emerald"] == 1)
+mcl_cozy.players.pat = nil
+step(0.4)
 
 print("meal.lua: ok")

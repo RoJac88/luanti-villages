@@ -574,6 +574,7 @@ core.register_on_mods_loaded(function()
 	farmer.install(def)
 	install_fisherman(def)
 	keeper.install(def)
+	dofile(core.get_modpath("living_villages") .. "/keeper_supply.lua").install(def)
 	cleric.install(def)
 	-- Outside every job above, which it keeps from an unemployed villager with a composter to go to.
 	dofile(core.get_modpath("living_villages") .. "/farm_jobs.lua").install(def, navigation_api)
@@ -620,6 +621,8 @@ core.register_on_mods_loaded(function()
 	dofile(core.get_modpath("living_villages") .. "/diagnostic.lua")(def, flock, navigation_api, farmer, gossip, builder)
 	dofile(core.get_modpath("living_villages") .. "/paths.lua").install(def, path_storage)
 	dofile(core.get_modpath("living_villages") .. "/floor_guard.lua")(def)
+	-- Outermost of all, so the economic clock runs whatever an inner do_custom returns.
+	dofile(core.get_modpath("living_villages") .. "/economy_clock.lua").install(def)
 end)
 
 dofile(core.get_modpath("living_villages") .. "/tavern_schematic.lua")

@@ -122,6 +122,10 @@ living_villages_bell_hangout (Villagers gather at the bell) bool true
 # and a small benefit; the keeper's trades are unchanged.
 living_villages_player_meals (Players are served a meal at tavern tables) bool true
 
+# Emeralds a player pays for a tavern meal, into the tavern's pantry: a chest within 6 nodes of its
+# jukebox. A tavern with no pantry serves free. 0 makes every meal free.
+living_villages_player_meal_price (Price of a tavern meal for players) int 1 0 64
+
 # Idle villagers standing near each other sometimes stop and face one another in
 # twos and threes for a few seconds, as if talking (#242). Turned off, gossip does not spread either.
 living_villages_conversation (Villagers converse) bool true
@@ -151,6 +155,14 @@ living_villages_farmer_chest_withdraw (Farmers take seeds and food from chests) 
 # farm stops growing by itself, though two villagers a player feeds can still have a child. Off,
 # births ignore food, and farmers' food still heals villagers and speeds up children.
 living_villages_births_need_food (Births need fed parents) bool true
+
+# The villager economy (docs/villager-economy-design.md). Turned off, villagers do not get hungry
+# and tavern meals are a display, as before.
+living_villages_economy (Villager economy) bool true
+
+# Food points an adult villager loses per game day while a player is near it. A loaf is worth 4,
+# and 12 is full. 0 turns hunger off.
+living_villages_hunger_per_day (Villager hunger per day) float 4 0 12
 
 # An unemployed villager takes a free composter it can reach ahead of any other job, and looks for
 # one this far away (other jobs: 48 nodes, up and down as well; composters: 24 up and down).

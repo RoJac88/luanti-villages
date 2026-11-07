@@ -94,6 +94,10 @@ check("putter", run(villager(60)), "go_home")
 check("putter, morning bell", run(villager(60, {_villages_bell_hangout = {}})), "none")
 ticks = 9600
 
+-- A keeper's free hours: vanilla's walk home, unless it is fetching for its pantry.
+check("keeper free", run(villager(60, {_villages_keeper = true, _jobsite = false})), "go_home")
+check("keeper fetching", run(villager(60, {_villages_keeper = true, _jobsite = false, _villages_supply_target = {}})), "none")
+
 -- Home and sleep stages, and a thunderstorm, send everyone home as ever.
 ticks = 18000
 check("home stage", run(villager(60)), "go_home")
