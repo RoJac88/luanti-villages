@@ -140,27 +140,33 @@ Children do not get hungry. Their household feeds them once a day, as now
 
 ## Possessions
 
-`possessions.lua`, generalizing `farm_stock.lua`.
+`possessions.lua`.
 
-- **Pouch.** The existing saved field `_villages_farm_pouch` becomes every
-  villager's pouch (its name is kept: saved state is not renamed). Capacity stays
-  `POUCH_CAPACITY` (128). `farm_stock.lua`'s count/add/take functions move here and
-  `farm_stock.lua` keeps its chest transfers on top of them. Drops on death, as now.
-- **Emeralds.** Held in the pouch as `mcl_core:emerald`, so they drop with it and
-  cost no new field.
+- **Belongings.** `_villages_belongings`, item name to count, carried, dropped where
+  the villager dies. It is kept apart from the work pouch (`_villages_farm_pouch`,
+  `farm_stock.lua`), which the farmer, the Builder and the keeper treat as goods for
+  their job: they empty it into work chests, wait for it to be empty, and drop it when
+  the job goes. A shared pouch would have sent a farmer's emeralds into its farm chest
+  and kept a Builder from ever finishing. The pouch stays the job's; belongings are
+  the villager's.
+- **Emeralds.** Held in the belongings as `mcl_core:emerald`.
 - **Stash.** The chest nearest the villager's bed, within
-  `living_villages_stash_radius` (8), claimed by `villages_owner` = the villager's
-  `_id` in the chest's node metadata. A claimed chest is never another villager's
-  stash. Generated chests, chests a Builder placed (`builder_block.lua`'s house
-  setup) and chests a player placed are all eligible, as for the farmer (#26). The
-  farmer's own chest by its composter stays its work chest; its stash is by its bed.
-- **Succession.** A stash belongs to the bed. A villager who takes a bed whose
-  chest names a dead or missing owner claims it and inherits what is in it, as a new
-  Builder inherits a bench's project.
-- **Starting stock.** On first activation (`_villages_endowed` unset) a villager
-  gets a profession stock (`STARTING_STOCK`: a farmer some seeds and bread, a smith a
-  few coal and ingots, everyone 3 to 6 emeralds), into its pouch. Villagers born in
-  the village get emeralds only.
+  `living_villages_stash_radius` (8), claimed in the chest's meta: `villages_owner`
+  (the villager's `_id`) and `villages_owner_bed` (the bed it was claimed from); both
+  halves of a double chest. Generated chests and chests a player placed are eligible.
+  Work chests never are: a tavern's pantry (within 6 of a jukebox), a farm's chest
+  (beside a composter), a Builder's (within 6 of its bench). `farm_stock.find_chests`
+  leaves stashes out, so farmers, Builders and keepers never take from one.
+- **Succession.** A stash belongs to the bed. A villager whose bed is the one a chest
+  was claimed from, and whose owner no longer holds that bed (vanilla's `villager` bed
+  meta names someone else or no one), takes the chest and what is in it. A villager
+  that moves to another bed gives up its old chest.
+- **Starting stock.** 3 to 6 emeralds when a villager is first seen as an adult
+  (`_villages_endowed`), and a kit (`KITS`: a farmer some seeds and bread, a smith a
+  few coal and ingots) the first time it has a profession that has one
+  (`_villages_kit`), once in its life, so taking a job away and back cannot mint more.
+  A villager born in the village gets the same when it grows up: births are a source
+  of emeralds, limited by food.
 - **Theft.** A player who takes from a claimed stash within sight of a villager
   (gossip's witness rule: 16 nodes, line of sight) gives that villager
   `minor_negative` gossip. The owner, when it next checks its stash, records the
@@ -411,15 +417,17 @@ New `_villages_*` entity fields, never to be renamed once released:
 |---|---|
 | `_villages_econ_clock`, `_villages_econ_stamp` | Economic clock |
 | `_villages_food_at` | Clock reading at which food points were last decayed |
-| `_villages_endowed` | Starting stock given |
+| `_villages_belongings` | What a villager owns and carries, emeralds included |
+| `_villages_endowed` | Emeralds given |
+| `_villages_kit` | The profession whose kit it was given |
+| `_villages_stash` | Its stash chest's position (the claim itself is in the chest's meta) |
 | `_villages_market_news` | Market news list |
 | `_villages_labour` | Today's activity and the day it was chosen |
 | `_villages_grove` | Positions of saplings a woodcutter planted |
 | `_villages_tier_supply` | Days crafted from village supply at the current tier |
 
-Existing fields reused: `_villages_farm_pouch` (every villager's pouch, emeralds
-included), `_villages_food`, `_villages_fed_day`. Node metadata: `villages_owner` on
-stash and pantry chests.
+Existing fields reused: `_villages_food`, `_villages_fed_day`. Node metadata:
+`villages_owner` and `villages_owner_bed` on stash chests.
 
 ## Settings
 
@@ -500,12 +508,13 @@ and cooking; and a probe run shows a generated tavern's pantry stocked.
 
 ### 2. Possessions
 
-Pouch API in `possessions.lua` over `_villages_farm_pouch`, `farm_stock.lua` on top
-of it, stash claim by `villages_owner`, succession on bed change, starting stock,
-drop on death for every villager. `keeper.lua`'s `take_over` clears
-`_villages_farm_pouch` with the old job's fields; once the pouch holds a villager's
-belongings it must keep it instead. Done when every villager carries a stock after
-first activation and a dead villager's pouch drops.
+`possessions.lua`: belongings apart from the work pouch, emeralds, kits, the stash
+claim with its work-chest exclusions and succession, drop on death; stashes left out of
+`farm_stock.find_chests`. `keeper.lua`'s `take_over` drops the old job's pouch instead
+of deleting it. Villagers still eat at the tavern free: with no income before tickets 4
+and 6, paying for dinner would only run their emeralds out. Done when every villager
+owns its emeralds and kit after first activation, claims a stash by its bed that no
+work chest is, and drops its belongings on death.
 
 ### 3. Prices and ledger
 

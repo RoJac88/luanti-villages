@@ -14,6 +14,7 @@ local cleric = dofile(core.get_modpath("living_villages") .. "/cleric.lua")
 local seat = dofile(core.get_modpath("living_villages") .. "/seat.lua")
 local food = dofile(core.get_modpath("living_villages") .. "/food.lua")
 local economy_clock = dofile(core.get_modpath("living_villages") .. "/economy_clock.lua")
+local possessions = dofile(core.get_modpath("living_villages") .. "/possessions.lua")
 local BIRTH_RADIUS = 24
 local BIRTH_HEIGHT = 12
 local BIRTH_INTERVAL_DAYS = 2
@@ -517,6 +518,8 @@ local function show(player, villager)
 		"Farm pouch: " .. (farmer and farmer.pouch_status(villager) or "off"),
 		"Food: " .. math.floor(food.points(villager) * 10 + 0.5) / 10 .. " points (" .. food.state(villager) .. ")",
 		"Economic clock: " .. math.floor(economy_clock.read(villager)) .. " s",
+		"Belongings: " .. possessions.status(villager),
+		"Stash: " .. possessions.stash_status(villager),
 		"Gossip: " .. (gossip and gossip.status(villager) or "off"),
 		"Jobsite route: " .. route_status(villager._villages_job_route),
 		"Jobsite planner: " .. planner_status(villager._villages_job_route),

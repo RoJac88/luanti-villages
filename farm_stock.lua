@@ -18,7 +18,7 @@ local CHEST_NODES = {
 	"mcl_chests:chest", "mcl_chests:chest_small", "mcl_chests:chest_left", "mcl_chests:chest_right",
 }
 
-local M = {CAPACITY = POUCH_CAPACITY}
+local M = {CAPACITY = POUCH_CAPACITY, CHEST_NODES = CHEST_NODES}
 
 local function pouch_of(self)
 	self._villages_farm_pouch = self._villages_farm_pouch or {}
@@ -100,6 +100,7 @@ local function is_chest(pos)
 end
 
 -- The chests a farm can use, nearest the composter first. A Builder asks with its own radius.
+-- A villager's stash (possessions.lua) is never one: it belongs to that villager.
 function M.find_chests(job, radius)
 	radius = radius or chest_radius()
 	if radius <= 0 then return {} end
@@ -107,7 +108,10 @@ function M.find_chests(job, radius)
 	local maxp = {x = job.x + radius, y = job.y + CHEST_HEIGHT, z = job.z + radius}
 	local chests = {}
 	for _, pos in ipairs(core.find_nodes_in_area(minp, maxp, CHEST_NODES)) do
-		if not core.is_protected(pos, "") and chest_inventory(pos) then table.insert(chests, pos) end
+		if not core.is_protected(pos, "") and chest_inventory(pos)
+			and core.get_meta(pos):get_string("villages_owner") == "" then
+			table.insert(chests, pos)
+		end
 	end
 	table.sort(chests, function(a, b) return vector.distance(a, job) < vector.distance(b, job) end)
 	return chests

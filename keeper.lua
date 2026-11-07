@@ -22,6 +22,7 @@
 local core = minetest
 local common = dofile(core.get_modpath("living_villages") .. "/common.lua")
 local music = dofile(core.get_modpath("living_villages") .. "/music.lua")
+local stock = dofile(core.get_modpath("living_villages") .. "/farm_stock.lua")
 local S = core.get_translator and core.get_translator("living_villages") or function(message) return message end
 local JUKEBOX = "mcl_jukebox:jukebox"
 local BASE_PROFESSION = "butcher"
@@ -138,6 +139,8 @@ local function take_over(self, pos)
 		core.get_meta(previous):set_string("villager", "")
 	end
 	local profession = self._profession
+	-- What the old job carried is the village's, not lost with the job.
+	stock.drop_all(self, self.object and self.object:get_pos())
 	for _, field in ipairs(OLD_JOB_FIELDS) do self[field] = nil end
 	self._jobsite, self._profession, self._trades = nil, "unemployed", nil
 	employ(self, pos)
