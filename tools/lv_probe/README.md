@@ -87,6 +87,16 @@ steps every 10 s, so `t` is a multiple of 10.
 LV_PROBE_CENSUS=300 LV_PROBE_CENSUS_PUTTER=240 tools/lv_probe/run.sh 2001 --chunk -112,-992 --with-mod
 ```
 
+`LV_PROBE_CONF_EXTRA="lv_probe_news = true"` (with a census; economy ticket 5) lets the day run from morning
+instead of holding the work stage, so villagers meet at the well, the bell and the tavern as they would, and adds
+`news` to the census line: `adults`, a `timeline` every 60 s (`day`, `tod`, `best` and `median`: how many other
+adults have heard news from the best-heard and the median villager) and the final `reach` per villager. Two game
+days at the default time speed is `LV_PROBE_CENSUS=2400`:
+
+```sh
+LV_PROBE_CENSUS=2460 LV_PROBE_CONF_EXTRA="lv_probe_news = true" tools/lv_probe/run.sh 2007 --chunk 208,768 --with-mod
+```
+
 `LV_PROBE_CENSUS_PUTTER=SECONDS` (with a census) holds the morning Putter stage for the first SECONDS of the
 census, then work time, and adds `wells` to the census line (`wells.lua`): the wells `well.lua` found, villagers
 that set off for one (`villagers_bound`), arrived and left, `stays` (seconds from first arrival to leaving),

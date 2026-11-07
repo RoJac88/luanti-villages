@@ -616,7 +616,8 @@ core.register_on_mods_loaded(function()
 		dofile(core.get_modpath("living_villages") .. "/cure_feedback.lua").install(core.registered_entities["mobs_mc:villager_zombie"])
 	end
 	-- After the well and bell, which it only reads; before wander.lua, whose legs it stops.
-	dofile(core.get_modpath("living_villages") .. "/conversation.lua").install(def, gossip)
+	local market_news = dofile(core.get_modpath("living_villages") .. "/market_news.lua")
+	dofile(core.get_modpath("living_villages") .. "/conversation.lua").install(def, gossip, market_news)
 	-- Outermost, so it sees "walk" after everything else has had its say.
 	dofile(core.get_modpath("living_villages") .. "/wander.lua")(def)
 	dofile(core.get_modpath("living_villages") .. "/diagnostic.lua")(def, flock, navigation_api, farmer, gossip, builder)

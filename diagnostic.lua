@@ -15,6 +15,7 @@ local seat = dofile(core.get_modpath("living_villages") .. "/seat.lua")
 local food = dofile(core.get_modpath("living_villages") .. "/food.lua")
 local economy_clock = dofile(core.get_modpath("living_villages") .. "/economy_clock.lua")
 local possessions = dofile(core.get_modpath("living_villages") .. "/possessions.lua")
+local market_news = dofile(core.get_modpath("living_villages") .. "/market_news.lua")
 local BIRTH_RADIUS = 24
 local BIRTH_HEIGHT = 12
 local BIRTH_INTERVAL_DAYS = 2
@@ -523,6 +524,7 @@ local function show(player, villager)
 		"Needs: " .. (select(1, possessions.ledger_status(villager))),
 		"Surplus: " .. (select(2, possessions.ledger_status(villager))),
 		"Gossip: " .. (gossip and gossip.status(villager) or "off"),
+		"Market news: " .. market_news.status(villager),
 		"Jobsite route: " .. route_status(villager._villages_job_route),
 		"Jobsite planner: " .. planner_status(villager._villages_job_route),
 		"Jobsite planner trail: " .. planner_trail(villager._villages_job_route),

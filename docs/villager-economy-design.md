@@ -281,6 +281,13 @@ most `NEWS_ENTRIES` (24) entries:
 This makes the well, the bell, the church social and the tavern the village's
 market-information network. A villager who talks a lot finds trades sooner.
 
+`market_news.lua` holds it; `conversation.lua` calls its `exchange` beside
+`gossip.exchange`, so gossip's own setting does not turn the market off. Each
+listener's ledger view is worked out once per conversation. What each member knows is
+fixed before anyone speaks, so news crosses one hop per conversation. An item it needs
+offered, or has spare wanted, weighs 4 times more; freshness falls linearly over
+`NEWS_DAYS` to a floor of a tenth; each hop divides the weight by one more.
+
 ## Exchange between villagers
 
 `exchange.lua`. A trade happens only when the buyer's value for the goods is above
