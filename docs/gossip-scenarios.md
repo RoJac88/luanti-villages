@@ -57,8 +57,13 @@ witness at reputation -125, past the golems' -100.
 
 ## The cure
 
-Cure a zombie villager with a golden apple, and give it a jobsite.
+Cure a zombie villager with a golden apple, and give it a jobsite. VoxeLibre needs no weakness
+potion, and the apple comes back. The cure takes 3 to 5 minutes, and the zombie must stay loaded,
+out of sunlight.
 
+- The click plays a growl and a burst of pink particles (`cure_feedback.lua`). The zombie then shakes
+  steadily and gives off pink particles every second until the villager appears, with a chime and green
+  particles. Another golden apple on it while it cures only puffs particles.
 - `Gossip` shows `major_positive 20` and `minor_positive 25`, reputation 125, for whoever fed the apple.
 - Its prices are discounted for that player, and not for another.
 
