@@ -304,8 +304,9 @@ with `food.show_handover`'s animation. Three channels, in order:
 
 ## The tavern
 
-- **Pantry.** The chest nearest the keeper's jukebox, claimed by the keeper as a
-  stash (`villages_owner`). Farmers and fishermen sell into it.
+- **Pantry.** The chests within 6 of the keeper's jukebox; the stock tavern's chest
+  stands 3 behind it. The keeper fetches food for it from the farms (ticket 1);
+  from ticket 4 farmers and fishermen sell into it.
 - **Cooking.** The keeper turns raw pantry items into its menu items over its shift:
   bread from wheat, baked potatoes from potatoes, cooked fish from raw fish.
 - **Dinner.** `meal.lua` serves a guest only when the pantry has a menu item: it
@@ -460,8 +461,7 @@ branch, and each leaves the game playable with `living_villages_economy` on or o
 
 | # | Ticket | Depends on |
 |---|---|---|
-| 1a | Economic clock, hunger, dinners and paid player meals from a pantry where a tavern has one | — |
-| 1b | Pantry chest in generated taverns; the keeper's supply trips and cooking | 1a |
+| 1 | Economic clock, hunger, pantry dinners, paid player meals, the keeper's supply trips and cooking | — |
 | 2 | `possessions.lua`: pouch for every villager, emeralds, stash claim and succession, starting stock | — |
 | 3 | `tools/extract_trades/`, `trade_prices.lua`, `ledger.lua` (pure) | 2 |
 | 4 | Farmer's distribution rules; fisherman's fish; shepherd's shearing | 1, 2, 3 |
@@ -474,7 +474,7 @@ branch, and each leaves the game playable with `living_villages_economy` on or o
 | 11 | Quarrier, porter, trade trips; the Builder buys from villagers | 6, 7 |
 | 12 | Peddler; holiday market sells real surplus | 6, 11 |
 
-### 1a. Clock, hunger and pantry dinners
+### 1. Clock, hunger and the tavern
 
 `economy_clock.lua`; falling points and hunger states in `food.lua`;
 `tavern_pantry.lua` (the chests within 6 of the jukebox); `meal.lua` serves only what
@@ -483,23 +483,20 @@ into the pantry. Villagers have no emeralds before ticket 2, so they eat from th
 pantry free. Hunger only sets the state here: its effects come with the tickets that
 add what they act on (production in 4 and 8, prices and restocks in 8 and 9).
 
-The stock tavern has no chest, and nothing refills a pantry before 1b. A tavern
-without a pantry therefore serves as it always has: a display that feeds no villager
-and costs no player anything. Existing villages keep their dinners, and a player who
-puts a chest by the jukebox and stocks it gets a working tavern.
+Every generated tavern already has a pantry: the stock schematic's chest stands 3
+behind the jukebox, filled with ordinary village loot. So the pantry's supply lands
+in the same ticket, or existing taverns would stop serving. `keeper_supply.lua`: in its
+free hours, while the pantry holds fewer than 12 meals, the keeper walks to the work
+chest of a farmer within 48 of the jukebox and carries back up to 24 bread, potatoes
+and wheat; on shift it cooks one dish every 10 s (three wheat to a loaf, a potato
+baked, a cod cooked); and a newly generated tavern's chest gets a starting stock on top
+of its loot. Ticket 4 later turns the fetching into buying. A tavern with no chest (a
+player's own) serves as before: a display that feeds no one and costs nothing.
 
 Done when the tests show points falling with the clock and not without it, a pantry
-dinner feeding its guest and emptying the pantry, an empty pantry serving nothing,
-and a player paying into the pantry or not being served.
-
-### 1b. Pantry supply
-
-`tavern_schematic.lua` adds a chest by the jukebox of newly generated taverns, with a
-starting stock. The keeper, in its free hours, walks to the work chest of the nearest
-farmer (within 48 of the jukebox) and carries food back to the pantry up to a target,
-and cooks raw crops into its menu items (three wheat to a loaf, a potato to a baked
-potato) over its shift. Ticket 4 later turns the fetching into buying. Done when a
-probe run shows a generated tavern's pantry kept stocked by a working farm.
+dinner feeding its guest and emptying the pantry, an empty pantry serving nothing, a
+player paying into the pantry or not being served, and the keeper fetching, delivering
+and cooking; and a probe run shows a generated tavern's pantry stocked.
 
 ### 2. Possessions
 
