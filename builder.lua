@@ -671,6 +671,94 @@ local function column_serves(box, column, pos)
 	return across(column, pos) <= depth_of(box, pos) + SCAFFOLD_SLACK
 end
 
+-- The cells of the ring's inner row, in order round the building.
+local function inner_ring(box)
+	local x0, z0, x1, z1 = box.x0 - 1, box.z0 - 1, box.x1 + 1, box.z1 + 1
+	local cells = {}
+	for x = x0, x1 do cells[#cells + 1] = {x = x, z = z0} end
+	for z = z0 + 1, z1 do cells[#cells + 1] = {x = x1, z = z} end
+	for x = x1 - 1, x0, -1 do cells[#cells + 1] = {x = x, z = z1} end
+	for z = z1 - 1, z0 + 1, -1 do cells[#cells + 1] = {x = x0, z = z} end
+	return cells
+end
+
+-- The order it builds in. Climbing is what takes time, so each column should go up once and
+-- as few as will do: the fewest columns on the inner row that reach every high block, chosen
+-- greedily, each block given to one (`step.column`). Within a pass it lays what it can from the
+-- ground first, then goes column by column round the building, each from the bottom up. The
+-- columns that serve a block depend only on where it stands across, so a block that falls has
+-- the one under it in the same column, laid before it.
+local function plan_route(plan, project)
+	local box = footprint_of(project)
+	if not box then return end
+	local reach = reach_of()
+	local weight, cells = {}, {}
+	for _, step in ipairs(plan.steps) do
+		if is_high(project, step) then
+			local k = step.pos.x .. "," .. step.pos.z
+			if not weight[k] then
+				weight[k] = 0
+				cells[#cells + 1] = {x = step.pos.x, z = step.pos.z, key = k}
+			end
+			weight[k] = weight[k] + 1
+		end
+	end
+	local ring = inner_ring(box)
+	for i, spot in ipairs(ring) do
+		spot.rank, spot.serves = i, {}
+		for _, cell in ipairs(cells) do
+			if column_serves(box, spot, cell) and across(spot, cell) <= reach then
+				spot.serves[#spot.serves + 1] = cell.key
+			end
+		end
+	end
+	local given = {}
+	while true do
+		local best, best_weight = nil, 0
+		for _, spot in ipairs(ring) do
+			local total = 0
+			for _, k in ipairs(spot.serves) do
+				if not given[k] then total = total + weight[k] end
+			end
+			if total > best_weight then best, best_weight = spot, total end
+		end
+		if not best then break end
+		local column = {x = best.x, z = best.z, rank = best.rank}
+		for _, k in ipairs(best.serves) do given[k] = given[k] or column end
+	end
+	-- Passes and kinds stay in the plan's order: each run of them is a group.
+	local group, last, keys = 0, nil, {}
+	for i, step in ipairs(plan.steps) do
+		local run = step.pass .. "/" .. step.kind
+		if run ~= last then group, last = group + 1, run end
+		local column = given[step.pos.x .. "," .. step.pos.z]
+		step.column = column
+		local high = is_high(project, step)
+		keys[step] = {group, high and 1 or 0, high and (column and column.rank or math.huge) or 0,
+			high and step.pos.y or 0, i}
+	end
+	table.sort(plan.steps, function(a, b)
+		local ka, kb = keys[a], keys[b]
+		for i = 1, 5 do
+			if ka[i] ~= kb[i] then return ka[i] < kb[i] end
+		end
+		return false
+	end)
+	plan.routed = true
+end
+
+-- The column the route gives this step, as a cell to stand in, if it can be put up now.
+local function assigned_spot(session, floor_y, step, now)
+	local column = step.column
+	if not column then return nil end
+	local cell = stand_in_column(column.x, column.z, floor_y)
+	if cell and (session.skip[pos_key(cell)] or 0) <= now then return cell end
+end
+
+local function same_column(column, state)
+	return column.x == state.x and column.z == state.z
+end
+
 -- The cell on the ring's inner row nearest `pos` to put a column up in, in reach of it.
 local function column_spot(session, box, floor_y, pos, now)
 	local reach = reach_of()
@@ -986,6 +1074,7 @@ local function served_alike(session, project, box, step, column, now)
 			and (not best or y < best.pos.y)
 			and (y == step.pos.y or (other.pass == template.PASS_SOLID and other.kind == "place" and supported(other)))
 			and (session.deferred[pos_key(other.pos)] or 0) <= now
+			and (not other.column or same_column(other.column, column))
 			and is_high(project, other) and column_serves(box, column, other.pos) then
 			if y == step.pos.y then return other end
 			best = other
@@ -1011,6 +1100,12 @@ local function build_climbing(self, session, bench, project, plan, step, box, no
 	end
 	if not climb.arrived(self) then return end
 	step = served_alike(session, project, box, step, state, now) or step
+	-- The route has the next block from another column: on to it, rather than down this one to
+	-- a layer it has done and up again.
+	if step.column and not same_column(step.column, state) and assigned_spot(session, project.pos.y, step, now) then
+		come_down(self, bench)
+		return
+	end
 	local level = math.max(0, step.pos.y - state.ground - 1)
 	local standing = {x = state.x, y = state.ground + level + 1, z = state.z}
 	if not is_high(project, step) or not column_serves(box, state, step.pos)
@@ -1028,7 +1123,15 @@ end
 
 -- A high step from the ground: to a column's cell, and up.
 local function build_high(self, session, bench, project, step, box, now)
-	local column = column_spot(session, box, project.pos.y, step.pos, now)
+	-- Up there, running short means coming down for more, so it sets off with a full pouch; the
+	-- route puts what this column lays first in it.
+	local _, short = wanted_for(self, session.queue)
+	if short then
+		set_state(bench, project, "collecting")
+		return
+	end
+	local column = assigned_spot(session, project.pos.y, step, now)
+		or column_spot(session, box, project.pos.y, step.pos, now)
 	if not column then
 		session.stuck = "site"
 		return
@@ -1111,6 +1214,7 @@ function work(self, session, bench, project, now)
 		save_project(bench, nil)
 		return
 	end
+	if not plan.routed then plan_route(plan, project) end
 	local looked = false
 	if not session.queue or now >= (session.queue_at or 0) or #session.queue == 0 then
 		looked = true
