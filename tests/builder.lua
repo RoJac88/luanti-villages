@@ -112,7 +112,24 @@ function TEST_TOWER()
 	end
 	return {size = {x = 5, y = 10, z = 5}, data = data}
 end
+-- A 9 by 9 tower 20 high, cobble below and wood above: tall and wide enough to want several
+-- columns and more than one pouch.
+function TEST_TALL()
+	local data = {}
+	for z = 0, 8 do
+		for y = 0, 20 do
+			for x = 0, 8 do
+				local name = "air"
+				if y == 0 then name = "mcl_core:dirt"
+				elseif x == 0 or x == 8 or z == 0 or z == 8 then name = y <= 10 and COBBLE or WOOD end
+				data[#data + 1] = {name = name, prob = 255, param2 = 0}
+			end
+		end
+	end
+	return {size = {x = 9, y = 21, z = 9}, data = data}
+end
 core.serialize_schematic = function(mts)
+	if mts == "tall.mts" then return "schematic = TEST_TALL()" end
 	return mts == "tower.mts" and "schematic = TEST_TOWER()" or "schematic = TEST_HUT()"
 end
 
@@ -146,7 +163,7 @@ core.register_on_leaveplayer = function() end
 settlements = {
 	schematic_table = {
 		{name = "hut", mts = "hut.mts", max_num = 1}, {name = "builder_house", mts = "hut.mts", max_num = 0},
-		{name = "tower", mts = "tower.mts", max_num = 0},
+		{name = "tower", mts = "tower.mts", max_num = 0}, {name = "tall", mts = "tall.mts", max_num = 0},
 	},
 	surface_mat = {["mcl_core:dirt_with_grass"] = true, ["mcl_core:sand"] = true},
 }
@@ -930,7 +947,8 @@ do
 	assert(high == 64 and low == 80, high .. " " .. low)
 	local count = 0
 	for _ in pairs(columns) do count = count + 1 end
-	assert(count >= 4, "it moves round the tower: " .. count .. " columns")
+	-- Two columns, on opposite sides, reach every wall of a 5 by 5 tower.
+	assert(count == 2, "it moves round the tower: " .. count .. " columns")
 	-- Up a column it does the stretch of wall it serves on every layer, not one layer a climb.
 	assert(climbs == count, climbs .. " climbs of " .. count .. " columns")
 	assert(status_seen, "the window says so")
@@ -985,6 +1003,55 @@ do
 		local to = vanilla.walks[i]
 		assert(not (to.x == 9 and to.z == 12), "no walk to a column that has gone")
 	end
+	tallest = 3
+end
+
+-- A tall tower in two materials: it climbs each column once, carrying what that column needs,
+-- rather than coming down for the wood halfway up.
+do
+	local entity = hired()
+	tallest = 22
+	local project = {
+		state = "requires_materials", building = "tall", pos = TOWER, rotat = "0",
+		surface_mat = "mcl_core:dirt_with_grass", earthwork = {cuts = {}, fills = {}},
+	}
+	world.meta(BENCH_POS).fields.villages_project = core.serialize(project)
+	records[1] = {center = BENCH_POS, buildings = {{name = "hut", pos = BENCH_POS}}, reserved = {["0,1,0"] = {bench = BENCH_POS}}}
+	support.chest(world, {x = 0, y = 1, z = 6}, CHEST, {COBBLE .. " 64", COBBLE .. " 64", COBBLE .. " 64",
+		COBBLE .. " 64", COBBLE .. " 64", WOOD .. " 64", WOOD .. " 64", WOOD .. " 64", WOOD .. " 64", WOOD .. " 64"})
+	local real_set = core.set_node
+	local columns, climbs, levels = {}, 0, 0
+	core.set_node = function(pos, node)
+		if node.name == SCAFFOLD then
+			columns[pos.x .. "," .. pos.z] = true
+			if pos.y == 1 then climbs = climbs + 1 end
+			levels = levels + 1
+		end
+		return real_set(pos, node)
+	end
+	local started = world.now
+	assert(run_until(entity, project_gone_or("returning"), 6000))
+	local built = world.now - started
+	assert(run_until(entity, function() return not builder.load_project(BENCH_POS) end, 300))
+	core.set_node = real_set
+	local count = 0
+	for _ in pairs(columns) do count = count + 1 end
+	-- Four columns reach every wall, each climbed once to the top: 8 rather than 4 columns and
+	-- 10 climbs, 175 blocks of scaffolding and 503 s before the route.
+	assert(count == 4 and climbs == 4, climbs .. " climbs of " .. count .. " columns")
+	assert(levels <= 80, levels .. " blocks of scaffolding")
+	assert(built <= 340, built .. " s")
+	for z = 0, 8 do
+		for y = 1, 20 do
+			for x = 0, 8 do
+				local want = "air"
+				if x == 0 or x == 8 or z == 0 or z == 8 then want = y <= 10 and COBBLE or WOOD end
+				local name = world.name({x = TOWER.x + x, y = y, z = TOWER.z + z})
+				assert(name == want, name .. " wanted " .. want)
+			end
+		end
+	end
+	assert(scaffolding_left() == 0, "the columns come down")
 	tallest = 3
 end
 
