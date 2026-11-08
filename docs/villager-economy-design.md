@@ -378,11 +378,13 @@ Ticket 11 settles the second (`trade_trips.lua`). A need is urgent at a value 2 
 its price or more. The buyer picks, of the sellers it has heard have the item spare at
 a value under its own and live within 64 of its bed, the need worth most, then the
 nearest. It walks to the seller's bed: a seller within 8 sells in person, from its
-belongings, as at the end of a conversation; otherwise it walks on to the seller's
-claimed stash and buys from the chest at the midpoint of its value and the value it
-heard, whole emeralds into the chest. Own trips run in the putter stage, and the
-Builder's in its work stage too while short. A trip is dropped when the day turns; a
-seller that came to nothing is passed over for 10 minutes.
+belongings, as at the end of a conversation. A seller away from home carries its goods,
+so a loaded one within 64 of its bed is followed, up to 3 walks; failing that the buyer
+walks on to the seller's claimed stash and buys from the chest at the midpoint of its
+value and the value it heard, whole emeralds into the chest. Either way it buys no more
+than its emeralds pay for, and with none it plans no trip. Own trips run in the putter
+stage, and the Builder's in its work stage too while short. A trip is dropped when the
+day turns; a seller that came to nothing is passed over for 10 minutes.
 
 A porter is hired when a conversation ends, after its trades: by a member with a
 job (a jobsite, the keeper or the Builder), an urgent need with a known seller,
