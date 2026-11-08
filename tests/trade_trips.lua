@@ -190,6 +190,11 @@ assert(trips.plan(bob, view, {has_news("bob-builder", COBBLE, {x = 20, y = 1, z 
 -- In its work stage, while short, it goes: walks to the quarrier's home and buys in person.
 time = 9000 / 24000
 bob._villages_market_news = heard
+-- Not with an empty purse: it could buy nothing there.
+bob._villages_belongings[EMERALD] = nil
+trips.step(bob, now - trips.PLAN_SECONDS - 1)
+assert(not bob._villages_trade_trip and #bob.walks == 0, "no trip without an emerald")
+bob._villages_belongings[EMERALD] = 5
 trips.step(bob, now)
 assert(bob._villages_trade_trip and #bob.walks == 1 and bob.walks[1].x == 20, "walks to the quarrier")
 assert(logs[#logs - 0] and table.concat(logs, "\n"):find("sets off for 200 mcl_core:cobble from quinn%-"))

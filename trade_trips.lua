@@ -6,7 +6,8 @@
 -- one it has heard has the item spare (market news "has" entries, market_news.lua), at
 -- a value under the buyer's, whose home (bed) is within TRIP_RADIUS of the buyer. Of
 -- those it takes the need worth most (count times value), then the nearest seller. A
--- seller that came to nothing is passed over for SKIP_SECONDS.
+-- seller that came to nothing is passed over for SKIP_SECONDS. With no emerald it plans
+-- no trip of its own: it could buy nothing there.
 --
 -- The trip (`_villages_trade_trip`, saved, dropped when the day turns) has legs:
 -- * "seller": to the seller's home. If the seller is within SELLER_REACH there, loaded,
@@ -69,7 +70,7 @@ local VILLAGER = "mobs_mc:villager"
 
 local M = {
 	URGENT = URGENT, TRIP_RADIUS = TRIP_RADIUS, PORTER_FEE = PORTER_FEE, PURSE = PURSE,
-	SKIP_SECONDS = SKIP_SECONDS,
+	SKIP_SECONDS = SKIP_SECONDS, PLAN_SECONDS = PLAN_SECONDS,
 }
 
 local function short_id(id)
@@ -407,7 +408,8 @@ function M.step(self, now)
 		if now < (next_plan[self] or 0) then return end
 		next_plan[self] = now + PLAN_SECONDS
 		local pos = self.object:get_pos()
-		if not pos then return end
+		-- With no emerald it could buy nothing when it got there.
+		if not pos or possessions.emeralds(self) < 1 then return end
 		trip = M.plan(self, possessions.assess(self), news.heard(self, now), self._bed or pos)
 		if not trip then return end
 		self._villages_trade_trip = trip
