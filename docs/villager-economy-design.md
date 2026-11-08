@@ -419,9 +419,15 @@ With the economy off it feeds everyone free, as before.
 - **Pantry.** The chests within 6 of the keeper's jukebox; the stock tavern's chest
   stands 3 behind it. The keeper fetches food for it from the farms' chests and the
   fishermen's barrels, and from ticket 4 buys it: it takes up to 8 emeralds from the
-  pantry and leaves what it takes is worth at vanilla's prices, rounded, in the work
-  chest. A pantry may run short of money, so the keeper takes the food even when it
-  cannot pay all of it.
+  pantry and leaves in the work chest what the food will sell for as dinners, one
+  dinner's price per meal it makes (a loaf, a potato or a cod is one, wheat a third;
+  ticket 11b). The tavern keeps no margin, so dinner money passes through the pantry
+  to the food producers; the keeper's wage is its household's free dinners. What it
+  cannot pay in whole emeralds, a fraction or a short purse, it owes in the chest's
+  meta and pays first next time, up to 8, past which it is forgiven. It takes the food
+  even when it cannot pay. Ticket 4 paid vanilla's prices, rounded: a probe run showed 8
+  wheat paying nothing while each dinner made from it took an emerald, and the
+  village's money piling up in the pantry.
 - **Cooking.** The keeper turns raw pantry items into its menu items over its shift:
   bread from wheat, baked potatoes from potatoes, cooked fish from raw fish.
 - **Dinner.** `meal.lua` serves a guest only when the pantry has a menu item: it
@@ -441,13 +447,16 @@ With the economy off it feeds everyone free, as before.
 ## Rent
 
 Ticket 11b. Longer probe runs of ticket 11 showed money going one way. Every villager
-pays the tavern for dinner, the keeper pays farmers and fishermen for food, and there it
-stops: a food producer earns several emeralds a day and spends one, while a villager
-whose goods no one needs urgently, the Builder above all, loses one a day until it can
-buy nothing. In one run a Builder bought 34 cobble from a quarrier for 2 emeralds, had
-none left for the last 8, and never finished the house. Rent takes money from where it
-piles up to the Builder, which spends it on materials, which quarriers and woodcutters
-spend at the tavern. The Builder grows richer as the village grows.
+pays the tavern for dinner, and a villager whose goods no one needs urgently, the
+Builder above all, loses an emerald a day until it can buy nothing. In one run a
+Builder bought 34 cobble from a quarrier for 2 emeralds, had none left for the last 8,
+and never finished the house. The first run with rent showed the dinner money did not
+even reach the food producers: the keeper paid vanilla's prices for raw food, rounded,
+which is nothing for a load of wheat, so it piled up in the pantry. Now the keeper pays
+what the food sells for (The tavern), so the food producers earn what the village spends
+on dinner, and rent takes part of that to the Builder, which spends it on materials,
+which quarriers and woodcutters spend at the tavern. The Builder grows richer as the
+village grows.
 
 - **Landlord.** Rent is owed to a Builder's bench, not to the villager holding it, so a
   new Builder inherits the income. Paid by errand, it goes in the bench chests, from which
@@ -622,7 +631,8 @@ New `_villages_*` entity fields, never to be renamed once released:
 Existing fields reused: `_villages_food`, `_villages_fed_day`. Node metadata:
 `villages_owner` and `villages_owner_bed` on stash chests, and `villages_missing`
 (what a player took, until the owner looks). From ticket 11b, `villages_landlord` on
-beds the Builder built: the bench they owe rent to.
+beds the Builder built: the bench they owe rent to; and `villages_keeper_tab` on work
+chests and barrels: what the keeper still owes there for food.
 
 ## Settings
 
@@ -791,9 +801,10 @@ Landed as the quarrier and porter in `labour.lua`, `trade_trips.lua` (installed 
 
 Rent owed to the Builder's bench by the tenants of its houses and, in a generated
 village, by farmers and fishermen; paid at the end of a conversation with the Builder,
-or by errand to the bench chest. Dinner and rent
-payments logged; the probe census records the emeralds of each villager, the pantry and
-each bench chest; the inspector's `Rent` line. Done when a probe run of six game days,
+or by errand to the bench chest. The keeper pays for food what it sells for as
+dinners, with a tab for fractions. Dinner and rent payments logged; the probe census
+records the emeralds of each villager, the pantry and each bench chest; the
+inspector's `Rent` line. Done when a probe run of six game days,
 with ticket 11's staging (a small house and a cobble generator), shows rent reaching the
 bench from farmers and fishermen and the Builder finishing the house without a player,
 and the census shows where the village's emeralds sit on each day.
