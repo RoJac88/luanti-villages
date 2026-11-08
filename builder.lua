@@ -10,6 +10,9 @@
 -- read from this Builder's market news and the villagers loaded near the bench. M.economy
 -- gives the same report to the bench's Economy tab (builder_bench_menu.lua).
 --
+-- Waiting for materials, it posts what it lacks and buys it from villagers on trade trips
+-- (builder_market.lua, trade_trips.lua), with its own emeralds and any left in its chests.
+--
 -- The project is kept in the bench's meta, not on the villager, so that whoever claims the
 -- bench next carries on. What is built so far is not kept at all: building_template.lua
 -- reads it from the world.
@@ -31,6 +34,7 @@ local common = dofile(core.get_modpath("living_villages") .. "/common.lua")
 local census = dofile(core.get_modpath("living_villages") .. "/village_census.lua")
 local economy_clock = dofile(core.get_modpath("living_villages") .. "/economy_clock.lua")
 local economy_report = dofile(core.get_modpath("living_villages") .. "/economy_report.lua")
+local market = dofile(core.get_modpath("living_villages") .. "/builder_market.lua")
 local materials = dofile(core.get_modpath("living_villages") .. "/builder_materials.lua")
 local site_finder = dofile(core.get_modpath("living_villages") .. "/builder_site.lua")
 local stock = dofile(core.get_modpath("living_villages") .. "/farm_stock.lua")
@@ -574,6 +578,13 @@ local function check_materials(self, session, bench, project, now)
 	if now < (session.materials_at or 0) then return end
 	session.materials_at = now + MATERIALS_SECONDS
 	local report = M.materials_report(self, bench, project)
+	-- Short, it posts and buys what it lacks (builder_market.lua, trade_trips.lua).
+	if report and report.short then
+		market.update(self, report)
+		report = M.materials_report(self, bench, project)
+	else
+		market.clear(self)
+	end
 	if project.started then
 		if report and #report.blocked == 0 and not report.short then
 			set_state(bench, project, "collecting")
@@ -1455,6 +1466,7 @@ local function tick(self, session, bench, now)
 	elseif project.state == "requires_materials" then
 		check_materials(self, session, bench, project, now)
 	else
+		if self._villages_builder_wants then market.clear(self) end
 		work(self, session, bench, project, now)
 	end
 	session.away = WORKING[(M.load_project(bench) or {}).state] == true
@@ -1540,6 +1552,8 @@ end
 -- common.activity_override: a Builder with a project in hand is not called back to its bench.
 function M.activity_override(villager, stage)
 	if stage ~= "work" then return nil end
+	-- Off to buy materials (trade_trips.lua): not called back to the bench either.
+	if villager._villages_builder and villager._villages_trade_trip then return "build" end
 	local session = sessions[villager]
 	if session and session.away then return "build" end
 	return nil

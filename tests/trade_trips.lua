@@ -1,0 +1,321 @@
+-- Run with: lua tests/trade_trips.lua
+local now, day, time = 1000, 3, 6000 / 24000
+local settings, logs, objects, chests = {}, {}, {}, {}
+local function key(pos) return pos.x .. "," .. pos.y .. "," .. pos.z end
+
+vector = {
+	new = function(a) return {x = a.x, y = a.y, z = a.z} end,
+	distance = function(a, b) return math.sqrt((a.x - b.x) ^ 2 + (a.y - b.y) ^ 2 + (a.z - b.z) ^ 2) end,
+	subtract = function(a, n) return {x = a.x - n, y = a.y - n, z = a.z - n} end,
+	add = function(a, n) return {x = a.x + n, y = a.y + n, z = a.z + n} end,
+}
+
+-- A chest's inventory: a list of {name, count} stacks, with add and remove by item string.
+local function inventory(stacks)
+	local function split(text)
+		local name, count = text:match("^(%S+)%s*(%d*)")
+		return name, tonumber(count) or 1
+	end
+	local inv = {stacks = stacks, size = 4}
+	function inv:get_size() return self.size end
+	function inv:get_list()
+		local list = {}
+		for _, s in ipairs(self.stacks) do
+			list[#list + 1] = {
+				get_name = function() return s.name end, get_count = function() return s.count end,
+				is_empty = function() return s.count == 0 end,
+			}
+		end
+		return list
+	end
+	function inv:add_item(_, text)
+		local name, count = split(text)
+		for _, s in ipairs(self.stacks) do
+			if s.name == name then s.count = s.count + count return {get_count = function() return 0 end} end
+		end
+		if #self.stacks >= self.size then return {get_count = function() return count end} end
+		self.stacks[#self.stacks + 1] = {name = name, count = count}
+		return {get_count = function() return 0 end}
+	end
+	function inv:remove_item(_, text)
+		local name, count = split(text)
+		for _, s in ipairs(self.stacks) do
+			if s.name == name then
+				local taken = math.min(s.count, count)
+				s.count = s.count - taken
+				return {get_count = function() return taken end}
+			end
+		end
+		return {get_count = function() return 0 end}
+	end
+	return inv
+end
+local function chest(pos, owner, stacks)
+	chests[key(pos)] = {owner = owner, inv = inventory(stacks or {})}
+	return pos
+end
+local function chest_count(pos, item)
+	local total = 0
+	for _, s in ipairs(chests[key(pos)].inv.stacks) do
+		if s.name == item then total = total + s.count end
+	end
+	return total
+end
+
+minetest = {
+	get_modpath = function() return "." end,
+	get_gametime = function() return now end,
+	get_day_count = function() return day end,
+	get_timeofday = function() return time end,
+	is_protected = function() return false end,
+	settings = {
+		get = function(_, name) return settings[name] end,
+		get_bool = function(_, name, default)
+			if settings[name] == nil then return default end
+			return settings[name]
+		end,
+	},
+	log = function(_, message) logs[#logs + 1] = message end,
+	pos_to_string = function(p) return "(" .. key(p) .. ")" end,
+	registered_items = {},
+	add_particle = function() end,
+	sound_play = function() end,
+	get_node_or_nil = function(pos)
+		if chests[key(pos)] then return {name = "mcl_chests:chest_small"} end
+		return {name = "air"}
+	end,
+	get_meta = function(pos)
+		local c = chests[key(pos)] or {inv = inventory({})}
+		return {
+			get_string = function(_, k) return k == "villages_owner" and (c.owner or "") or "" end,
+			get_inventory = function() return c.inv end,
+		}
+	end,
+	find_nodes_in_area = function(minp, maxp)
+		local found = {}
+		for k in pairs(chests) do
+			local x, y, z = k:match("(-?%d+),(-?%d+),(-?%d+)")
+			local p = {x = tonumber(x), y = tonumber(y), z = tonumber(z)}
+			if p.x >= minp.x and p.x <= maxp.x and p.y >= minp.y and p.y <= maxp.y and p.z >= minp.z and p.z <= maxp.z then
+				found[#found + 1] = p
+			end
+		end
+		return found
+	end,
+	get_objects_inside_radius = function(pos, radius)
+		local found = {}
+		for _, object in ipairs(objects) do
+			if vector.distance(object:get_pos(), pos) <= radius then found[#found + 1] = object end
+		end
+		return found
+	end,
+}
+
+local trips = dofile("trade_trips.lua")
+local possessions = dofile("possessions.lua")
+local market = dofile("builder_market.lua")
+local stock = dofile("farm_stock.lua")
+
+local COBBLE, EMERALD = "mcl_core:cobble", "mcl_core:emerald"
+
+local function villager(id, at, fields)
+	local pos = vector.new(at)
+	local v = {name = "mobs_mc:villager", _id = id, _profession = "nitwit", _villages_food = 20, state = "stand",
+		_bed = vector.new(at), walks = {}}
+	for k, value in pairs(fields or {}) do v[k] = value end
+	v.object = {get_pos = function() return pos end, get_luaentity = function() return v end}
+	v.gopath = function(self, target, arrived)
+		self.walks[#self.walks + 1] = vector.new(target)
+		self.arrive = function()
+			pos = vector.new(target)
+			arrived(self)
+		end
+		return true
+	end
+	v.teleport = function(p) pos = vector.new(p) end
+	objects[#objects + 1] = v.object
+	return v
+end
+local function count(v, item) return possessions.count(v, item) end
+local function has_news(who, item, home, price)
+	return {item = item, who = who, kind = "has", count = 40, price = price, home = home, heard = now, hops = 1}
+end
+
+-- Terms: midpoint, whole emeralds, at least one, both gaining, within the budget.
+do
+	local n, pay = trips.terms(100, 40, 0.12, 0.04, 8)
+	assert(n == 40 and pay == 3, n .. " " .. pay) -- 40 * 0.08 = 3.2
+	n, pay = trips.terms(5, 40, 0.12, 0.04, 8)
+	assert(n == 13 and pay == 1, "a sale under one emerald grows to the fewest items that make one")
+	n, pay = trips.terms(100, 40, 0.12, 0.04, 1)
+	assert(n == 12 and pay == 1, "cut to the budget")
+	assert(trips.terms(10, 40, 0.04, 0.05, 8) == nil, "the buyer must value it more")
+	assert(trips.terms(10, 0, 0.12, 0.04, 8) == nil and trips.terms(10, 40, 0.12, 0.04, 0) == nil)
+end
+
+-- The Builder short of cobble: its wants come from the materials report, it stows what it
+-- bought into its pouch, and takes a purse from its chests.
+local bench_chest = chest({x = 0, y = 1, z = 2}, nil, {{name = EMERALD, count = 5}})
+local bob = villager("bob-builder", {x = 0, y = 1, z = 0},
+	{_profession = "mason", _villages_builder = true, _jobsite = {x = 0, y = 1, z = 1}, _villages_belongings = {}})
+local function report(missing)
+	return {
+		rows = {
+			{item = COBBLE, need = 200, in_chests = 0, carried = stock.count(bob, COBBLE), missing = missing},
+			{item = "mcl_core:stonebrick", need = 10, in_chests = 0, carried = 0, missing = 10},
+		},
+		short = true, chests = {bench_chest},
+	}
+end
+market.update(bob, report(200))
+assert(bob._villages_builder_wants[COBBLE] == 200 and bob._villages_builder_wants["mcl_core:stonebrick"] == nil,
+	"an unpriced material is no want: a player must bring it")
+assert(bob._villages_builder_drop.z == 2 and count(bob, EMERALD) == 5 and chest_count(bench_chest, EMERALD) == 0)
+assert(logs[#logs]:find("took 5 emerald"))
+local view = possessions.assess(bob)
+assert(view.needs[COBBLE] == 200 and trips.urgency(view, COBBLE) >= trips.URGENT)
+assert(market.status(bob) == "200 cobble")
+
+-- A quarrier 20 east has cobble spare; the Builder has heard so. It plans the trip...
+local quinn = villager("quinn-quarrier", {x = 20, y = 1, z = 0}, {_villages_belongings = {[COBBLE] = 64}})
+local heard = {has_news("quinn-quarrier", COBBLE, {x = 20, y = 1, z = 0}, 0.03)}
+local trip = trips.plan(bob, view, heard, bob._bed)
+assert(trip and trip.item == COBBLE and trip.who == "quinn-quarrier" and trip.want == 200 and trip.leg == "seller")
+-- ...but not to a seller too far, or asking more than it values the cobble, or itself.
+assert(trips.plan(bob, view, {has_news("far", COBBLE, {x = 200, y = 1, z = 0}, 0.03)}, bob._bed) == nil)
+assert(trips.plan(bob, view, {has_news("dear", COBBLE, {x = 20, y = 1, z = 0}, 5)}, bob._bed) == nil)
+assert(trips.plan(bob, view, {has_news("bob-builder", COBBLE, {x = 20, y = 1, z = 0}, 0.03)}, bob._bed) == nil)
+
+-- In its work stage, while short, it goes: walks to the quarrier's home and buys in person.
+time = 9000 / 24000
+bob._villages_market_news = heard
+trips.step(bob, now)
+assert(bob._villages_trade_trip and #bob.walks == 1 and bob.walks[1].x == 20, "walks to the quarrier")
+assert(logs[#logs - 0] and table.concat(logs, "\n"):find("sets off for 200 mcl_core:cobble from quinn%-"))
+trips.step(bob, now + 2)
+assert(#bob.walks == 1, "waits for the walk")
+bob.arrive()
+trips.step(bob, now + 4)
+local bought = count(bob, COBBLE)
+assert(bought > 0 and count(quinn, COBBLE) == 64 - bought and count(quinn, EMERALD) > 0, "bought in person")
+assert(bob._villages_trade_trip == nil, "done")
+assert(table.concat(logs, "\n"):find("trade: villager quinn%- sold"))
+-- Back at the bench its next check stows the cobble where the bill counts it, and wants less.
+market.update(bob, report(200 - stock.count(bob, COBBLE)))
+assert(count(bob, COBBLE) == 0 and stock.count(bob, COBBLE) == bought)
+assert(bob._villages_builder_wants[COBBLE] == 200 - bought, "wants what is still missing")
+
+-- Nobody home: on to the seller's stash, and it buys from the chest, paying into it.
+do
+	local away = villager("ada-away", {x = 0, y = 1, z = 30})
+	away.teleport({x = 100, y = 1, z = 100})
+	local stash = chest({x = 6, y = 1, z = 30}, "ada-away", {{name = COBBLE, count = 50}})
+	local before = count(bob, EMERALD)
+	bob._villages_market_news = {has_news("ada-away", COBBLE, {x = 0, y = 1, z = 30}, 0.03)}
+	bob.walks = {}
+	now = now + 100
+	trips.step(bob, now)
+	assert(#bob.walks == 1 and bob.walks[1].z == 30)
+	bob.arrive()
+	trips.step(bob, now + 2)
+	assert(bob._villages_trade_trip.leg == "stash" and #bob.walks == 2 and bob.walks[2].x == 6, "to the stash")
+	bob.arrive()
+	trips.step(bob, now + 4)
+	local got = count(bob, COBBLE)
+	assert(got > 0 and chest_count(stash, COBBLE) == 50 - got)
+	assert(chest_count(stash, EMERALD) == before - count(bob, EMERALD) and chest_count(stash, EMERALD) >= 1)
+	assert(table.concat(logs, "\n"):find("bought %d+ mcl_core:cobble from ada%-aw's stash"))
+	assert(bob._villages_trade_trip == nil)
+end
+
+-- An empty stash or none: it gives up and passes that seller over for a while.
+do
+	local carl = villager("carl", {x = -10, y = 1, z = 0}, {_villages_belongings = {[EMERALD] = 5}, _villages_food = 0})
+	carl.teleport({x = -300, y = 1, z = 0})
+	local hungry = villager("hal", {x = 0, y = 1, z = -10}, {_villages_belongings = {[EMERALD] = 5}, _villages_food = 0})
+	hungry._villages_market_news = {has_news("carl", "mcl_farming:bread", {x = -10, y = 1, z = 0}, 0.1)}
+	time = 6000 / 24000
+	trips.step(hungry, now)
+	assert(hungry._villages_trade_trip, "putter: hungry, it goes for bread")
+	hungry.arrive()
+	trips.step(hungry, now + 2)
+	assert(hungry._villages_trade_trip == nil and logs[#logs]:find("gave up on mcl_farming:bread from carl: nobody home"))
+	assert(trips.plan(hungry, possessions.assess(hungry), hungry._villages_market_news, hungry._bed) == nil, "skipped")
+	now = now + trips.SKIP_SECONDS + 1
+	assert(trips.plan(hungry, possessions.assess(hungry), hungry._villages_market_news, hungry._bed), "for a while")
+	-- Outside the putter stage a villager that is no Builder does not go.
+	time = 9000 / 24000
+	hungry._villages_trade_trip = nil
+	trips.step(hungry, now + 100)
+	assert(hungry._villages_trade_trip == nil)
+end
+
+-- Porters: hired at the end of a conversation by a member with a job and an urgent need,
+-- with a purse; it buys at the client's value, delivers the goods and the change, and
+-- keeps its fee.
+do
+	local smith_stash = chest({x = 50, y = 1, z = 2}, "sam-smith", {})
+	local sam = villager("sam-smith", {x = 50, y = 1, z = 0}, {_profession = "tool_smith",
+		_jobsite = {x = 51, y = 1, z = 0}, _villages_stash = smith_stash,
+		_villages_belongings = {[EMERALD] = 6}})
+	local coal_seller = villager("cole", {x = 70, y = 1, z = 0},
+		{_villages_belongings = {["mcl_core:coal_lump"] = 40}})
+	sam._villages_market_news = {has_news("cole", "mcl_core:coal_lump", {x = 70, y = 1, z = 0}, 0.04)}
+	local pat = villager("pat-porter", {x = 50, y = 1, z = 1}, {_villages_belongings = {},
+		_villages_labour = {day = day, activity = "porter"}})
+	local idler = villager("ida", {x = 50, y = 1, z = 1}, {_villages_belongings = {[EMERALD] = 9}})
+	local hires = trips.hire({pat, sam, idler})
+	assert(#hires == 1 and hires[1].client == sam and pat._villages_trade_trip.client.id == "sam-smith")
+	local purse = pat._villages_trade_trip.client.purse
+	assert(purse == 6 and count(sam, EMERALD) == 0 and count(pat, EMERALD) == 6)
+	assert(logs[#logs]:find("hired porter pat%-po with 6 emerald"))
+	-- A second porter finds nobody left to hire it.
+	local pia = villager("pia", {x = 50, y = 1, z = 1}, {_villages_labour = {day = day, activity = "porter"}})
+	assert(#trips.hire({pia, sam}) == 0)
+	-- Its work stage: to the seller, buy, back to the smith's stash.
+	time = 9000 / 24000
+	trips.step(pat, now)
+	assert(#pat.walks == 1 and pat.walks[1].x == 70)
+	pat.arrive()
+	trips.step(pat, now + 2)
+	local coal = count(pat, "mcl_core:coal_lump")
+	assert(coal > 0 and pat._villages_trade_trip.leg == "deliver", "bought, now delivering")
+	trips.step(pat, now + 4)
+	assert(pat.walks[2].z == 2, "to the stash")
+	pat.arrive()
+	trips.step(pat, now + 6)
+	assert(pat._villages_trade_trip == nil and chest_count(smith_stash, "mcl_core:coal_lump") == coal)
+	local spent = count(coal_seller, EMERALD)
+	assert(chest_count(smith_stash, EMERALD) == purse - spent - trips.PORTER_FEE, "the change, less the fee")
+	assert(count(pat, EMERALD) == trips.PORTER_FEE and count(pat, "mcl_core:coal_lump") == 0)
+	assert(logs[#logs]:find("porter pat%-po delivered"))
+end
+
+-- A porter whose trip fails brings the whole purse back, and keeps no fee.
+do
+	local stash = chest({x = -50, y = 1, z = 2}, "lib", {})
+	local lib = villager("lib", {x = -50, y = 1, z = 0}, {_profession = "librarian",
+		_jobsite = {x = -51, y = 1, z = 0}, _villages_stash = stash, _villages_belongings = {[EMERALD] = 4}})
+	lib._villages_market_news = {has_news("gone", "mcl_core:paper", {x = -70, y = 1, z = 0}, 0.01)}
+	local por = villager("por", {x = -50, y = 1, z = 1}, {_villages_labour = {day = day, activity = "porter"}})
+	assert(#trips.hire({por, lib}) == 1)
+	trips.step(por, now)
+	por.arrive()
+	trips.step(por, now + 2)
+	assert(por._villages_trade_trip.leg == "deliver", "nobody home, nothing to buy: back")
+	trips.step(por, now + 4)
+	por.arrive()
+	trips.step(por, now + 6)
+	assert(chest_count(stash, EMERALD) == 4 and count(por, EMERALD) == 0)
+	-- A trip that runs past the day: an own trip is dropped, a porter's goes on to deliver.
+	local own = villager("own", {x = 0, y = 1, z = 0})
+	own._villages_trade_trip = {item = COBBLE, who = "x", home = {x = 1, y = 1, z = 1}, want = 1, leg = "seller", day = day - 1}
+	trips.step(own, now)
+	assert(own._villages_trade_trip == nil, "an own trip is dropped")
+end
+
+-- Off with the economy: no hire.
+settings.living_villages_economy = false
+assert(#trips.hire({}) == 0)
+
+print("trade_trips.lua: ok")

@@ -78,3 +78,34 @@ Look at an adult villager from within 8 nodes.
 - Look away, step back past 8 nodes, or stand behind a wall or another mob, and it goes within a
   second.
 - A villager with no needs shows nothing, and a child shows nothing.
+
+## Quarrier
+
+Build a cobblestone generator (lava, a gap, water) within 32 of a nitwit's bed, and let a Builder
+short of cobble post its need.
+
+- The nitwit's `Labour` line turns `quarrier` on a morning after it has heard the need, and
+  `debug.txt` shows `gathered 1 mcl_core:cobble` as it mines; the generator refills.
+- Natural cobble, and cobble beside lava alone, is never touched.
+- It stops at 64 cobble until it sells some.
+
+## Trade trips and the Builder
+
+Leave a Builder in `requires_materials` short of cobble, with no player bringing any, and a quarrier
+selling it.
+
+- `Builder wants` lists the cobble; any emeralds left in its bench chests move into its belongings
+  (`took N emerald(s) ... to buy materials`).
+- In its work stage it walks to the quarrier's home (`trade trip: ... sets off`), buys in person or
+  from the quarrier's stash, and its next materials check moves the cobble into its pouch: the
+  status window's carried count rises.
+- With enough bought, the project starts with no player.
+
+## Porters
+
+With a nitwit whose `Labour` is `porter`, let it finish a conversation with a smith short of coal
+that has heard of a seller.
+
+- `debug.txt` says `hired porter`; the smith's emeralds go down by the purse.
+- In its work stage the porter walks to the seller, then to the smith's stash, and leaves coal and
+  change there (`porter ... delivered`), keeping one emerald.

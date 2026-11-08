@@ -17,7 +17,7 @@
 -- a claimed jobsite at the work stage, the dinner at the tavern, the service
 -- or the bell on a holiday (once they have found a pulpit or bell), or the
 -- morning at the bell (bell_hangout.lua, #329), or a keeper's trip for its pantry
--- (keeper_supply.lua). Anyone else far from home, a lost putterer or
+-- (keeper_supply.lua), or a trade trip (trade_trips.lua). Anyone else far from home, a lost putterer or
 -- an unemployed villager, still gets vanilla's walk back.
 local core = minetest
 local common = dofile(core.get_modpath("living_villages") .. "/common.lua")
@@ -59,6 +59,8 @@ local function has_errand(self)
 	if stage == "social" then return self._villages_social ~= nil end
 	-- The morning at the bell (bell_hangout.lua, #329) once it has found one.
 	if stage == "putter" then return self._villages_bell_hangout ~= nil end
+	-- A trade trip (trade_trips.lua), in whatever stage it runs.
+	if self._villages_trade_trip then return true end
 	-- A keeper fetching food for its pantry in its free hours (keeper_supply.lua).
 	if stage == "free" then return self._villages_supply_target ~= nil end
 	return false

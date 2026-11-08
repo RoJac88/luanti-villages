@@ -60,11 +60,12 @@ local function barter(buyer, buyer_view, seller_view, value, buyer_gets_worth)
 end
 
 -- The best trade of `seller`'s goods to `buyer`, or nil: {seller, buyer, item, count,
--- pay = emeralds | nil, goods = item | nil, goods_count, gain}.
-function M.offer(seller, seller_view, buyer, buyer_view)
+-- pay = emeralds | nil, goods = item | nil, goods_count, gain}. With `only`, of that item
+-- alone (a trade trip, trade_trips.lua).
+function M.offer(seller, seller_view, buyer, buyer_view, only)
 	local best
 	for item, wanted in pairs(buyer_view.needs) do
-		local available = item ~= EMERALD and spare(seller, seller_view, item) or 0
+		local available = item ~= EMERALD and (not only or item == only) and spare(seller, seller_view, item) or 0
 		local to_buyer, to_seller = buyer_view.value(item), seller_view.value(item)
 		if available > 0 and to_buyer and to_seller and to_buyer > to_seller then
 			local unit = (to_buyer + to_seller) / 2

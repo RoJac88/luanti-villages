@@ -50,7 +50,7 @@ local FIELDS = {"_villages_talk", "_villages_talk_next", "_villages_talk_scan"}
 local BUSY = {
 	"_villages_church", "_villages_seat", "_villages_seated_at", "_villages_meal",
 	"_villages_fish_session", "_villages_fish_target", "_villages_farm_target", "_villages_keeper_target",
-	"_villages_follow", "_villages_sleeping", "_villages_market_session",
+	"_villages_follow", "_villages_sleeping", "_villages_market_session", "_villages_trade_trip",
 }
 local ROUTES = {
 	"_villages_bed_route", "_villages_job_route", "_villages_farm_route", "_villages_fish_route",

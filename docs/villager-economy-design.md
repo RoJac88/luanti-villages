@@ -306,6 +306,13 @@ by the grove rather than a furnace. Trips stay within 50 of the bed, so
 work stage has no jobsite for vanilla to send it to. Apples (3 points) and sweet
 berries (1) became food.
 
+Ticket 11 adds the quarrier and the porter. A quarrier's cobble is a generator's when
+lava and water both touch it from the side or above, which is where VoxeLibre's Lava
+cooling ABM puts it; it mines within 32 of its bed, up to 64 (a Builder wants cobble by
+the hundred), at a rate of 32 a day for the choice. A porter is open when the villager
+has heard of a trade waiting (an item one villager needs and another has); its income
+for the choice is 2, a fee or two; its work is the trips it is hired for.
+
 ## Market news
 
 An extension of `gossip.lua`. A second memory, `_villages_market_news`, a list of at
@@ -362,6 +369,29 @@ one, if the seller has them spare, and either payment goes through only when the
 values what it gets at no less than it pays and the seller at no more. Barter pays in
 the one good the seller needs that leaves the buyer the most. The views are worked out
 afresh for each pair, so a trade earlier in the same conversation counts.
+
+Ticket 11 settles the second (`trade_trips.lua`). A need is urgent at a value 2 times
+its price or more. The buyer picks, of the sellers it has heard have the item spare at
+a value under its own and live within 64 of its bed, the need worth most, then the
+nearest. It walks to the seller's bed: a seller within 8 sells in person, from its
+belongings, as at the end of a conversation; otherwise it walks on to the seller's
+claimed stash and buys from the chest at the midpoint of its value and the value it
+heard, whole emeralds into the chest. Own trips run in the putter stage, and the
+Builder's in its work stage too while short. A trip is dropped when the day turns; a
+seller that came to nothing is passed over for 10 minutes.
+
+A porter is hired when a conversation ends, after its trades: by a member with a
+job (a jobsite, the keeper or the Builder), an urgent need with a known seller,
+somewhere to deliver (its stash, the Builder's nearest bench chest) and 2 emeralds
+or more. It gets a purse of up to 8, buys at its client's value in its work stage,
+delivers the goods and the change, and keeps a fee of 1 if it bought anything. A
+failed trip brings the whole purse back, the next day if need be.
+
+The Builder (`builder_market.lua`), while short in `requires_materials`, puts its
+missing priced materials in its ledger as `extra`, so its news posts them and it values
+them urgently; unpriced ones (stone bricks, sand) only a player brings. It moves what
+it bought into its pouch, where the bill counts it, and tops its purse up to 8 from
+emeralds left in its bench chests.
 
 ## The farmer's food
 
@@ -534,6 +564,8 @@ New `_villages_*` entity fields, never to be renamed once released:
 | `_villages_fuel` | Furnace smelts left from the last coal or charcoal lump burned |
 | `_villages_tier_supply` | Days crafted from village supply at the current tier |
 | `_villages_tally` | What it made and used today, and yesterday |
+| `_villages_trade_trip` | A trade trip under way: item, seller, legs, a porter's client and purse |
+| `_villages_builder_wants`, `_villages_builder_drop` | A short Builder's missing priced materials, and its delivery chest |
 
 Existing fields reused: `_villages_food`, `_villages_fed_day`. Node metadata:
 `villages_owner` and `villages_owner_bed` on stash chests, and `villages_missing`
@@ -694,6 +726,12 @@ holds the manual checks.
 Quarrier and porter activities; trade trips through `navigation.lua`; the Builder
 posting and buying materials. Done when a Builder in `requires_materials` gets cobble
 from a quarrier without a player.
+
+Landed as the quarrier and porter in `labour.lua`, `trade_trips.lua` (installed in
+`init.lua`, which also hands it the end of each conversation for hiring),
+`builder_market.lua`, `exchange.offer`'s single-item form, the trade trip as a
+`far_trips.lua` errand and a busy field for `conversation.lua`, and the inspector's
+`Trade trip` and `Builder wants` lines.
 
 ### 12. Peddlers and the market
 
