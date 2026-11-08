@@ -258,6 +258,23 @@ guard is untouched.
 | Porter | Stashes of villagers who hire it | Carries goods for a buyer's trade trip, for a fee |
 | Peddler | The village | Buys surplus below the going price and sells where it has heard of need, keeping the margin (ticket 12) |
 
+Ticket 7 builds `labour.lua` with the forager and the woodcutter. The choice is made at
+the first work tick of each game day (`_villages_labour`), from the best price heard
+asked (market news "needs" entries) for each activity's goods times its rate (forager
+12 a day: berries, apples, cane; woodcutter 10: logs, saplings); yesterday's counts
+1.25 times. Foragers leave flowers and mushrooms, which do not come back once picked.
+A woodcutter's grove spot is open grass 8 to 20 from its bed, with a clear 7 x 7 x 7
+box above, no path, door or bed within 3, and 5 from its other trees; it takes its
+first sapling from under a wild oak, at most once a day, and never cuts a wild tree.
+Every species that grows from one sapling counts (oak, birch, spruce, jungle,
+acacia), so a savanna village cuts acacia; a wild tree is told from a house's logs by
+its own leaves above it. A trip to a tree ends on an open cell beside the trunk, and
+a target it could not reach is passed over for 5 minutes.
+Charcoal waits for ticket 8's crafting. Trips stay within 50 of the bed, so
+`far_trips.lua` is not needed, and labour leaves `activity_override` alone: a nitwit's
+work stage has no jobsite for vanilla to send it to. Apples (3 points) and sweet
+berries (1) became food.
+
 ## Market news
 
 An extension of `gossip.lua`. A second memory, `_villages_market_news`, a list of at
@@ -449,6 +466,7 @@ New `_villages_*` entity fields, never to be renamed once released:
 | `_villages_market_news` | Market news list |
 | `_villages_labour` | Today's activity and the day it was chosen |
 | `_villages_grove` | Positions of saplings a woodcutter planted |
+| `_villages_sapling_day` | The day a woodcutter last took a sapling from under a wild oak |
 | `_villages_tier_supply` | Days crafted from village supply at the current tier |
 
 Existing fields reused: `_villages_food`, `_villages_fed_day`. Node metadata:
@@ -572,9 +590,8 @@ sell until ticket 8, so paying for dinner waits for that ticket.
 
 ### 7. Labour
 
-`labour.lua` choice and the forager and woodcutter activities, with
-`activity_override` and `far_trips.lua`. Done when nitwits and the unemployed gather
-and sell, and the share choosing wood falls after its price does.
+`labour.lua` choice and the forager and woodcutter activities. Done when nitwits and
+the unemployed gather and sell, and the share choosing wood falls after its price does.
 
 ### 8. Jobsite crafting
 
