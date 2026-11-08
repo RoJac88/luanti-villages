@@ -430,12 +430,54 @@ With the economy off it feeds everyone free, as before.
   the same house, `possessions.same_house`) eat free. A guest is served only at or
   below 8 points, the mark at which it eats what it carries, so one fed from home
   keeps its emeralds; one that cannot pay is not served. With an empty pantry the
-  guest is seated and nothing is served.
+  guest is seated and nothing is served. From ticket 11b every payment is logged:
+  diner, price and pantry.
 - **Player meals.** `player_meals.lua` takes the meal from the pantry and charges
   the player one emerald from their inventory before serving. A player with no
   emerald, or a tavern with an empty pantry, is not served and the log says which.
 - **Player trades.** The keeper's menu trades stay vanilla (unlimited). A low pantry
   raises the player's price through the demand term.
+
+## Rent
+
+Ticket 11b. Longer probe runs of ticket 11 showed money going one way. Every villager
+pays the tavern for dinner, the keeper pays farmers and fishermen for food, and there it
+stops: a food producer earns several emeralds a day and spends one, while a villager
+whose goods no one needs urgently, the Builder above all, loses one a day until it can
+buy nothing. In one run a Builder bought 34 cobble from a quarrier for 2 emeralds, had
+none left for the last 8, and never finished the house. Rent takes money from where it
+piles up to the Builder, which spends it on materials, which quarriers and woodcutters
+spend at the tavern. The Builder grows richer as the village grows.
+
+- **Landlord.** Rent is owed to a Builder's bench, not to the villager holding it, so a
+  new Builder inherits the income. Paid by errand, it goes in the bench chests, from which
+  `builder_market.lua` already tops up the Builder's purse. A village with no claimed
+  bench collects none.
+- **Tenants.** A villager whose bed is in a house the Builder built: `finish_building`
+  writes the bench's position as `villages_landlord` into the meta of every bed in the
+  footprint. In a generated village farmers and fishermen pay as well, as if their
+  houses had been built for them, so money starts flowing out of the food producers.
+  Their landlord is the nearest claimed bench within `VILLAGE_RADIUS` (128) of the bed.
+  The Builder, the keeper and its household (`possessions.same_house`) and children pay
+  nothing.
+- **How much.** `RENT` (1) emerald every `RENT_DAYS` (2) days of economic clock, so a
+  villager away from players owes nothing for that time. Both numbers are guesses for
+  probe runs to settle.
+- **Arrears.** Rent not paid stays owing, up to `RENT_CAP` (3) emeralds; past that it
+  is forgiven. No one is evicted. A tenant pays only from emeralds above the price of a
+  dinner, so it eats first and pays when it next has money.
+- **Paying.** At the end of a conversation with its landlord's Builder, before trades, a
+  tenant hands over what it owes, from belongings to belongings, as `exchange.lua`
+  settles a trade. A tenant owing the full cap pays by errand instead: a `far_trips.lua`
+  errand in its putter stage to the bench's nearest chest, where it leaves the emeralds.
+- **Where it goes.** The Builder pays for materials and dinner as before, from its
+  belongings and its purse top-up. While the census has a building to put up it keeps
+  buying; with none, rent piles up on the bench, and the census below shows it.
+- **Observability.** Dinner payments are logged (The tavern), and so is every rent
+  payment (tenant, amount, bench, at a conversation or by errand) and arrears forgiven.
+  The probe census records each villager's emeralds, the pantry's and each bench
+  chest's, so a run shows where money sits day by day. The inspector gets a `Rent`
+  line: landlord, owed, last paid.
 
 ## What the player sees
 
@@ -572,10 +614,12 @@ New `_villages_*` entity fields, never to be renamed once released:
 | `_villages_tally` | What it made and used today, and yesterday |
 | `_villages_trade_trip` | A trade trip under way: item, seller, legs, a porter's client and purse |
 | `_villages_builder_wants`, `_villages_builder_drop` | A short Builder's missing priced materials, and its delivery chest |
+| `_villages_rent` | Rent owed, the clock reading it was last charged at, and the last payment |
 
 Existing fields reused: `_villages_food`, `_villages_fed_day`. Node metadata:
 `villages_owner` and `villages_owner_bed` on stash chests, and `villages_missing`
-(what a player took, until the owner looks).
+(what a player took, until the owner looks). From ticket 11b, `villages_landlord` on
+beds the Builder built: the bench they owe rent to.
 
 ## Settings
 
@@ -628,6 +672,7 @@ branch, and each leaves the game playable with `living_villages_economy` on or o
 | 9 | Demand and hunger price terms; tier advancement from village supply; theft gossip | 3, 8 |
 | 10 | Economy tab, need bubble, inspector fields, census weight | 5 |
 | 11 | Quarrier, porter, trade trips; the Builder buys from villagers | 6, 7 |
+| 11b | Rent to the Builder's bench; dinner and rent logging; emeralds in the probe census | 1, 11 |
 | 12 | Peddler; holiday market sells real surplus | 6, 11 |
 
 ### 1. Clock, hunger and the tavern
@@ -739,14 +784,28 @@ Landed as the quarrier and porter in `labour.lua`, `trade_trips.lua` (installed 
 `far_trips.lua` errand and a busy field for `conversation.lua`, and the inspector's
 `Trade trip` and `Builder wants` lines.
 
+### 11b. Rent
+
+Rent owed to the Builder's bench by the tenants of its houses and, in a generated
+village, by farmers and fishermen; paid at the end of a conversation with the Builder,
+or by errand to the bench chest once the arrears reach the cap. Dinner and rent
+payments logged; the probe census records the emeralds of each villager, the pantry and
+each bench chest; the inspector's `Rent` line. Done when a probe run of six game days,
+with ticket 11's staging (a small house and a cobble generator), shows rent reaching the
+bench from farmers and fishermen and the Builder finishing the house without a player,
+and the census shows where the village's emeralds sit on each day.
+
 ### 12. Peddlers and the market
 
 Peddler activity; `market.lua` stalls stocked from real surplus; browsers buy.
 
 ## Open questions
 
-- Pacing: hunger rate, craft time and starting stock all need probe runs on real
-  villages before they are more than guesses.
+- Pacing: hunger rate, craft time, starting stock and rent all need probe runs on
+  real villages before they are more than guesses.
+- Whether the Builder becomes the next place money piles up, once the census has
+  nothing left to build. If so, the Builder could spend its surplus on upkeep, or rent
+  could fall with its savings.
 - Whether a peddler walks to another village is the start of the next phase, and
   needs its own design (routes between villages, news carried across them).
 - Whether stashes should be protected from players beyond the gossip cost, for
