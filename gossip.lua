@@ -5,10 +5,12 @@
 -- first ingredient of its trades for that player and, at REPUTATION_HOSTILE, turns
 -- iron golems on the player. There is no refusal to trade; Java has none either.
 --
--- The numbers are Java's (minecraft.wiki, Villager and Trading). Java's demand and
--- Hero of the Village price terms are left out, since neither exists here, and its
--- per-trade price multiplier is approximated by whether the offered item stacks,
--- since VoxeLibre's trade tables have none.
+-- The numbers are Java's (minecraft.wiki, Villager and Trading). Java's Hero of the
+-- Village term is left out, since it does not exist here, and its per-trade price
+-- multiplier is approximated by whether the offered item stacks, since VoxeLibre's
+-- trade tables have none. The demand term is the economy's (demand.lua, ticket 9): it
+-- moves the base count first, from the trader's own needs and hunger, and reputation
+-- then moves what it gives. With gossip off only the demand term applies.
 --
 -- Decay is worked out when the memory is next read, from the game time, so it costs
 -- nothing per tick. Unlike Java it counts time the villager was unloaded: a villager
@@ -18,6 +20,7 @@
 -- draws from, never in _trades: other players see their own prices, and the fisherman's
 -- restock (fisherman.lua) and market sellers still read the real trades.
 local core = minetest
+local demand = dofile(core.get_modpath("living_villages") .. "/demand.lua")
 
 local TYPES = {
 	trading = {gain = 4, decay = 2, cost = 20, max = 25, multiplier = 1},
@@ -220,8 +223,10 @@ local function priced_form(trader, player_name, formname, formspec)
 	local inv = core.get_inventory({type = "detached", name = formname})
 	local base = inv and inv:get_stack("wanted", 1)
 	if not base or base:is_empty() then return formspec end
-	local count = price(base:get_count(), reputation(trader, player_name),
-		price_multiplier(inv:get_stack("offered", 1)), base:get_stack_max())
+	local offered = inv:get_stack("offered", 1)
+	local demanded = demand.count(trader, base:get_name(), base:get_count(), offered:get_name(), base:get_stack_max())
+	local count = price(demanded, enabled() and reputation(trader, player_name) or 0,
+		price_multiplier(offered), base:get_stack_max())
 	if count == base:get_count() then return formspec end
 	local priced = ItemStack(base)
 	priced:set_count(count)
@@ -253,7 +258,8 @@ local function install_prices(def)
 	local original_show = core.show_formspec
 	core.show_formspec = function(player_name, formname, formspec)
 		local trader = sessions[player_name]
-		if trader and not taking[player_name] and formname == "mobs_mc:trade_" .. player_name and enabled() then
+		if trader and not taking[player_name] and formname == "mobs_mc:trade_" .. player_name
+			and (enabled() or demand.enabled()) then
 			formspec = priced_form(trader, player_name, formname, formspec)
 		end
 		return original_show(player_name, formname, formspec)

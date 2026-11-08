@@ -193,6 +193,8 @@ local function halves(pos)
 	return found
 end
 
+M.halves = halves
+
 local function set_owner(pos, id, bed)
 	for _, half in ipairs(halves(pos)) do
 		local meta = core.get_meta(half)

@@ -174,9 +174,12 @@ Children do not get hungry. Their household feeds them once a day, as now
   A villager born in the village gets the same when it grows up: births are a source
   of emeralds, limited by food.
 - **Theft.** A player who takes from a claimed stash within sight of a villager
-  (gossip's witness rule: 16 nodes, line of sight) gives that villager
-  `minor_negative` gossip. The owner, when it next checks its stash, records the
-  loss as news ("needs" for what went missing). Nothing is locked.
+  (gossip's witness rule: 16 nodes, line of sight, and awake) gives that villager
+  `minor_negative` gossip, once a minute per witness and player however many stacks
+  are taken (`theft.lua`, ticket 9). What was taken is written in the chest's meta
+  (`villages_missing`); the owner finds it when it next looks, once a minute, and logs
+  it. Its ledger counts the stash, so what it needed of the missing goods it now needs
+  more, and market news carries that as "needs". Nothing is locked.
 
 ## Ledger and prices
 
@@ -400,12 +403,18 @@ With the economy off it feeds everyone free, as before.
 
 ## What the player sees
 
-**Prices.** Java's demand term, which `gossip.lua` leaves out "since neither exists
-here", now exists. The ledger's urgency for an offer's item moves the first
-ingredient of that trade for every player, through the same `wanted` list wrapper
-reputation uses, combined with reputation in one place. A villager short of what it
-buys pays more for it; one with a glut of what it sells sells cheaper. A hungry
-villager adds a hunger term to what it sells.
+**Prices.** Java's demand term, which `gossip.lua` left out "since neither exists
+here", now exists (`demand.lua`, ticket 9). The ledger's urgency for an offer's item
+moves the first ingredient of that trade for every player, through the same `wanted`
+list wrapper reputation uses, combined with reputation in one place: the demand term
+moves the base count first, then reputation moves that. The urgency (the trader's
+value over the base price, 0.5 to 3) moves the price by its square root, so a full
+need is about 1.7 times. A villager short of what it buys pays more for it, asking
+fewer items for its emerald (a smith out of coal takes 9 lumps, not 15); one with a
+glut of what it sells sells cheaper. A hungry villager charges 1.25 times for what it
+sells and a starving one 1.5 times: it works slower, so its goods are scarcer.
+Counts stay between 1 and a stack. With gossip off the demand term still applies;
+with the economy off only reputation does.
 
 **Restocking.** Vanilla restocks a villager's locked trades in `unlock_trades` when
 it arrives at its jobsite (`mobs_mc/villager.lua`, `do_work`). Both are local to
@@ -419,7 +428,13 @@ unchanged.
 the top tier, or with a 1 in 5 chance on a freshly restocked one. In addition, a
 villager that has crafted on `living_villages_tier_supply_days` (3) separate days at
 its current tier, entirely from inputs it bought from villagers or produced itself,
-goes up one tier, up to 5. Both routes run; the faster one wins.
+goes up one tier, up to 5. Both routes run; the faster one wins. `production.lua`
+counts a craft as village supply when its inputs and fuel all came from belongings:
+belongings fill only from the kit, the villager's own work and trades with villagers,
+while a stash may hold what a player left. The kit counts, as the village's start.
+The days are kept in `_villages_tier_supply` ({tier, days, day}). Going up sets
+`_max_trade_tier`, `_max_tradenum` and the badge, mirroring vanilla's file-local
+`update_max_tradenum` and `set_textures`.
 
 **Visibility.**
 
@@ -506,7 +521,8 @@ New `_villages_*` entity fields, never to be renamed once released:
 | `_villages_tier_supply` | Days crafted from village supply at the current tier |
 
 Existing fields reused: `_villages_food`, `_villages_fed_day`. Node metadata:
-`villages_owner` and `villages_owner_bed` on stash chests.
+`villages_owner` and `villages_owner_bed` on stash chests, and `villages_missing`
+(what a player took, until the owner looks).
 
 ## Settings
 
@@ -644,6 +660,9 @@ that every crafting profession has goods to sell.
 Demand and hunger terms in the `wanted` wrapper; tier advancement from supply;
 theft gossip. Done when a player sees a scarce good's price rise and a supplied smith
 climbs a tier with no player trade.
+
+Landed as `demand.lua` (applied in `gossip.lua`'s priced window), the tier count in
+`production.lua`, and `theft.lua` (wrapping the chests' take callback).
 
 ### 10. Visibility
 
