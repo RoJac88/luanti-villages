@@ -7,6 +7,7 @@ vector = {
 	new = function(a) return {x = a.x, y = a.y, z = a.z} end,
 	distance = function(a, b) return math.sqrt((a.x - b.x) ^ 2 + (a.y - b.y) ^ 2 + (a.z - b.z) ^ 2) end,
 	subtract = function(a, n) return {x = a.x - n, y = a.y - n, z = a.z - n} end,
+	round = function(a) return {x = math.floor(a.x + 0.5), y = math.floor(a.y + 0.5), z = math.floor(a.z + 0.5)} end,
 	add = function(a, n) return {x = a.x + n, y = a.y + n, z = a.z + n} end,
 }
 
@@ -226,6 +227,27 @@ do
 	assert(chest_count(stash, EMERALD) == before - count(bob, EMERALD) and chest_count(stash, EMERALD) >= 1)
 	assert(table.concat(logs, "\n"):find("bought %d+ mcl_core:cobble from ada%-aw's stash"))
 	assert(bob._villages_trade_trip == nil)
+end
+
+-- Out, but about: it goes after the seller where it stands, and buys there.
+do
+	local roy = villager("roy-roaming", {x = -40, y = 1, z = 0}, {_villages_belongings = {[COBBLE] = 64}})
+	roy.teleport({x = -40, y = 1, z = 20})
+	possessions.add(bob, EMERALD, 3)
+	bob._villages_builder_wants = {[COBBLE] = 120}
+	bob._villages_market_news = {has_news("roy-roaming", COBBLE, {x = -40, y = 1, z = 0}, 0.03)}
+	bob.walks = {}
+	now = now + 100
+	trips.step(bob, now)
+	assert(#bob.walks == 1 and bob.walks[1].x == -40 and bob.walks[1].z == 0, "to its home first")
+	bob.arrive()
+	trips.step(bob, now + 2)
+	assert(bob._villages_trade_trip.leg == "chase" and bob.walks[2].z == 20, "then where it is")
+	local before = count(bob, COBBLE)
+	bob.arrive()
+	trips.step(bob, now + 4)
+	assert(count(bob, COBBLE) > before and bob._villages_trade_trip == nil, "caught and bought")
+	assert(count(roy, COBBLE) < 64)
 end
 
 -- An empty stash or none: it gives up and passes that seller over for a while.

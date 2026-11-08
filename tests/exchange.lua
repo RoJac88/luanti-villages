@@ -108,4 +108,16 @@ local baker2 = villager("baker2", {["mcl_farming:bread"] = 20})
 local diner2 = villager("diner2", {["mcl_core:emerald"] = 5}, {_villages_food = 0})
 assert(#exchange.exchange({baker2, diner2}) == 0 and count(baker2, "mcl_farming:bread") == 20)
 
+-- A buyer short of emeralds for the whole lot buys what its emeralds pay for: a Builder
+-- with one emerald, short of 34 cobble, from a quarrier with 64.
+do
+	local quarrier = villager("qa", {["mcl_core:cobble"] = 64})
+	local builder = villager("bu", {["mcl_core:emerald"] = 1},
+		{_villages_builder = true, _profession = "mason", _villages_builder_wants = {["mcl_core:cobble"] = 34}})
+	local offer = exchange.offer(quarrier, possessions.assess(quarrier), builder, possessions.assess(builder))
+	assert(offer and offer.item == "mcl_core:cobble" and offer.pay == 1, "one emerald's worth")
+	assert(offer.count > 1 and offer.count < 34, offer.count)
+	assert(exchange.settle(offer) and count(builder, "mcl_core:cobble") == offer.count and count(builder, "mcl_core:emerald") == 0)
+end
+
 print("exchange.lua: ok")

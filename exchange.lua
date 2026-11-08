@@ -8,8 +8,9 @@
 -- is not at hand. It happens only when the buyer values the item above the seller, and
 -- settles at the midpoint of the two values, per item:
 --
--- * in emeralds, rounded to a whole one. A sale worth under one emerald grows to the
---   fewest items that make one, if the seller has them spare. Both must still gain:
+-- * in emeralds, rounded to a whole one. A sale worth more than the buyer's emeralds
+--   shrinks to what they pay for; one worth under one emerald grows to the fewest items
+--   that make one, if the seller has them spare. Both must still gain:
 --   the buyer values what it gets at no less than it pays, the seller at no more.
 -- * in goods, when the buyer has too few emeralds: something the seller needs and the
 --   buyer has spare and carries, as many as make up the midpoint value, again only if
@@ -70,6 +71,9 @@ function M.offer(seller, seller_view, buyer, buyer_view, only)
 		if available > 0 and to_buyer and to_seller and to_buyer > to_seller then
 			local unit = (to_buyer + to_seller) / 2
 			local count = math.min(wanted, available)
+			-- No more than its emeralds pay for (unless it barters, below, for the whole lot).
+			local affordable = math.floor(possessions.emeralds(buyer) / unit)
+			if affordable >= 1 and count * unit > possessions.emeralds(buyer) then count = affordable end
 			if count * unit < MIN_SALE then count = math.min(math.ceil(MIN_SALE / unit), available) end
 			local value = count * unit
 			local worth_to_buyer, worth_to_seller = count * to_buyer, count * to_seller

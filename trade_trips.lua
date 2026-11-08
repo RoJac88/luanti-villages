@@ -11,7 +11,10 @@
 -- The trip (`_villages_trade_trip`, saved, dropped when the day turns) has legs:
 -- * "seller": to the seller's home. If the seller is within SELLER_REACH there, loaded,
 --   it is the end-of-conversation trade (exchange.lua) for that one item, from the
---   seller's belongings. If not, or it has none on it, on to its stash.
+--   seller's belongings. If it is out but loaded within TRIP_RADIUS of its home, the
+--   buyer goes after it ("chase", to where it stands, at most CHASES times as it moves):
+--   villagers carry what they sell. If it is nowhere near, or has none on it, on to its
+--   stash.
 -- * "stash": to the seller's claimed stash (a chest near its home whose `villages_owner`
 --   meta is the seller, possessions.lua). It buys from the chest, at the midpoint of its
 --   own value and the value it heard the seller put on the item, paying emeralds into
@@ -57,6 +60,7 @@ local STEP_SECONDS = 2
 local PLAN_SECONDS = 30
 local WALK_TIMEOUT = 120
 local MAX_TRIES = 3
+local CHASES = 3
 local SKIP_SECONDS = 600
 local PORTER_FEE = 1
 local PURSE = 8
@@ -133,6 +137,15 @@ end
 -- The loaded adult villager with this _id within SELLER_REACH of pos, or nil.
 function M.find_seller(pos, who)
 	for _, object in ipairs(core.get_objects_inside_radius(pos, SELLER_REACH)) do
+		local entity = object:get_luaentity()
+		if entity and entity.name == VILLAGER and entity._id == who and not entity.child then return entity end
+	end
+	return nil
+end
+
+-- The loaded adult villager with this _id within TRIP_RADIUS of home, or nil.
+function M.locate(home, who)
+	for _, object in ipairs(core.get_objects_inside_radius(home, TRIP_RADIUS)) do
 		local entity = object:get_luaentity()
 		if entity and entity.name == VILLAGER and entity._id == who and not entity.child then return entity end
 	end
@@ -234,24 +247,28 @@ function M.buy_from_stash(self, trip, chest)
 	return count
 end
 
--- Buys from the seller in person. Returns how many it bought.
+-- Buys from the seller in person. Returns how many it bought. It asks for no more than
+-- its budget covers at the midpoint, so a lot it cannot afford whole is bought in part.
 function M.buy_in_person(self, trip, seller)
 	local budget, value = budget_and_value(self, trip)
-	local view
-	if trip.client then
-		local item = trip.item
-		view = {
-			needs = {[item] = trip.want - (trip.bought or 0)}, surplus = {},
-			value = function(i)
-				if i == item then return value end
-				if i == EMERALD then return 1 end
-				return nil
-			end,
-		}
-	else
-		view = possessions.assess(self)
-	end
-	local offer = exchange.offer(seller, possessions.assess(seller), self, view, trip.item)
+	local item = trip.item
+	local seller_view = possessions.assess(seller)
+	local seller_value = seller_view.value(item) or 0
+	local unit = (value + seller_value) / 2
+	if unit <= 0 or budget < 1 then return 0 end
+	local own = not trip.client and possessions.assess(self) or nil
+	local need = trip.client and (trip.want - (trip.bought or 0)) or (own.needs[item] or 0)
+	need = math.min(need, math.floor(budget / unit))
+	if need < 1 then return 0 end
+	local view = {
+		needs = {[item] = need}, surplus = own and own.surplus or {},
+		value = own and own.value or function(i)
+			if i == item then return value end
+			if i == EMERALD then return 1 end
+			return nil
+		end,
+	}
+	local offer = exchange.offer(seller, seller_view, self, view, item)
 	if not offer or (offer.pay and offer.pay > budget) or (trip.client and not offer.pay) then return 0 end
 	if not exchange.settle(offer) then return 0 end
 	trip.bought, trip.spent = (trip.bought or 0) + offer.count, (trip.spent or 0) + (offer.pay or 0)
@@ -308,6 +325,14 @@ local function walk(self, trip, target, now)
 	end
 end
 
+-- On to the seller's stash, or give up with `why` if it has none.
+function M.to_stash(self, trip, now, why)
+	local stash = M.find_stash(trip.home, trip.who)
+	if not stash then return fail(self, trip, why, now) end
+	trip.leg, trip.stash, trip.tries, trip.why = "stash", stash, 0, why
+	return M.advance(self, trip, now)
+end
+
 -- One step of a trip under way.
 function M.advance(self, trip, now)
 	local pos = self.object:get_pos()
@@ -316,14 +341,27 @@ function M.advance(self, trip, now)
 		if vector.distance(pos, trip.home) > ARRIVE_REACH then return walk(self, trip, trip.home, now) end
 		local seller = M.find_seller(pos, trip.who)
 		if seller and M.buy_in_person(self, trip, seller) > 0 then return done_buying(self, trip, now) end
-		local stash = M.find_stash(trip.home, trip.who)
-		if not stash then return fail(self, trip, seller and "no trade" or "nobody home", now) end
-		trip.leg, trip.stash, trip.tries = "stash", stash, 0
-		return M.advance(self, trip, now)
+		if not seller and M.locate(trip.home, trip.who) then
+			trip.leg, trip.tries, trip.chases = "chase", 0, 0
+			return M.advance(self, trip, now)
+		end
+		return M.to_stash(self, trip, now, seller and "no trade" or "nobody home")
+	elseif trip.leg == "chase" then
+		local seller = M.locate(trip.home, trip.who)
+		local at = seller and seller.object:get_pos()
+		if not at then return M.to_stash(self, trip, now, "lost sight of the seller") end
+		if vector.distance(pos, at) <= SELLER_REACH then
+			if M.buy_in_person(self, trip, seller) > 0 then return done_buying(self, trip, now) end
+			return M.to_stash(self, trip, now, "no trade")
+		end
+		trip.chases = (trip.chases or 0) + 1
+		if trip.chases > CHASES then return M.to_stash(self, trip, now, "could not catch the seller") end
+		trip.tries = 0
+		return walk(self, trip, vector.round(at), now)
 	elseif trip.leg == "stash" then
 		if vector.distance(pos, trip.stash) > REACH then return walk(self, trip, trip.stash, now) end
 		if M.buy_from_stash(self, trip, trip.stash) > 0 then return done_buying(self, trip, now) end
-		return fail(self, trip, "nothing to buy in the stash", now)
+		return fail(self, trip, "nothing to buy in the stash (" .. tostring(trip.why) .. ")", now)
 	elseif trip.leg == "deliver" then
 		if vector.distance(pos, trip.client.deliver) > REACH then return walk(self, trip, trip.client.deliver, now) end
 		M.deliver(self, trip)

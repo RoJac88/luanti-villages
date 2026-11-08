@@ -341,7 +341,11 @@ market-information network. A villager who talks a lot finds trades sooner.
 listener's ledger view is worked out once per conversation. What each member knows is
 fixed before anyone speaks, so news crosses one hop per conversation. An item it needs
 offered, or has spare wanted, weighs 4 times more; freshness falls linearly over
-`NEWS_DAYS` to a floor of a tenth; each hop divides the weight by one more.
+`NEWS_DAYS` to a floor of a tenth; each hop divides the weight by one more. From
+ticket 11 an entry that completes a trade the listener has heard of (an offer of what
+it heard someone needs, or a want of what it heard someone has) weighs 4 times too:
+probe runs showed a quarrier's cobble never reaching a Builder through villagers who
+wanted neither.
 
 ## Exchange between villagers
 
