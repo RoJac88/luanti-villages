@@ -18,6 +18,7 @@ local possessions = dofile(core.get_modpath("living_villages") .. "/possessions.
 local market_news = dofile(core.get_modpath("living_villages") .. "/market_news.lua")
 local labour = dofile(core.get_modpath("living_villages") .. "/labour.lua")
 local production = dofile(core.get_modpath("living_villages") .. "/production.lua")
+local economy_tally = dofile(core.get_modpath("living_villages") .. "/economy_tally.lua")
 local BIRTH_RADIUS = 24
 local BIRTH_HEIGHT = 12
 local BIRTH_INTERVAL_DAYS = 2
@@ -529,6 +530,8 @@ local function show(player, villager)
 		"Market news: " .. market_news.status(villager),
 		"Labour: " .. labour.status(villager),
 		"Crafting: " .. production.status(villager),
+		"Trade tier: " .. production.tier_status(villager),
+		"Today: " .. economy_tally.status(villager),
 		"Jobsite route: " .. route_status(villager._villages_job_route),
 		"Jobsite planner: " .. planner_status(villager._villages_job_route),
 		"Jobsite planner trail: " .. planner_trail(villager._villages_job_route),

@@ -4,6 +4,14 @@
 -- (builder_preview.lua) or else what it is mostly made of. A tab only looks; a button
 -- puts that source to use, so a player can see what is in one first.
 --
+-- The Economy tab (docs/villager-economy-design.md, Visibility; ticket 10) shows the
+-- bench's economy report (builder.economy, economy_report.lua) in two halves, each
+-- labelled with how it is known: what the bench's Builder has heard in market news
+-- (shortages, gluts, and the worst gaps: professions missing that would make what the
+-- village is short of, the first of which the census favours), and what is seen of the
+-- villagers loaded around the bench (professions present, nitwits and the unemployed
+-- with their labour, and goods made and used today and yesterday). It only looks.
+--
 -- Weights belong to a directory, so they change every bench using it, and need the server
 -- privilege. The source belongs to one bench, and takes what building there takes. Everything
 -- a client sends is checked against what the server showed it: names and paths never come
@@ -29,9 +37,14 @@ local TABS = {
 	{source = M.STOCK, title = S("Default")},
 	{source = catalog.SCHEMEDIT, title = S("Schemedit")},
 	{source = catalog.FOLDER, title = S("Project folder")},
+	{economy = true, title = S("Economy")},
 }
+local ECONOMY_TAB = #TABS
+local ECONOMY_ROWS = 5
+local GOODS_SHOWN = 4
 
--- player name -> {bench, builder, source being viewed, options, selected name, notice}
+-- player name -> {bench, builder, source being viewed, options, selected name, notice,
+-- economy = whether the Economy tab is showing}
 local open = {}
 
 local function escape(text)
@@ -76,7 +89,8 @@ local function item_label(item)
 	return (description:match("^[^\n]*"))
 end
 
-local function tab_index(source)
+local function tab_index(source, economy)
+	if economy then return ECONOMY_TAB end
 	for i, tab in ipairs(TABS) do
 		if tab.source == source then return i end
 	end
@@ -154,6 +168,100 @@ local function detail_parts(view, row)
 	return table.concat(parts)
 end
 
+local function goods_text(rows)
+	local parts = {}
+	for i = 1, math.min(GOODS_SHOWN, #rows) do parts[i] = rows[i].count .. " " .. item_label(rows[i].item) end
+	if #rows > GOODS_SHOWN then parts[#parts + 1] = S("@1 more", tostring(#rows - GOODS_SHOWN)) end
+	return #parts > 0 and table.concat(parts, ", ") or S("nothing")
+end
+
+local function list_text(list, shown, describe)
+	local parts = {}
+	for i = 1, math.min(shown, #list) do parts[i] = describe(list[i]) end
+	if #list > shown then parts[#parts + 1] = S("@1 more", tostring(#list - shown)) end
+	return table.concat(parts, ", ")
+end
+
+-- The Economy tab's body, from builder.economy's report (nil with the economy off).
+local function economy_parts(report)
+	local parts = {}
+	local function label(x, y, text)
+		parts[#parts + 1] = ("label[%.2f,%.2f;%s]"):format(x, y, escape(text))
+	end
+	local function wrapped(x, y, w, h, text)
+		parts[#parts + 1] = ("textarea[%.2f,%.2f;%.2f,%.2f;;;%s]"):format(x, y, w, h, escape(text))
+	end
+	if not report then
+		label(0.4, 0.6, S("The village economy is off on this server."))
+		return table.concat(parts)
+	end
+	parts[#parts + 1] = ("button[%.2f,0.15;2.2,0.65;refresh;%s]"):format(WIDTH - 2.6, escape(S("Refresh")))
+	-- Heard, on the left.
+	local x, y = 0.4, 0.6
+	label(x, y, core.colorize("#ffff80", S("Heard by the Builder (market news)")))
+	y = y + 0.5
+	if not report.heard then
+		wrapped(x, y - 0.2, 6.8, 1.2, S("The Builder is not here, so there is no news to tell."))
+	else
+		local function rows(title, list, empty)
+			label(x, y, core.colorize(HEADER_COLOR, title))
+			y = y + 0.45
+			if #list == 0 then
+				label(x + 0.2, y, empty)
+				y = y + 0.5
+			end
+			for i = 1, math.min(ECONOMY_ROWS, #list) do
+				local row = list[i]
+				parts[#parts + 1] = ("item_image[%.2f,%.2f;0.5,0.5;%s]"):format(x + 0.2, y - 0.25, escape(row.item))
+				label(x + 0.85, y, S("@1 @2, @3 villagers", tostring(row.count), item_label(row.item), tostring(row.villagers)))
+				y = y + 0.52
+			end
+			y = y + 0.15
+		end
+		rows(S("Short of"), report.shortages, S("No shortage heard of."))
+		rows(S("Spare"), report.gluts, S("No glut heard of."))
+		label(x, y, core.colorize(HEADER_COLOR, S("Missing professions")))
+		y = y + 0.2
+		local text
+		if #report.gaps == 0 then
+			text = S("None: someone here makes everything the village is short of.")
+		else
+			text = list_text(report.gaps, 3, function(gap)
+				return S("@1 (@2)", pretty(gap.profession), list_text(gap.items, 2, item_label))
+			end)
+			text = text .. "\n" .. S("The next building favours the first.")
+		end
+		wrapped(x, y, 6.8, HEIGHT - y - 0.3, text)
+	end
+	-- Seen, on the right.
+	x, y = 7.8, 0.6
+	label(x, y, core.colorize("#ffff80", S("Seen around the bench")))
+	local professions = {}
+	for name, count in pairs(report.present) do professions[#professions + 1] = {name = name, count = count} end
+	table.sort(professions, function(a, b) return a.name < b.name end)
+	local lines = {
+		core.colorize(HEADER_COLOR, S("Professions")),
+		#professions > 0 and list_text(professions, #professions, function(entry)
+			return pretty(entry.name) .. " " .. entry.count
+		end) or S("No villagers loaded."),
+		"",
+		core.colorize(HEADER_COLOR, S("Idle hands")),
+		#report.idle > 0 and list_text(report.idle, 6, function(entry)
+			return S("@1 @2: @3", pretty(entry.profession), tostring(entry.id):sub(1, 6), entry.activity or S("nothing to do"))
+		end) or S("None."),
+		"",
+		core.colorize(HEADER_COLOR, S("Today")),
+		S("Made: @1", goods_text(report.today.made)),
+		S("Used: @1", goods_text(report.today.used)),
+		"",
+		core.colorize(HEADER_COLOR, S("Yesterday")),
+		S("Made: @1", goods_text(report.yesterday.made)),
+		S("Used: @1", goods_text(report.yesterday.used)),
+	}
+	wrapped(x, y + 0.3, WIDTH - x - 0.4, HEIGHT - y - 0.6, table.concat(lines, "\n"))
+	return table.concat(parts)
+end
+
 -- The form, from what show() gathered. Pure, for the tests.
 function M.formspec(view)
 	local options = view.options
@@ -162,7 +270,12 @@ function M.formspec(view)
 	}
 	local titles = {}
 	for i, tab in ipairs(TABS) do titles[i] = escape(tab.title) end
-	parts[#parts + 1] = ("tabheader[0,0;tabs;%s;%d;false;false]"):format(table.concat(titles, ","), tab_index(view.source))
+	parts[#parts + 1] = ("tabheader[0,0;tabs;%s;%d;false;false]"):format(table.concat(titles, ","),
+		tab_index(view.source, view.economy))
+	if view.economy then
+		parts[#parts + 1] = economy_parts(view.report)
+		return table.concat(parts)
+	end
 
 	local in_use = view.source == view.in_use
 	if in_use then
@@ -240,6 +353,10 @@ end
 
 local show
 show = function(name, context, notice)
+	if context.economy then
+		core.show_formspec(name, M.FORM, M.formspec({economy = true, report = context.builder.economy(context.bench)}))
+		return
+	end
 	local directory = context.options.directory
 	local selected = context.selected and row_of(context.options, context.selected)
 	local picture
@@ -321,8 +438,14 @@ local function handle_fields(player, fields)
 	elseif fields.set_weight or fields.key_enter_field == "weight" then
 		notice = handle_weight(name, context, fields)
 	elseif fields.refresh then
-		load_options(context)
+		-- The Economy tab reads afresh in show(); the source's files need not be.
+		if not context.economy then load_options(context) end
+	elseif tab and TABS[tab] and TABS[tab].economy then
+		context.economy = true
+	elseif tab and TABS[tab] and context.economy and TABS[tab].source == context.source then
+		context.economy = false
 	elseif tab and TABS[tab] and TABS[tab].source ~= context.source then
+		context.economy = false
 		context.source, context.selected = TABS[tab].source, nil
 		if context.source == catalog.FOLDER then core.mkdir(catalog.directory(catalog.FOLDER)) end
 		load_options(context)
@@ -337,7 +460,8 @@ local function handle_fields(player, fields)
 	show(name, context, notice)
 end
 
--- `builder`: options(bench, source), source_of(bench), set_source(bench, source), load_project(bench).
+-- `builder`: options(bench, source), source_of(bench), set_source(bench, source), load_project(bench),
+-- economy(bench).
 function M.install(builder)
 	core.override_item(BENCH, {
 		_doc_items_usagehelp = S("Rightclick to choose what a Builder builds from it. Sneak to place a block against it."),

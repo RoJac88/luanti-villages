@@ -98,6 +98,7 @@ local rows = {
 	folder = {},
 }
 local manifest_problem
+local economy_report
 local builder = {
 	options = function(_, source)
 		options_calls = options_calls + 1
@@ -108,6 +109,7 @@ local builder = {
 		source_in_use = source ~= "stock" and source or nil
 	end,
 	load_project = function() return project end,
+	economy = function() return economy_report end,
 }
 menu.install(builder)
 
@@ -144,7 +146,7 @@ assert(receive(player(), "other", {}) == false)
 -- Default tab: in use, a row per building, first selected, no weights to edit.
 do
 	local form = last()
-	assert(has(form, "tabheader[0,0;tabs;Default,Schemedit,Project folder;1;false;false]"))
+	assert(has(form, "tabheader[0,0;tabs;Default,Schemedit,Project folder,Economy;1;false;false]"))
 	assert(has(form, "This bench builds from these."))
 	assert(not has(form, "button[0.4,0.15;4,0.65;use;"))
 	assert(has(form, "Small house") and has(form, "75%") and has(form, "Well"))
@@ -158,7 +160,7 @@ do
 	send({tabs = "2"})
 	local form = last()
 	assert(source_in_use == nil)
-	assert(has(form, "tabs;Default,Schemedit,Project folder;2;"))
+	assert(has(form, "tabs;Default,Schemedit,Project folder,Economy;2;"))
 	assert(has(form, "button[0.4,0.15;4,0.65;use;Build from these]"))
 	assert(has(form, "Cottage") and has(form, "Files from <world>/schems"))
 	assert(has(form, "schemedit mod is not on"), "says so, and still lists")
@@ -422,6 +424,48 @@ do
 	assert(shown[#shown].name == "bob" and has(last(), ";2;false"))
 	send({refresh = "Refresh"})
 	assert(shown[#shown].name == "ann" and has(last(), ";1;false"))
+end
+
+-- The Economy tab: what the Builder heard, and what is seen around the bench.
+do
+	click()
+	local calls = options_calls
+	economy_report = {
+		heard = true,
+		present = {farmer = 2, builder = 1, weapon_smith = 1},
+		shortages = {{item = "mcl_core:cobble", count = 12, villagers = 2, worth = 3}},
+		gluts = {},
+		gaps = {{profession = "mason", score = 3, items = {"mcl_core:cobble"}}},
+		idle = {{id = "nit123456", profession = "nitwit", activity = "forager"}, {id = "une", profession = "unemployed"}},
+		today = {made = {{item = "mcl_core:cobble", count = 4}}, used = {}},
+		yesterday = {made = {}, used = {}},
+	}
+	send({tabs = "4"})
+	local form = last()
+	assert(has(form, "Project folder,Economy;4;"))
+	assert(has(form, "Heard by the Builder") and has(form, "Seen around the bench"))
+	assert(has(form, "item_image[") and has(form, "12 Cobblestone\\, 2 villagers"), form)
+	assert(has(form, "No glut heard of."))
+	assert(has(form, "Mason (Cobblestone)") and has(form, "The next building favours the first."))
+	assert(has(form, "Builder 1\\, Farmer 2\\, Weapon smith 1"))
+	assert(has(form, "Nitwit nit123: forager\\, Unemployed une: nothing to do"))
+	assert(has(form, "Made: 4 Cobblestone") and has(form, "Used: nothing"))
+	assert(not has(form, "Build from these") and options_calls == calls, "only looks")
+	-- Refresh reads it again.
+	economy_report.gluts = {{item = "mcl_core:cobble", count = 40, villagers = 1, worth = 5}}
+	send({refresh = "Refresh"})
+	assert(has(last(), "40 Cobblestone"))
+	-- Without the Builder near, nothing heard; with the economy off, it says so.
+	economy_report = {heard = false, present = {}, idle = {},
+		today = {made = {}, used = {}}, yesterday = {made = {}, used = {}}}
+	send({refresh = "Refresh"})
+	assert(has(last(), "no news to tell") and has(last(), "No villagers loaded.") and has(last(), "None."))
+	economy_report = nil
+	send({refresh = "Refresh"})
+	assert(has(last(), "economy is off"))
+	-- Back to the source it was on.
+	send({tabs = "1"})
+	assert(has(last(), ";1;false") and has(last(), "Small house"))
 end
 
 io.open = real_open

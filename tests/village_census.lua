@@ -69,6 +69,16 @@ do
 	assert(census.pick(record) == "lamp", "by name")
 end
 
+-- The worst gap's building counts double: a village of 8 houses and a farm, with
+-- one more building, is short 0.89 of a house (8/9 * 10 - 8) against 0.11 of a farm;
+-- doubled, the farm's 2 * 0.11 * 10 - 1 = 1.2 wins. Without the weight the house does.
+do
+	local record = village({small_house = 8, farm = 1})
+	assert(census.pick(record) == "small_house")
+	assert(census.pick(record, nil, nil, {farm = true}) == "farm")
+	assert(census.pick(record, nil, nil, {church = true}) == "small_house", "a building it lacks is no part of the mix")
+end
+
 -- A village with no record goes by the generator's ratios and counts what is built.
 do
 	local stock = {

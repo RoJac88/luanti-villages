@@ -170,6 +170,10 @@ local shovel = recipes.tool_smith[3]
 assert(production.supplied(tier_smith, shovel))
 assert(production.make(tier_smith, shovel) and production.make(tier_smith, shovel))
 assert(tier_smith._villages_tier_supply.days == 1, "one day, however many crafts")
+assert(production.tier_status(tier_smith) == "tier 1, 1/3 days of village supply", production.tier_status(tier_smith))
+-- Each craft is in its tally: the shovels made, the cobble and sticks used.
+assert(tier_smith._villages_tally.made["mcl_tools:shovel_stone"] == 2)
+assert(tier_smith._villages_tally.used["mcl_core:cobble"] == 2 and tier_smith._villages_tally.used["mcl_core:stick"] == 4)
 day = day + 1
 production.make(tier_smith, shovel)
 day = day + 1
@@ -184,10 +188,21 @@ assert(not production.supplied(stash_smith, shovel))
 local smelter = smith({_id = "smelter", _profession = "butcher", _villages_fuel = 3})
 possessions.add(smelter, "mcl_mobitems:porkchop", 1)
 assert(production.supplied(smelter, recipes.butcher[1]))
+-- A lump burned is in the tally as used.
+possessions.add(smelter, "mcl_mobitems:porkchop", 1)
+possessions.add(smelter, "mcl_core:charcoal_lump", 1)
+smelter._villages_fuel = nil
+assert(production.make(smelter, recipes.butcher[1]))
+assert(smelter._villages_tally.used["mcl_core:charcoal_lump"] == 1 and smelter._villages_tally.used["mcl_mobitems:porkchop"] == 1)
+possessions.add(smelter, "mcl_mobitems:porkchop", 1)
+smelter._villages_fuel = 3
 smelter._villages_fuel = nil
 assert(not production.supplied(smelter, recipes.butcher[1]))
 -- Tier 5 is the top.
 local master = smith({_max_trade_tier = 5})
+assert(production.tier_status(master) == "tier 5 (top)")
+-- The Builder is a mason to vanilla, but crafts nothing.
+assert(production.recipes(smith({_profession = "mason", _villages_builder = true})) == nil)
 assert(not production.count_supply(master) and master._villages_tier_supply == nil)
 
 -- With the economy off, nothing is installed and nothing is held.

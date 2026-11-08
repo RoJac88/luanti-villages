@@ -6,7 +6,14 @@
 --
 -- The pick is the largest deficit: with one more building, which type falls furthest
 -- short of its share. A Builder's own house is no part of the mix, either way.
-local M = {}
+--
+-- An economic weight (docs/villager-economy-design.md, Visibility; ticket 10): a stock
+-- building that holds the jobsite of the village's worst gap (economy_report.lua,
+-- `favoured`) counts double, its share doubled in the deficit, so a village short of what
+-- a missing profession makes gets that profession's building sooner without losing its
+-- mix. The bench menu's choice of a schematic source overrides this as it overrides the
+-- stock mix: pick_custom has no weight.
+local M = {FAVOURED_WEIGHT = 2}
 
 M.BUILDER_HOUSE = "builder_house"
 
@@ -59,11 +66,14 @@ end
 
 -- The name furthest short of its share with one more building, or nil. `block_totals`
 -- (optional, name -> blocks) breaks a tie toward the smaller building, then the name settles
--- it, so the pick does not depend on table order and a reload picks the same.
-local function largest_deficit(shares, counts, total, block_totals)
+-- it, so the pick does not depend on table order and a reload picks the same. `favoured`
+-- (optional, a set of names) counts double.
+local FAVOURED_WEIGHT = M.FAVOURED_WEIGHT
+local function largest_deficit(shares, counts, total, block_totals, favoured)
 	local best, best_deficit
 	local EPSILON = 1e-9
 	for name, share in pairs(shares) do
+		if favoured and favoured[name] then share = share * FAVOURED_WEIGHT end
 		local deficit = share * (total + 1) - (counts[name] or 0)
 		local better
 		if not best or deficit > best_deficit + EPSILON then
@@ -81,12 +91,12 @@ local function largest_deficit(shares, counts, total, block_totals)
 	return best
 end
 
--- The stock type to build next, or nil.
-function M.pick(record, schematic_table, block_totals)
+-- The stock type to build next, or nil. `favoured`: see largest_deficit.
+function M.pick(record, schematic_table, block_totals, favoured)
 	local shares = M.shares(record, schematic_table)
 	if not shares then return nil end
 	local counts, total = M.current(record)
-	return largest_deficit(shares, counts, total, block_totals)
+	return largest_deficit(shares, counts, total, block_totals, favoured)
 end
 
 -- What a village has built from a source of schematics, name -> count.

@@ -35,6 +35,9 @@
 -- file-local functions mirrored here (update_max_tradenum, set_textures). Vanilla's
 -- own route still runs; whichever comes first wins.
 --
+-- Each craft is noted in its daily tally (economy_tally.lua): the output made, the
+-- inputs and lumps used.
+--
 -- With the economy off nothing is made and every restock goes through.
 local core = minetest
 local clock = dofile(core.get_modpath("living_villages") .. "/economy_clock.lua")
@@ -43,6 +46,7 @@ local possessions = dofile(core.get_modpath("living_villages") .. "/possessions.
 local food = dofile(core.get_modpath("living_villages") .. "/food.lua")
 local ledger = dofile(core.get_modpath("living_villages") .. "/ledger.lua")
 local recipes = dofile(core.get_modpath("living_villages") .. "/recipes.lua")
+local tally = dofile(core.get_modpath("living_villages") .. "/economy_tally.lua")
 
 local DEFAULT_CRAFT_SECONDS = 120
 local JOBSITE_REACH = 3
@@ -69,8 +73,9 @@ function M.craft_seconds()
 	return math.max(value or DEFAULT_CRAFT_SECONDS, 1)
 end
 
+-- A keeper and a Builder (a mason to vanilla, builder.lua) have work of their own.
 function M.recipes(self)
-	if self._villages_keeper then return nil end
+	if self._villages_keeper or self._villages_builder then return nil end
 	return recipes[self._profession]
 end
 
@@ -117,10 +122,13 @@ function M.choose(self, held, view)
 	return best
 end
 
-local function burn(self, smelts)
+-- Burns lumps for `smelts`, noting each in `used`. Returns whether there was enough.
+local function burn(self, smelts, used)
 	while (self._villages_fuel or 0) < smelts do
-		local lump = possessions.take_held(self, CHARCOAL, 1) == 1 or possessions.take_held(self, COAL, 1) == 1
+		local lump = (possessions.take_held(self, CHARCOAL, 1) == 1 and CHARCOAL)
+			or (possessions.take_held(self, COAL, 1) == 1 and COAL)
 		if not lump then return false end
+		used[lump] = (used[lump] or 0) + 1
 		self._villages_fuel = (self._villages_fuel or 0) + SMELTS_PER_LUMP
 	end
 	self._villages_fuel = self._villages_fuel - smelts
@@ -189,9 +197,14 @@ end
 function M.make(self, recipe)
 	if not M.can_make(self, recipe, possessions.held(self)) then return false end
 	local supplied = M.supplied(self, recipe)
-	for _, input in ipairs(recipe.from) do possessions.take_held(self, input[1], input[2]) end
-	if recipe.fuel and not burn(self, recipe.fuel) then return false end
+	local used = {}
+	for _, input in ipairs(recipe.from) do
+		possessions.take_held(self, input[1], input[2])
+		used[input[1]] = (used[input[1]] or 0) + input[2]
+	end
+	if recipe.fuel and not burn(self, recipe.fuel, used) then return false end
 	possessions.add(self, recipe.makes, recipe.count)
+	tally.note(self, {[recipe.makes] = recipe.count}, used)
 	core.log("action", string.format("[living_villages] production: villager %s (%s) made %d %s",
 		short_id(self), tostring(self._profession), recipe.count, recipe.makes))
 	if supplied then M.count_supply(self) end
@@ -282,6 +295,15 @@ function M.install(def)
 		if result ~= false then M.step(self, core.get_gametime()) end
 		return result
 	end
+end
+
+-- Its tier and the village-supplied days toward the next, for the inspector.
+function M.tier_status(self)
+	local tier = self._max_trade_tier or 1
+	if tier >= MAX_TIER then return "tier " .. tier .. " (top)" end
+	local record = self._villages_tier_supply
+	local days = record and record.tier == tier and record.days or 0
+	return string.format("tier %d, %d/%d days of village supply", tier, days, M.tier_supply_days())
 end
 
 -- One line for the inspector.

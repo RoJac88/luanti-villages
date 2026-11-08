@@ -438,17 +438,31 @@ The days are kept in `_villages_tier_supply` ({tier, days, day}). Going up sets
 
 **Visibility.**
 
-- **Economy tab** on the Builder's bench (`builder_bench_menu.lua`): goods made and
-  used per day, shortages and gluts, idle hands and their activities, professions
-  present against the dependency graph. It reports the bench Builder's market news
-  and is labelled as what it has heard.
-- **Need bubble.** A small icon of a villager's most urgent need over its head while
-  a player looks at it within 8 nodes.
-- **Census.** `village_census.lua`'s choice of building gains an economic weight:
-  a building that houses the worst gap's jobsite counts double. The bench menu's
-  choice still overrides it.
-- **Inspector.** `diagnostic.lua` shows a villager's food, clock, pouch, stash,
-  ledger and news.
+- **Economy tab** on the Builder's bench (`builder_bench_menu.lua`, from
+  `economy_report.lua` through `builder.economy`), in two labelled halves. *Heard by
+  the Builder*: shortages and gluts, its market news (own and hearsay) summed by item
+  with how many villagers and items, and the missing professions: those that make
+  what the village is short of when none of that item's producers is present, worst
+  (most worth answered) first. *Seen around the bench*: the loaded adult villagers
+  within 128: professions present (the keeper and the Builder by role), nitwits and
+  the unemployed with today's activity, and goods made and used today and yesterday.
+  Made and used come from each villager's tally (`economy_tally.lua`,
+  `_villages_tally`): crafts with their inputs and lumps, gathering and charcoal,
+  meals. With no Builder loaded nothing is heard; with the economy off it says so.
+- **Need bubble** (`need_bubble.lua`). Once a second, a ray from each player's eye
+  along its look, 8 nodes; the first object, if an adult villager, shows that player
+  a particle of its top need by worth (the first of its ledger's needs, as the
+  inspector's Needs line orders them) over its head. A node or another object in the
+  way hides it.
+- **Census.** `village_census.lua`'s pick takes a `favoured` set whose shares count
+  double in the deficit: the stock buildings holding the worst gap's jobsite
+  (`economy_report.BUILDINGS`, read from VoxeLibre's schematics: farm, tavern and
+  medium house, small house, large house, blacksmith, library, butcher, church; none
+  holds a weapon smith's, tool smith's or mason's). The bench menu's choice of a
+  schematic source still overrides it. The Builder logs the gap with its choice.
+- **Inspector.** `diagnostic.lua` shows a villager's food, clock, belongings, stash,
+  needs, surplus, news, labour and crafting, and now its trade tier with the days of
+  village supply toward the next and what it made and used today.
 
 ## Profession dependencies (VoxeLibre 0.92.3)
 
@@ -519,6 +533,7 @@ New `_villages_*` entity fields, never to be renamed once released:
 | `_villages_craft` | Work seconds banked toward the next crafted item |
 | `_villages_fuel` | Furnace smelts left from the last coal or charcoal lump burned |
 | `_villages_tier_supply` | Days crafted from village supply at the current tier |
+| `_villages_tally` | What it made and used today, and yesterday |
 
 Existing fields reused: `_villages_food`, `_villages_fed_day`. Node metadata:
 `villages_owner` and `villages_owner_bed` on stash chests, and `villages_missing`
@@ -667,6 +682,12 @@ Landed as `demand.lua` (applied in `gossip.lua`'s priced window), the tier count
 ### 10. Visibility
 
 Economy tab, need bubble, inspector, census weight.
+
+Landed as `economy_tally.lua`, `economy_report.lua` (read by `builder.economy` for the
+tab and the census), `need_bubble.lua`, the tab in `builder_bench_menu.lua`, `pick`'s
+`favoured` in `village_census.lua`, and the inspector's `Trade tier` and `Today` lines.
+The Builder, a mason to vanilla, no longer crafts or wants as one. `docs/economy-scenarios.md`
+holds the manual checks.
 
 ### 11. Trade trips and the Builder
 
