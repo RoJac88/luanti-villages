@@ -21,7 +21,10 @@
 -- keepers never take from one.
 --
 -- It eats what it owns (ticket 4): at or below EAT_AT points, the best food in its
--- belongings, then in its stash if it stands within STASH_REACH of it.
+-- belongings, then in its stash if it stands within STASH_REACH of it. An adult never
+-- fed (`_villages_food` unset, never 0 once set) starts at EAT_AT points: fed, not full.
+-- Otherwise a new village starts out starving, crafting nothing and restocking nothing
+-- (production.lua), and births still wait on the farm.
 local core = minetest
 local clock = dofile(core.get_modpath("living_villages") .. "/economy_clock.lua")
 local stock = dofile(core.get_modpath("living_villages") .. "/farm_stock.lua")
@@ -47,24 +50,27 @@ local STASH_REACH = 4
 local DOUBLE_HALVES = {["mcl_chests:chest_left"] = true, ["mcl_chests:chest_right"] = true}
 
 -- What a profession starts with: a little of what it works with, from its trade table's
--- side of things. Professions not here start with emeralds only.
+-- side of things, enough for a crafting profession (recipes.lua) to make its first goods.
+-- Professions not here start with emeralds only.
 local KITS = {
 	farmer = {{"mcl_farming:bread", 3}, {"mcl_farming:wheat_seeds", 8}},
 	fisherman = {{"mcl_fishing:fish_raw", 4}},
 	shepherd = {{"mcl_wool:white", 4}},
-	fletcher = {{"mcl_core:stick", 16}, {"mcl_core:flint", 4}},
-	librarian = {{"mcl_core:paper", 8}},
+	fletcher = {{"mcl_core:stick", 16}, {"mcl_core:flint", 4}, {"mcl_mobitems:feather", 4}},
+	librarian = {{"mcl_core:paper", 8}, {"mcl_mobitems:leather", 2}},
 	cartographer = {{"mcl_core:paper", 8}},
-	armorer = {{"mcl_core:iron_ingot", 3}, {"mcl_core:coal_lump", 4}},
-	weapon_smith = {{"mcl_core:iron_ingot", 3}, {"mcl_core:coal_lump", 4}},
-	tool_smith = {{"mcl_core:iron_ingot", 2}, {"mcl_core:coal_lump", 4}, {"mcl_core:stick", 4}},
+	armorer = {{"mcl_core:iron_ingot", 4}, {"mcl_core:coal_lump", 4}},
+	weapon_smith = {{"mcl_core:iron_ingot", 3}, {"mcl_core:coal_lump", 4}, {"mcl_core:stick", 2}},
+	tool_smith = {{"mcl_core:iron_ingot", 2}, {"mcl_core:coal_lump", 4}, {"mcl_core:stick", 4}, {"mcl_core:cobble", 6}},
 	leatherworker = {{"mcl_mobitems:leather", 4}},
 	butcher = {{"mcl_mobitems:porkchop", 4}, {"mcl_core:coal_lump", 4}},
 	cleric = {{"mcl_potions:glass_bottle", 4}},
 	mason = {{"mcl_core:clay_lump", 8}, {"mcl_core:stone", 8}},
 }
 
-local M = {KITS = KITS, EMERALD = EMERALD, OWNER = OWNER, OWNER_BED = OWNER_BED, CLAIM_SECONDS = CLAIM_SECONDS}
+local M = {
+	KITS = KITS, EMERALD = EMERALD, OWNER = OWNER, OWNER_BED = OWNER_BED, CLAIM_SECONDS = CLAIM_SECONDS, EAT_AT = EAT_AT,
+}
 
 -- Belongings.
 
@@ -296,6 +302,7 @@ local next_check = setmetatable({}, {__mode = "k"})
 function M.step(self, now)
 	if self.child or not self._id or now < (next_check[self] or 0) then return end
 	next_check[self] = now + CLAIM_SECONDS
+	if self._villages_food == nil then self._villages_food = EAT_AT end
 	M.endow(self)
 	M.claim_stash(self)
 	M.eat(self)
@@ -328,6 +335,26 @@ function M.held(self)
 		end
 	end
 	return held
+end
+
+-- Takes up to count of the item from its belongings, then its stash wherever it stands
+-- (a craftsman brings what it needs from home: production.lua). Returns how many.
+function M.take_held(self, name, count)
+	local taken = M.take(self, name, count)
+	local stash = self._villages_stash
+	if taken >= count or not stash or not owned_by(stash, self) then return taken end
+	for _, half in ipairs(halves(stash)) do
+		local inv = core.get_meta(half):get_inventory()
+		taken = taken + inv:remove_item("main", name .. " " .. (count - taken)):get_count()
+		if taken >= count then break end
+	end
+	return taken
+end
+
+-- Whether two beds are in one house: within 5 across and 4 up or down, as near as beds
+-- tell (the farmer's household, the keeper's).
+function M.same_house(a, b)
+	return a ~= nil and b ~= nil and math.abs(a.x - b.x) <= 5 and math.abs(a.z - b.z) <= 5 and math.abs(a.y - b.y) <= 4
 end
 
 -- The ledger's view of this villager (ledger.lua): its targets, needs, surplus and values.

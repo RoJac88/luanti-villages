@@ -244,8 +244,8 @@ minetest.get_meta = function(pos)
 			return {
 				get_size = function() return 27 end,
 				remove_item = function(_, _, item)
-					local name = item:match("^%S+")
-					local n = (larder[name] or 0) > 0 and 1 or 0
+					local name, wanted = item:match("^(%S+)%s*(%d*)")
+					local n = math.min(larder[name] or 0, tonumber(wanted) or 1)
 					larder[name] = (larder[name] or 0) - n
 					return {get_count = function() return n end}
 				end,
@@ -261,7 +261,27 @@ assert(#possessions.eat(kim) == 0 and larder["mcl_farming:bread"] == 3, "too far
 kim_at = {x = 501, y = 0, z = 0}
 possessions.eat(kim)
 assert(kim._villages_food == 12 and larder["mcl_farming:bread"] == 1)
+-- take_held: belongings first, then the stash from anywhere (production.lua).
+kim_at = {x = 600, y = 0, z = 0}
+larder["mcl_core:cobble"] = 5
+possessions.add(kim, "mcl_core:cobble", 2)
+assert(possessions.take_held(kim, "mcl_core:cobble", 4) == 4)
+assert(possessions.count(kim, "mcl_core:cobble") == 0 and larder["mcl_core:cobble"] == 3)
+assert(possessions.take_held(kim, "mcl_core:cobble", 9) == 3, "all there is")
+assert(possessions.same_house({x = 0, y = 0, z = 0}, {x = 5, y = 4, z = -5}))
+assert(not possessions.same_house({x = 0, y = 0, z = 0}, {x = 6, y = 0, z = 0}) and not possessions.same_house(nil, kim_bed))
 minetest.get_meta = stash_meta
 assert(#possessions.eat({_id = "tot", child = true, _villages_belongings = {["mcl_farming:bread"] = 1}}) == 0)
+
+-- An adult never fed starts at 8 points; one fed down to 0 stays there; a child takes none.
+local newcomer = {_id = "newcomer"}
+possessions.step(newcomer, 10000)
+assert(newcomer._villages_food == 8, tostring(newcomer._villages_food))
+local spent = {_id = "spent", _villages_food = 0}
+possessions.step(spent, 10000)
+assert(spent._villages_food == 0)
+local tot = {_id = "tot2", child = true}
+possessions.step(tot, 10000)
+assert(tot._villages_food == nil)
 
 print("possessions.lua: ok")

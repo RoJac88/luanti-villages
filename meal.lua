@@ -20,6 +20,13 @@
 -- player_meals.lua) pays into the pantry first. Without one, the meal is a display, as
 -- it always was.
 --
+-- A villager guest pays too (ticket 8, once crafting gives every profession something
+-- to sell): VILLAGER_PRICE emeralds from its belongings (possessions.lua) into the
+-- pantry, unless it is the keeper or of the keeper's household (possessions.same_house),
+-- who eat free. At a pantry it is served only when it has room for a meal, at or below
+-- possessions.EAT_AT points, the same mark at which it eats what it carries, so one fed
+-- from home keeps its emeralds. One that cannot pay is not served.
+--
 -- Load this once, at top-level load time (init.lua): it registers the entity,
 -- which Luanti allows only then, and the plate holds are its own in-memory
 -- table.
@@ -27,6 +34,7 @@ local core = minetest
 local keeper = dofile(core.get_modpath("living_villages") .. "/keeper.lua")
 local food = dofile(core.get_modpath("living_villages") .. "/food.lua")
 local pantry = dofile(core.get_modpath("living_villages") .. "/tavern_pantry.lua")
+local possessions = dofile(core.get_modpath("living_villages") .. "/possessions.lua")
 local ENTITY = "living_villages:meal"
 local PLATE = "mcl_itemframes:plate"
 -- A guest waits this long after sitting down before it is served.
@@ -49,6 +57,8 @@ local FRAME_OFFSET = 0.42
 -- A seated guest's mouth, above its origin (seat.lua sets the origin in the
 -- chair; the model's head is about 1.3 above it seated).
 local MOUTH_HEIGHT = 1.3
+-- What a villager pays for dinner: a bundle of bread at the farmer's costs the same.
+local VILLAGER_PRICE = 1
 
 local plates = {}
 local served = {}
@@ -114,6 +124,26 @@ end
 
 local function keeper_on_duty(jukebox)
 	return (keeper_state(jukebox))
+end
+
+local function is_villager(self)
+	return not self._villages_on_bite and self._villages_price == nil
+end
+
+-- What the diner pays, and how: a player's terms come with its diner table
+-- (player_meals.lua); a villager's are worked out here.
+local function terms(self, jukebox)
+	if not is_villager(self) then return self._villages_price or 0, self._villages_can_pay, self._villages_pay end
+	local keeper = keeper_state(jukebox)
+	if keeper and (keeper == self or possessions.same_house(keeper._bed, self._bed)) then return 0 end
+	return VILLAGER_PRICE,
+		function() return possessions.emeralds(self) >= VILLAGER_PRICE end,
+		function() possessions.take(self, possessions.EMERALD, VILLAGER_PRICE) end
+end
+
+-- A villager at a pantry orders only when it has room for a meal.
+local function has_room(self)
+	return not is_villager(self) or food.points(self) <= possessions.EAT_AT
 end
 
 -- A display whose guest no longer holds its plate: the guest unloaded, or
@@ -207,8 +237,9 @@ function M.explain(self, jukebox)
 	local chests = pantry.chests(jukebox)
 	if chests then
 		if #pantry.available(chests, menu()) == 0 then return "the pantry is empty" end
-		local price = self._villages_price or 0
-		if price > 0 and not self._villages_can_pay() then return "the diner cannot pay " .. price .. " emerald(s)" end
+		if not has_room(self) then return "the diner is not hungry" end
+		local price, can_pay = terms(self, jukebox)
+		if price > 0 and not can_pay() then return "the diner cannot pay " .. price .. " emerald(s)" end
 		if price > 0 and not pantry.has_room(chests, pantry.EMERALD, price) then return "the pantry has no room for the payment" end
 	end
 	return "ready to serve"
@@ -216,14 +247,14 @@ end
 
 -- Takes the meal out of the pantry and the payment into it. False if either fails,
 -- having changed nothing.
-local function settle(self, chests, item)
-	local price = self._villages_price or 0
-	if price > 0 and (not self._villages_can_pay() or not pantry.has_room(chests, pantry.EMERALD, price)) then
+local function settle(self, jukebox, chests, item)
+	local price, can_pay, pay = terms(self, jukebox)
+	if price > 0 and (not can_pay() or not pantry.has_room(chests, pantry.EMERALD, price)) then
 		return false
 	end
 	if not pantry.take(chests, item) then return false end
 	if price > 0 then
-		self._villages_pay()
+		pay()
 		pantry.put(chests, pantry.EMERALD, price)
 	end
 	return true
@@ -236,6 +267,7 @@ local function serve(self, jukebox)
 	if last and now() - last < SERVE_SECONDS then return end
 	if not keeper_on_duty(jukebox) then return end
 	local chests = pantry.chests(jukebox)
+	if chests and not has_room(self) then return end
 	local items = chests and pantry.available(chests, menu()) or menu()
 	if #items == 0 then return end
 	local item = items[math.random(#items)]
@@ -246,7 +278,7 @@ local function serve(self, jukebox)
 		plates[key(pos)] = nil
 		return
 	end
-	if chests and not settle(self, chests, item) then
+	if chests and not settle(self, jukebox, chests, item) then
 		object:remove()
 		plates[key(pos)] = nil
 		return
