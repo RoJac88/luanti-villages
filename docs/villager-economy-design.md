@@ -98,6 +98,12 @@ gap, which the player can override as today.
 5. **Removable.** State is in `_villages_*` entity fields and node metadata; goods
    are real items in real chests; a pouch drops on death (as the farmer's does).
    Removing the mod leaves vanilla villagers and chests full of ordinary items.
+6. **Every profession has village demand.** Each profession sells something other
+   villagers want, even when players are its bigger market; goods only a player uses
+   are fine, a profession only players buy from is not (see
+   [Village demand by profession](#village-demand-by-profession)). A villager's want
+   for another's goods is a bonus over its plain rate, never a penalty below it, so a
+   village that lacks the seller works as it does without the economy.
 
 ## The economic clock
 
@@ -490,6 +496,96 @@ village grows.
   chest's, so a run shows where money sits day by day. The inspector gets a `Rent`
   line: landlord, owed, last paid.
 
+## Village demand by profession
+
+Food is the one constant demand: everyone eats every day. Without more, money ends with
+whoever sells food and every other profession lives on its starting emeralds (Principle
+6). Where each profession's village demand comes from:
+
+| Profession | Sells to villagers | Buyer and why | Ticket |
+|---|---|---|---|
+| Farmer, fisherman | Food | The keeper, for dinners | 4, 11b |
+| Mason | Bricks, smooth stone | The Builder, as materials | 11 |
+| Shepherd | Wool | The Builder (beds); banners | 11, 12 |
+| Tool smith | Stone hoe, axe, pickaxe | Farmers, woodcutters, quarriers: a tool wears out | 11d |
+| Librarian | Books; glass | Everyone: reading speeds work for a while; the Builder | 11e, 11 |
+| Leatherworker | Leather, from a cow herd | The librarian, for books | 11e |
+| Butcher | Cooked meat | The keeper: a second dish | 11e |
+| Fletcher | Bows, arrows | Hunters: arrows are spent, bows wear | 11e |
+| Cleric | Its blessing | Donations at the holiday service, which it passes on as alms | 11c |
+| Cartographer | Banners | Villagers decorating for the holiday market | 12 |
+| Weapon smith, armorer | Iron axe; armor | Open: no village source of iron yet | — |
+
+## Donations and alms
+
+Ticket 11c. A safety net for villagers who run out of money, and the cleric's income.
+
+- **Donating.** At the end of the holiday service (`church.lua`), each attendee with
+  more than `SAVINGS` (8) emeralds gives the cleric at the pulpit a tenth of the excess,
+  at least 1. The rich give most, so money comes from where it piles up.
+- **Good gossip.** `gossip.lua` keys its memory by a subject string, so a villager's id
+  serves as one: each attendee that sees a donation records `minor_positive` about the
+  donor (`major_positive` for 5 emeralds or more), which decays and spreads in
+  conversation like gossip about players. Villager subjects get their own share of the
+  entries passed in a conversation, so they do not crowd out gossip about players.
+- **What standing buys.** In `exchange.lua`, a trader that thinks well of the other
+  moves the price toward it, by up to a tenth: generous villagers trade a little
+  cheaper, and the donation pays back over time.
+- **Alms.** The cleric keeps half of what it is given as its own. In the social stage
+  after the service, which keeps villagers about the pulpit, it tops up every villager
+  there that cannot pay for a dinner to two dinners' worth, from the rest. What is left
+  waits for the next holiday.
+
+Money goes food producers → donations → cleric → alms → poor villagers → tavern → food
+producers. Donations, alms and standing are logged; the inspector gets a `Standing` line.
+
+## Goods that wear out
+
+Ticket 11d. `wants.lua` is data, as `recipes.lua` is: goods that do a villager good for
+a while and then are used up. Each entry names the item (or a choice of items), who
+wants it (professions or labour activities), how long it lasts (uses or days of
+economic clock) and its effect: a rate multiplier on that villager's work. The ledger
+reads it: a villager without the good, or with one nearly used up, needs it, valued at
+the extra income it brings over its life, so its market news posts the need and trades
+and trade trips buy it. Its work loops read the multiplier. Every effect is a bonus over
+today's rates (Principle 6).
+
+First entries, whose supply already exists (cobble from quarriers, sticks from
+woodcutters, the tool smith's recipes):
+
+| Good | Wanted by | Lasts | Effect |
+|---|---|---|---|
+| Stone hoe | Farmers | 64 harvests | Harvests 1.5 times as fast |
+| Stone axe | Woodcutters | 32 fellings | Fells 1.5 times as fast |
+| Stone pickaxe | Quarriers | 64 cobble | Mines 1.5 times as fast |
+
+A good in use is held in `_villages_wants` (item, uses or clock left); a worn-out tool
+is gone. The numbers are guesses for probe runs.
+
+## Leather and hunting
+
+Ticket 11e. No villager makes leather: the only leather is the librarian's and the
+leatherworker's starting kits and what players sell, so books stop after about two.
+Cows drop 1 to 3 beef and 0 to 2 leather (`mobs_mc/cow+mooshroom.lua`), and chickens
+feathers.
+
+- **Herding.** The leatherworker keeps a herd of cows by its cauldron, as `flock.lua`'s
+  shepherds keep sheep (ordinary `mobs_mc:cow`, marked with the villager's id, up to a
+  herd size). Cows breed on wheat (their `follow`), which it buys from farmers; past
+  the herd size it slaughters one, keeping the leather and selling the beef to the
+  butcher.
+- **Hunting.** A labour activity (`labour.lua`) for nitwits and the unemployed: hunt
+  wild cows, pigs and chickens within reach of its bed, spending an arrow a kill and
+  wearing its bow (a `wants.lua` entry), for leather, raw meat and feathers. Feathers
+  go back to the fletcher for arrows.
+- **Books.** Reading joins `wants.lua`: every adult wants a book every few days, and
+  one read speeds its work by a fifth for that time, then is used up.
+- **Cooked meat.** The butcher cooks beef too, and the keeper buys cooked meat as a
+  second dish, at one dinner a piece.
+
+How mobs_mc's mobs can be killed and breed under a villager's hand needs reading before
+it is designed further.
+
 ## What the player sees
 
 **Prices.** Java's demand term, which `gossip.lua` left out "since neither exists
@@ -686,6 +782,9 @@ branch, and each leaves the game playable with `living_villages_economy` on or o
 | 10 | Economy tab, need bubble, inspector fields, census weight | 5 |
 | 11 | Quarrier, porter, trade trips; the Builder buys from villagers | 6, 7 |
 | 11b | Rent to the Builder's bench; dinner and rent logging; emeralds in the probe census | 1, 11 |
+| 11c | Donations at the holiday service, alms, gossip about villagers | 6, 11b |
+| 11d | `wants.lua`: goods that wear out; stone tools | 3, 8 |
+| 11e | Leather and hunting: cow herds, hunters, books, cooked meat | 7, 11d |
 | 12 | Peddler; holiday market sells real surplus | 6, 11 |
 
 ### 1. Clock, hunger and the tavern
@@ -809,9 +908,31 @@ with ticket 11's staging (a small house and a cobble generator), shows rent reac
 bench from farmers and fishermen and the Builder finishing the house without a player,
 and the census shows where the village's emeralds sit on each day.
 
+### 11c. Donations and alms
+
+Donations to the cleric at the end of the holiday service, from attendees with savings;
+good gossip about the donor, using villager ids as gossip subjects, with their own share
+of what passes in a conversation; standing moving `exchange.lua`'s price by up to a
+tenth; alms to attendees who cannot pay for a dinner. Done when a probe run over a
+holiday shows a farmer donating, the cleric keeping half, a broke villager getting alms
+and then buying a dinner, and the donor's standing spreading in conversation.
+
+### 11d. Goods that wear out
+
+`wants.lua` and its reading in the ledger and the work loops; stone hoe, axe and
+pickaxe. Done when a probe run shows a farmer, woodcutter or quarrier buying a stone
+tool from the tool smith, working faster with it, and buying another once it wears out.
+
+### 11e. Leather and hunting
+
+The leatherworker's cow herd, the hunter activity, books in `wants.lua`, cooked meat on
+the tavern menu. Done when a probe run shows leather reaching the librarian from a herd
+or a hunt, a book made from it bought and read, and arrows bought from the fletcher.
+
 ### 12. Peddlers and the market
 
-Peddler activity; `market.lua` stalls stocked from real surplus; browsers buy.
+Peddler activity; `market.lua` stalls stocked from real surplus; browsers buy. The
+cartographer's banners (wool and a stick) sell to villagers decorating for the market.
 
 ## Open questions
 
@@ -820,6 +941,11 @@ Peddler activity; `market.lua` stalls stocked from real surplus; browsers buy.
 - Whether the Builder becomes the next place money piles up, once the census has
   nothing left to build. If so, the Builder could spend its surplus on upkeep, or rent
   could fall with its savings.
+- Iron: no villager makes it, so the weapon smith and the armorer have no village
+  demand yet (Principle 6). A miner activity, or iron golems' drops, could supply it;
+  armor would also need a reason a villager wears it.
+- Once the basic money loops work: whether the keeper should keep a margin, and what it
+  would spend it on.
 - Whether a peddler walks to another village is the start of the next phase, and
   needs its own design (routes between villages, news carried across them).
 - Whether stashes should be protected from players beyond the gossip cost, for
