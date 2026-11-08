@@ -35,6 +35,7 @@ local census = dofile(core.get_modpath("living_villages") .. "/village_census.lu
 local economy_clock = dofile(core.get_modpath("living_villages") .. "/economy_clock.lua")
 local economy_report = dofile(core.get_modpath("living_villages") .. "/economy_report.lua")
 local market = dofile(core.get_modpath("living_villages") .. "/builder_market.lua")
+local rent = dofile(core.get_modpath("living_villages") .. "/rent.lua")
 local materials = dofile(core.get_modpath("living_villages") .. "/builder_materials.lua")
 local site_finder = dofile(core.get_modpath("living_villages") .. "/builder_site.lua")
 local stock = dofile(core.get_modpath("living_villages") .. "/farm_stock.lua")
@@ -989,8 +990,16 @@ local function finish_building(self, session, bench, project)
 			if record.reserved then record.reserved[key] = nil end
 		end)
 	end
-	core.log("action", string.format("[living_villages] builder %s finished a %s at %s",
-		tostring(self._id), project.building, core.pos_to_string(project.pos)))
+	-- Whoever sleeps in it owes the bench rent (rent.lua).
+	local measured, beds = measure(project), 0
+	if measured and project.pos then
+		local size = template.rotated_size(measured.size, project.rotat)
+		local p = project.pos
+		beds = rent.mark_beds(bench, {x = p.x, y = p.y - 1, z = p.z},
+			{x = p.x + size.x - 1, y = p.y + size.y, z = p.z + size.z - 1})
+	end
+	core.log("action", string.format("[living_villages] builder %s finished a %s at %s (%d bed nodes owe rent)",
+		tostring(self._id), project.building, core.pos_to_string(project.pos), beds))
 	session.queue = nil
 	session.live = away.new_tally()
 	set_state(bench, project, "returning")

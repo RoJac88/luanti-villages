@@ -92,6 +92,9 @@ ticks = 6800
 check("putter", run(villager(60)), "go_home")
 -- The morning at the bell (#329) once it has found one.
 check("putter, morning bell", run(villager(60, {_villages_bell_hangout = {}})), "none")
+-- A trade trip or a rent errand runs in the putter stage too.
+check("putter, trade trip", run(villager(60, {_villages_trade_trip = {}})), "none")
+check("putter, rent errand", run(villager(60, {_villages_rent_errand = {}})), "none")
 ticks = 9600
 
 -- A keeper's free hours: vanilla's walk home, unless it is fetching for its pantry.

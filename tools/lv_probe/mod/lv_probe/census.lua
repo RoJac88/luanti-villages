@@ -22,6 +22,13 @@
 -- lv_probe_nitwits = N (with lv_probe_news; economy ticket 7) makes N unemployed adults
 -- nitwits at the first step. A new village's unemployed soon all find jobsites, and
 -- nitwits never do, so labour.lua has someone to drive.
+--
+-- With lv_probe_news (economy ticket 11b), at the first step of each game day the census
+-- logs where the village's emeralds sit (`[lv_probe] emeralds day N: ...`) and keeps it in
+-- the record's `emeralds` list: each adult's own (profession and count), what villagers
+-- carry in their work pouches (a keeper's purse on its way to buy food), and the chests'
+-- by kind: stashes (claimed by a villager), the pantry (within 6 of a jukebox), the
+-- Builder's (within 32 of a bench), fishermen's barrels and any other.
 local core = minetest
 
 local census = {}
@@ -60,6 +67,49 @@ local function reach_summary(reach)
 	table.sort(values)
 	if #values == 0 then return 0, 0 end
 	return values[#values], values[math.floor((#values + 1) / 2)]
+end
+
+local EMERALD = "mcl_core:emerald"
+local CHESTS = {"mcl_chests:chest", "mcl_chests:chest_small", "mcl_chests:chest_left", "mcl_chests:chest_right"}
+local BARRELS = {"mcl_barrels:barrel_closed", "mcl_barrels:barrel_open"}
+
+local function emeralds_in(pos)
+	local total = 0
+	for _, stack in ipairs(core.get_meta(pos):get_inventory():get_list("main") or {}) do
+		if stack:get_name() == EMERALD then total = total + stack:get_count() end
+	end
+	return total
+end
+
+-- Where the village's emeralds are: adults' belongings, and chests by kind.
+local function emerald_snapshot(entities, minp, maxp)
+	local villagers, held, pouches = {}, 0, 0
+	for _, e in ipairs(entities) do
+		local n = e._villages_belongings and e._villages_belongings[EMERALD] or 0
+		villagers[#villagers + 1] = {id = e._id:sub(1, 6), profession = e._profession, emeralds = n}
+		held = held + n
+		pouches = pouches + (e._villages_farm_pouch and e._villages_farm_pouch[EMERALD] or 0)
+	end
+	table.sort(villagers, function(a, b) return a.emeralds > b.emeralds or (a.emeralds == b.emeralds and a.id < b.id) end)
+	local jukeboxes = core.find_nodes_in_area(minp, maxp, {"mcl_jukebox:jukebox"})
+	local benches = core.find_nodes_in_area(minp, maxp, {"living_villages:builder_block"})
+	local function near(p, list, r)
+		for _, q in ipairs(list) do
+			if math.abs(p.x - q.x) <= r and math.abs(p.z - q.z) <= r and math.abs(p.y - q.y) <= 4 then return true end
+		end
+		return false
+	end
+	local chests = {stash = 0, pantry = 0, bench = 0, barrel = 0, other = 0}
+	for _, p in ipairs(core.find_nodes_in_area(minp, maxp, BARRELS)) do chests.barrel = chests.barrel + emeralds_in(p) end
+	for _, p in ipairs(core.find_nodes_in_area(minp, maxp, CHESTS)) do
+		local n = emeralds_in(p)
+		if n > 0 then
+			local kind = core.get_meta(p):get_string("villages_owner") ~= "" and "stash"
+				or near(p, jukeboxes, 6) and "pantry" or near(p, benches, 32) and "bench" or "other"
+			chests[kind] = chests[kind] + n
+		end
+	end
+	return {day = core.get_day_count(), held = held, pouches = pouches, villagers = villagers, chests = chests}
 end
 
 local function round1(v) return math.floor(v * 10 + 0.5) / 10 end
@@ -106,6 +156,7 @@ function census.run(area, emit, done)
 	local waited = 0
 	local timeline, last = {}, {}
 	local news_timeline = {}
+	local money, money_day = {}, nil
 	local skipping, skipped = nil, 0
 	local schedule = core.get_modpath("living_villages")
 		and dofile(core.get_modpath("living_villages") .. "/common.lua") or nil
@@ -172,6 +223,19 @@ function census.run(area, emit, done)
 			news_timeline[#news_timeline + 1] = {t = waited, day = core.get_day_count(),
 				tod = math.floor(core.get_timeofday() * 100 + 0.5) / 100, best = best, median = median}
 		end
+		if news_mode() and not skipping and core.get_day_count() ~= money_day then
+			money_day = core.get_day_count()
+			local snap = emerald_snapshot(adults(), minp, maxp)
+			money[#money + 1] = snap
+			local top = {}
+			for i = 1, math.min(#snap.villagers, 5) do
+				local v = snap.villagers[i]
+				top[#top + 1] = string.format("%s %s=%d", tostring(v.profession), v.id, v.emeralds)
+			end
+			core.log("action", string.format("[lv_probe] emeralds day %d: villagers %d (%s), pouches %d, stashes %d, pantry %d, bench %d, barrels %d, other %d",
+				snap.day, snap.held, table.concat(top, ", "), snap.pouches, snap.chests.stash, snap.chests.pantry,
+				snap.chests.bench, snap.chests.barrel, snap.chests.other))
+		end
 		-- What each villager held at each step, so a change shows when it happened.
 		for _, object in ipairs(core.get_objects_inside_radius(center, radius)) do
 			local e = object:get_luaentity()
@@ -228,9 +292,10 @@ function census.run(area, emit, done)
 			local final = {}
 			for id, n in pairs(reach) do final[id:sub(1, 6)] = n end
 			news = {adults = #everyone, timeline = news_timeline, reach = final}
+			money[#money + 1] = emerald_snapshot(everyone, minp, maxp)
 		end
 		emit({type = "census", seconds = seconds, villagers = villagers, stations = stations, timeline = timeline,
-			wells = finish_watch and finish_watch() or nil, news = news})
+			wells = finish_watch and finish_watch() or nil, news = news, emeralds = news and money or nil})
 		done()
 	end
 	core.after(10, tick)

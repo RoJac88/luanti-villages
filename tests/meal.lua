@@ -55,6 +55,7 @@ minetest = {
 	serialize = function(value) return value end,
 	deserialize = function(value) return value end,
 	log = function() end,
+	pos_to_string = function(p) return "(" .. p.x .. "," .. p.y .. "," .. p.z .. ")" end,
 	get_node_or_nil = function(pos)
 		local node = nodes[key(pos)]
 		if type(node) == "string" then return {name = node, param2 = 1} end
@@ -646,6 +647,7 @@ assert(vera._villages_meal and vera._villages_meal.item == "mcl_farming:bread", 
 assert(pantry_items["mcl_farming:bread"] == nil, "taken out of the pantry")
 assert(vera._villages_food == 4, "fed when served")
 assert(vera._villages_belongings["mcl_core:emerald"] == 1 and pantry_items["mcl_core:emerald"] == 1, "paid an emerald")
+assert(logs[#logs]:find("villager vera paid 1 emerald%(s%) for dinner at the tavern at"), "the payment is logged")
 now = now + 20
 meal.tick(vera, 0.1, jukebox)
 assert(not vera._villages_meal)

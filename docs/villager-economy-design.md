@@ -468,8 +468,10 @@ spend at the tavern. The Builder grows richer as the village grows.
   dinner, so it eats first and pays when it next has money.
 - **Paying.** At the end of a conversation with its landlord's Builder, before trades, a
   tenant hands over what it owes, from belongings to belongings, as `exchange.lua`
-  settles a trade. A tenant owing the full cap pays by errand instead: a `far_trips.lua`
-  errand in its putter stage to the bench's nearest chest, where it leaves the emeralds.
+  settles a trade. Otherwise, owing anything it can pay, it goes by errand (kept from
+  `far_trips.lua`'s walk home) in its putter stage to the bench's nearest chest, where
+  it leaves the emeralds. The first design waited for the cap before the errand; a
+  probe run showed conversations with the Builder too rare and too often cut short.
 - **Where it goes.** The Builder pays for materials and dinner as before, from its
   belongings and its purse top-up. While the census has a building to put up it keeps
   buying; with none, rent piles up on the bench, and the census below shows it.
@@ -614,7 +616,8 @@ New `_villages_*` entity fields, never to be renamed once released:
 | `_villages_tally` | What it made and used today, and yesterday |
 | `_villages_trade_trip` | A trade trip under way: item, seller, legs, a porter's client and purse |
 | `_villages_builder_wants`, `_villages_builder_drop` | A short Builder's missing priced materials, and its delivery chest |
-| `_villages_rent` | Rent owed, the clock reading it was last charged at, and the last payment |
+| `_villages_rent` | Rent owed, the clock reading it was last charged at, the bench, and the last payment |
+| `_villages_rent_errand` | A rent errand under way: the bench chest it walks to |
 
 Existing fields reused: `_villages_food`, `_villages_fed_day`. Node metadata:
 `villages_owner` and `villages_owner_bed` on stash chests, and `villages_missing`
@@ -788,7 +791,7 @@ Landed as the quarrier and porter in `labour.lua`, `trade_trips.lua` (installed 
 
 Rent owed to the Builder's bench by the tenants of its houses and, in a generated
 village, by farmers and fishermen; paid at the end of a conversation with the Builder,
-or by errand to the bench chest once the arrears reach the cap. Dinner and rent
+or by errand to the bench chest. Dinner and rent
 payments logged; the probe census records the emeralds of each villager, the pantry and
 each bench chest; the inspector's `Rent` line. Done when a probe run of six game days,
 with ticket 11's staging (a small house and a cobble generator), shows rent reaching the

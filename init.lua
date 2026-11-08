@@ -626,7 +626,12 @@ core.register_on_mods_loaded(function()
 	-- Trade trips (trade_trips.lua): its own walks, and porters hired when a conversation ends.
 	local trade_trips = dofile(core.get_modpath("living_villages") .. "/trade_trips.lua")
 	trade_trips.install(def)
+	-- Rent to the Builder's bench (rent.lua): billing and its errand, and paid when a
+	-- conversation ends, before the trades.
+	local rent = dofile(core.get_modpath("living_villages") .. "/rent.lua")
+	rent.install(def)
 	local trade = {exchange = function(members)
+		rent.settle(members)
 		local made = market_exchange.exchange(members)
 		trade_trips.hire(members)
 		return made
