@@ -227,16 +227,20 @@ local function budget_and_value(self, trip)
 	return possessions.emeralds(self), possessions.assess(self).value(trip.item) or 0
 end
 
--- Buys from the stash. Returns how many it bought.
+-- Buys from the stash. Returns how many it bought, and with none why not.
 function M.buy_from_stash(self, trip, chest)
 	local budget, value = budget_and_value(self, trip)
 	local want = trip.want - (trip.bought or 0)
-	local count, pay = M.terms(want, chest_count(chest, trip.item), value, trip.price, budget)
-	if not count or possessions.emeralds(self) < pay then return 0 end
+	local held = chest_count(chest, trip.item)
+	local count, pay = M.terms(want, held, value, trip.price, budget)
+	if not count or possessions.emeralds(self) < pay then
+		return 0, string.format("stash holds %d, %d wanted at %.2f each to its %.2f, budget %d", held, want,
+			value, trip.price, budget)
+	end
 	local taken = take(chest, trip.item, count)
 	if taken < count then
 		if taken > 0 then put(chest, trip.item, taken) end
-		return 0
+		return 0, "the stash came up short"
 	end
 	possessions.take(self, EMERALD, pay)
 	local paid = put(chest, EMERALD, pay)
@@ -271,7 +275,13 @@ function M.buy_in_person(self, trip, seller)
 		end,
 	}
 	local offer = exchange.offer(seller, seller_view, self, view, item)
-	if not offer then return 0, "no offer" end
+	if not offer then
+		-- Spells out what exchange.offer weighed, to tell a seller with none spare from
+		-- one that has them but won't sell at our value.
+		return 0, string.format("no offer: seller has %d spare of %d carried, values %.2f each to our %.2f, we have %d emerald(s)",
+			seller_view.surplus[item] or 0, possessions.count(seller, item), seller_value, view.value(item) or 0,
+			possessions.emeralds(self))
+	end
 	if (offer.pay and offer.pay > budget) or (trip.client and not offer.pay) then
 		return 0, "offer over budget"
 	end
@@ -386,8 +396,9 @@ function M.advance(self, trip, now)
 		return walk(self, trip, vector.round(at), now)
 	elseif trip.leg == "stash" then
 		if vector.distance(pos, trip.stash) > REACH then return walk(self, trip, trip.stash, now) end
-		if M.buy_from_stash(self, trip, trip.stash) > 0 then return done_buying(self, trip, now) end
-		return fail(self, trip, "nothing to buy in the stash (" .. tostring(trip.why) .. ")", now)
+		local bought, why = M.buy_from_stash(self, trip, trip.stash)
+		if bought > 0 then return done_buying(self, trip, now) end
+		return fail(self, trip, "nothing to buy in the stash (" .. tostring(why) .. "; before it, " .. tostring(trip.why) .. ")", now)
 	elseif trip.leg == "deliver" then
 		if vector.distance(pos, trip.client.deliver) > REACH then return walk(self, trip, trip.client.deliver, now) end
 		M.deliver(self, trip)
