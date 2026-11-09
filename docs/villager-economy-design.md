@@ -511,10 +511,10 @@ whoever sells food and every other profession lives on its starting emeralds (Pr
 | Librarian | Books; glass | Everyone: reading speeds work for a while; the Builder | 11e, 11 |
 | Leatherworker | Leather, from a cow herd | The librarian, for books | 11e |
 | Butcher | Cooked meat | The keeper: a second dish | 11e |
-| Fletcher | Bows, arrows | Hunters: arrows are spent, bows wear | 11e |
+| Fletcher | Bows, arrows | Warriors: arrows are spent, bows wear | To do (warriors) |
 | Cleric | Its blessing | Donations at the holiday service, which it passes on as alms | 11c |
 | Cartographer | Banners | Villagers decorating for the holiday market | 12 |
-| Weapon smith, armorer | Iron axe; armor | Open: no village source of iron yet | — |
+| Weapon smith, armorer | Swords, axes; armor, shields | Warriors; no village source of iron yet | To do (warriors) |
 
 ## Donations and alms
 
@@ -562,29 +562,47 @@ woodcutters, the tool smith's recipes):
 A good in use is held in `_villages_wants` (item, uses or clock left); a worn-out tool
 is gone. The numbers are guesses for probe runs.
 
-## Leather and hunting
+## Leather
 
 Ticket 11e. No villager makes leather: the only leather is the librarian's and the
 leatherworker's starting kits and what players sell, so books stop after about two.
-Cows drop 1 to 3 beef and 0 to 2 leather (`mobs_mc/cow+mooshroom.lua`), and chickens
-feathers.
+Cows drop 1 to 3 beef and 0 to 2 leather (`mobs_mc/cow+mooshroom.lua`).
 
 - **Herding.** The leatherworker keeps a herd of cows by its cauldron, as `flock.lua`'s
   shepherds keep sheep (ordinary `mobs_mc:cow`, marked with the villager's id, up to a
   herd size). Cows breed on wheat (their `follow`), which it buys from farmers; past
   the herd size it slaughters one, keeping the leather and selling the beef to the
   butcher.
-- **Hunting.** A labour activity (`labour.lua`) for nitwits and the unemployed: hunt
-  wild cows, pigs and chickens within reach of its bed, spending an arrow a kill and
-  wearing its bow (a `wants.lua` entry), for leather, raw meat and feathers. Feathers
-  go back to the fletcher for arrows.
 - **Books.** Reading joins `wants.lua`: every adult wants a book every few days, and
   one read speeds its work by a fifth for that time, then is used up.
 - **Cooked meat.** The butcher cooks beef too, and the keeper buys cooked meat as a
   second dish, at one dinner a piece.
 
-How mobs_mc's mobs can be killed and breed under a villager's hand needs reading before
-it is designed further.
+How mobs_mc's cows breed and can be slaughtered under a villager's hand needs reading
+before it is designed further.
+
+## Warriors (to do)
+
+Not scheduled: combat would be the hardest behaviour in the mod, so it waits. Noted here
+because three professions' village demand depends on it (Principle 6).
+
+- **Roles.** An archer (ranged) and a guard (melee), roles over a post block as the
+  Builder's is over its bench, taken by unemployed adults, a few per village.
+- **Defense first.** A hostile mob near the village, or a player its own gossip holds at
+  or below `REPUTATION_HOSTILE` (as iron golems already treat players, `gossip.lua`),
+  is a threat, and answering it overrides every schedule stage. Never villagers or
+  golems; an archer holds its shot while a villager is in the way.
+- **Archers** stand where they can hit: in bow range, in line of sight, on high ground
+  if there is any, and shoot real arrows (`mcl_bows.shoot_arrow` takes a shooter
+  object). **Guards** close in and strike with the weapon they carry; armor lessens what
+  they take.
+- **Hunting** fills their time when nothing threatens: wild cows, pigs, chickens and
+  rabbits, never a leatherworker's herd, for leather, meat and feathers they sell.
+- **Demand.** Arrows (spent) and bows from the fletcher, swords from the tool smith and
+  the weapon smith, armor from the leatherworker and the armorer. The iron goods still
+  need a village source of iron.
+- **Open:** whether threats wake warriors at night or a watch keeps one awake; whether
+  guards use the armor stand as their post.
 
 ## What the player sees
 
@@ -784,7 +802,7 @@ branch, and each leaves the game playable with `living_villages_economy` on or o
 | 11b | Rent to the Builder's bench; dinner and rent logging; emeralds in the probe census | 1, 11 |
 | 11c | Donations at the holiday service, alms, gossip about villagers | 6, 11b |
 | 11d | `wants.lua`: goods that wear out; stone tools | 3, 8 |
-| 11e | Leather and hunting: cow herds, hunters, books, cooked meat | 7, 11d |
+| 11e | Leather: the leatherworker's cow herd, books, cooked meat | 4, 11d |
 | 12 | Peddler; holiday market sells real surplus | 6, 11 |
 
 ### 1. Clock, hunger and the tavern
@@ -923,11 +941,11 @@ and then buying a dinner, and the donor's standing spreading in conversation.
 pickaxe. Done when a probe run shows a farmer, woodcutter or quarrier buying a stone
 tool from the tool smith, working faster with it, and buying another once it wears out.
 
-### 11e. Leather and hunting
+### 11e. Leather
 
-The leatherworker's cow herd, the hunter activity, books in `wants.lua`, cooked meat on
-the tavern menu. Done when a probe run shows leather reaching the librarian from a herd
-or a hunt, a book made from it bought and read, and arrows bought from the fletcher.
+The leatherworker's cow herd, books in `wants.lua`, cooked meat on the tavern menu.
+Done when a probe run shows leather reaching the librarian from a herd, a book made
+from it bought and read, and beef reaching the butcher and, cooked, the tavern.
 
 ### 12. Peddlers and the market
 
@@ -941,9 +959,10 @@ cartographer's banners (wool and a stick) sell to villagers decorating for the m
 - Whether the Builder becomes the next place money piles up, once the census has
   nothing left to build. If so, the Builder could spend its surplus on upkeep, or rent
   could fall with its savings.
-- Iron: no villager makes it, so the weapon smith and the armorer have no village
-  demand yet (Principle 6). A miner activity, or iron golems' drops, could supply it;
-  armor would also need a reason a villager wears it.
+- Iron: no villager makes it, so the weapon smith's and the armorer's goods have no
+  village supply. A miner activity, or iron golems' drops, could supply it. Until
+  warriors exist (Warriors), the fletcher, the weapon smith and the armorer sell only
+  to players, against Principle 6.
 - Once the basic money loops work: whether the keeper should keep a margin, and what it
   would spend it on.
 - Whether a peddler walks to another village is the start of the next phase, and
