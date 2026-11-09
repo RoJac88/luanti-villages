@@ -12,8 +12,8 @@
 -- holds it up for TIMEOUT seconds at most.
 --
 -- Staffing pairs the village's free job blocks (job_blocks.lua) with its new
--- villagers greedily, the closest block and bed first, and claims each pair the way
--- that block is claimed. `living_villages_spawn_unemployed` villagers are left out of
+-- villagers greedily, the closest block and bed first (the bench and the jukebox
+-- before the rest), and claims each pair the way that block is claimed. `living_villages_spawn_unemployed` villagers are left out of
 -- work: greedy pairing stops short by that many, so they are those whose beds are
 -- furthest from any block still free. They carry `_villages_left_unemployed` and no job
 -- module gives them a block later (job_blocks.eligible); they are the labour pool.
@@ -97,9 +97,21 @@ function M.staff(batch, roles, unemployed)
 	end
 	table.sort(blocks, by_position)
 	local limit = math.max(0, #villagers - unemployed)
-	local taken = job_blocks.pair(villagers, blocks, limit, function(v, block)
-		return job_blocks.claim(v.entity, block, roles)
-	end)
+	local function try(v, block) return job_blocks.claim(v.entity, block, roles) end
+	-- The bench and the jukebox first: a village wants its Builder and its keeper, and a
+	-- tavern often stands apart from every bed, so closest-first would leave it to
+	-- keeper.lua's evening take-over, which moves someone off a job on the first day.
+	local first, rest = {}, {}
+	for _, pos in ipairs(blocks) do
+		local kind = job_blocks.kind(core.get_node_or_nil(pos).name, roles)
+		table.insert((kind == "bench" or kind == "jukebox") and first or rest, pos)
+	end
+	local taken = job_blocks.pair(villagers, first, limit, try)
+	local placed = {}
+	for _, pair in ipairs(taken) do placed[pair.villager] = true end
+	local others = {}
+	for _, v in ipairs(villagers) do if not placed[v] then table.insert(others, v) end end
+	for _, pair in ipairs(job_blocks.pair(others, rest, limit - #taken, try)) do table.insert(taken, pair) end
 	-- Left out by the setting, not for want of a block: they stay the labour pool. Those
 	-- that found no block take one built later (job_seek.lua).
 	if #taken == limit and limit < #villagers then
