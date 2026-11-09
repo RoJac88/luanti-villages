@@ -22,6 +22,8 @@
 local core = minetest
 local clock = dofile(core.get_modpath("living_villages") .. "/economy_clock.lua")
 local stock = dofile(core.get_modpath("living_villages") .. "/farm_stock.lua")
+local ledger = dofile(core.get_modpath("living_villages") .. "/ledger.lua")
+local food = dofile(core.get_modpath("living_villages") .. "/food.lua")
 
 local DEFAULT_STASH_RADIUS = 8
 local STASH_HEIGHT = 3
@@ -255,6 +257,48 @@ function M.install(def)
 		M.drop_all(self, pos or self.object:get_pos())
 		if original_die then return original_die(self, pos, cause) end
 	end
+end
+
+-- What it holds: its belongings and its stash's contents.
+function M.held(self)
+	local held = {}
+	for name, count in pairs(self._villages_belongings or {}) do held[name] = count end
+	local stash = self._villages_stash
+	if stash and owned_by(stash, self) then
+		for _, pos in ipairs(halves(stash)) do
+			for _, item in ipairs(core.get_meta(pos):get_inventory():get_list("main") or {}) do
+				if not item:is_empty() then held[item:get_name()] = (held[item:get_name()] or 0) + item:get_count() end
+			end
+		end
+	end
+	return held
+end
+
+-- The ledger's view of this villager (ledger.lua): its targets, needs, surplus and values.
+function M.assess(self)
+	return ledger.assess({
+		id = self._id,
+		profession = self._villages_keeper and "keeper" or self._profession,
+		max_tier = self._max_trade_tier or 1,
+		held = M.held(self),
+		food_points = food.points(self),
+		hunger_per_day = self.child and 0 or food.hunger_per_day(),
+		foods = food.POINTS,
+	})
+end
+
+local function list_status(list, value)
+	local parts = {}
+	for _, entry in ipairs(ledger.top(list, value, 5)) do
+		table.insert(parts, entry.count .. " " .. entry.item:gsub("^.*:", ""))
+	end
+	return #parts > 0 and table.concat(parts, ", ") or "none"
+end
+
+-- Its five largest needs and surpluses, for the inspector.
+function M.ledger_status(self)
+	local view = M.assess(self)
+	return list_status(view.needs, view.value), list_status(view.surplus, view.value)
 end
 
 -- One line each for the Lookup Tool inspector (diagnostic.lua).

@@ -36,7 +36,7 @@ local HEAL = 4
 local CHILD_GROW_TIME = 60
 local CHILD_FEED_SHARE = 0.1
 
-local M = {FULL = FULL, HUNGRY = HUNGRY}
+local M = {FULL = FULL, HUNGRY = HUNGRY, POINTS = POINTS}
 
 -- Best first.
 M.FOODS = {"mcl_farming:bread", "mcl_farming:beetroot_item", "mcl_farming:potato_item", "mcl_farming:carrot_item"}
@@ -46,6 +46,8 @@ local function hunger_per_day()
 	local value = core.settings and tonumber(core.settings:get("living_villages_hunger_per_day"))
 	return math.max(value or DEFAULT_HUNGER_PER_DAY, 0)
 end
+
+M.hunger_per_day = hunger_per_day
 
 -- Seconds of game time in a game day, or nil while time stands still.
 local function day_seconds()
