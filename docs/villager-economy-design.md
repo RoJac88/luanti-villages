@@ -1022,14 +1022,20 @@ for three reasons, and this ticket answers each in `trade_trips.lua`:
   sides gain by (`exchange.lua`); in run 34 a wool trip reached a seller with 1 spare,
   worth 0.42 at the midpoint, and could not buy. A trip is now planned only from news
   whose count, at the midpoint of the two values, meets `M.terms` with the buyer's
-  emeralds: the rule a stash sale already uses.
+  emeralds: the rule a stash sale already uses. A seller passed over is logged once a
+  day with the count heard and what it carries now. Run 35 then planned no trips at all,
+  and run 36 showed why: heard counts matched what sellers carried (4 coal heard, 4
+  carried), but at today's prices such sales come to under an emerald (4 coal at 0.13
+  each, 1 spare loaf at 0.32). The check is right; prices are too small for whole
+  emeralds, which ticket 11h's rebalance answers.
 * A seller that moves. In run 33 the Builder chased a nitwit gathering cobble and timed
   out walking to where it had stood. While chasing, a walk is aimed afresh, counting as
   a chase, once the seller has moved more than `SELLER_REACH` from its target.
 
-Done when a probe run on seed 2007 chunk 208,768 shows bread or wool trips started in
-the putter stage buying in the next work stage, no trip ending "no offer" for want of a
-whole emerald, and the census showing the farmer's bread reaching villagers by trip.
+Done when tests show a trip planned in the putter stage going on in the next work stage
+and dropped the day after, sellers too small for a sale passed over, and a chase
+re-aimed; and a probe run on seed 2007 chunk 208,768 shows no trip ending "no offer"
+for want of a whole emerald. Trips that buy cheap goods wait on ticket 11h.
 
 ### 12. Peddlers and the market
 
@@ -1055,8 +1061,8 @@ cartographer's banners (wool and a stick) sell to villagers decorating for the m
   without a player yet.
 - Money piling up at the tavern: in run 32 the pantry held 15 of the village's 41
   emeralds by day 6, since dinners bring in more than the keeper pays for food.
-- Trade trips that end "no offer": run 34 showed a seller with too little spare to make
-  up a whole emerald at the midpoint; ticket 11g plans trips only to sellers that can.
+- Cheap goods in small numbers come to under an emerald (runs 34 to 36), so villagers
+  cannot trade them; ticket 11h inflates prices and the money supply to answer it.
 - `navigation.lua` drops a walk's arrival callback when another mover takes over the
   villager; errands work around it by checking where they stand, but the callback should
   either fire or report the walk lost.

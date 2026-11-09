@@ -196,6 +196,10 @@ do
 	local few = has_news("few", COBBLE, {x = 20, y = 1, z = 0}, 0.03)
 	few.count = 1
 	assert(trips.plan(bob, view, {few}, bob._bed) == nil, "one cobble is no sale")
+	assert(logs[#logs]:find("passes over few's mcl_core:cobble: heard 1 spare %(carries unknown now%)"), logs[#logs])
+	local n = #logs
+	trips.plan(bob, view, {few}, bob._bed)
+	assert(#logs == n, "once a day")
 end
 
 -- In its work stage, while short, it goes: walks to the quarrier's home and buys in person.

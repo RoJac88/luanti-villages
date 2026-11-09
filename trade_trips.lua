@@ -97,6 +97,8 @@ local skipped = setmetatable({}, {__mode = "k"})
 local walking = setmetatable({}, {__mode = "k"})
 local next_step = setmetatable({}, {__mode = "k"})
 local next_plan = setmetatable({}, {__mode = "k"})
+-- Sellers passed over for too few, logged once a day each: villager -> {key = day}.
+local logged_short = setmetatable({}, {__mode = "k"})
 
 local function is_skipped(self, who, item)
 	local list = skipped[self]
@@ -115,6 +117,22 @@ function M.urgency(view, item)
 	return value / price
 end
 
+-- Logs, once a day per seller and item, a seller passed over as too few for a sale: the
+-- count heard and, when the seller is loaded near its home, what it carries now (ticket
+-- 11g: whether heard counts lag behind sellers still gathering).
+local function log_short(self, entry, need, value)
+	local seen = logged_short[self] or {}
+	logged_short[self] = seen
+	local key = entry.who .. " " .. entry.item
+	if seen[key] == today() then return end
+	seen[key] = today()
+	local seller = M.locate(entry.home, entry.who)
+	local now = seller and tostring(possessions.count(seller, entry.item)) or "unknown"
+	log("villager %s passes over %s's %s: heard %d spare (carries %s now), needs %d at %.2f each to its %.2f, %d emerald(s)",
+		short_id(self._id), short_id(entry.who), entry.item, entry.count or 0, now, need, value, entry.price or 0,
+		possessions.emeralds(self))
+end
+
 -- The trip it would make now, or nil. `from` is where distances count from.
 function M.plan(self, view, heard, from)
 	local best, best_worth, best_distance
@@ -124,7 +142,9 @@ function M.plan(self, view, heard, from)
 			for _, entry in ipairs(heard) do
 				if entry.kind == "has" and entry.item == item and entry.home and entry.who ~= self._id
 					and (entry.price or 0) < value and not is_skipped(self, entry.who, item)
-					and M.terms(need, entry.count or 0, value, entry.price or 0, possessions.emeralds(self)) then
+					and vector.distance(from, entry.home) <= TRIP_RADIUS
+					and (M.terms(need, entry.count or 0, value, entry.price or 0, possessions.emeralds(self))
+						or log_short(self, entry, need, value)) then
 					local distance = vector.distance(from, entry.home)
 					local worth = need * value
 					if distance <= TRIP_RADIUS and (not best or worth > best_worth
