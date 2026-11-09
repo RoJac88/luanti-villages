@@ -224,10 +224,6 @@ function M.step(self, now)
 		return
 	end
 	if busy(self) then return end
-	if errand and walking[self] then
-		if now - walking[self] < WALK_TIMEOUT then return end
-		return drop_errand(self, "the walk never ended")
-	end
 	if not errand then
 		if not rent or not rent.bench or M.payable(self) < 1
 			or rent.errand_day == core.get_day_count() then
@@ -245,7 +241,15 @@ function M.step(self, now)
 	end
 	local pos = self.object:get_pos()
 	if not pos then return end
-	if vector.distance(pos, errand.chest) > REACH then
+	local far = vector.distance(pos, errand.chest) > REACH
+	-- At the chest it pays, arrived or not: the probe saw a tenant stand by the chest with
+	-- its walk's callback unfired, wait, and be walked off by its own routine.
+	if far and walking[self] then
+		if now - walking[self] < WALK_TIMEOUT then return end
+		return drop_errand(self, "the walk never ended")
+	end
+	walking[self] = nil
+	if far then
 		errand.tries = errand.tries + 1
 		if errand.tries > MAX_TRIES then return drop_errand(self, "could not get there") end
 		walking[self] = now

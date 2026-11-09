@@ -236,6 +236,10 @@ rent.accrue(fern)
 work(fern, PERIOD)
 rent.step(fern, now + 50)
 assert(fern._villages_rent.owed == 1 and fern._villages_rent_errand and #fern.walks == 1, "goes to pay one emerald")
+-- By the chest it pays, though its walk never reported arriving.
+fern.teleport({x = 3, y = 1, z = 1})
+rent.step(fern, now + 55)
+assert(fern._villages_rent.owed == 0 and not fern._villages_rent_errand and emeralds(fern) == 1, "pays at the chest")
 
 -- Off with the economy: nothing settles.
 settings.living_villages_economy = false
