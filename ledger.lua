@@ -31,6 +31,11 @@ local recipes = dofile(core.get_modpath("living_villages") .. "/recipes.lua")
 local EMERALD = "mcl_core:emerald"
 -- Emeralds now per emerald at vanilla's prices.
 local SCALE = 64
+-- A dinner at the tavern, in emeralds: what a villager pays, what a meal's worth of food
+-- earns its producer, and the default for a player. Near a loaf's worth (SCALE / 6) and
+-- a little more for the keeper's cooking; at a vanilla emerald (64) it took six loaves'
+-- worth for one loaf, and money piled up in the pantry.
+local DINNER = 18
 -- Days of food a villager wants to have by it.
 local FOOD_DAYS = 3
 -- The most of one input a villager wants at once.
@@ -113,7 +118,7 @@ local PREFERENCES = {
 }
 
 local M = {
-	EMERALD = EMERALD, SCALE = SCALE, FOOD_DAYS = FOOD_DAYS, MAX_URGENCY = MAX_URGENCY, MIN_URGENCY = MIN_URGENCY,
+	EMERALD = EMERALD, SCALE = SCALE, DINNER = DINNER, FOOD_DAYS = FOOD_DAYS, MAX_URGENCY = MAX_URGENCY, MIN_URGENCY = MIN_URGENCY,
 	PREFERENCES = PREFERENCES, SUBSTITUTES = SUBSTITUTES, COAL = COAL, version = tables.version,
 }
 

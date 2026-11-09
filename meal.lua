@@ -32,7 +32,7 @@
 -- which Luanti allows only then, and the plate holds are its own in-memory
 -- table.
 local core = minetest
-local SCALE = dofile(core.get_modpath("living_villages") .. "/ledger.lua").SCALE
+local ledger = dofile(core.get_modpath("living_villages") .. "/ledger.lua")
 local keeper = dofile(core.get_modpath("living_villages") .. "/keeper.lua")
 local food = dofile(core.get_modpath("living_villages") .. "/food.lua")
 local pantry = dofile(core.get_modpath("living_villages") .. "/tavern_pantry.lua")
@@ -60,8 +60,8 @@ local FRAME_OFFSET = 0.42
 -- chair; the model's head is about 1.3 above it seated).
 local MOUTH_HEIGHT = 1.3
 -- What a villager pays for dinner: a bundle of bread at the farmer's costs the same.
--- In emeralds at ledger.SCALE (ticket 11h).
-local VILLAGER_PRICE = 1 * SCALE
+-- A dinner's price (ledger.DINNER).
+local VILLAGER_PRICE = ledger.DINNER
 
 local plates = {}
 local served = {}

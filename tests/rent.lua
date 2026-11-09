@@ -192,9 +192,12 @@ assert(rent.settle({fay, bob}) == 3 * S)
 assert(emeralds(fay) == S and emeralds(bob) == 4 * S and fay._villages_rent.owed == 0)
 assert(logs[#logs]:find("fay%-fa paid 192 emerald%(s%) rent to builder bob%-bu in person, owes 0"), logs[#logs])
 assert(rent.status(fay):find("owes 0 to the bench at %(0,1,0%), paid 192 on day 3 %(in person%)"), rent.status(fay))
--- Keeps a dinner's worth: with a dinner's emeralds it owes, but pays nothing.
+-- Keeps a dinner's price (18) back: with that much and no more it owes, but pays nothing.
 work(fay, PERIOD)
-assert(rent.accrue(fay) == S and rent.payable(fay) == 0 and rent.settle({fay, bob}) == 0)
+fay._villages_belongings[EMERALD] = rent.DINNER
+assert(rent.DINNER == 18 and rent.accrue(fay) == S and rent.payable(fay) == 0 and rent.settle({fay, bob}) == 0)
+fay._villages_belongings[EMERALD] = S
+assert(rent.payable(fay) == S - 18, "above it, pays what it can")
 -- Not to just anyone: a conversation without its Builder settles nothing.
 fay._villages_belongings[EMERALD] = 5 * S
 assert(rent.settle({fay, liv}) == 0 and fay._villages_rent.owed == S)
