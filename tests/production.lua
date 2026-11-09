@@ -157,6 +157,39 @@ local cleric = smith({_profession = "cleric", _trades = "locked"})
 def.do_custom(cleric, 0.1)
 assert(cleric._trades == "unlocked" and production.status(cleric) == "not a crafting profession")
 
+-- Tiers from village supply: three days with a craft from belongings at the tier raise it.
+minetest.serialize = function(v) return v end
+minetest.deserialize = function(v) return v end
+local texture = "mobs_mc_villager_toolsmith.png^mobs_mc_stone.png"
+local tier_smith = smith({_id = "tier", _max_trade_tier = 1, _trades = {{tier = 1}, {tier = 1}, {tier = 2}, {tier = 3}}})
+tier_smith.object.get_properties = function() return {textures = {texture}} end
+tier_smith.object.set_properties = function(_, p) texture = p.textures[1] end
+possessions.add(tier_smith, "mcl_core:cobble", 30)
+possessions.add(tier_smith, "mcl_core:stick", 30)
+local shovel = recipes.tool_smith[3]
+assert(production.supplied(tier_smith, shovel))
+assert(production.make(tier_smith, shovel) and production.make(tier_smith, shovel))
+assert(tier_smith._villages_tier_supply.days == 1, "one day, however many crafts")
+day = day + 1
+production.make(tier_smith, shovel)
+day = day + 1
+production.make(tier_smith, shovel)
+assert(tier_smith._max_trade_tier == 2 and tier_smith._max_tradenum == 3, "up a tier, and its trades with it")
+assert(texture == "mobs_mc_villager_toolsmith.png^mobs_mc_iron.png", texture)
+assert(tier_smith._villages_tier_supply == nil and logs[#logs]:find("rose to tier 2"))
+-- From the stash it does not count: what a player left there is not village supply.
+local stash_smith = smith({_id = "stash", _max_trade_tier = 1})
+assert(not production.supplied(stash_smith, shovel))
+-- Fuel counts too: smelts left over, or a lump in its belongings.
+local smelter = smith({_id = "smelter", _profession = "butcher", _villages_fuel = 3})
+possessions.add(smelter, "mcl_mobitems:porkchop", 1)
+assert(production.supplied(smelter, recipes.butcher[1]))
+smelter._villages_fuel = nil
+assert(not production.supplied(smelter, recipes.butcher[1]))
+-- Tier 5 is the top.
+local master = smith({_max_trade_tier = 5})
+assert(not production.count_supply(master) and master._villages_tier_supply == nil)
+
 -- With the economy off, nothing is installed and nothing is held.
 settings.living_villages_economy = false
 assert(production.restock_held(starving) == nil)

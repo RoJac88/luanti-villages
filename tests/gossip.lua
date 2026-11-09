@@ -13,6 +13,7 @@ local function stack(name, count, max)
 	local self = {name = name or "", count = count or 0, max = max or 64}
 	function self:is_empty() return self.name == "" or self.count == 0 end
 	function self:get_count() return self.count end
+	function self:get_name() return self.name end
 	function self:set_count(n) self.count = n end
 	function self:get_stack_max() return self.max end
 	function self:to_string()
@@ -33,6 +34,8 @@ minetest = {
 	get_modpath = function() return "." end,
 	get_gametime = function() return now end,
 	settings = {get = function() return nil end, get_bool = function(_, name)
+		-- The economy's demand term has its own test (tests/demand.lua).
+		if name == "living_villages_economy" then return false end
 		assert(name == "living_villages_gossip", "the setting is read by its name")
 		return setting
 	end},

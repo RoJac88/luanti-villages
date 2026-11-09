@@ -26,6 +26,15 @@
 -- was. It tries again on its next arrival. The fisherman's own restock (fisherman.lua)
 -- is untouched.
 --
+-- Tiers (ticket 9). A craft whose inputs and fuel all came from its belongings is made
+-- from village supply: belongings fill only from its kit, its own work and trades with
+-- villagers, while a stash may hold what a player left. On living_villages_tier_supply_days
+-- (3) separate days with such a craft at its current tier (`_villages_tier_supply`:
+-- {tier, days, day}), it goes up a tier, up to 5, as vanilla's first trade at the top
+-- tier does: `_max_trade_tier`, then `_max_tradenum` and the badge, which vanilla sets in
+-- file-local functions mirrored here (update_max_tradenum, set_textures). Vanilla's
+-- own route still runs; whichever comes first wins.
+--
 -- With the economy off nothing is made and every restock goes through.
 local core = minetest
 local clock = dofile(core.get_modpath("living_villages") .. "/economy_clock.lua")
@@ -44,6 +53,10 @@ local SMELTS_PER_LUMP = 8
 local COAL, CHARCOAL = ledger.COAL, "mcl_core:charcoal_lump"
 -- Most crafts in one step, should a long gap have banked many.
 local MAX_PER_STEP = 4
+local DEFAULT_TIER_SUPPLY_DAYS = 3
+local MAX_TIER = 5
+-- mobs_mc/villager.lua's badges, by tier.
+local BADGES = {"mobs_mc_stone.png", "mobs_mc_iron.png", "mobs_mc_gold.png", "mobs_mc_emerald.png", "mobs_mc_diamond.png"}
 
 local M = {RECIPES = recipes, STOCK = STOCK, SMELTS_PER_LUMP = SMELTS_PER_LUMP, JOBSITE_REACH = JOBSITE_REACH}
 
@@ -115,14 +128,73 @@ local function burn(self, smelts)
 	return true
 end
 
+-- Whether its belongings alone cover one craft, fuel included.
+function M.supplied(self, recipe)
+	for _, input in ipairs(recipe.from) do
+		if possessions.count(self, input[1]) < input[2] then return false end
+	end
+	if not recipe.fuel then return true end
+	local lumps = math.ceil(math.max(recipe.fuel - (self._villages_fuel or 0), 0) / SMELTS_PER_LUMP)
+	return possessions.count(self, COAL) + possessions.count(self, CHARCOAL) >= lumps
+end
+
+function M.tier_supply_days()
+	local value = core.settings and tonumber(core.settings:get("living_villages_tier_supply_days"))
+	return math.max(value or DEFAULT_TIER_SUPPLY_DAYS, 1)
+end
+
+-- Mirrors mobs_mc/villager.lua's update_max_tradenum: the trades up to the tier.
+local function update_max_tradenum(self)
+	local trades = self._trades and core.deserialize and core.deserialize(self._trades)
+	if type(trades) ~= "table" then return end
+	for i, trade in ipairs(trades) do
+		if trade.tier > self._max_trade_tier then
+			self._max_tradenum = i - 1
+			return
+		end
+	end
+	self._max_tradenum = #trades
+end
+
+-- Swaps the badge vanilla's set_textures put on its texture.
+local function set_badge(self, from, to)
+	local properties = self.object and self.object.get_properties and self.object:get_properties()
+	local texture = properties and properties.textures and properties.textures[1]
+	if type(texture) ~= "string" or not BADGES[from] or not BADGES[to] then return end
+	local first, last = texture:find("^" .. BADGES[from], 1, true)
+	if not first then return end
+	self.object:set_properties({textures = {texture:sub(1, first - 1) .. "^" .. BADGES[to] .. texture:sub(last + 1)}})
+end
+
+-- Counts today toward the next tier, and goes up one when the days are in.
+function M.count_supply(self)
+	local tier = self._max_trade_tier or 1
+	if tier >= MAX_TIER then return false end
+	local today = core.get_day_count()
+	local record = self._villages_tier_supply
+	if not record or record.tier ~= tier then record = {tier = tier, days = 0} end
+	if record.day ~= today then record.days, record.day = record.days + 1, today end
+	self._villages_tier_supply = record
+	if record.days < M.tier_supply_days() then return false end
+	self._max_trade_tier = tier + 1
+	self._villages_tier_supply = nil
+	update_max_tradenum(self)
+	set_badge(self, tier, tier + 1)
+	core.log("action", string.format("[living_villages] production: villager %s (%s) rose to tier %d on village supply",
+		short_id(self), tostring(self._profession), tier + 1))
+	return true
+end
+
 -- Makes one craft of the recipe, if it still holds what it takes. Returns whether it did.
 function M.make(self, recipe)
 	if not M.can_make(self, recipe, possessions.held(self)) then return false end
+	local supplied = M.supplied(self, recipe)
 	for _, input in ipairs(recipe.from) do possessions.take_held(self, input[1], input[2]) end
 	if recipe.fuel and not burn(self, recipe.fuel) then return false end
 	possessions.add(self, recipe.makes, recipe.count)
 	core.log("action", string.format("[living_villages] production: villager %s (%s) made %d %s",
 		short_id(self), tostring(self._profession), recipe.count, recipe.makes))
+	if supplied then M.count_supply(self) end
 	return true
 end
 

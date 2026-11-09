@@ -613,6 +613,8 @@ core.register_on_mods_loaded(function()
 	dofile(core.get_modpath("living_villages") .. "/bell_hangout.lua").install(def, bell)
 	local gossip = dofile(core.get_modpath("living_villages") .. "/gossip.lua")
 	gossip.install(def, core.registered_entities["mobs_mc:iron_golem"], core.registered_entities["mobs_mc:villager_zombie"])
+	-- Taking from a stash in sight of a villager is gossip about the taker.
+	dofile(core.get_modpath("living_villages") .. "/theft.lua").install(gossip, def)
 	-- Sounds, particles and a steady shake for the cure, whose vanilla cues are easy to miss.
 	if core.registered_entities["mobs_mc:villager_zombie"] then
 		dofile(core.get_modpath("living_villages") .. "/cure_feedback.lua").install(core.registered_entities["mobs_mc:villager_zombie"])
