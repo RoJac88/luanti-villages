@@ -604,8 +604,11 @@ core.register_on_mods_loaded(function()
 	-- grazes it, answers get_activity for it. A farmer out in its field and a fisherman at the water are answered the same way.
 	local flock = dofile(core.get_modpath("living_villages") .. "/flock.lua")
 	flock.install(def, core.registered_entities["mobs_mc:sheep"], bell, navigation_api)
+	local trade_trips = dofile(core.get_modpath("living_villages") .. "/trade_trips.lua")
+	-- A trade trip first: a farmer on one is not sent back to its field.
 	common.activity_override = function(villager, stage)
-		return flock.activity_override(villager, stage) or farmer.activity_override(villager, stage)
+		return trade_trips.activity_override(villager, stage)
+			or flock.activity_override(villager, stage) or farmer.activity_override(villager, stage)
 			or fisherman_override(villager, stage) or (builder and builder.activity_override(villager, stage))
 	end
 	dofile(core.get_modpath("living_villages") .. "/well.lua").install(def)
@@ -624,7 +627,6 @@ core.register_on_mods_loaded(function()
 	local market_news = dofile(core.get_modpath("living_villages") .. "/market_news.lua")
 	local market_exchange = dofile(core.get_modpath("living_villages") .. "/exchange.lua")
 	-- Trade trips (trade_trips.lua): its own walks, and porters hired when a conversation ends.
-	local trade_trips = dofile(core.get_modpath("living_villages") .. "/trade_trips.lua")
 	trade_trips.install(def)
 	-- Rent to the Builder's bench (rent.lua): billing and its errand, and paid when a
 	-- conversation ends, before the trades.
