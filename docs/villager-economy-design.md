@@ -1093,6 +1093,15 @@ trade window charging 64 times vanilla's emeralds and an emerald stack of 4096, 
 probe run on seed 2007 chunk 208,768 shows trade trips for coal or bread buying in
 person, rent and dinners paid at the new amounts and the census adding up.
 
+Landed as `ledger.SCALE`, the scaled constants in `rent.lua`, `keeper_supply.lua`,
+`meal.lua`, `player_meals.lua`, `trade_trips.lua`, `builder_market.lua` and `labour.lua`
+(the porter's income), `builder_materials.sale_price`, the farmer's 64-emerald bundle,
+`gossip.lua` scaling the trade window and the emerald's stack, and
+`possessions.endow`'s one-time top-up. Run 37 (seed 2007, chunk 208,768, stopped on
+day 5) showed a single loaf sold in conversation for 20 emeralds, a trade trip buying
+one wool for 26 (in run 34 the same sale came to 0.42 of an emerald), both farmers
+paying 64 rent, dinners at 64, and the census at 3328 emeralds every day.
+
 ### 12. Peddlers and the market
 
 Peddler activity; `market.lua` stalls stocked from real surplus; browsers buy. The
