@@ -334,6 +334,24 @@ function M.to_stash(self, trip, now, why)
 	return M.advance(self, trip, now)
 end
 
+-- Whether a villager on a trip stands where its leg's walk was taking it.
+function M.at_leg_end(self, trip)
+	local pos = self.object:get_pos()
+	if not pos then return false end
+	local target, reach
+	if trip.leg == "seller" then
+		target, reach = trip.home, ARRIVE_REACH
+	elseif trip.leg == "chase" then
+		local seller = M.locate(trip.home, trip.who)
+		target, reach = seller and seller.object:get_pos(), SELLER_REACH
+	elseif trip.leg == "stash" then
+		target, reach = trip.stash, REACH
+	elseif trip.leg == "deliver" then
+		target, reach = trip.client and trip.client.deliver, REACH
+	end
+	return target ~= nil and vector.distance(pos, target) <= reach
+end
+
 -- One step of a trip under way.
 function M.advance(self, trip, now)
 	local pos = self.object:get_pos()
@@ -400,9 +418,14 @@ function M.step(self, now)
 	local stage = common.schedule_stage(nil, self)
 	if not may_travel(self, trip, stage) or busy(self) then return end
 	if trip and walking[self] then
-		if now - walking[self] < WALK_TIMEOUT then return end
+		-- Arrived, whatever the walk reports: the probe saw a walk's callback go unfired and
+		-- the trip time out by the seller's door.
+		if not M.at_leg_end(self, trip) then
+			if now - walking[self] < WALK_TIMEOUT then return end
+			walking[self] = nil
+			return fail(self, trip, "the walk never ended", now)
+		end
 		walking[self] = nil
-		return fail(self, trip, "the walk never ended", now)
 	end
 	if not trip then
 		if now < (next_plan[self] or 0) then return end

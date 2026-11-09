@@ -239,6 +239,25 @@ do
 	assert(bob._villages_trade_trip == nil)
 end
 
+-- At the end of each leg it goes on, though the walk never reported arriving.
+do
+	local away = villager("cal-callback", {x = 0, y = 1, z = 40})
+	away.teleport({x = 100, y = 1, z = 100})
+	local stash = chest({x = 6, y = 1, z = 40}, "cal-callback", {{name = COBBLE, count = 50}})
+	bob._villages_market_news = {has_news("cal-callback", COBBLE, {x = 0, y = 1, z = 40}, 0.03)}
+	bob._villages_belongings[EMERALD] = 2
+	bob.walks = {}
+	now = now + 100
+	trips.step(bob, now)
+	assert(#bob.walks == 1 and bob.walks[1].z == 40)
+	bob.teleport({x = 1, y = 1, z = 40})
+	trips.step(bob, now + 2)
+	assert(bob._villages_trade_trip.leg == "stash" and #bob.walks == 2, "on to the stash")
+	bob.teleport({x = 6, y = 1, z = 41})
+	trips.step(bob, now + 4)
+	assert(bob._villages_trade_trip == nil and chest_count(stash, COBBLE) < 50, "bought from the stash")
+end
+
 -- Out, but about: it goes after the seller where it stands, and buys there.
 do
 	local roy = villager("roy-roaming", {x = -40, y = 1, z = 0}, {_villages_belongings = {[COBBLE] = 64}})
