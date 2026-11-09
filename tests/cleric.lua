@@ -223,7 +223,7 @@ nodes[key(pulpit)] = nil
 assert(not cleric.claimed_pulpit(alice))
 assert(cleric.status(alice) == "no pulpit")
 
--- With a composter to go to (farm_jobs.lua), an unemployed villager leaves the pulpit be.
+-- With a job block to go to (job_seek.lua), an unemployed villager leaves the pulpit be.
 do
 	local free = {x = 300, y = 0, z = 0}
 	nodes[key(free)] = "living_villages:pulpit"

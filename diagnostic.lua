@@ -557,7 +557,7 @@ local function show(player, villager)
 			.. (villager._villages_fisherman and (villager._jobsite and nearest_fish_candidate(villager._jobsite) or "no barrel")
 				or "n/a (not a fisherman)"),
 		"Barrel claim: " .. barrel_status(villager),
-		"Composter sought: " .. pos_string(villager._villages_farm_seek),
+		"Job block sought: " .. pos_string(villager._villages_farm_seek),
 		"",
 		"Holiday: " .. (common.is_holiday() and "yes" or "no")
 			.. ", stage " .. common.schedule_stage(nil, villager),

@@ -475,7 +475,7 @@ M = {
 			or (core.get_item_group(name, "cauldron") > 0 and "leatherworker")
 	end,
 	workstation_search_nodes = function() return workstation_search_node_names end,
-	-- The box an unemployed villager searches for a free composter (farm_jobs.lua),
+	-- The box an unemployed villager searches for a free job block (job_seek.lua),
 	-- wider than the search for any other job. The engine refuses a box over
 	-- 4096000 nodes, which the setting's limit and the shallow height keep it under.
 	farm_job_box = function(pos)

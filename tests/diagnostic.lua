@@ -333,10 +333,10 @@ local function unemployed_with(extra)
 	}
 end
 lookup("stack", player, {type = "object", ref = unemployed_with()})
-assert(shown.form:find("Composter sought: none", 1, true), shown.form)
+assert(shown.form:find("Job block sought: none", 1, true), shown.form)
 assert(not shown.form:find("Promotion", 1, true), "villagers are no longer promoted")
 lookup("stack", player, {type = "object", ref = unemployed_with({_villages_farm_seek = {x = 7, y = 0, z = 8}})})
-assert(shown.form:find("Composter sought: (7.0, 0.0, 8.0)", 1, true), shown.form)
+assert(shown.form:find("Job block sought: (7.0, 0.0, 8.0)", 1, true), shown.form)
 lookup("stack", player, {type = "object", ref = unemployed_with({
 	_villages_job_search_route = {status = "planning", id = 48},
 })})

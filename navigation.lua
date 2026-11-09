@@ -66,10 +66,9 @@ local deferred_door_closes = {}
 -- occupancy radius in init.lua's occupied_by_other.
 local STAND_OCCUPANCY_RADIUS = 0.6
 
--- Villagers whose next job search is farm_jobs.lua's, for the one gopath call
--- that starts it.
-local composter_trips = setmetatable({}, {__mode = "k"})
-local COMPOSTER = "mcl_composters:composter"
+-- Villagers whose next job search is job_seek.lua's, for the one gopath call
+-- that starts it: the block it chose.
+local job_trips = setmetatable({}, {__mode = "k"})
 
 local function same_pos(a, b)
 	return a and b and a.x == b.x and a.y == b.y and a.z == b.z
@@ -436,16 +435,14 @@ end
 
 -- Do not claim here: native get_a_job still finds this station within one
 -- block and invokes its own employ function after the villager arrives.
--- With composter_only (farm_jobs.lua), only an empty composter will do, over the
--- wider range an unemployed villager looks for one.
-local function job_search_target(self, progress, composter_only)
+-- With a chosen site (job_seek.lua), only that block is planned to.
+local function job_search_target(self, progress, chosen)
 	if self._jobsite or not self._id then return end
 	local pos = self.object:get_pos()
 	if not pos then return end
 	local sites
-	if composter_only then
-		local minp, maxp = common.farm_job_box(pos)
-		sites = core.find_nodes_in_area(minp, maxp, {COMPOSTER})
+	if chosen then
+		sites = {vector.new(chosen)}
 	else
 		local range = planner_range()
 		local minp = {x = pos.x - range, y = pos.y - range, z = pos.z - range}
@@ -928,13 +925,13 @@ local function install(def)
 						examined = 0, total = 0, nodes_searched = 0,
 					}
 					self._villages_job_search_diagnostics = search
-					local composter_only = composter_trips[self]
+					local chosen = job_trips[self]
 					local function current()
 						local active = self._villages_job_search_route
 						return active and active.status == "planning" and active.id == searching.id
 					end
 					stop(self)
-					route_queue.submit(function() return job_search_target(self, search, composter_only) or false end, function(found)
+					route_queue.submit(function() return job_search_target(self, search, chosen) or false end, function(found)
 						search.state, search.finished_at = "completed", core.get_gametime()
 						if not current() then return end
 						self._villages_job_search_route = nil
@@ -1179,12 +1176,12 @@ return install, {
 	nodes_for_reach = nodes_for_reach,
 	backoff_seconds = backoff_seconds,
 	cancel_goto = cancel_goto,
-	-- A trip to the nearest free composter this villager can reach, or a failed
-	-- job search route when it can reach none.
-	seek_composter = function(self, site, on_arrival)
-		composter_trips[self] = true
+	-- A trip to the job block job_seek.lua chose, or a failed route when it
+	-- cannot be reached.
+	seek_job = function(self, site, on_arrival)
+		job_trips[self] = site
 		local started = self:gopath(site, on_arrival, true)
-		composter_trips[self] = nil
+		job_trips[self] = nil
 		return started
 	end,
 	job_search_diagnostics = function(entity, route)

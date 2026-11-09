@@ -18,6 +18,10 @@ local builder_climb = dofile(core.get_modpath("living_villages") .. "/builder_cl
 local install_fisherman, fisherman_override = dofile(core.get_modpath("living_villages") .. "/fisherman.lua")
 local keeper = dofile(core.get_modpath("living_villages") .. "/keeper.lua")
 local cleric = dofile(core.get_modpath("living_villages") .. "/cleric.lua")
+-- The roles job_blocks.lua claims through; the Builder joins once it is installed.
+local job_roles = {keeper = keeper, cleric = cleric}
+-- One copy: it holds back the villagers of a village still being placed.
+local village_staffing = dofile(core.get_modpath("living_villages") .. "/village_staffing.lua")
 -- Registers living_villages:meal, so it loads here for the same reason.
 local path_storage = core.get_mod_storage()
 local meal = dofile(core.get_modpath("living_villages") .. "/meal.lua")
@@ -579,17 +583,20 @@ core.register_on_mods_loaded(function()
 	dofile(core.get_modpath("living_villages") .. "/labour.lua").install(def)
 	dofile(core.get_modpath("living_villages") .. "/production.lua").install(def)
 	cleric.install(def)
-	-- Outside every job above, which it keeps from an unemployed villager with a composter to go to.
-	dofile(core.get_modpath("living_villages") .. "/farm_jobs.lua").install(def, navigation_api)
-	-- Outside farm_jobs, so that a Builder's house keeps its own villager from a composter.
+	-- Outside every job above, which it keeps from an unemployed villager with a block to go to.
+	dofile(core.get_modpath("living_villages") .. "/job_seek.lua").install(def, navigation_api, job_roles)
+	-- Outside job_seek, so that a Builder's house keeps its own villager.
 	local builder
 	-- Asked by activity_override, which is set further down.
 	if dofile(core.get_modpath("living_villages") .. "/builder_house.lua").enabled() then
 		builder = dofile(core.get_modpath("living_villages") .. "/builder.lua")
 		builder.install(def, navigation_api, village_index)
+		job_roles.builder = builder
 	end
 	-- Outside every role above, so none of them sees a child with a job (#262).
 	dofile(core.get_modpath("living_villages") .. "/child_jobs.lua").install(def)
+	-- Outside every job module: a villager of a village still being placed waits for staffing.
+	village_staffing.install_villager(def)
 	-- One copy of seat.lua, so that its reservations cover both the tavern's
 	-- chairs and the church's.
 	local seat = dofile(core.get_modpath("living_villages") .. "/seat.lua")
@@ -670,6 +677,11 @@ if not dofile(core.get_modpath("living_villages") .. "/loomless_house.lua").inst
 		.. "or settlements.schematic_table is missing; every small house keeps its loom")
 end
 village_index = dofile(core.get_modpath("living_villages") .. "/village_index.lua")
+-- Outermost, so one batch covers every building of the village.
+if not village_staffing.install(rawget(_G, "settlements"), rawget(_G, "mcl_structures"), job_roles) then
+	core.log("warning", "[living_villages] new villages are not staffed: settlements.place_schematics "
+		.. "or mcl_structures.place_schematic is missing; villagers find their own jobs")
+end
 
 -- After church_site.lua: the planner reserves the church itself and replaces its wrapper.
 do

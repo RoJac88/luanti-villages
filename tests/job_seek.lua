@@ -1,8 +1,9 @@
--- Run with: luajit tests/farm_jobs.lua
+-- Run with: luajit tests/job_seek.lua
 local nodes, metas, finds = {}, {}, {}
 local now, time, settings = 100, 0.4, {}
 local function key(pos) return pos.x .. "," .. pos.y .. "," .. pos.z end
 local COMPOSTER, BARREL = "mcl_composters:composter", "mcl_barrels:barrel_closed"
+local BENCH, JUKEBOX = "living_villages:builder_block", "mcl_jukebox:jukebox"
 
 local function round(pos)
 	return {x = math.floor(pos.x + 0.5), y = math.floor(pos.y + 0.5), z = math.floor(pos.z + 0.5)}
@@ -16,6 +17,9 @@ minetest = {
 	registered_nodes = {},
 	log = function() end,
 	pos_to_string = key,
+	get_item_group = function(name, group)
+		return (group == "cauldron" and name == "mcl_cauldrons:cauldron") and 1 or 0
+	end,
 	get_node_or_nil = function(pos)
 		local name = nodes[key(pos)]
 		return name and {name = name} or nil
@@ -31,12 +35,15 @@ minetest = {
 		}
 	end,
 	find_nodes_in_area = function(minp, maxp, names)
-		table.insert(finds, {minp = minp, maxp = maxp})
+		table.insert(finds, {minp = minp, maxp = maxp, names = names})
+		local wanted = {}
+		for _, name in ipairs(names) do wanted[name] = true end
+		if wanted["group:cauldron"] then wanted["mcl_cauldrons:cauldron"] = true end
 		local lo, hi, found = round(minp), round(maxp), {}
 		for k, name in pairs(nodes) do
 			local x, y, z = k:match("(-?%d+),(-?%d+),(-?%d+)")
 			x, y, z = tonumber(x), tonumber(y), tonumber(z)
-			if name == names[1] and x >= lo.x and x <= hi.x and y >= lo.y and y <= hi.y and z >= lo.z and z <= hi.z then
+			if wanted[name] and x >= lo.x and x <= hi.x and y >= lo.y and y <= hi.y and z >= lo.z and z <= hi.z then
 				table.insert(found, {x = x, y = y, z = z})
 			end
 		end
@@ -56,7 +63,7 @@ vector = {
 mcl_mobs = {mob_class = {}}
 
 local common = dofile("common.lua")
-local farm_jobs = dofile("farm_jobs.lua")
+local job_seek = dofile("job_seek.lua")
 
 -- Vanilla's get_a_job as far as this needs it: an untraded villager beside any
 -- workstation takes it. A traded-looking one, unemployed, has none to ask for.
@@ -69,11 +76,28 @@ local def = {do_custom = function(self)
 	end
 end}
 local trips = {}
-local navigation = {seek_composter = function(self, site, on_arrival)
+local navigation = {seek_job = function(self, site, on_arrival)
 	table.insert(trips, {self = self, site = site, on_arrival = on_arrival})
 	return true
 end}
-farm_jobs.install(def, navigation)
+local employed = {}
+local roles = {
+	builder = {BENCH = BENCH, employ = function(self, pos)
+		table.insert(employed, {role = "builder", seek = self._villages_farm_seek})
+		metas[key(pos)] = {villager = self._id}
+		self._jobsite, self._profession = pos, "mason"
+		return true
+	end},
+	keeper = {employ = function(self, pos)
+		-- keeper.lua's own check: no one on the way to another job.
+		if self._villages_farm_seek then return false end
+		table.insert(employed, {role = "keeper"})
+		metas[key(pos)] = {villager = self._id}
+		self._jobsite, self._profession = pos, "keeper"
+		return true
+	end},
+}
+job_seek.install(def, navigation, roles)
 
 local function villager(pos, extra)
 	local entity = {
@@ -84,7 +108,7 @@ local function villager(pos, extra)
 	return entity
 end
 local function reset()
-	nodes, metas, finds, trips = {}, {}, {}, {}
+	nodes, metas, finds, trips, employed = {}, {}, {}, {}, {}
 	now, time, settings = now + 1000, 0.4, {}
 end
 
@@ -102,67 +126,90 @@ do
 	assert(#finds == 2)
 end
 
--- A free composter beyond vanilla's 48 nodes is sought, while vanilla's own search asks for nothing.
+-- The block nearest its bed, of any kind, beats one beside where it stands.
 do
 	reset()
-	local far = {x = 90, y = 0, z = 0}
-	nodes[key(far)] = COMPOSTER
-	local v = villager({x = 0, y = 0, z = 0}, {_trades = "own"})
+	local bed = {x = 50, y = 0, z = 0}
+	local barrel = {x = 52, y = 0, z = 0}
+	nodes[key(barrel)] = BARREL
+	nodes[key({x = 1, y = 0, z = 0})] = COMPOSTER
+	local v = villager({x = 0, y = 0, z = 0}, {_bed = bed, _trades = "own"})
 	def.do_custom(v, 0.1)
 	assert(vanilla_seen:find("traded_once", 1, true), "vanilla must see a traded-looking list")
 	assert(v._trades == "own", "the real list comes back")
-	assert(v._villages_farm_seek.x == 90)
-	assert(#trips == 1 and trips[1].site.x == 90)
-	local minp, maxp = common.farm_job_box({x = 0, y = 0, z = 0})
-	assert(maxp.x == 96 and minp.y == -24)
-	-- A far one past the setting is not seen.
-	reset()
-	nodes[key(far)] = COMPOSTER
-	settings.living_villages_farm_job_radius = "64"
-	local near_only = villager({x = 0, y = 0, z = 0})
-	def.do_custom(near_only, 0.1)
-	assert(not near_only._villages_farm_seek and #trips == 0)
-	-- The engine's limit on a box holds at the setting's largest.
-	settings.living_villages_farm_job_radius = "9999"
-	minp, maxp = common.farm_job_box({x = 0, y = 0, z = 0})
-	assert((maxp.x - minp.x + 1) * (maxp.y - minp.y + 1) * (maxp.z - minp.z + 1) <= 4096000)
+	assert(v._villages_farm_seek.x == 52, "the barrel by its bed, not the composter by its feet")
+	assert(#trips == 1 and trips[1].site.x == 52)
+	-- The box is round its bed.
+	assert(finds[1].maxp.x == 50 + 96 and finds[1].minp.y == -24)
+	-- Arriving beside it makes a fisherman, and keeps the claim.
+	trips[1].on_arrival(villager({x = 51, y = 0, z = 0}, {_id = v._id}))
+	assert(metas[key(barrel)].villager == v._id)
 end
 
--- A barrel right beside it does not win: the composter comes first.
+-- Arrival claims the block it went for, and the villager is no longer seeking.
 do
 	reset()
-	local barrel = {x = 1, y = 0, z = 0}
-	nodes[key(barrel)] = BARREL
-	nodes[key({x = 30, y = 0, z = 0})] = COMPOSTER
-	local v = villager({x = 0, y = 0, z = 0}, {_barrel_beside = barrel})
-	def.do_custom(v, 0.1)
-	assert(v._profession == "unemployed" and not v._jobsite, "the barrel must not be claimed")
-	assert(not (metas[key(barrel)] and metas[key(barrel)].villager))
-	-- Arriving beside the composter makes a farmer of it, and keeps the claim.
 	local site = {x = 30, y = 0, z = 0}
-	local arrived = villager({x = 29, y = 0, z = 0})
+	nodes[key(site)] = COMPOSTER
+	local v = villager({x = 0, y = 0, z = 0})
+	def.do_custom(v, 0.1)
+	local arrived = villager({x = 29, y = 0, z = 0}, {_villages_farm_seek = site})
 	trips[1].on_arrival(arrived)
 	assert(arrived._profession == "farmer" and arrived._jobsite.x == 30)
 	assert(metas[key(site)].villager == arrived._id)
 	assert(not arrived._villages_farm_seek)
+	-- Short of it, nothing is claimed.
+	local short = villager({x = 20, y = 0, z = 0})
+	nodes[key({x = 40, y = 0, z = 0})] = BARREL
+	trips[1].on_arrival(short)
+	assert(short._profession == "unemployed")
 end
 
--- Already beside one: claims it without a trip.
+-- Already beside one: claims it without a trip. A filled composter is a job too.
 do
 	reset()
-	nodes[key({x = 1, y = 0, z = 0})] = COMPOSTER
+	nodes[key({x = 1, y = 0, z = 0})] = "mcl_composters:composter_3"
 	local v = villager({x = 0, y = 0, z = 0})
 	def.do_custom(v, 0.1)
 	assert(v._profession == "farmer" and #trips == 0)
+	-- A cauldron makes a leatherworker.
+	reset()
+	nodes[key({x = 1, y = 0, z = 0})] = "mcl_cauldrons:cauldron"
+	v = villager({x = 0, y = 0, z = 0})
+	def.do_custom(v, 0.1)
+	assert(v._profession == "leatherworker")
 end
 
--- A claimed composter, or one with a fill level no search can claim, is no reason to wait.
+-- A bench or a jukebox is claimed through its own module, and keeper.lua's check passes.
+do
+	reset()
+	nodes[key({x = 1, y = 0, z = 0})] = BENCH
+	local v = villager({x = 0, y = 0, z = 0})
+	def.do_custom(v, 0.1)
+	assert(employed[1].role == "builder" and v._profession == "mason")
+	assert(employed[1].seek == nil and not v._villages_farm_seek)
+	reset()
+	nodes[key({x = 1, y = 0, z = 0})] = JUKEBOX
+	v = villager({x = 0, y = 0, z = 0})
+	def.do_custom(v, 0.1)
+	assert(employed[1].role == "keeper" and v._profession == "keeper")
+	-- Without the Builder installed, a bench is no job.
+	reset()
+	nodes[key({x = 1, y = 0, z = 0})] = BENCH
+	local builder = roles.builder
+	roles.builder = nil
+	v = villager({x = 0, y = 0, z = 0})
+	def.do_custom(v, 0.1)
+	roles.builder = builder
+	assert(v._profession == "unemployed" and not v._villages_farm_seek)
+end
+
+-- A claimed block is no reason to wait.
 do
 	reset()
 	local claimed = {x = 5, y = 0, z = 0}
 	nodes[key(claimed)] = COMPOSTER
 	metas[key(claimed)] = {villager = "someone"}
-	nodes[key({x = 6, y = 0, z = 0})] = "mcl_composters:composter_3"
 	local v = villager({x = 0, y = 0, z = 0})
 	def.do_custom(v, 0.1)
 	assert(vanilla_seen == nil and not v._villages_farm_seek)
@@ -173,37 +220,47 @@ do
 	reset()
 	local one, two = {x = 10, y = 0, z = 0}, {x = 20, y = 0, z = 0}
 	nodes[key(one)] = COMPOSTER
-	nodes[key(two)] = COMPOSTER
+	nodes[key(two)] = BARREL
 	local v = villager({x = 0, y = 0, z = 0})
 	def.do_custom(v, 0.1)
 	assert(v._villages_farm_seek.x == 10)
 	metas[key(one)] = {villager = "someone"}
 	def.do_custom(v, 0.1)
-	assert(v._villages_farm_seek.x == 20, "another free composter must be found at once")
+	assert(v._villages_farm_seek.x == 20, "another free block must be found at once")
 	metas[key(two)] = {villager = "someone"}
 	def.do_custom(v, 0.1)
 	assert(not v._villages_farm_seek and vanilla_seen == nil)
 end
 
--- None it can reach: the other jobs are open again for a while, without waiting on the route's backoff.
+-- One it cannot reach is passed over for a while, for the next nearest.
 do
 	reset()
 	nodes[key({x = 10, y = 0, z = 0})] = COMPOSTER
+	nodes[key({x = 20, y = 0, z = 0})] = BARREL
 	local v = villager({x = 0, y = 0, z = 0})
 	def.do_custom(v, 0.1)
-	assert(#trips == 1)
+	assert(#trips == 1 and trips[1].site.x == 10)
 	now = now + 2
 	v._villages_job_search_route = {status = "retry", reason = "no reachable unclaimed workstation", retry_at = now + 30}
 	def.do_custom(v, 0.1)
 	assert(not v._villages_farm_seek and not v._villages_job_search_route)
 	def.do_custom(v, 0.1)
-	assert(vanilla_seen == nil, "vanilla's search is back")
+	assert(v._villages_farm_seek.x == 20, "the next nearest at once")
+	-- A bench's or a jukebox's failed walk counts the same.
+	now = now + 6
+	def.do_custom(v, 0.1)
+	v._villages_goto_route = {status = "retry", reason = "no route", retry_at = now + 30}
+	now = now + 6
+	def.do_custom(v, 0.1)
+	assert(not v._villages_farm_seek)
+	def.do_custom(v, 0.1)
+	assert(not v._villages_farm_seek and vanilla_seen == nil, "with both passed over, vanilla's search is back")
 	now = now + 301
 	def.do_custom(v, 0.1)
-	assert(v._villages_farm_seek, "and the composter is tried again later")
+	assert(v._villages_farm_seek and v._villages_farm_seek.x == 10, "and they are tried again later")
 end
 
--- A failure from before the search, or a pathfinder pause, says nothing about the composter.
+-- A failure from before the search, or a pathfinder pause, says nothing about the block.
 do
 	reset()
 	nodes[key({x = 10, y = 0, z = 0})] = COMPOSTER
@@ -211,7 +268,7 @@ do
 		_villages_job_search_route = {status = "retry", reason = "no reachable unclaimed workstation", retry_at = now + 30},
 	})
 	def.do_custom(v, 0.1)
-	assert(v._villages_farm_seek and #trips == 1, "an older failure must not count against this composter")
+	assert(v._villages_farm_seek and #trips == 1, "an older failure must not count against this block")
 	now = now + 6
 	v._villages_job_search_route = {status = "retry", reason = "pathfinder cooldown", retry_at = now + 20}
 	def.do_custom(v, 0.1)
@@ -251,4 +308,17 @@ do
 	end
 end
 
-print("farm_jobs.lua: ok")
+-- Left out of work by staffing: it seeks nothing, and vanilla's get_a_job is given nothing to ask for.
+do
+	reset()
+	nodes[key({x = 1, y = 0, z = 0})] = COMPOSTER
+	local barrel = {x = 0, y = 0, z = 1}
+	nodes[key(barrel)] = BARREL
+	local v = villager({x = 0, y = 0, z = 0}, {_villages_left_unemployed = true, _barrel_beside = barrel})
+	def.do_custom(v, 0.1)
+	assert(v._profession == "unemployed" and not v._villages_farm_seek and #trips == 0)
+	assert(vanilla_seen:find("traded_once", 1, true) and v._trades == nil)
+end
+
+assert(common.farm_job_box)
+print("job_seek.lua: ok")

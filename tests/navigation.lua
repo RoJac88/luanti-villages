@@ -695,7 +695,7 @@ minetest.get_node_or_nil = original_node
 search_sites = {}
 jobsite_claimed = true
 
--- farm_jobs.lua's search takes only composters, and over its own wider box.
+-- job_seek.lua's search plans only to the block it chose.
 do
 	local asked
 	local real_find = minetest.find_nodes_in_area
@@ -718,13 +718,14 @@ do
 			set_velocity = function() end,
 		},
 	}
-	assert(farm_nav.seek_composter(farm_seeker, {x = 10, y = 0, z = 0}))
+	asked = nil
+	assert(farm_nav.seek_job(farm_seeker, {x = 30, y = 0, z = 0}))
 	settle()
-	assert(#asked.names == 1 and asked.names[1] == "mcl_composters:composter")
-	assert(asked.maxp.x == 15 + 96 and asked.maxp.y == 24)
+	assert(asked == nil, "no box is searched")
 	assert(farm_seeker._villages_job_search_route.status == "travelling")
+	assert(farm_seeker._target and farm_seeker._target.x >= 29)
 	assert(not farm_seeker._jobsite)
-	-- The next search, not farm_jobs.lua's, is the ordinary one.
+	-- The next search, not job_seek.lua's, is the ordinary one.
 	local ordinary = {
 		_id = "villager-1", state = "stand",
 		object = {
