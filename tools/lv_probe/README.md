@@ -102,6 +102,10 @@ profession's kit. `lv_probe_seed_goods = <item> <count>` (in `LV_PROBE_CONF_EXTR
 many in every other adult's belongings at the start, so trades at the end of conversations show as `trade:` lines in
 the server log.
 
+Two more for economy runs: `lv_probe_skip_days = N` starts the census N days later (every fourth day is a holiday,
+with no work stage, and the first is often one), and `lv_probe_nitwits = N` makes N unemployed adults nitwits at the
+start, since a new village's unemployed soon find jobsites and leave `labour.lua` no one to drive.
+
 `LV_PROBE_CENSUS_PUTTER=SECONDS` (with a census) holds the morning Putter stage for the first SECONDS of the
 census, then work time, and adds `wells` to the census line (`wells.lua`): the wells `well.lua` found, villagers
 that set off for one (`villagers_bound`), arrived and left, `stays` (seconds from first arrival to leaving),

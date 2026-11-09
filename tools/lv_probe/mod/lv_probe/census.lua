@@ -12,6 +12,16 @@
 -- lv_probe_seed_goods = "<item> <count>" (with lv_probe_news; economy ticket 6) puts that
 -- many of the item in every other adult's belongings at the first step, so a new village
 -- has something to trade before it has made anything; trades show as `trade:` log lines.
+--
+-- lv_probe_skip_days = N (with lv_probe_news) starts at least N days later, and then
+-- skips on while the day is a holiday with no work stage (living_villages' common.lua;
+-- holidays follow the moon, and the probe's first day often is one). Each skip sets the
+-- time to night, then back to the morning: a new day (get_day_count) whose work stage no
+-- villager saw the start of from the wrong side.
+--
+-- lv_probe_nitwits = N (with lv_probe_news; economy ticket 7) makes N unemployed adults
+-- nitwits at the first step. A new village's unemployed soon all find jobsites, and
+-- nitwits never do, so labour.lua has someone to drive.
 local core = minetest
 
 local census = {}
@@ -96,6 +106,9 @@ function census.run(area, emit, done)
 	local waited = 0
 	local timeline, last = {}, {}
 	local news_timeline = {}
+	local skipping, skipped = nil, 0
+	local schedule = core.get_modpath("living_villages")
+		and dofile(core.get_modpath("living_villages") .. "/common.lua") or nil
 	local function adults()
 		local found = {}
 		for _, object in ipairs(core.get_objects_inside_radius(center, radius)) do
@@ -111,7 +124,21 @@ function census.run(area, emit, done)
 		-- villager a fresh roll each tick, so a putter census stops the clock instead.
 		local wanted = waited < putter and (tonumber(core.settings:get("lv_probe_tod")) or 0.24) or 0.33
 		if news_mode() then
-			if waited == 0 then core.set_timeofday(0.24) end
+			local skip = tonumber(core.settings:get("lv_probe_skip_days")) or 0
+			if skipping == nil then skipping = skip > 0 end
+			if skipping then
+				local workday = schedule and schedule.schedule_stage(0.4) == "work"
+				if skipped >= skip and (workday or skipped >= 8) then
+					skipping = false
+					core.log("action", "[lv_probe] census starts on day " .. core.get_day_count()
+						.. " after skipping " .. skipped)
+				else
+					skipped = skipped + 1
+					core.set_timeofday(0.9)
+					core.after(1, function() core.set_timeofday(0.24) end)
+				end
+			end
+			if waited == 0 and skip == 0 then core.set_timeofday(0.24) end
 		elseif putter > 0 then
 			core.settings:set("time_speed", "0")
 			if waited == 0 or waited == putter then core.set_timeofday(wanted) end
@@ -120,6 +147,16 @@ function census.run(area, emit, done)
 		end
 		waited = waited + 10
 		local seed = core.settings:get("lv_probe_seed_goods") or ""
+		local nitwits = tonumber(core.settings:get("lv_probe_nitwits")) or 0
+		if news_mode() and waited == 10 and nitwits > 0 then
+			for _, e in ipairs(adults()) do
+				if nitwits > 0 and e._profession == "unemployed" then
+					e._profession = "nitwit"
+					nitwits = nitwits - 1
+					core.log("action", "[lv_probe] made villager " .. e._id:sub(1, 6) .. " a nitwit")
+				end
+			end
+		end
 		if news_mode() and waited == 10 and seed ~= "" then
 			local item, count = seed:match("^(%S+)%s+(%d+)$")
 			for i, e in ipairs(adults()) do

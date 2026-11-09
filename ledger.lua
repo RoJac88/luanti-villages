@@ -58,6 +58,11 @@ local HAND_PRICES = {
 	["mcl_flowers:tulip_pink"] = 1 / 12,
 	["mcl_flowers:cornflower"] = 1 / 12,
 }
+-- Every single-trunk species' logs and saplings at oak's prices (labour.lua grows them).
+for _, species in ipairs({"acacia", "spruce", "birch", "jungle"}) do
+	HAND_PRICES["mcl_core:" .. species .. "tree"] = HAND_PRICES["mcl_core:tree"]
+	HAND_PRICES["mcl_core:" .. species .. "sapling"] = HAND_PRICES["mcl_core:sapling"]
+end
 
 -- What a profession makes for itself, so never needs to buy.
 local MAKES = {

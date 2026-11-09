@@ -19,6 +19,9 @@ local POINTS = {
 	["mcl_farming:potato_item"] = 1,
 	["mcl_farming:carrot_item"] = 1,
 	["mcl_farming:beetroot_item"] = 1,
+	-- What a forager gathers (labour.lua), at about three quarters of a player's.
+	["mcl_core:apple"] = 3,
+	["mcl_farming:sweet_berry"] = 1,
 	-- The tavern's prepared foods (keeper.lua's menu), about four fifths of what
 	-- they give a player, as bread's 4 is of its 5.
 	["mcl_farming:potato_item_baked"] = 4,
