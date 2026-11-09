@@ -26,7 +26,7 @@
 --   showed conversations with the Builder too rare, and too often cut short, to rely on.)
 --
 -- `_villages_rent` is {owed, at = clock reading billed up to, bench, paid = {count, day,
--- how}}. Every payment and forgiveness is logged. Off with the economy.
+-- how}}. Every charge, payment and forgiveness is logged. Off with the economy.
 local core = minetest
 local clock = dofile(core.get_modpath("living_villages") .. "/economy_clock.lua")
 local possessions = dofile(core.get_modpath("living_villages") .. "/possessions.lua")
@@ -140,6 +140,8 @@ function M.accrue(self)
 	if due > 0 then
 		rent.at = rent.at + due * period
 		rent.owed = rent.owed + due * RENT
+		log("villager %s now owes %d rent to the bench at %s", short_id(self._id), math.min(rent.owed, RENT_CAP),
+			core.pos_to_string(bench))
 		if rent.owed > RENT_CAP then
 			log("villager %s owed %d rent to the bench at %s; %d forgiven", short_id(self._id), rent.owed,
 				core.pos_to_string(bench), rent.owed - RENT_CAP)
@@ -275,15 +277,17 @@ function M.install(def)
 	if not clock.enabled() then return end
 	local original = def.do_custom
 	def.do_custom = function(self, dtime)
-		local result = original(self, dtime)
-		if result == false then return result end
+		-- Noted whatever the inner do_custom returns: a Builder at work, or anyone in a
+		-- conversation, returns false nearly every tick.
 		local now = core.get_gametime()
-		if now >= (next_step[self] or 0) then
+		local due = now >= (next_step[self] or 0)
+		if due then
 			next_step[self] = now + STEP_SECONDS
 			if self._villages_builder then M.note_bench(self._jobsite) end
 			if self._villages_keeper then M.note_keeper(self) end
-			M.step(self, now)
 		end
+		local result = original(self, dtime)
+		if due and result ~= false then M.step(self, now) end
 		return result
 	end
 end

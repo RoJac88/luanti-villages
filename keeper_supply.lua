@@ -222,17 +222,27 @@ local function go(self, target, now, arrive)
 	local started = self:gopath(target, function(entity)
 		entity._villages_supply_target = nil
 		local pos = entity.object:get_pos()
-		if pos and vector.distance(pos, target) <= REACH then arrive(entity) end
+		if pos and vector.distance(pos, target) <= REACH then
+			arrive(entity)
+		else
+			core.log("action", string.format("[living_villages] keeper %s stopped %s short of %s",
+				tostring(entity._id):sub(1, 6), pos and string.format("%.1f", vector.distance(pos, target)) or "?",
+				core.pos_to_string(target)))
+		end
 	end, true)
 	if started == false then
 		self._villages_supply_target = nil
 		self._villages_supply_next = now + RETRY_SECONDS
+		core.log("action", string.format("[living_villages] keeper %s found no way to %s",
+			tostring(self._id):sub(1, 6), core.pos_to_string(target)))
 	end
 end
 
 local function supply(self, jukebox, now)
 	if self._villages_supply_target then
 		-- The walk ended without arriving: try again later.
+		core.log("action", string.format("[living_villages] keeper %s gave up walking to %s",
+			tostring(self._id):sub(1, 6), core.pos_to_string(self._villages_supply_target)))
 		self._villages_supply_target = nil
 		self._villages_supply_next = now + RETRY_SECONDS
 		return
