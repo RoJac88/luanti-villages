@@ -56,7 +56,7 @@ living_villages_loomless_house_chance (Share of small houses without a loom) flo
 # A new village is staffed as it is placed: each job block (workstation, the Builder's
 # bench, the tavern's jukebox) goes to the villager whose bed is nearest it, closest
 # pairs first. This many villagers are left out of work, those whose beds are furthest
-# from any free block. Existing villages are unchanged.
+# from any free block, but never more than half the village. Existing villages are unchanged.
 living_villages_spawn_unemployed (Villagers left unemployed in a new village) int 0 0 64
 
 # Villagers can claim a Builder's bench and add buildings to their village, and new villages

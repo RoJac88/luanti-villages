@@ -13,7 +13,8 @@
 --
 -- Staffing pairs the village's free job blocks (job_blocks.lua) with its new
 -- villagers greedily, the closest block and bed first (the bench and the jukebox
--- before the rest), and claims each pair the way that block is claimed. `living_villages_spawn_unemployed` villagers are left out of
+-- before the rest), and claims each pair the way that block is claimed.
+-- `living_villages_spawn_unemployed` villagers, at most half of them, are left out of
 -- work: greedy pairing stops short by that many, so they are those whose beds are
 -- furthest from any block still free. They carry `_villages_left_unemployed` and no job
 -- module gives them a block later (job_blocks.eligible); they are the labour pool.
@@ -111,6 +112,8 @@ function M.staff(batch, roles, unemployed)
 		end
 	end
 	table.sort(blocks, by_position)
+	-- At most half are left out, so a small village still has its workers.
+	unemployed = math.min(unemployed, math.floor(#villagers / 2))
 	local limit = math.max(0, #villagers - unemployed)
 	local function try(v, block)
 		if v.entity then return job_blocks.claim(v.entity, block, roles) end

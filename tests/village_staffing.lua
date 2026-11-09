@@ -297,6 +297,29 @@ do
 	settings[staffing.SETTING] = nil
 end
 
+-- Never more than half left out: one villager alone is staffed whatever the setting.
+do
+	reset()
+	settings[staffing.SETTING] = "5"
+	local house = {{x = 0, y = 0, z = 0}, {x = 9, y = 5, z = 9}}
+	nodes[key({x = 2, y = 1, z = 2})] = COMPOSTER
+	wrapped({{pos = house[1], schematic = house, beds = {{x = 1, y = 1, z = 1}}}})
+	land(1)
+	assert(villager("v1,1,1")._profession == "farmer" and not villager("v1,1,1")._villages_left_unemployed)
+	-- Five villagers, five blocks: two left out, not five.
+	reset()
+	local row = {{x = 0, y = 0, z = 0}, {x = 60, y = 5, z = 9}}
+	local beds = {}
+	for i = 0, 4 do
+		table.insert(beds, {x = i * 12, y = 1, z = 1})
+		nodes[key({x = i * 12 + 1, y = 1, z = 2})] = BARREL
+	end
+	wrapped({{pos = row[1], schematic = row, beds = beds}})
+	land(1)
+	assert(count_logs("3 employed, 2 left unemployed") == 1)
+	settings[staffing.SETTING] = nil
+end
+
 -- Too few blocks: those without one are not held out of work, so a block built later is theirs.
 do
 	reset()
