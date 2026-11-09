@@ -958,8 +958,21 @@ dinners, with a tab for fractions. Dinner and rent payments logged; the probe ce
 records the emeralds of each villager, the pantry and each bench chest; the
 inspector's `Rent` line. Done when a probe run of six game days,
 with ticket 11's staging (a small house and a cobble generator), shows rent reaching the
-bench from farmers and fishermen and the Builder finishing the house without a player,
-and the census shows where the village's emeralds sit on each day.
+bench from farmers and fishermen and the Builder spending it on materials without a
+player, and the census shows where the village's emeralds sit on each day. (Finishing
+the house was dropped: it also needs planks, logs, glass panes, carved stone brick and a
+bed, which no villager sells yet; see Open questions.)
+
+Landed as `rent.lua` (installed in `init.lua`, settled at the end of each conversation
+before the exchange), `builder.lua` marking a finished building's beds, the keeper's
+dinner pricing and tab in `keeper_supply.lua`, dinner logging in `meal.lua`,
+`possessions.is_food_chest` keeping farm and pantry emeralds out of rent and the
+Builder's purse, the keeper delivering at its jukebox, and the probe census's daily
+emerald line (`farms` for chests beside a composter). Rent errands and trade trips go on
+once they stand where their walk was headed, since `navigation.lua` can drop a walk's
+arrival callback when another mover takes the villager over. Run 32 (seed 2007, chunk
+208,768) showed farmers paying rent on days 5, 6 and 7, the Builder taking it from the
+bench chest each time and buying 28 and then 15 cobble from the nitwit with it.
 
 ### 11c. Donations and alms
 
@@ -1010,6 +1023,18 @@ cartographer's banners (wool and a stick) sell to villagers decorating for the m
   to players, against Principle 6.
 - Once the basic money loops work: whether the keeper should keep a margin, and what it
   would spend it on.
+- The Builder's other materials: a small house needs planks, logs, glass panes, carved
+  stone brick and a bed besides cobble. The woodcutter fells logs but sells no planks,
+  and nobody makes glass, carved stone brick or beds, so no Builder finishes a house
+  without a player yet.
+- Money piling up at the tavern: in run 32 the pantry held 15 of the village's 41
+  emeralds by day 6, since dinners bring in more than the keeper pays for food.
+- Trade trips for bread end "no trade" with the seller found in person; the trip now
+  logs which check refused. Whole-emerald prices on cheap goods are the suspect, as with
+  the keeper's pay before its tab.
+- `navigation.lua` drops a walk's arrival callback when another mover takes over the
+  villager; errands work around it by checking where they stand, but the callback should
+  either fire or report the walk lost.
 - Whether a peddler walks to another village is the start of the next phase, and
   needs its own design (routes between villages, news carried across them).
 - Whether stashes should be protected from players beyond the gossip cost, for
