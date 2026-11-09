@@ -575,6 +575,7 @@ core.register_on_mods_loaded(function()
 	install_fisherman(def)
 	keeper.install(def)
 	dofile(core.get_modpath("living_villages") .. "/keeper_supply.lua").install(def)
+	dofile(core.get_modpath("living_villages") .. "/possessions.lua").install(def)
 	cleric.install(def)
 	-- Outside every job above, which it keeps from an unemployed villager with a composter to go to.
 	dofile(core.get_modpath("living_villages") .. "/farm_jobs.lua").install(def, navigation_api)
@@ -631,6 +632,7 @@ dofile(core.get_modpath("living_villages") .. "/belltower_schematic.lua")
 dofile(core.get_modpath("living_villages") .. "/church_site.lua")
 dofile(core.get_modpath("living_villages") .. "/library_schematic.lua")
 dofile(core.get_modpath("living_villages") .. "/farm_schematic.lua")
+dofile(core.get_modpath("living_villages") .. "/house_schematic.lua")
 dofile(core.get_modpath("living_villages") .. "/builder_house.lua").install(rawget(_G, "settlements"))
 -- Load order: after every module that edits a building's schematic (the ones above
 -- and belltower_schematic.lua, once it exists): ground_layer builds its variants
