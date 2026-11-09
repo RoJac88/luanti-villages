@@ -203,7 +203,7 @@ dave._villages_keeper = nil
 def.on_activate(dave, "", 0)
 assert(dave._villages_keeper)
 
--- With a composter to go to (farm_jobs.lua), an unemployed villager leaves the jukebox be.
+-- With a job block to go to (job_seek.lua), an unemployed villager leaves the jukebox be.
 do
 	local free = {x = 40, y = 0, z = 0}
 	nodes[key(free)] = "mcl_jukebox:jukebox"

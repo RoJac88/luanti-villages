@@ -46,7 +46,8 @@ end
 -- jobsite, which can only be one a player has traded with (vanilla demotes an
 -- untraded one). Never a librarian or any other profession.
 local function wants_pulpit(self)
-	if self.child or not self._id or self._jobsite or self._villages_farm_seek then return false end
+	if self.child or not self._id or self._jobsite or self._villages_farm_seek
+		or self._villages_left_unemployed then return false end
 	return self._profession == "unemployed" or self._profession == PROFESSION
 end
 

@@ -1052,6 +1052,38 @@ the villager whose bed is nearest it, the Builder and the keeper among them, the
 number left unemployed, and no villager changing job on day 1; and when a grown child
 takes the free block nearest its bed.
 
+Landed as `village_staffing.lua`, `job_blocks.lua` (the block kinds, their claims and the
+greedy pairing) and `job_seek.lua` (in place of `farm_jobs.lua`, with
+`navigation.seek_job` planning only to the chosen block). Choices the design left open,
+most from probe runs 38 to 42 (seed 2007, chunk 208,768):
+
+* The bench and the jukebox are paired first, then the rest closest-first. In run 38 the
+  tavern stood apart from every bed, so closest-first left the jukebox free, and that
+  evening `keeper.lua`'s take-over moved the fletcher off its table. The cost: a keeper
+  may not be the bed nearest its jukebox (run 42's second village, rank 3 of 7).
+* The villagers the setting leaves out carry `_villages_left_unemployed`. No job module
+  gives them a block later (`job_blocks.eligible`, and the bench, jukebox and pulpit
+  checks); otherwise they would take a free one within seconds. Those left without a
+  block only because blocks ran out are not marked, and take one built later. The
+  setting leaves at most half a village out: run 40's one-villager village was left
+  with no one working.
+* A villager not loaded when its village is staffed is paired by its bed's meta id: its
+  block's meta holds its id and mod storage the rest, finished when it loads
+  (`apply_pending`). In run 40 a village placed during a 21 s lag spike was staffed
+  with 1 of its 8 villagers, and its Builder then took the bench on its own.
+* `job_seek.lua` measures only from the bed. Vanilla clears `_bed` for a while in
+  places, and in run 39 a grown child scanned from where it stood and took the block
+  beside it. A villager without a bed now waits up to a game day before it looks from
+  where it stands, and a block chosen so is dropped once the bed is back.
+* The pulpit is a job block too, claimed through `cleric.lua`.
+
+Runs 39 to 42 each staffed the village at generation: 9 of 11 villagers, each owner's
+bed the nearest of the 11 to its block, the Builder and the keeper among them, 2 left
+unemployed, and no villager changing job on day 1. In runs 40 to 42 a child, staged with
+a fletching table by its bed and a stonecutter beside where it was born, grew up and
+took the fletching table. Run 42 also generated a second village with no one near and
+staffed all 8 of its villagers.
+
 ### 11g. Trade trips that finish
 
 Runs 33 and 34 (seed 2007, chunk 208,768) showed trade trips rarely ending in a sale,

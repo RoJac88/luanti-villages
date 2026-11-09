@@ -82,7 +82,8 @@ end
 -- Who may take up a free jukebox: an unemployed adult, or a keeper that lost
 -- its jukebox after trading and so keeps the role.
 local function wants_jukebox(self)
-	if self.child or not self._id or self._jobsite or self._villages_farm_seek then return false end
+	if self.child or not self._id or self._jobsite or self._villages_farm_seek
+		or self._villages_left_unemployed then return false end
 	return self._profession == "unemployed" or self._villages_keeper == true
 end
 
@@ -130,7 +131,7 @@ local OLD_JOB_FIELDS = {
 
 local function take_over(self, pos)
 	if self.child or not self._id or self._villages_keeper or self._villages_builder or self._profession == "nitwit"
-		or self._profession == "farmer" or self._villages_farm_seek then return false end
+		or self._profession == "farmer" or self._villages_farm_seek or self._villages_left_unemployed then return false end
 	-- These are employ()'s own conditions, checked up front so nothing below
 	-- can fail halfway: once the old job is released, employ() must succeed.
 	if not is_jukebox(pos) or not unclaimed(pos) or has_traded(self) then return false end

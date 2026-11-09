@@ -55,7 +55,7 @@ local PROJECT = "villages_project"
 local SOURCE = "villages_source"
 
 -- A villager whose bed is this near a free bench takes it at once, ahead of any other
--- job, since farm_jobs.lua would otherwise send it off to the nearest composter for good.
+-- job, since job_seek.lua might otherwise send it to another block nearer its bed.
 local OWNER_RADIUS = 12
 local OWNER_HEIGHT = 4
 local CLAIM_RADIUS = 48
@@ -133,8 +133,10 @@ function M.claimed_bench(self)
 	return is_bench(pos) and core.get_meta(pos):get_string("villager") == self._id and pos or nil
 end
 
+-- A villager a new village left out of work (village_staffing.lua) stays out of it.
 local function eligible(self)
 	return not self.child and self._id ~= nil and not self._jobsite and self._profession == "unemployed"
+		and not self._villages_left_unemployed
 end
 
 function M.employ(self, pos)

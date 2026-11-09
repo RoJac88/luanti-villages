@@ -53,6 +53,12 @@ living_villages_child_grow_days (Child growth time, game days) float 12 0.1 100
 # builds none with a loom. Existing villages are unchanged.
 living_villages_loomless_house_chance (Share of small houses without a loom) float 0.5 0 1
 
+# A new village is staffed as it is placed: each job block (workstation, the Builder's
+# bench, the tavern's jukebox) goes to the villager whose bed is nearest it, closest
+# pairs first. This many villagers are left out of work, those whose beds are furthest
+# from any free block, but never more than half the village. Existing villages are unchanged.
+living_villages_spawn_unemployed (Villagers left unemployed in a new village) int 0 0 64
+
 # Villagers can claim a Builder's bench and add buildings to their village, and new villages
 # generate a Builder's house, with a bench and a double chest. Off, a bench is just a block,
 # and villages already generated are not changed.
@@ -177,6 +183,6 @@ living_villages_craft_seconds (Villager crafting seconds per item) int 120 1 360
 # neighbours', not a player's) at its trade tier before it goes up a tier without a player trade.
 living_villages_tier_supply_days (Villager days of village supply per trade tier) int 3 1 30
 
-# An unemployed villager takes a free composter it can reach ahead of any other job, and looks for
-# one this far away (other jobs: 48 nodes, up and down as well; composters: 24 up and down).
-living_villages_farm_job_radius (Range to look for a free composter) int 96 48 120
+# An unemployed villager takes the free job block nearest its bed, of any kind, and looks
+# this far from its bed for one (24 nodes up and down).
+living_villages_farm_job_radius (Range from its bed to look for a free job) int 96 48 120
