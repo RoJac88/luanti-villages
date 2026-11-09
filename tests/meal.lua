@@ -636,7 +636,7 @@ meal.tick(vera, 0.1, jukebox)
 assert(not vera._villages_meal and meal.explain(vera, jukebox):find("cannot pay"), meal.explain(vera, jukebox))
 assert(pantry_items["mcl_farming:bread"] == 1)
 -- Fed well enough already: she does not order, emerald or not.
--- A dinner is 64 emeralds at the economy's scale (ticket 11h).
+-- A dinner costs 18 emeralds (ledger.DINNER).
 vera._villages_belongings = {["mcl_core:emerald"] = 128}
 vera._villages_food = 10
 meal.tick(vera, 0.1, jukebox)
@@ -647,8 +647,8 @@ meal.tick(vera, 0.1, jukebox)
 assert(vera._villages_meal and vera._villages_meal.item == "mcl_farming:bread", "served from the pantry")
 assert(pantry_items["mcl_farming:bread"] == nil, "taken out of the pantry")
 assert(vera._villages_food == 4, "fed when served")
-assert(vera._villages_belongings["mcl_core:emerald"] == 64 and pantry_items["mcl_core:emerald"] == 64, "paid a dinner")
-assert(logs[#logs]:find("villager vera paid 64 emerald%(s%) for dinner at the tavern at"), "the payment is logged")
+assert(vera._villages_belongings["mcl_core:emerald"] == 110 and pantry_items["mcl_core:emerald"] == 18, "paid a dinner")
+assert(logs[#logs]:find("villager vera paid 18 emerald%(s%) for dinner at the tavern at"), "the payment is logged")
 now = now + 20
 meal.tick(vera, 0.1, jukebox)
 assert(not vera._villages_meal)
@@ -661,12 +661,12 @@ now = now + 10
 meal.tick(hal, 0.1, jukebox)
 now = now + 5
 meal.tick(hal, 0.1, jukebox)
-assert(hal._villages_meal and hal._villages_food == 4 and pantry_items["mcl_core:emerald"] == 64, "household eats free")
+assert(hal._villages_meal and hal._villages_food == 4 and pantry_items["mcl_core:emerald"] == 18, "household eats free")
 now = now + 20
 meal.tick(hal, 0.1, jukebox)
 pantry_items["mcl_core:emerald"] = nil
 
--- A player pays a dinner's price, 64 with the economy on, into the pantry for the meal.
+-- A player pays a dinner's price, 18 with the economy on, into the pantry for the meal.
 day = day + 1
 local purses = {}
 local plain_player = player
@@ -677,12 +677,12 @@ player = function(name, h)
 	return object
 end
 player("pat", 5)
-purses.pat["mcl_core:emerald"] = 64
+purses.pat["mcl_core:emerald"] = 18
 pantry_items["mcl_farming:potato_item_baked"] = 1
 sit("pat", west)
 step(5)
 assert(eating(), "a paying player is served")
-assert(purses.pat["mcl_core:emerald"] == nil and pantry_items["mcl_core:emerald"] == 64, "paid into the pantry")
+assert(purses.pat["mcl_core:emerald"] == nil and pantry_items["mcl_core:emerald"] == 18, "paid into the pantry")
 assert(pantry_items["mcl_farming:potato_item_baked"] == nil, "the meal came out of the pantry")
 step(14)
 assert(hunger.pat == 8, "fed by the bites as before")
@@ -696,7 +696,7 @@ pantry_items["mcl_farming:bread"] = 2
 sit("pat", west)
 step(6)
 assert(not eating() and pm.report("pat"):find("cannot pay"), pm.report("pat"))
-assert(pantry_items["mcl_farming:bread"] == 2 and pantry_items["mcl_core:emerald"] == 64)
+assert(pantry_items["mcl_farming:bread"] == 2 and pantry_items["mcl_core:emerald"] == 18)
 mcl_cozy.players.pat = nil
 step(0.4)
 

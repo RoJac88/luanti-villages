@@ -32,13 +32,15 @@ local clock = dofile(core.get_modpath("living_villages") .. "/economy_clock.lua"
 local possessions = dofile(core.get_modpath("living_villages") .. "/possessions.lua")
 local stock = dofile(core.get_modpath("living_villages") .. "/farm_stock.lua")
 local common = dofile(core.get_modpath("living_villages") .. "/common.lua")
-local SCALE = dofile(core.get_modpath("living_villages") .. "/ledger.lua").SCALE
+local ledger = dofile(core.get_modpath("living_villages") .. "/ledger.lua")
+local SCALE = ledger.SCALE
 
--- In emeralds at ledger.SCALE (ticket 11h): a dinner's worth, every RENT_DAYS days.
+-- In emeralds at ledger.SCALE (ticket 11h): a vanilla emerald every RENT_DAYS days.
 local RENT = 1 * SCALE
 local RENT_DAYS = 2
 local RENT_CAP = 3 * SCALE
-local DINNER = 1 * SCALE
+-- A tenant keeps a dinner's price (ledger.DINNER) back from rent.
+local DINNER = ledger.DINNER
 local VILLAGE_RADIUS = 128
 local CHEST_RADIUS = 32
 local REACH = 3

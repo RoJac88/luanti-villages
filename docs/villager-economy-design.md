@@ -44,7 +44,7 @@ another.
 | Do food points fall? | Yes, gradually, by about one loaf a day |
 | Can villagers starve to death? | No. Hunger lowers output and stops births, never health below what it is |
 | What happens while a villager is unloaded? | Its economic clock pauses: hunger, production and crafting stop together |
-| Do players pay for tavern meals? | Yes, a villager's dinner price (64 emeralds after ticket 11h), and the meal comes out of the pantry |
+| Do players pay for tavern meals? | Yes, a villager's dinner price (18 emeralds, `ledger.DINNER`), and the meal comes out of the pantry |
 | Does the farmer still give food away? | Yes to its own household, and one item to a villager at 0 points; everyone else buys |
 | Do nitwits take part? | Yes, as gatherers, porters and peddlers, choosing work by what they hear pays |
 | Do unemployed villagers do nitwit work? | Yes, while they wait for a jobsite. Vanilla's job claim still comes first |
@@ -622,9 +622,9 @@ questions).
 |---|---|---|
 | Base prices (`ledger.lua`, derived and hand-written) | stick 1/32, wheat 1/20, bread about 1/7, bell 36 | stick 2, wheat 3.2, bread about 9, bell 2304 |
 | A new adult's emeralds (`possessions.endow`) | 3 to 6 | 192 to 384 |
-| Rent, its cap, the dinner a villager must keep (`rent.lua`) | 1, 3, 1 | 64, 192, 64 |
-| A villager's dinner (`meal.lua`), the keeper's dinner credit | 1 | 64 |
-| A player's tavern meal (`living_villages_player_meal_price`) | 1 | 64 |
+| Rent, its cap, the dinner a villager must keep (`rent.lua`) | 1, 3, 1 | 64, 192, 18 (the dinner price, below) |
+| A villager's dinner (`meal.lua`), the keeper's dinner credit | 1 | 18 (`ledger.DINNER`, set after 11h) |
+| A player's tavern meal (`living_villages_player_meal_price`) | 1 | 18 |
 | Purses: the keeper's, the Builder's, a porter's | 8 | 512 |
 | The keeper's tab cap; a porter's fee | 8; 1 | 512; 64 |
 | The Builder's sales to players (`builder_materials.SALES`) | 1 to 16 | 64 to 1024 |
@@ -1126,9 +1126,10 @@ cartographer's banners (wool and a stick) sell to villagers decorating for the m
   without a player yet.
 - Money piling up at the tavern: in run 32 the pantry held 15 of the village's 41
   emeralds by day 6, since dinners bring in more than the keeper pays for food.
-- After ticket 11h, prices relative to each other: a dinner costs 64 while the loaf
-  it is made of is worth about 9, which is why money piles up at the tavern; rent
-  and starting money were also set against old prices.
+- After ticket 11h, prices relative to each other. A dinner first cost 64 while the
+  loaf it is made of is worth about 11, which is why money piled up at the tavern; it
+  now costs 18 (`ledger.DINNER`), a loaf's worth and a little for the cooking. Rent and
+  starting money are still set against vanilla's prices.
 - Emerald ore and emerald blocks still yield vanilla's 1 and 9 after ticket 11h, so
   mining becomes a small income next to trading. Whether ore drops should scale too.
 - `navigation.lua` drops a walk's arrival callback when another mover takes over the
