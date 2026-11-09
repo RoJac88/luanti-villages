@@ -26,9 +26,15 @@
 -- A walk is navigation.lua's gopath; one that ends short is tried again, and after
 -- MAX_TRIES, or WALK_TIMEOUT with no end at all, the trip fails.
 --
--- When. Anyone's own trip in the putter stage, outside a conversation. The Builder,
--- whose bench chests are short (builder_market.lua), also in its work stage, with
--- builder.lua's activity_override keeping vanilla from calling it back to the bench.
+-- When. Anyone plans its own trip in the putter stage, outside a conversation; the
+-- Builder, whose bench chests are short (builder_market.lua), also in its work stage. A
+-- trip under way goes on in the work stage too (the putter stage is about 75 s, too
+-- short for most trips), with M.activity_override, or builder.lua's for the Builder,
+-- keeping vanilla from calling it back to its jobsite. It is dropped once the day after
+-- the one it was planned on is over.
+-- Planning. Only news whose count can make up a sale under M.terms, at the midpoint of
+-- the two values and within its emeralds: a seller with too little spare to come to a
+-- whole emerald could not sell (run 34's wool trip).
 --
 -- Porters. A nitwit or unemployed villager may choose the porter activity for the day
 -- (labour.lua). At the end of a conversation (conversation.lua, after exchange.lua), a
@@ -117,7 +123,8 @@ function M.plan(self, view, heard, from)
 		if item ~= EMERALD and value and M.urgency(view, item) >= URGENT then
 			for _, entry in ipairs(heard) do
 				if entry.kind == "has" and entry.item == item and entry.home and entry.who ~= self._id
-					and (entry.price or 0) < value and not is_skipped(self, entry.who, item) then
+					and (entry.price or 0) < value and not is_skipped(self, entry.who, item)
+					and M.terms(need, entry.count or 0, value, entry.price or 0, possessions.emeralds(self)) then
 					local distance = vector.distance(from, entry.home)
 					local worth = need * value
 					if distance <= TRIP_RADIUS and (not best or worth > best_worth
@@ -332,7 +339,7 @@ end
 local function walk(self, trip, target, now)
 	trip.tries = (trip.tries or 0) + 1
 	if trip.tries > MAX_TRIES then return fail(self, trip, "could not get there", now) end
-	walking[self] = now
+	walking[self], trip.target = now, target
 	local started = self:gopath(target, function(entity) walking[entity] = nil end, true)
 	if started == false then
 		walking[self] = nil
@@ -406,13 +413,19 @@ function M.advance(self, trip, now)
 	end
 end
 
--- Whether a stage lets it go on its trip: its own in the putter stage, the Builder's
--- and a porter's in the work stage too.
+-- Whether a stage lets it go on a trip: plan one in the putter stage (the Builder in
+-- the work stage too), and go on with one under way in either.
 local function may_travel(self, trip, stage)
 	if stage == "putter" then return true end
 	if stage ~= "work" then return false end
-	if trip and trip.client then return true end
-	return self._villages_builder_wants ~= nil
+	return trip ~= nil or self._villages_builder_wants ~= nil
+end
+
+-- common.activity_override: a villager on a trip in its work stage is not called back to
+-- its jobsite ("putter" is no order to vanilla). The Builder has builder.lua's.
+function M.activity_override(villager, stage)
+	if stage == "work" and villager._villages_trade_trip and not villager._villages_builder then return "putter" end
+	return nil
 end
 
 local function busy(self)
@@ -423,13 +436,14 @@ end
 function M.step(self, now)
 	if self.child or not self._id then return end
 	local trip = self._villages_trade_trip
-	if trip and trip.day ~= today() then
+	-- A porter's purse goes back the day after; anyone else's trip lasts a day longer.
+	if trip and today() > trip.day + (trip.client and 0 or 1) then
 		if trip.client then
 			-- A porter still owes its client the purse: it goes to deliver what it has.
 			if trip.leg ~= "deliver" then trip.leg, trip.tries = "deliver", 0 end
 			trip.day = today()
 		else
-			log("villager %s dropped yesterday's trip for %s", short_id(self._id), trip.item)
+			log("villager %s dropped an unfinished trip for %s from day %d", short_id(self._id), trip.item, trip.day)
 			self._villages_trade_trip, trip = nil, nil
 		end
 	end
@@ -439,6 +453,14 @@ function M.step(self, now)
 		-- Arrived, whatever the walk reports: the probe saw a walk's callback go unfired and
 		-- the trip time out by the seller's door.
 		if not M.at_leg_end(self, trip) then
+			-- A seller that moved on: aimed afresh, as another chase (run 33's Builder
+			-- timed out walking to where a gathering nitwit had stood).
+			local seller = trip.leg == "chase" and trip.target and M.locate(trip.home, trip.who)
+			local at = seller and seller.object:get_pos()
+			if at and vector.distance(at, trip.target) > SELLER_REACH then
+				walking[self] = nil
+				return M.advance(self, trip, now)
+			end
 			if now - walking[self] < WALK_TIMEOUT then return end
 			walking[self] = nil
 			return fail(self, trip, "the walk never ended", now)

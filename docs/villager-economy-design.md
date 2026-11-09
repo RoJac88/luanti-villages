@@ -838,6 +838,7 @@ branch, and each leaves the game playable with `living_villages_economy` on or o
 | 11d | `wants.lua`: goods that wear out; stone tools | 3, 8 |
 | 11e | Leather: the leatherworker's cow herd, books, cooked meat | 4, 11d |
 | 11f | Staffing a new village: every job and bed assigned at generation | — |
+| 11g | Trade trips that finish: on into the work stage, sellers that can make up an emerald, chasing a seller that moves | 11b |
 | 12 | Peddler; holiday market sells real surplus | 6, 11 |
 
 ### 1. Clock, hunger and the tavern
@@ -1005,6 +1006,31 @@ the villager whose bed is nearest it, the Builder and the keeper among them, the
 number left unemployed, and no villager changing job on day 1; and when a grown child
 takes the free block nearest its bed.
 
+### 11g. Trade trips that finish
+
+Runs 33 and 34 (seed 2007, chunk 208,768) showed trade trips rarely ending in a sale,
+for three reasons, and this ticket answers each in `trade_trips.lua`:
+
+* Too little time. An ordinary villager travels only in the putter stage, about 75 s of
+  real time, and a trip from an earlier day is dropped: every bread trip in run 34 was
+  dropped unfinished the next evening and planned again. A trip already under way now
+  goes on in the next work stage too, with `trade_trips.activity_override` keeping
+  vanilla from calling the villager back to its jobsite, and is dropped only once the
+  day after the one it was planned on is over. New trips are still planned only in the
+  putter stage (the Builder and porters as before).
+* Sellers that cannot make up an emerald. A sale must come to a whole emerald that both
+  sides gain by (`exchange.lua`); in run 34 a wool trip reached a seller with 1 spare,
+  worth 0.42 at the midpoint, and could not buy. A trip is now planned only from news
+  whose count, at the midpoint of the two values, meets `M.terms` with the buyer's
+  emeralds: the rule a stash sale already uses.
+* A seller that moves. In run 33 the Builder chased a nitwit gathering cobble and timed
+  out walking to where it had stood. While chasing, a walk is aimed afresh, counting as
+  a chase, once the seller has moved more than `SELLER_REACH` from its target.
+
+Done when a probe run on seed 2007 chunk 208,768 shows bread or wool trips started in
+the putter stage buying in the next work stage, no trip ending "no offer" for want of a
+whole emerald, and the census showing the farmer's bread reaching villagers by trip.
+
 ### 12. Peddlers and the market
 
 Peddler activity; `market.lua` stalls stocked from real surplus; browsers buy. The
@@ -1029,9 +1055,8 @@ cartographer's banners (wool and a stick) sell to villagers decorating for the m
   without a player yet.
 - Money piling up at the tavern: in run 32 the pantry held 15 of the village's 41
   emeralds by day 6, since dinners bring in more than the keeper pays for food.
-- Trade trips for bread end "no trade" with the seller found in person; the trip now
-  logs which check refused. Whole-emerald prices on cheap goods are the suspect, as with
-  the keeper's pay before its tab.
+- Trade trips that end "no offer": run 34 showed a seller with too little spare to make
+  up a whole emerald at the midpoint; ticket 11g plans trips only to sellers that can.
 - `navigation.lua` drops a walk's arrival callback when another mover takes over the
   villager; errands work around it by checking where they stand, but the callback should
   either fire or report the walk lost.

@@ -191,6 +191,12 @@ assert(trip and trip.item == COBBLE and trip.who == "quinn-quarrier" and trip.wa
 assert(trips.plan(bob, view, {has_news("far", COBBLE, {x = 200, y = 1, z = 0}, 0.03)}, bob._bed) == nil)
 assert(trips.plan(bob, view, {has_news("dear", COBBLE, {x = 20, y = 1, z = 0}, 5)}, bob._bed) == nil)
 assert(trips.plan(bob, view, {has_news("bob-builder", COBBLE, {x = 20, y = 1, z = 0}, 0.03)}, bob._bed) == nil)
+-- ...nor to one with too few spare to make up a whole emerald at the midpoint (run 34).
+do
+	local few = has_news("few", COBBLE, {x = 20, y = 1, z = 0}, 0.03)
+	few.count = 1
+	assert(trips.plan(bob, view, {few}, bob._bed) == nil, "one cobble is no sale")
+end
 
 -- In its work stage, while short, it goes: walks to the quarrier's home and buys in person.
 time = 9000 / 24000
@@ -272,6 +278,10 @@ do
 	bob.arrive()
 	trips.step(bob, now + 2)
 	assert(bob._villages_trade_trip.leg == "chase" and bob.walks[2].z == 20, "then where it is")
+	-- It moves on before it is caught: the walk is aimed afresh, as another chase.
+	roy.teleport({x = -40, y = 1, z = 40})
+	trips.step(bob, now + 3)
+	assert(#bob.walks == 3 and bob.walks[3].z == 40 and bob._villages_trade_trip.chases == 2, "after it")
 	local before = count(bob, COBBLE)
 	bob.arrive()
 	trips.step(bob, now + 4)
@@ -358,11 +368,19 @@ do
 	por.arrive()
 	trips.step(por, now + 6)
 	assert(chest_count(stash, EMERALD) == 4 and count(por, EMERALD) == 0)
-	-- A trip that runs past the day: an own trip is dropped, a porter's goes on to deliver.
-	local own = villager("own", {x = 0, y = 1, z = 0})
-	own._villages_trade_trip = {item = COBBLE, who = "x", home = {x = 1, y = 1, z = 1}, want = 1, leg = "seller", day = day - 1}
+	-- An own trip lasts into the next day's work stage, not called back to the jobsite;
+	-- one from the day before that is dropped.
+	local own = villager("own", {x = 0, y = 1, z = 0}, {_villages_belongings = {[EMERALD] = 2}})
+	own._villages_trade_trip = {item = COBBLE, who = "x", home = {x = 1, y = 1, z = 40}, want = 1, leg = "seller", day = day - 1}
+	assert(trips.activity_override(own, "work") == "putter" and trips.activity_override(own, "putter") == nil)
 	trips.step(own, now)
-	assert(own._villages_trade_trip == nil, "an own trip is dropped")
+	assert(own._villages_trade_trip and own.walks[1].z == 40, "yesterday's trip goes on in the work stage")
+	own._villages_trade_trip.day = day - 2
+	trips.step(own, now + 200)
+	assert(own._villages_trade_trip == nil and logs[#logs]:find("dropped an unfinished trip"), "then it is dropped")
+	assert(trips.activity_override(own, "work") == nil, "back to work")
+	own._villages_trade_trip, own._villages_builder = {}, {}
+	assert(trips.activity_override(own, "work") == nil, "the Builder has its own")
 end
 
 -- Off with the economy: no hire.
