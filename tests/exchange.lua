@@ -39,13 +39,14 @@ local function count(v, item) return possessions.count(v, item) end
 -- A hungry villager with emeralds buys bread a fed one has spare, at the midpoint, in
 -- whole emeralds; the goods pass belongings to belongings.
 local baker = villager("baker", {["mcl_farming:bread"] = 20})
-local diner = villager("diner", {["mcl_core:emerald"] = 5}, {_villages_food = 0})
+-- Five vanilla emeralds, at the economy's scale (ticket 11h).
+local diner = villager("diner", {["mcl_core:emerald"] = 5 * 64}, {_villages_food = 0})
 local made = exchange.exchange({baker, diner})
 assert(#made == 1, "one trade")
 local trade = made[1]
 assert(trade.seller == baker and trade.buyer == diner and trade.item == "mcl_farming:bread" and trade.pay >= 1)
 assert(count(diner, "mcl_farming:bread") == trade.count and count(baker, "mcl_farming:bread") == 20 - trade.count)
-assert(count(baker, "mcl_core:emerald") == trade.pay and count(diner, "mcl_core:emerald") == 5 - trade.pay)
+assert(count(baker, "mcl_core:emerald") == trade.pay and count(diner, "mcl_core:emerald") == 5 * 64 - trade.pay)
 assert(logs[#logs]:find("trade: villager baker sold") and #handovers == 2)
 -- It needs less bread now, and the baker still has spare.
 local after = possessions.assess(diner)
@@ -109,15 +110,26 @@ local diner2 = villager("diner2", {["mcl_core:emerald"] = 5}, {_villages_food = 
 assert(#exchange.exchange({baker2, diner2}) == 0 and count(baker2, "mcl_farming:bread") == 20)
 
 -- A buyer short of emeralds for the whole lot buys what its emeralds pay for: a Builder
--- with one emerald, short of 34 cobble, from a quarrier with 64.
+-- with one vanilla emerald (64), short of 34 cobble, from a quarrier with 64.
 do
 	local quarrier = villager("qa", {["mcl_core:cobble"] = 64})
-	local builder = villager("bu", {["mcl_core:emerald"] = 1},
+	local builder = villager("bu", {["mcl_core:emerald"] = 64},
 		{_villages_builder = true, _profession = "mason", _villages_builder_wants = {["mcl_core:cobble"] = 34}})
 	local offer = exchange.offer(quarrier, possessions.assess(quarrier), builder, possessions.assess(builder))
-	assert(offer and offer.item == "mcl_core:cobble" and offer.pay == 1, "one emerald's worth")
+	assert(offer and offer.item == "mcl_core:cobble" and offer.pay <= 64 and offer.pay > 48, "its emeralds' worth")
 	assert(offer.count > 1 and offer.count < 34, offer.count)
-	assert(exchange.settle(offer) and count(builder, "mcl_core:cobble") == offer.count and count(builder, "mcl_core:emerald") == 0)
+	assert(exchange.settle(offer) and count(builder, "mcl_core:cobble") == offer.count
+		and count(builder, "mcl_core:emerald") == 64 - offer.pay)
+end
+
+-- At the economy's scale a few cheap goods make a sale (runs 34 to 36 found 4 coal and a
+-- spare loaf worth under one emerald at vanilla's prices, ticket 11h).
+do
+	local burner = villager("co", {["mcl_core:coal_lump"] = 20})
+	local smith = villager("sm", {["mcl_core:emerald"] = 64}, {_profession = "armorer", _max_trade_tier = 1,
+		_villages_belongings = {["mcl_core:emerald"] = 64, ["mcl_core:coal_lump"] = 11}})
+	local offer = exchange.offer(burner, possessions.assess(burner), smith, possessions.assess(smith), "mcl_core:coal_lump")
+	assert(offer and offer.pay and offer.count <= 4, offer and offer.count)
 end
 
 print("exchange.lua: ok")

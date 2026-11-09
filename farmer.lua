@@ -10,10 +10,10 @@
 -- Who it feeds (docs/villager-economy-design.md, The farmer's food). With the economy
 -- on: itself, its household (villagers whose beds are in the same house as its
 -- own, possessions.same_house) and every child, free and as much as they
--- want; a starving villager one item free; anyone else who carries no food and has an
--- emerald buys a bundle, as many of the food as vanilla's trades sell for one emerald
--- (six loaves), eats what it wants of it and keeps the rest (possessions.lua). The
--- emerald goes in the farmer's belongings, as do any the keeper leaves in its chest
+-- want; a starving villager one item free; anyone else who carries no food and has
+-- BUNDLE_PRICE emeralds buys a bundle, as many of the food as vanilla's trades sell for
+-- one emerald (six loaves), at ledger.SCALE emeralds (ticket 11h), eats what it wants of
+-- it and keeps the rest (possessions.lua). The emeralds go in the farmer's belongings, as do any the keeper leaves in its chest
 -- for the food it fetched (keeper_supply.lua), which it collects when it next stores
 -- its surplus. With the economy off it feeds everyone free, as it always did.
 local core = minetest
@@ -344,11 +344,14 @@ end
 
 local same_house = possessions.same_house
 
--- How many of the food one emerald buys, from vanilla's prices (ledger.lua).
+-- A bundle's price: one emerald at vanilla's prices.
+local BUNDLE_PRICE = ledger.SCALE
+
+-- How many of the food one vanilla emerald buys (ledger.lua's prices are SCALE times it).
 local function bundle(item)
 	local price = ledger.price(item)
 	if not price or price <= 0 then return nil end
-	return math.max(1, math.floor(1 / price + 0.5))
+	return math.max(1, math.floor(BUNDLE_PRICE / price + 0.5))
 end
 
 -- The best food it has a whole bundle of to spare, and the bundle's size.
@@ -363,13 +366,13 @@ local function food_for_sale(self, session)
 	return nil
 end
 
--- What a villager gets from it: free (all it wants), sale (a bundle for an emerald),
+-- What a villager gets from it: free (all it wants), sale (a bundle for BUNDLE_PRICE),
 -- handout (one item), or nil.
 local function terms(self, target)
 	if target == self or target.child or not clock.enabled() or same_house(self._bed, target._bed) then
 		return "free"
 	end
-	if possessions.emeralds(target) > 0 and possessions.food_carried(target) == 0 then return "sale" end
+	if possessions.emeralds(target) >= BUNDLE_PRICE and possessions.food_carried(target) == 0 then return "sale" end
 	if food.state(target) == "starving" then return "handout" end
 	return nil
 end
@@ -394,8 +397,13 @@ end
 
 local function sell(self, target, session)
 	local item, size = food_for_sale(self, session)
-	if not item or possessions.take(target, EMERALD, 1) < 1 then return nil end
-	possessions.add(self, EMERALD, 1)
+	if not item then return nil end
+	local paid = possessions.take(target, EMERALD, BUNDLE_PRICE)
+	if paid < BUNDLE_PRICE then
+		possessions.add(target, EMERALD, paid)
+		return nil
+	end
+	possessions.add(self, EMERALD, paid)
 	stock.take(self, item, size)
 	local left = size
 	while left > 0 and food.wants(target) do
@@ -403,8 +411,8 @@ local function sell(self, target, session)
 		left = left - 1
 	end
 	if left > 0 then possessions.add(target, item, left) end
-	core.log("action", string.format("[living_villages] farmer %s sold %d %s to %s for an emerald",
-		tostring(self._id), size, item, tostring(target._id)))
+	core.log("action", string.format("[living_villages] farmer %s sold %d %s to %s for %d emeralds",
+		tostring(self._id), size, item, tostring(target._id), BUNDLE_PRICE))
 	return item
 end
 

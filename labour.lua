@@ -106,7 +106,8 @@ local ACTIVITIES = {
 	quarrier = {rate = 32, goods = {[COBBLE] = 1}},
 	porter = {rate = 0, goods = {}},
 }
-local PORTER_INCOME = 2
+-- A fee or two a day, in emeralds at ledger.SCALE (ticket 11h), like the prices it is weighed with.
+local PORTER_INCOME = 2 * dofile(core.get_modpath("living_villages") .. "/ledger.lua").SCALE
 -- A woodcutter's goods are one species at a time: the best price heard for any.
 for _, species in ipairs(SPECIES) do
 	ACTIVITIES.woodcutter.goods[species.log] = 0.9

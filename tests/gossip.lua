@@ -1,6 +1,7 @@
 -- Run with: lua tests/gossip.lua
 local now = 1000
 local setting = true
+local economy = false
 local logged = {}
 local blocked_sight = false
 local creative = {}
@@ -35,7 +36,7 @@ minetest = {
 	get_gametime = function() return now end,
 	settings = {get = function() return nil end, get_bool = function(_, name)
 		-- The economy's demand term has its own test (tests/demand.lua).
-		if name == "living_villages_economy" then return false end
+		if name == "living_villages_economy" then return economy end
 		assert(name == "living_villages_gossip", "the setting is read by its name")
 		return setting
 	end},
@@ -114,7 +115,14 @@ local zombie_def = {
 local summoned_golem
 mobs_mc = {check_iron_golem_summon = function() golem_def.on_activate(summoned_golem) return "summoned" end}
 mcl_mobs = {invis = {}}
+-- Installed with the economy on, the emerald stacks to 4096 so scaled prices fit a slot.
+local overridden = {}
+minetest.registered_items = {["mcl_core:emerald"] = {stack_max = 64}}
+minetest.override_item = function(item, fields) overridden[item] = fields end
+economy = true
 gossip.install(def, golem_def, zombie_def)
+economy = false
+assert(overridden["mcl_core:emerald"] and overridden["mcl_core:emerald"].stack_max == 4096, "emeralds stack to 4096")
 
 -- Gains add up to the maximum; each type weighs its multiplier.
 do
@@ -283,8 +291,10 @@ local function trade_inventory(name)
 end
 
 local function draw(name, inv)
+	local offered = inv:get_stack("offered", 1)
 	minetest.show_formspec(name, "mobs_mc:trade_" .. name,
-		"size[9,8.75]label[3,0;Farmer]item_image[2,1;1,1;" .. inv:get_stack("wanted", 1):to_string() .. "]list[x]")
+		"size[9,8.75]label[3,0;Farmer]item_image[2,1;1,1;" .. inv:get_stack("wanted", 1):to_string() .. "]"
+		.. "item_image[5.76,1;1,1;" .. offered:get_name() .. " " .. offered:get_count() .. "]list[x]")
 end
 
 local function set_trade(inv, wanted, offered)
@@ -384,6 +394,36 @@ do
 	set_trade(inv, stack("mcl_core:emerald", 10), stack("mcl_farming:bread", 6))
 	draw(name, inv)
 	expect(inv:get_stack("wanted", 1):get_count(), 10, "gone: the session is forgotten")
+end
+
+-- With the economy on, every emerald in the window is 64 times vanilla's (ticket 11h):
+-- what a player pays and what it is paid, both drawn.
+do
+	economy = true
+	local name = "scaled"
+	local inv = trade_inventory(name)
+	local p = player(name)
+	minetest.detached_inventories["mobs_mc:trade_" .. name] = {on_take = function() end}
+	for _, fn in ipairs(join_callbacks) do fn(p) end
+	local v = villager()
+	def.on_rightclick(v, p)
+	-- Selling 20 wheat: paid 64 emeralds, whatever demand makes of the wheat.
+	set_trade(inv, stack("mcl_farming:wheat_item", 20), stack("mcl_core:emerald", 1, 4096))
+	draw(name, inv)
+	expect(inv:get_stack("offered", 1):get_count(), 64, "paid 64 for what vanilla pays one")
+	assert(shown[#shown].formspec:find("item_image[5.76,1;1,1;mcl_core:emerald 64]", 1, true), "and drawn so")
+	-- Buying: vanilla's 2 emeralds become 128, then demand moves them.
+	set_trade(inv, stack("mcl_core:emerald", 2, 4096), stack("mcl_tools:axe_stone", 1, 1))
+	draw(name, inv)
+	local paid = inv:get_stack("wanted", 1):get_count()
+	assert(paid >= 100 and paid <= 4096, paid)
+	assert(shown[#shown].formspec:find("item_image[2,1;1,1;mcl_core:emerald " .. paid .. "]", 1, true), "drawn at that price")
+	-- A window it cannot read keeps vanilla's prices whole: none scaled, none charged short.
+	set_trade(inv, stack("mcl_farming:wheat_item", 20), stack("mcl_core:emerald", 1, 4096))
+	minetest.show_formspec(name, "mobs_mc:trade_" .. name, "a redesigned window")
+	expect(inv:get_stack("offered", 1):get_count(), 1, "vanilla's price stands")
+	for _, fn in ipairs(leave_callbacks) do fn(p) end
+	economy = false
 end
 
 -- Golems: at the threshold, from villagers in the box, not if a player built it.

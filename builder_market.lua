@@ -24,7 +24,8 @@ local possessions = dofile(core.get_modpath("living_villages") .. "/possessions.
 local ledger = dofile(core.get_modpath("living_villages") .. "/ledger.lua")
 local stock = dofile(core.get_modpath("living_villages") .. "/farm_stock.lua")
 
-local PURSE = 8
+-- In emeralds at ledger.SCALE (ticket 11h).
+local PURSE = 8 * ledger.SCALE
 local EMERALD = "mcl_core:emerald"
 
 local M = {PURSE = PURSE}

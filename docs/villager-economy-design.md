@@ -44,7 +44,7 @@ another.
 | Do food points fall? | Yes, gradually, by about one loaf a day |
 | Can villagers starve to death? | No. Hunger lowers output and stops births, never health below what it is |
 | What happens while a villager is unloaded? | Its economic clock pauses: hunger, production and crafting stop together |
-| Do players pay for tavern meals? | Yes, an emerald, and the meal comes out of the pantry |
+| Do players pay for tavern meals? | Yes, a villager's dinner price (64 emeralds after ticket 11h), and the meal comes out of the pantry |
 | Does the farmer still give food away? | Yes to its own household, and one item to a villager at 0 points; everyone else buys |
 | Do nitwits take part? | Yes, as gatherers, porters and peddlers, choosing work by what they hear pays |
 | Do unemployed villagers do nitwit work? | Yes, while they wait for a jobsite. Vanilla's job claim still comes first |
@@ -604,6 +604,51 @@ because three professions' village demand depends on it (Principle 6).
 - **Open:** whether threats wake warriors at night or a watch keeps one awake; whether
   guards use the armor stand as their post.
 
+## Prices and the money supply
+
+At VoxeLibre's prices an emerald is worth 32 sticks or 20 wheat, so most sales between
+villagers come to a fraction of one, and trades in whole emeralds cannot happen: runs 34
+to 36 saw trade trips for a few coal or a spare loaf come to 0.3 to 0.5 of an emerald.
+Rather than credit or change, every price and every emerald amount is multiplied by
+one factor, `ledger.SCALE` = 64, so the cheapest goods (sticks, rotten flesh, 1/32 of
+an emerald today) are worth 2 and a whole-emerald price is within a quarter of the
+value of even one of them. This first step changes no price relative to another;
+rebalancing what goods are worth against each other is later tuning (see Open
+questions).
+
+**What scales.**
+
+| Amount | Today | Scaled |
+|---|---|---|
+| Base prices (`ledger.lua`, derived and hand-written) | stick 1/32, wheat 1/20, bread about 1/7, bell 36 | stick 2, wheat 3.2, bread about 9, bell 2304 |
+| A new adult's emeralds (`possessions.endow`) | 3 to 6 | 192 to 384 |
+| Rent, its cap, the dinner a villager must keep (`rent.lua`) | 1, 3, 1 | 64, 192, 64 |
+| A villager's dinner (`meal.lua`), the keeper's dinner credit | 1 | 64 |
+| A player's tavern meal (`living_villages_player_meal_price`) | 1 | 64 |
+| Purses: the keeper's, the Builder's, a porter's | 8 | 512 |
+| The keeper's tab cap; a porter's fee | 8; 1 | 512; 64 |
+| The Builder's sales to players (`builder_materials.SALES`) | 1 to 16 | 64 to 1024 |
+| Player trades (below) | vanilla | emeralds times 64 |
+
+`exchange.lua`'s smallest sale stays one emerald, now half a stick. The farmer's food
+sale keeps its bundle (as many as vanilla sells for one emerald, six loaves), now for
+64 emeralds.
+
+**Player trades.** The emeralds in each trade the player sees are multiplied by
+`SCALE` in the player's detached trade lists, where `gossip.lua` already sets the
+price (both wanted slots and the offered slot, so selling 20 wheat pays 64 emeralds
+and 6 bread cost 64), before the demand and reputation terms move it; the reputation
+discount scales with it. `_trades` keeps vanilla's counts, so the fisherman's restock
+and the market still read real trades, and removing the mod restores vanilla prices.
+The emerald's `stack_max` goes from 64 to 4096 (`core.override_item`), so a
+price up to 4096 fits one slot; prices already clamp to `stack_max`. With the economy
+off nothing scales and the stack stays at 64.
+
+**Existing worlds.** A villager endowed before the change (`_villages_endowed` with no
+`_villages_emerald_scale`) has the emeralds in its belongings multiplied once and is
+marked. Chests are left alone. Stacks over 64 outlive the mod as ordinary oversized
+stacks.
+
 ## Staffing a new village
 
 A generated village is staffed the moment it is placed, not by a race for workstations.
@@ -839,6 +884,7 @@ branch, and each leaves the game playable with `living_villages_economy` on or o
 | 11e | Leather: the leatherworker's cow herd, books, cooked meat | 4, 11d |
 | 11f | Staffing a new village: every job and bed assigned at generation | — |
 | 11g | Trade trips that finish: on into the work stage, sellers that can make up an emerald, chasing a seller that moves | 11b |
+| 11h | Prices and the money supply times 64; player trades scaled; emeralds stack to 4096 | 11g |
 | 12 | Peddler; holiday market sells real surplus | 6, 11 |
 
 ### 1. Clock, hunger and the tavern
@@ -1037,6 +1083,25 @@ and dropped the day after, sellers too small for a sale passed over, and a chase
 re-aimed; and a probe run on seed 2007 chunk 208,768 shows no trip ending "no offer"
 for want of a whole emerald. Trips that buy cheap goods wait on ticket 11h.
 
+### 11h. Prices and the money supply
+
+`ledger.SCALE` and every amount in Prices and the money supply; the player trade
+scaling in `gossip.lua`'s pricing step; the emerald's `stack_max`; the farmer's food
+sale by price; the one-time top-up of existing villagers. Done when the tests pass at
+the new scale (a stick worth 2, a new adult holding 192 to 384), a test shows a player
+trade window charging 64 times vanilla's emeralds and an emerald stack of 4096, and a
+probe run on seed 2007 chunk 208,768 shows trade trips for coal or bread buying in
+person, rent and dinners paid at the new amounts and the census adding up.
+
+Landed as `ledger.SCALE`, the scaled constants in `rent.lua`, `keeper_supply.lua`,
+`meal.lua`, `player_meals.lua`, `trade_trips.lua`, `builder_market.lua` and `labour.lua`
+(the porter's income), `builder_materials.sale_price`, the farmer's 64-emerald bundle,
+`gossip.lua` scaling the trade window and the emerald's stack, and
+`possessions.endow`'s one-time top-up. Run 37 (seed 2007, chunk 208,768, stopped on
+day 5) showed a single loaf sold in conversation for 20 emeralds, a trade trip buying
+one wool for 26 (in run 34 the same sale came to 0.42 of an emerald), both farmers
+paying 64 rent, dinners at 64, and the census at 3328 emeralds every day.
+
 ### 12. Peddlers and the market
 
 Peddler activity; `market.lua` stalls stocked from real surplus; browsers buy. The
@@ -1061,8 +1126,11 @@ cartographer's banners (wool and a stick) sell to villagers decorating for the m
   without a player yet.
 - Money piling up at the tavern: in run 32 the pantry held 15 of the village's 41
   emeralds by day 6, since dinners bring in more than the keeper pays for food.
-- Cheap goods in small numbers come to under an emerald (runs 34 to 36), so villagers
-  cannot trade them; ticket 11h inflates prices and the money supply to answer it.
+- After ticket 11h, prices relative to each other: a dinner costs 64 while the loaf
+  it is made of is worth about 9, which is why money piles up at the tavern; rent
+  and starting money were also set against old prices.
+- Emerald ore and emerald blocks still yield vanilla's 1 and 9 after ticket 11h, so
+  mining becomes a small income next to trading. Whether ore drops should scale too.
 - `navigation.lua` drops a walk's arrival callback when another mover takes over the
   villager; errands work around it by checking where they stand, but the callback should
   either fire or report the walk lost.

@@ -161,7 +161,8 @@ end
 
 -- The Builder short of cobble: its wants come from the materials report, it stows what it
 -- bought into its pouch, and takes a purse from its chests.
-local bench_chest = chest({x = 0, y = 1, z = 2}, nil, {{name = EMERALD, count = 5}})
+-- Five vanilla emeralds at the economy's scale (ticket 11h).
+local bench_chest = chest({x = 0, y = 1, z = 2}, nil, {{name = EMERALD, count = 320}})
 local bob = villager("bob-builder", {x = 0, y = 1, z = 0},
 	{_profession = "mason", _villages_builder = true, _jobsite = {x = 0, y = 1, z = 1}, _villages_belongings = {}})
 local function report(missing)
@@ -176,8 +177,8 @@ end
 market.update(bob, report(200))
 assert(bob._villages_builder_wants[COBBLE] == 200 and bob._villages_builder_wants["mcl_core:stonebrick"] == nil,
 	"an unpriced material is no want: a player must bring it")
-assert(bob._villages_builder_drop.z == 2 and count(bob, EMERALD) == 5 and chest_count(bench_chest, EMERALD) == 0)
-assert(logs[#logs]:find("took 5 emerald"))
+assert(bob._villages_builder_drop.z == 2 and count(bob, EMERALD) == 320 and chest_count(bench_chest, EMERALD) == 0)
+assert(logs[#logs]:find("took 320 emerald"))
 local view = possessions.assess(bob)
 assert(view.needs[COBBLE] == 200 and trips.urgency(view, COBBLE) >= trips.URGENT)
 assert(market.status(bob) == "200 cobble")
@@ -189,17 +190,23 @@ local trip = trips.plan(bob, view, heard, bob._bed)
 assert(trip and trip.item == COBBLE and trip.who == "quinn-quarrier" and trip.want == 200 and trip.leg == "seller")
 -- ...but not to a seller too far, or asking more than it values the cobble, or itself.
 assert(trips.plan(bob, view, {has_news("far", COBBLE, {x = 200, y = 1, z = 0}, 0.03)}, bob._bed) == nil)
-assert(trips.plan(bob, view, {has_news("dear", COBBLE, {x = 20, y = 1, z = 0}, 5)}, bob._bed) == nil)
+assert(trips.plan(bob, view, {has_news("dear", COBBLE, {x = 20, y = 1, z = 0}, 100)}, bob._bed) == nil)
 assert(trips.plan(bob, view, {has_news("bob-builder", COBBLE, {x = 20, y = 1, z = 0}, 0.03)}, bob._bed) == nil)
--- ...nor to one with too few spare to make up a whole emerald at the midpoint (run 34).
+-- At the economy's scale one cobble is worth whole emeralds, so a seller with one is a
+-- trip (ticket 11h; at vanilla's prices it came to under one, run 34)...
+local few = has_news("few", COBBLE, {x = 20, y = 1, z = 0}, 0.03)
+few.count = 1
+assert(trips.plan(bob, view, {few}, bob._bed), "one cobble is a sale")
+-- ...but a seller it cannot make a sale with is passed over, and logged once a day.
 do
-	local few = has_news("few", COBBLE, {x = 20, y = 1, z = 0}, 0.03)
-	few.count = 1
-	assert(trips.plan(bob, view, {few}, bob._bed) == nil, "one cobble is no sale")
+	local purse = bob._villages_belongings[EMERALD]
+	bob._villages_belongings[EMERALD] = nil
+	assert(trips.plan(bob, view, {few}, bob._bed) == nil, "no sale without an emerald")
 	assert(logs[#logs]:find("passes over few's mcl_core:cobble: heard 1 spare %(carries unknown now%)"), logs[#logs])
 	local n = #logs
 	trips.plan(bob, view, {few}, bob._bed)
 	assert(#logs == n, "once a day")
+	bob._villages_belongings[EMERALD] = purse
 end
 
 -- In its work stage, while short, it goes: walks to the quarrier's home and buys in person.
@@ -209,7 +216,7 @@ bob._villages_market_news = heard
 bob._villages_belongings[EMERALD] = nil
 trips.step(bob, now - trips.PLAN_SECONDS - 1)
 assert(not bob._villages_trade_trip and #bob.walks == 0, "no trip without an emerald")
-bob._villages_belongings[EMERALD] = 5
+bob._villages_belongings[EMERALD] = 320
 trips.step(bob, now)
 assert(bob._villages_trade_trip and #bob.walks == 1 and bob.walks[1].x == 20, "walks to the quarrier")
 assert(logs[#logs - 0] and table.concat(logs, "\n"):find("sets off for 200 mcl_core:cobble from quinn%-"))
@@ -255,7 +262,7 @@ do
 	away.teleport({x = 100, y = 1, z = 100})
 	local stash = chest({x = 6, y = 1, z = 40}, "cal-callback", {{name = COBBLE, count = 50}})
 	bob._villages_market_news = {has_news("cal-callback", COBBLE, {x = 0, y = 1, z = 40}, 0.03)}
-	bob._villages_belongings[EMERALD] = 2
+	bob._villages_belongings[EMERALD] = 2 * 64
 	bob.walks = {}
 	now = now + 100
 	trips.step(bob, now)
@@ -272,7 +279,7 @@ end
 do
 	local roy = villager("roy-roaming", {x = -40, y = 1, z = 0}, {_villages_belongings = {[COBBLE] = 64}})
 	roy.teleport({x = -40, y = 1, z = 20})
-	possessions.add(bob, EMERALD, 3)
+	possessions.add(bob, EMERALD, 3 * 64)
 	bob._villages_builder_wants = {[COBBLE] = 120}
 	bob._villages_market_news = {has_news("roy-roaming", COBBLE, {x = -40, y = 1, z = 0}, 0.03)}
 	bob.walks = {}
@@ -295,9 +302,9 @@ end
 
 -- An empty stash or none: it gives up and passes that seller over for a while.
 do
-	local carl = villager("carl", {x = -10, y = 1, z = 0}, {_villages_belongings = {[EMERALD] = 5}, _villages_food = 0})
+	local carl = villager("carl", {x = -10, y = 1, z = 0}, {_villages_belongings = {[EMERALD] = 5 * 64}, _villages_food = 0})
 	carl.teleport({x = -300, y = 1, z = 0})
-	local hungry = villager("hal", {x = 0, y = 1, z = -10}, {_villages_belongings = {[EMERALD] = 5}, _villages_food = 0})
+	local hungry = villager("hal", {x = 0, y = 1, z = -10}, {_villages_belongings = {[EMERALD] = 5 * 64}, _villages_food = 0})
 	hungry._villages_market_news = {has_news("carl", "mcl_farming:bread", {x = -10, y = 1, z = 0}, 0.1)}
 	time = 6000 / 24000
 	trips.step(hungry, now)
@@ -322,18 +329,18 @@ do
 	local smith_stash = chest({x = 50, y = 1, z = 2}, "sam-smith", {})
 	local sam = villager("sam-smith", {x = 50, y = 1, z = 0}, {_profession = "tool_smith",
 		_jobsite = {x = 51, y = 1, z = 0}, _villages_stash = smith_stash,
-		_villages_belongings = {[EMERALD] = 6}})
+		_villages_belongings = {[EMERALD] = 6 * 64}})
 	local coal_seller = villager("cole", {x = 70, y = 1, z = 0},
 		{_villages_belongings = {["mcl_core:coal_lump"] = 40}})
 	sam._villages_market_news = {has_news("cole", "mcl_core:coal_lump", {x = 70, y = 1, z = 0}, 0.04)}
 	local pat = villager("pat-porter", {x = 50, y = 1, z = 1}, {_villages_belongings = {},
 		_villages_labour = {day = day, activity = "porter"}})
-	local idler = villager("ida", {x = 50, y = 1, z = 1}, {_villages_belongings = {[EMERALD] = 9}})
+	local idler = villager("ida", {x = 50, y = 1, z = 1}, {_villages_belongings = {[EMERALD] = 9 * 64}})
 	local hires = trips.hire({pat, sam, idler})
 	assert(#hires == 1 and hires[1].client == sam and pat._villages_trade_trip.client.id == "sam-smith")
 	local purse = pat._villages_trade_trip.client.purse
-	assert(purse == 6 and count(sam, EMERALD) == 0 and count(pat, EMERALD) == 6)
-	assert(logs[#logs]:find("hired porter pat%-po with 6 emerald"))
+	assert(purse == 384 and count(sam, EMERALD) == 0 and count(pat, EMERALD) == 384)
+	assert(logs[#logs]:find("hired porter pat%-po with 384 emerald"))
 	-- A second porter finds nobody left to hire it.
 	local pia = villager("pia", {x = 50, y = 1, z = 1}, {_villages_labour = {day = day, activity = "porter"}})
 	assert(#trips.hire({pia, sam}) == 0)
@@ -360,7 +367,7 @@ end
 do
 	local stash = chest({x = -50, y = 1, z = 2}, "lib", {})
 	local lib = villager("lib", {x = -50, y = 1, z = 0}, {_profession = "librarian",
-		_jobsite = {x = -51, y = 1, z = 0}, _villages_stash = stash, _villages_belongings = {[EMERALD] = 4}})
+		_jobsite = {x = -51, y = 1, z = 0}, _villages_stash = stash, _villages_belongings = {[EMERALD] = 4 * 64}})
 	lib._villages_market_news = {has_news("gone", "mcl_core:paper", {x = -70, y = 1, z = 0}, 0.01)}
 	local por = villager("por", {x = -50, y = 1, z = 1}, {_villages_labour = {day = day, activity = "porter"}})
 	assert(#trips.hire({por, lib}) == 1)
@@ -371,10 +378,10 @@ do
 	trips.step(por, now + 4)
 	por.arrive()
 	trips.step(por, now + 6)
-	assert(chest_count(stash, EMERALD) == 4 and count(por, EMERALD) == 0)
+	assert(chest_count(stash, EMERALD) == 4 * 64 and count(por, EMERALD) == 0)
 	-- An own trip lasts into the next day's work stage, not called back to the jobsite;
 	-- one from the day before that is dropped.
-	local own = villager("own", {x = 0, y = 1, z = 0}, {_villages_belongings = {[EMERALD] = 2}})
+	local own = villager("own", {x = 0, y = 1, z = 0}, {_villages_belongings = {[EMERALD] = 2 * 64}})
 	own._villages_trade_trip = {item = COBBLE, who = "x", home = {x = 1, y = 1, z = 40}, want = 1, leg = "seller", day = day - 1}
 	assert(trips.activity_override(own, "work") == "putter" and trips.activity_override(own, "putter") == nil)
 	trips.step(own, now)
