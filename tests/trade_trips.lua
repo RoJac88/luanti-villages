@@ -92,8 +92,13 @@ minetest = {
 			get_inventory = function() return c.inv end,
 		}
 	end,
-	find_nodes_in_area = function(minp, maxp)
+	find_nodes_in_area = function(minp, maxp, names)
 		local found = {}
+		local wants_chests = false
+		for _, name in ipairs(type(names) == "table" and names or {names}) do
+			if tostring(name):find("chest") then wants_chests = true end
+		end
+		if not wants_chests then return found end
 		for k in pairs(chests) do
 			local x, y, z = k:match("(-?%d+),(-?%d+),(-?%d+)")
 			local p = {x = tonumber(x), y = tonumber(y), z = tonumber(z)}
@@ -232,6 +237,25 @@ do
 	assert(chest_count(stash, EMERALD) == before - count(bob, EMERALD) and chest_count(stash, EMERALD) >= 1)
 	assert(table.concat(logs, "\n"):find("bought %d+ mcl_core:cobble from ada%-aw's stash"))
 	assert(bob._villages_trade_trip == nil)
+end
+
+-- At the end of each leg it goes on, though the walk never reported arriving.
+do
+	local away = villager("cal-callback", {x = 0, y = 1, z = 40})
+	away.teleport({x = 100, y = 1, z = 100})
+	local stash = chest({x = 6, y = 1, z = 40}, "cal-callback", {{name = COBBLE, count = 50}})
+	bob._villages_market_news = {has_news("cal-callback", COBBLE, {x = 0, y = 1, z = 40}, 0.03)}
+	bob._villages_belongings[EMERALD] = 2
+	bob.walks = {}
+	now = now + 100
+	trips.step(bob, now)
+	assert(#bob.walks == 1 and bob.walks[1].z == 40)
+	bob.teleport({x = 1, y = 1, z = 40})
+	trips.step(bob, now + 2)
+	assert(bob._villages_trade_trip.leg == "stash" and #bob.walks == 2, "on to the stash")
+	bob.teleport({x = 6, y = 1, z = 41})
+	trips.step(bob, now + 4)
+	assert(bob._villages_trade_trip == nil and chest_count(stash, COBBLE) < 50, "bought from the stash")
 end
 
 -- Out, but about: it goes after the seller where it stands, and buys there.

@@ -25,7 +25,8 @@
 -- pantry, unless it is the keeper or of the keeper's household (possessions.same_house),
 -- who eat free. At a pantry it is served only when it has room for a meal, at or below
 -- possessions.EAT_AT points, the same mark at which it eats what it carries, so one fed
--- from home keeps its emeralds. One that cannot pay is not served.
+-- from home keeps its emeralds. One that cannot pay is not served. Each payment is
+-- logged (ticket 11b), so a probe run shows where the money goes.
 --
 -- Load this once, at top-level load time (init.lua): it registers the entity,
 -- which Luanti allows only then, and the plate holds are its own in-memory
@@ -256,6 +257,10 @@ local function settle(self, jukebox, chests, item)
 	if price > 0 then
 		pay()
 		pantry.put(chests, pantry.EMERALD, price)
+		if is_villager(self) then
+			core.log("action", string.format("[living_villages] villager %s paid %d emerald(s) for dinner at the tavern at %s",
+				tostring(self._id):sub(1, 6), price, core.pos_to_string(jukebox)))
+		end
 	end
 	return true
 end

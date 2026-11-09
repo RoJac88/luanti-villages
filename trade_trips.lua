@@ -227,16 +227,20 @@ local function budget_and_value(self, trip)
 	return possessions.emeralds(self), possessions.assess(self).value(trip.item) or 0
 end
 
--- Buys from the stash. Returns how many it bought.
+-- Buys from the stash. Returns how many it bought, and with none why not.
 function M.buy_from_stash(self, trip, chest)
 	local budget, value = budget_and_value(self, trip)
 	local want = trip.want - (trip.bought or 0)
-	local count, pay = M.terms(want, chest_count(chest, trip.item), value, trip.price, budget)
-	if not count or possessions.emeralds(self) < pay then return 0 end
+	local held = chest_count(chest, trip.item)
+	local count, pay = M.terms(want, held, value, trip.price, budget)
+	if not count or possessions.emeralds(self) < pay then
+		return 0, string.format("stash holds %d, %d wanted at %.2f each to its %.2f, budget %d", held, want,
+			value, trip.price, budget)
+	end
 	local taken = take(chest, trip.item, count)
 	if taken < count then
 		if taken > 0 then put(chest, trip.item, taken) end
-		return 0
+		return 0, "the stash came up short"
 	end
 	possessions.take(self, EMERALD, pay)
 	local paid = put(chest, EMERALD, pay)
@@ -256,11 +260,12 @@ function M.buy_in_person(self, trip, seller)
 	local seller_view = possessions.assess(seller)
 	local seller_value = seller_view.value(item) or 0
 	local unit = (value + seller_value) / 2
-	if unit <= 0 or budget < 1 then return 0 end
+	if unit <= 0 then return 0, "no price" end
+	if budget < 1 then return 0, "no budget" end
 	local own = not trip.client and possessions.assess(self) or nil
 	local need = trip.client and (trip.want - (trip.bought or 0)) or (own.needs[item] or 0)
 	need = math.min(need, math.floor(budget / unit))
-	if need < 1 then return 0 end
+	if need < 1 then return 0, string.format("needs none at %.2f each", unit) end
 	local view = {
 		needs = {[item] = need}, surplus = own and own.surplus or {},
 		value = own and own.value or function(i)
@@ -270,8 +275,17 @@ function M.buy_in_person(self, trip, seller)
 		end,
 	}
 	local offer = exchange.offer(seller, seller_view, self, view, item)
-	if not offer or (offer.pay and offer.pay > budget) or (trip.client and not offer.pay) then return 0 end
-	if not exchange.settle(offer) then return 0 end
+	if not offer then
+		-- Spells out what exchange.offer weighed, to tell a seller with none spare from
+		-- one that has them but won't sell at our value.
+		return 0, string.format("no offer: seller has %d spare of %d carried, values %.2f each to our %.2f, we have %d emerald(s)",
+			seller_view.surplus[item] or 0, possessions.count(seller, item), seller_value, view.value(item) or 0,
+			possessions.emeralds(self))
+	end
+	if (offer.pay and offer.pay > budget) or (trip.client and not offer.pay) then
+		return 0, "offer over budget"
+	end
+	if not exchange.settle(offer) then return 0, "settle failed" end
 	trip.bought, trip.spent = (trip.bought or 0) + offer.count, (trip.spent or 0) + (offer.pay or 0)
 	return offer.count
 end
@@ -334,6 +348,24 @@ function M.to_stash(self, trip, now, why)
 	return M.advance(self, trip, now)
 end
 
+-- Whether a villager on a trip stands where its leg's walk was taking it.
+function M.at_leg_end(self, trip)
+	local pos = self.object:get_pos()
+	if not pos then return false end
+	local target, reach
+	if trip.leg == "seller" then
+		target, reach = trip.home, ARRIVE_REACH
+	elseif trip.leg == "chase" then
+		local seller = M.locate(trip.home, trip.who)
+		target, reach = seller and seller.object:get_pos(), SELLER_REACH
+	elseif trip.leg == "stash" then
+		target, reach = trip.stash, REACH
+	elseif trip.leg == "deliver" then
+		target, reach = trip.client and trip.client.deliver, REACH
+	end
+	return target ~= nil and vector.distance(pos, target) <= reach
+end
+
 -- One step of a trip under way.
 function M.advance(self, trip, now)
 	local pos = self.object:get_pos()
@@ -341,19 +373,22 @@ function M.advance(self, trip, now)
 	if trip.leg == "seller" then
 		if vector.distance(pos, trip.home) > ARRIVE_REACH then return walk(self, trip, trip.home, now) end
 		local seller = M.find_seller(pos, trip.who)
-		if seller and M.buy_in_person(self, trip, seller) > 0 then return done_buying(self, trip, now) end
+		local bought, why = 0, nil
+		if seller then bought, why = M.buy_in_person(self, trip, seller) end
+		if bought > 0 then return done_buying(self, trip, now) end
 		if not seller and M.locate(trip.home, trip.who) then
 			trip.leg, trip.tries, trip.chases = "chase", 0, 0
 			return M.advance(self, trip, now)
 		end
-		return M.to_stash(self, trip, now, seller and "no trade" or "nobody home")
+		return M.to_stash(self, trip, now, seller and ("no trade: " .. tostring(why)) or "nobody home")
 	elseif trip.leg == "chase" then
 		local seller = M.locate(trip.home, trip.who)
 		local at = seller and seller.object:get_pos()
 		if not at then return M.to_stash(self, trip, now, "lost sight of the seller") end
 		if vector.distance(pos, at) <= SELLER_REACH then
-			if M.buy_in_person(self, trip, seller) > 0 then return done_buying(self, trip, now) end
-			return M.to_stash(self, trip, now, "no trade")
+			local bought, why = M.buy_in_person(self, trip, seller)
+			if bought > 0 then return done_buying(self, trip, now) end
+			return M.to_stash(self, trip, now, "no trade: " .. tostring(why))
 		end
 		trip.chases = (trip.chases or 0) + 1
 		if trip.chases > CHASES then return M.to_stash(self, trip, now, "could not catch the seller") end
@@ -361,8 +396,9 @@ function M.advance(self, trip, now)
 		return walk(self, trip, vector.round(at), now)
 	elseif trip.leg == "stash" then
 		if vector.distance(pos, trip.stash) > REACH then return walk(self, trip, trip.stash, now) end
-		if M.buy_from_stash(self, trip, trip.stash) > 0 then return done_buying(self, trip, now) end
-		return fail(self, trip, "nothing to buy in the stash (" .. tostring(trip.why) .. ")", now)
+		local bought, why = M.buy_from_stash(self, trip, trip.stash)
+		if bought > 0 then return done_buying(self, trip, now) end
+		return fail(self, trip, "nothing to buy in the stash (" .. tostring(why) .. "; before it, " .. tostring(trip.why) .. ")", now)
 	elseif trip.leg == "deliver" then
 		if vector.distance(pos, trip.client.deliver) > REACH then return walk(self, trip, trip.client.deliver, now) end
 		M.deliver(self, trip)
@@ -400,9 +436,14 @@ function M.step(self, now)
 	local stage = common.schedule_stage(nil, self)
 	if not may_travel(self, trip, stage) or busy(self) then return end
 	if trip and walking[self] then
-		if now - walking[self] < WALK_TIMEOUT then return end
+		-- Arrived, whatever the walk reports: the probe saw a walk's callback go unfired and
+		-- the trip time out by the seller's door.
+		if not M.at_leg_end(self, trip) then
+			if now - walking[self] < WALK_TIMEOUT then return end
+			walking[self] = nil
+			return fail(self, trip, "the walk never ended", now)
+		end
 		walking[self] = nil
-		return fail(self, trip, "the walk never ended", now)
 	end
 	if not trip then
 		if now < (next_plan[self] or 0) then return end

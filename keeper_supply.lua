@@ -7,13 +7,20 @@
 --   nearest work chest with food within SUPPLY_RADIUS of the jukebox: a farmer's (the
 --   chest nearest a claimed composter, the one farmer.lua stores its surplus in) or a
 --   fisherman's claimed barrel, where fisherman.lua puts its cod. It takes up to CARRY of
---   bread, potatoes, cod and wheat and carries them back.
+--   bread, potatoes, cod and wheat and carries them back to its jukebox, from where it fills
+--   the pantry (a pantry chest behind the bar may have nowhere to stand by it).
 -- * It buys what it takes (ticket 4): setting out, it takes up to PURSE emeralds from
---   the pantry, and leaves in the work chest what the food is worth at vanilla's prices
---   (ledger.lua), rounded, for its farmer or fisherman to collect. Villagers eat at the
---   tavern free until ticket 6, so a pantry often has no emeralds but what players pay
---   for meals; the keeper pays what it carries and takes the food anyway, so the tavern
---   keeps feeding the village. What it did not spend goes back in the pantry.
+--   the pantry, and leaves in the work chest what the food will sell for as dinners, for
+--   its farmer or fisherman to collect: DINNER (meal.lua's VILLAGER_PRICE) for each meal
+--   the food makes (MEALS: a loaf, a potato or a cod is one, wheat a third). The tavern
+--   keeps no margin, so dinner money, a player's too, passes through the pantry to the
+--   food producers (ticket 11b; at vanilla's prices, rounded, 8 wheat paid nothing while
+--   its dinners took 1 emerald each, and money piled up in the pantry). What it cannot
+--   pay in whole emeralds, a fraction or an empty purse, it owes in the chest's
+--   `villages_keeper_tab` and pays first next time, up to TAB_CAP; past that it is
+--   forgiven (the keeper's household eats free, so more goes out than comes in). It takes
+--   the food anyway, so the tavern keeps feeding the village. What it did not spend goes
+--   back in the pantry.
 -- * Over its shift at the jukebox it cooks the pantry's raw food into its menu, one dish
 --   every COOK_SECONDS: three wheat to a loaf, a potato baked, a raw cod cooked.
 -- * A newly generated tavern's chest gets STARTING_STOCK on top of its loot, through
@@ -27,7 +34,6 @@ local clock = dofile(core.get_modpath("living_villages") .. "/economy_clock.lua"
 local pantry = dofile(core.get_modpath("living_villages") .. "/tavern_pantry.lua")
 local stock = dofile(core.get_modpath("living_villages") .. "/farm_stock.lua")
 local keeper = dofile(core.get_modpath("living_villages") .. "/keeper.lua")
-local ledger = dofile(core.get_modpath("living_villages") .. "/ledger.lua")
 
 local SUPPLY_RADIUS = 48
 local COMPOSTER_HEIGHT = 8
@@ -37,6 +43,11 @@ local CHECK_SECONDS = 30
 local RETRY_SECONDS = 120
 local COOK_SECONDS = 10
 local PURSE = 8
+local DINNER = 1
+local TAB_CAP = 8
+local TAB = "villages_keeper_tab"
+-- The tab is kept to 4 places: a third and two thirds written down must still make one.
+local EPSILON = 1e-3
 local EMERALD = "mcl_core:emerald"
 -- How near the chest a walk must end for the keeper to reach into it.
 local REACH = 3
@@ -53,6 +64,8 @@ local RECIPES = {
 	{from = COD, count = 1, to = "mcl_fishing:fish_cooked"},
 }
 local STARTING_STOCK = {{BREAD, 6}, {WHEAT, 9}, {POTATO, 6}}
+-- Dinners each supply makes.
+local MEALS = {[BREAD] = 1, [POTATO] = 1, [COD] = 1, [WHEAT] = 1 / 3}
 
 local COMPOSTERS = {"mcl_composters:composter", "mcl_composters:composter_ready"}
 for level = 1, 7 do COMPOSTERS[#COMPOSTERS + 1] = "mcl_composters:composter_" .. level end
@@ -60,7 +73,7 @@ for level = 1, 7 do COMPOSTERS[#COMPOSTERS + 1] = "mcl_composters:composter_" ..
 local M = {
 	SUPPLY_RADIUS = SUPPLY_RADIUS, CARRY = CARRY, TARGET_MEALS = TARGET_MEALS,
 	CHECK_SECONDS = CHECK_SECONDS, RETRY_SECONDS = RETRY_SECONDS, COOK_SECONDS = COOK_SECONDS,
-	STARTING_STOCK = STARTING_STOCK, PURSE = PURSE,
+	STARTING_STOCK = STARTING_STOCK, PURSE = PURSE, DINNER = DINNER, TAB_CAP = TAB_CAP, TAB = TAB,
 }
 
 local function menu_items()
@@ -121,11 +134,16 @@ local function carried(self)
 	return total
 end
 
--- What goods are worth at vanilla's prices, rounded to whole emeralds.
+-- What goods will sell for as dinners, in emeralds, fractions kept.
 function M.worth(goods)
 	local value = 0
-	for item, count in pairs(goods) do value = value + count * (ledger.price(item) or 0) end
-	return math.floor(value + 0.5)
+	for item, count in pairs(goods) do value = value + count * (MEALS[item] or 0) * DINNER end
+	return value
+end
+
+-- What the keeper owes this chest from before.
+function M.tab(pos)
+	return tonumber(core.get_meta(pos):get_string(TAB)) or 0
 end
 
 local function take_purse(self, chests)
@@ -134,6 +152,22 @@ local function take_purse(self, chests)
 		if want <= 0 then break end
 		stock.take_from_chest(self, chest, EMERALD, want)
 	end
+end
+
+-- Pays for what it took from the chest, and what it owed there, from its purse.
+-- Returns what it paid and what it still owes.
+function M.pay(self, chest, taken)
+	local due = M.tab(chest) + M.worth(taken)
+	local paid = stock.put_in_chest(self, chest, EMERALD, math.min(math.floor(due + EPSILON), stock.count(self, EMERALD)))
+	local owed = due - paid
+	if owed > TAB_CAP then
+		core.log("action", string.format("[living_villages] keeper %s forgave %.2f emerald(s) owed at %s",
+			tostring(self._id), owed - TAB_CAP, core.pos_to_string(chest)))
+		owed = TAB_CAP
+	end
+	if owed < EPSILON then owed = 0 end
+	core.get_meta(chest):set_string(TAB, owed > 0 and string.format("%.4f", owed) or "")
+	return paid, owed
 end
 
 local function fetch(self, chest)
@@ -145,9 +179,9 @@ local function fetch(self, chest)
 		if moved > 0 then taken[item] = moved end
 		room = room - moved
 	end
-	local paid = stock.put_in_chest(self, chest, EMERALD, math.min(M.worth(taken), stock.count(self, EMERALD)))
-	core.log("action", string.format("[living_villages] keeper %s fetched %d food for the pantry, paying %d emerald(s)",
-		tostring(self._id), carried(self), paid))
+	local paid, owed = M.pay(self, chest, taken)
+	core.log("action", string.format("[living_villages] keeper %s fetched %d food for the pantry, paying %d emerald(s), owing %.2f",
+		tostring(self._id), carried(self), paid, owed))
 end
 
 local function deliver(self, jukebox)
@@ -189,17 +223,30 @@ local function go(self, target, now, arrive)
 	local started = self:gopath(target, function(entity)
 		entity._villages_supply_target = nil
 		local pos = entity.object:get_pos()
-		if pos and vector.distance(pos, target) <= REACH then arrive(entity) end
+		if pos and vector.distance(pos, target) <= REACH then
+			arrive(entity)
+		else
+			core.log("action", string.format("[living_villages] keeper %s stopped %s short of %s",
+				tostring(entity._id):sub(1, 6), pos and string.format("%.1f", vector.distance(pos, target)) or "?",
+				core.pos_to_string(target)))
+		end
 	end, true)
 	if started == false then
 		self._villages_supply_target = nil
 		self._villages_supply_next = now + RETRY_SECONDS
+		core.log("action", string.format("[living_villages] keeper %s found no way to %s",
+			tostring(self._id):sub(1, 6), core.pos_to_string(target)))
 	end
 end
 
 local function supply(self, jukebox, now)
 	if self._villages_supply_target then
 		-- The walk ended without arriving: try again later.
+		local route, pos = self._villages_goto_route, self.object:get_pos()
+		core.log("action", string.format("[living_villages] keeper %s gave up walking to %s (%s away, state %s, route %s)",
+			tostring(self._id):sub(1, 6), core.pos_to_string(self._villages_supply_target),
+			pos and string.format("%.1f", vector.distance(pos, self._villages_supply_target)) or "?", tostring(self.state),
+			route and (tostring(route.status) .. "/" .. tostring(route.reason)) or "none"))
 		self._villages_supply_target = nil
 		self._villages_supply_next = now + RETRY_SECONDS
 		return
@@ -208,8 +255,10 @@ local function supply(self, jukebox, now)
 	self._villages_supply_next = now + CHECK_SECONDS
 	local chests = pantry.chests(jukebox)
 	if not chests then return end
+	-- Delivered from beside the jukebox, its own post, which it reaches every shift: a
+	-- pantry chest behind the bar may have nowhere to stand by it (seed 2007's tavern).
 	if carried(self) > 0 then
-		return go(self, chests[1], now, function(entity) deliver(entity, jukebox) end)
+		return go(self, jukebox, now, function(entity) deliver(entity, jukebox) end)
 	end
 	if M.meals(chests) >= TARGET_MEALS then return end
 	local source = M.source(jukebox, chests)

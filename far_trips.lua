@@ -17,8 +17,9 @@
 -- a claimed jobsite at the work stage, the dinner at the tavern, the service
 -- or the bell on a holiday (once they have found a pulpit or bell), or the
 -- morning at the bell (bell_hangout.lua, #329), or a keeper's trip for its pantry
--- (keeper_supply.lua), or a trade trip (trade_trips.lua). Anyone else far from home, a lost putterer or
--- an unemployed villager, still gets vanilla's walk back.
+-- (keeper_supply.lua), or a trade trip (trade_trips.lua) or rent errand (rent.lua), in
+-- any stage. Anyone else far from home, a lost putterer or an unemployed villager, still
+-- gets vanilla's walk back.
 local core = minetest
 local common = dofile(core.get_modpath("living_villages") .. "/common.lua")
 
@@ -47,6 +48,8 @@ end
 -- one it is an ordinary lost villager and goes home as in vanilla.
 local function has_errand(self)
 	if self.child or not self._id then return false end
+	-- A trade trip (trade_trips.lua) or a rent errand (rent.lua), in whatever stage it runs.
+	if self._villages_trade_trip or self._villages_rent_errand then return true end
 	local stage = common.schedule_stage(nil, self)
 	if stage == "work" then return common.has_claimed_jobsite(self) end
 	if stage == "staff" then return self._villages_keeper == true and has_claimed_jukebox(self) end
@@ -59,8 +62,6 @@ local function has_errand(self)
 	if stage == "social" then return self._villages_social ~= nil end
 	-- The morning at the bell (bell_hangout.lua, #329) once it has found one.
 	if stage == "putter" then return self._villages_bell_hangout ~= nil end
-	-- A trade trip (trade_trips.lua), in whatever stage it runs.
-	if self._villages_trade_trip then return true end
 	-- A keeper fetching food for its pantry in its free hours (keeper_supply.lua).
 	if stage == "free" then return self._villages_supply_target ~= nil end
 	return false

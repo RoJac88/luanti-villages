@@ -10,7 +10,9 @@
 -- * Stowing. What it bought sits in its belongings; the materials report counts its pouch
 --   (farm_stock.lua), so bought materials move there.
 -- * Purse. Its own emeralds, topped up to PURSE from emeralds left in its bench chests:
---   whoever leaves emeralds there is paying for materials.
+--   whoever leaves emeralds there is paying for materials, rent included (rent.lua).
+--   Never from a farm's chest or the pantry in its reach (possessions.is_food_chest):
+--   a probe run caught it taking the pay the keeper had just left a farmer.
 -- * Delivery. A porter it hires (trade_trips.lua) delivers to its nearest bench chest,
 --   kept in `_villages_builder_drop`.
 --
@@ -46,10 +48,16 @@ function M.update(self, report)
 		end
 	end
 	self._villages_builder_wants = wants
-	self._villages_builder_drop = report.chests[1] and vector.new(report.chests[1]) or nil
+	-- Its own chests: within its reach a farm's chest or the pantry may stand, whose
+	-- emeralds are the farmer's or the keeper's.
+	local own = {}
+	for _, chest in ipairs(report.chests) do
+		if not possessions.is_food_chest(chest) then own[#own + 1] = chest end
+	end
+	self._villages_builder_drop = own[1] and vector.new(own[1]) or nil
 	local have = possessions.emeralds(self)
 	if wants and have < PURSE then
-		for _, chest in ipairs(report.chests) do
+		for _, chest in ipairs(own) do
 			local moved = stock.take_from_chest(self, chest, EMERALD, PURSE - have)
 			if moved > 0 then
 				stock.take(self, EMERALD, moved)

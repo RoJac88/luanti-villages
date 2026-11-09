@@ -98,6 +98,12 @@ gap, which the player can override as today.
 5. **Removable.** State is in `_villages_*` entity fields and node metadata; goods
    are real items in real chests; a pouch drops on death (as the farmer's does).
    Removing the mod leaves vanilla villagers and chests full of ordinary items.
+6. **Every profession has village demand.** Each profession sells something other
+   villagers want, even when players are its bigger market; goods only a player uses
+   are fine, a profession only players buy from is not (see
+   [Village demand by profession](#village-demand-by-profession)). A villager's want
+   for another's goods is a bonus over its plain rate, never a penalty below it, so a
+   village that lacks the seller works as it does without the economy.
 
 ## The economic clock
 
@@ -419,9 +425,15 @@ With the economy off it feeds everyone free, as before.
 - **Pantry.** The chests within 6 of the keeper's jukebox; the stock tavern's chest
   stands 3 behind it. The keeper fetches food for it from the farms' chests and the
   fishermen's barrels, and from ticket 4 buys it: it takes up to 8 emeralds from the
-  pantry and leaves what it takes is worth at vanilla's prices, rounded, in the work
-  chest. A pantry may run short of money, so the keeper takes the food even when it
-  cannot pay all of it.
+  pantry and leaves in the work chest what the food will sell for as dinners, one
+  dinner's price per meal it makes (a loaf, a potato or a cod is one, wheat a third;
+  ticket 11b). The tavern keeps no margin, so dinner money passes through the pantry
+  to the food producers; the keeper's wage is its household's free dinners. What it
+  cannot pay in whole emeralds, a fraction or a short purse, it owes in the chest's
+  meta and pays first next time, up to 8, past which it is forgiven. It takes the food
+  even when it cannot pay. Ticket 4 paid vanilla's prices, rounded: a probe run showed 8
+  wheat paying nothing while each dinner made from it took an emerald, and the
+  village's money piling up in the pantry.
 - **Cooking.** The keeper turns raw pantry items into its menu items over its shift:
   bread from wheat, baked potatoes from potatoes, cooked fish from raw fish.
 - **Dinner.** `meal.lua` serves a guest only when the pantry has a menu item: it
@@ -430,12 +442,200 @@ With the economy off it feeds everyone free, as before.
   the same house, `possessions.same_house`) eat free. A guest is served only at or
   below 8 points, the mark at which it eats what it carries, so one fed from home
   keeps its emeralds; one that cannot pay is not served. With an empty pantry the
-  guest is seated and nothing is served.
+  guest is seated and nothing is served. From ticket 11b every payment is logged:
+  diner, price and pantry.
 - **Player meals.** `player_meals.lua` takes the meal from the pantry and charges
   the player one emerald from their inventory before serving. A player with no
   emerald, or a tavern with an empty pantry, is not served and the log says which.
 - **Player trades.** The keeper's menu trades stay vanilla (unlimited). A low pantry
   raises the player's price through the demand term.
+
+## Rent
+
+Ticket 11b. Longer probe runs of ticket 11 showed money going one way. Every villager
+pays the tavern for dinner, and a villager whose goods no one needs urgently, the
+Builder above all, loses an emerald a day until it can buy nothing. In one run a
+Builder bought 34 cobble from a quarrier for 2 emeralds, had none left for the last 8,
+and never finished the house. The first run with rent showed the dinner money did not
+even reach the food producers: the keeper paid vanilla's prices for raw food, rounded,
+which is nothing for a load of wheat, so it piled up in the pantry. Now the keeper pays
+what the food sells for (The tavern), so the food producers earn what the village spends
+on dinner, and rent takes part of that to the Builder, which spends it on materials,
+which quarriers and woodcutters spend at the tavern. The Builder grows richer as the
+village grows.
+
+- **Landlord.** Rent is owed to a Builder's bench, not to the villager holding it, so a
+  new Builder inherits the income. Paid by errand, it goes in the bench chests, from which
+  `builder_market.lua` already tops up the Builder's purse. A village with no claimed
+  bench collects none.
+- **Tenants.** A villager whose bed is in a house the Builder built: `finish_building`
+  writes the bench's position as `villages_landlord` into the meta of every bed in the
+  footprint. In a generated village farmers and fishermen pay as well, as if their
+  houses had been built for them, so money starts flowing out of the food producers.
+  Their landlord is the nearest claimed bench within `VILLAGE_RADIUS` (128) of the bed.
+  The Builder, the keeper and its household (`possessions.same_house`) and children pay
+  nothing.
+- **How much.** `RENT` (1) emerald every `RENT_DAYS` (2) days of economic clock, so a
+  villager away from players owes nothing for that time. Both numbers are guesses for
+  probe runs to settle.
+- **Arrears.** Rent not paid stays owing, up to `RENT_CAP` (3) emeralds; past that it
+  is forgiven. No one is evicted. A tenant pays only from emeralds above the price of a
+  dinner, so it eats first and pays when it next has money.
+- **Paying.** At the end of a conversation with its landlord's Builder, before trades, a
+  tenant hands over what it owes, from belongings to belongings, as `exchange.lua`
+  settles a trade. Otherwise, owing anything it can pay, it goes by errand (kept from
+  `far_trips.lua`'s walk home) in its putter stage to the bench's nearest chest, where
+  it leaves the emeralds. The first design waited for the cap before the errand; a
+  probe run showed conversations with the Builder too rare and too often cut short.
+- **Where it goes.** The Builder pays for materials and dinner as before, from its
+  belongings and its purse top-up. While the census has a building to put up it keeps
+  buying; with none, rent piles up on the bench, and the census below shows it.
+- **Observability.** Dinner payments are logged (The tavern), and so is every rent
+  payment (tenant, amount, bench, at a conversation or by errand) and arrears forgiven.
+  The probe census records each villager's emeralds, the pantry's and each bench
+  chest's, so a run shows where money sits day by day. The inspector gets a `Rent`
+  line: landlord, owed, last paid.
+
+## Village demand by profession
+
+Food is the one constant demand: everyone eats every day. Without more, money ends with
+whoever sells food and every other profession lives on its starting emeralds (Principle
+6). Where each profession's village demand comes from:
+
+| Profession | Sells to villagers | Buyer and why | Ticket |
+|---|---|---|---|
+| Farmer, fisherman | Food | The keeper, for dinners | 4, 11b |
+| Mason | Bricks, smooth stone | The Builder, as materials | 11 |
+| Shepherd | Wool | The Builder (beds); banners | 11, 12 |
+| Tool smith | Stone hoe, axe, pickaxe | Farmers, woodcutters, quarriers: a tool wears out | 11d |
+| Librarian | Books; glass | Everyone: reading speeds work for a while; the Builder | 11e, 11 |
+| Leatherworker | Leather, from a cow herd | The librarian, for books | 11e |
+| Butcher | Cooked meat | The keeper: a second dish | 11e |
+| Fletcher | Bows, arrows | Warriors: arrows are spent, bows wear | To do (warriors) |
+| Cleric | Its blessing | Donations at the holiday service, which it passes on as alms | 11c |
+| Cartographer | Banners | Villagers decorating for the holiday market | 12 |
+| Weapon smith, armorer | Swords, axes; armor, shields | Warriors; no village source of iron yet | To do (warriors) |
+
+## Donations and alms
+
+Ticket 11c. A safety net for villagers who run out of money, and the cleric's income.
+
+- **Donating.** At the end of the holiday service (`church.lua`), each attendee with
+  more than `SAVINGS` (8) emeralds gives the cleric at the pulpit a tenth of the excess,
+  at least 1. The rich give most, so money comes from where it piles up.
+- **Good gossip.** `gossip.lua` keys its memory by a subject string, so a villager's id
+  serves as one: each attendee that sees a donation records `minor_positive` about the
+  donor (`major_positive` for 5 emeralds or more), which decays and spreads in
+  conversation like gossip about players. Villager subjects get their own share of the
+  entries passed in a conversation, so they do not crowd out gossip about players.
+- **What standing buys.** In `exchange.lua`, a trader that thinks well of the other
+  moves the price toward it, by up to a tenth: generous villagers trade a little
+  cheaper, and the donation pays back over time.
+- **Alms.** The cleric keeps half of what it is given as its own. In the social stage
+  after the service, which keeps villagers about the pulpit, it tops up every villager
+  there that cannot pay for a dinner to two dinners' worth, from the rest. What is left
+  waits for the next holiday.
+
+Money goes food producers → donations → cleric → alms → poor villagers → tavern → food
+producers. Donations, alms and standing are logged; the inspector gets a `Standing` line.
+
+## Goods that wear out
+
+Ticket 11d. `wants.lua` is data, as `recipes.lua` is: goods that do a villager good for
+a while and then are used up. Each entry names the item (or a choice of items), who
+wants it (professions or labour activities), how long it lasts (uses or days of
+economic clock) and its effect: a rate multiplier on that villager's work. The ledger
+reads it: a villager without the good, or with one nearly used up, needs it, valued at
+the extra income it brings over its life, so its market news posts the need and trades
+and trade trips buy it. Its work loops read the multiplier. Every effect is a bonus over
+today's rates (Principle 6).
+
+First entries, whose supply already exists (cobble from quarriers, sticks from
+woodcutters, the tool smith's recipes):
+
+| Good | Wanted by | Lasts | Effect |
+|---|---|---|---|
+| Stone hoe | Farmers | 64 harvests | Harvests 1.5 times as fast |
+| Stone axe | Woodcutters | 32 fellings | Fells 1.5 times as fast |
+| Stone pickaxe | Quarriers | 64 cobble | Mines 1.5 times as fast |
+
+A good in use is held in `_villages_wants` (item, uses or clock left); a worn-out tool
+is gone. The numbers are guesses for probe runs.
+
+## Leather
+
+Ticket 11e. No villager makes leather: the only leather is the librarian's and the
+leatherworker's starting kits and what players sell, so books stop after about two.
+Cows drop 1 to 3 beef and 0 to 2 leather (`mobs_mc/cow+mooshroom.lua`).
+
+- **Herding.** The leatherworker keeps a herd of cows by its cauldron, as `flock.lua`'s
+  shepherds keep sheep (ordinary `mobs_mc:cow`, marked with the villager's id, up to a
+  herd size). Cows breed on wheat (their `follow`), which it buys from farmers; past
+  the herd size it slaughters one, keeping the leather and selling the beef to the
+  butcher.
+- **Books.** Reading joins `wants.lua`: every adult wants a book every few days, and
+  one read speeds its work by a fifth for that time, then is used up.
+- **Cooked meat.** The butcher cooks beef too, and the keeper buys cooked meat as a
+  second dish, at one dinner a piece.
+
+How mobs_mc's cows breed and can be slaughtered under a villager's hand needs reading
+before it is designed further.
+
+## Warriors (to do)
+
+Not scheduled: combat would be the hardest behaviour in the mod, so it waits. Noted here
+because three professions' village demand depends on it (Principle 6).
+
+- **Roles.** An archer (ranged) and a guard (melee), roles over a post block as the
+  Builder's is over its bench, taken by unemployed adults, a few per village.
+- **Defense first.** A hostile mob near the village, or a player its own gossip holds at
+  or below `REPUTATION_HOSTILE` (as iron golems already treat players, `gossip.lua`),
+  is a threat, and answering it overrides every schedule stage. Never villagers or
+  golems; an archer holds its shot while a villager is in the way.
+- **Archers** stand where they can hit: in bow range, in line of sight, on high ground
+  if there is any, and shoot real arrows (`mcl_bows.shoot_arrow` takes a shooter
+  object). **Guards** close in and strike with the weapon they carry; armor lessens what
+  they take.
+- **Hunting** fills their time when nothing threatens: wild cows, pigs, chickens and
+  rabbits, never a leatherworker's herd, for leather, meat and feathers they sell.
+- **Demand.** Arrows (spent) and bows from the fletcher, swords from the tool smith and
+  the weapon smith, armor from the leatherworker and the armorer. The iron goods still
+  need a village source of iron.
+- **Open:** whether threats wake warriors at night or a watch keeps one awake; whether
+  guards use the armor stand as their post.
+
+## Staffing a new village
+
+A generated village is staffed the moment it is placed, not by a race for workstations.
+Every unemployed villager today takes the nearest free job block, so on the first day
+they all crowd the composters (`farm_jobs.lua` puts farming first), a villager can end
+up working across the village from its bed, and a probe run spends its first day
+waiting for jobs to settle.
+
+- **When.** `settlements.place_schematics` places a village's buildings, but each one
+  lands later, through `emerge_area`, and VoxeLibre spawns a villager on each red bed
+  in that building's after-placement callback (`mcl_villages/buildings.lua`
+  `spawn_villagers`), with `_bed` and the bed's meta set. While the original runs,
+  `mcl_structures.place_schematic` is wrapped to count those callbacks; when the last
+  one has run, every bed, job block and villager exists, and staffing runs once.
+- **Who gets what.** The job blocks are every workstation in the village area
+  (`common.lua`'s workstation table), the Builder's bench and the tavern's jukebox. The
+  villagers are those just spawned, each on its own bed. Pairs are taken greedily, the
+  closest job block and bed first, until one side runs out. Each pair is claimed as
+  VoxeLibre's `employ` claims one: the block's meta `villager`, `_jobsite`,
+  `_profession` and the texture (`init.lua`'s mirror of `set_textures`); the bench and
+  the jukebox through `builder.lua`'s and `keeper.lua`'s own claims, so their
+  saved state is what it would have been. Beds stay as spawned, so each villager works at
+  the job nearest its bed.
+- **Left unemployed.** `living_villages_spawn_unemployed` villagers are left without a
+  job: those whose beds are furthest from any block still free. They are the labour pool
+  (forager, woodcutter, quarrier); the probe's `lv_probe_nitwits` stays for nitwits.
+- **Later job seekers.** A child grown up or a villager who loses its job takes the free
+  job block nearest its bed, of any kind, in place of VoxeLibre's nearest to where it
+  stands. This replaces `farm_jobs.lua`'s farming first: a composter no longer comes
+  ahead of other jobs. `child_jobs.lua` still keeps children from taking any.
+- **Scope.** New villages only. A village generated before this keeps the jobs its
+  villagers took.
 
 ## What the player sees
 
@@ -572,10 +772,14 @@ New `_villages_*` entity fields, never to be renamed once released:
 | `_villages_tally` | What it made and used today, and yesterday |
 | `_villages_trade_trip` | A trade trip under way: item, seller, legs, a porter's client and purse |
 | `_villages_builder_wants`, `_villages_builder_drop` | A short Builder's missing priced materials, and its delivery chest |
+| `_villages_rent` | Rent owed, the clock reading it was last charged at, the bench, and the last payment |
+| `_villages_rent_errand` | A rent errand under way: the bench chest it walks to |
 
 Existing fields reused: `_villages_food`, `_villages_fed_day`. Node metadata:
 `villages_owner` and `villages_owner_bed` on stash chests, and `villages_missing`
-(what a player took, until the owner looks).
+(what a player took, until the owner looks). From ticket 11b, `villages_landlord` on
+beds the Builder built: the bench they owe rent to; and `villages_keeper_tab` on work
+chests and barrels: what the keeper still owes there for food.
 
 ## Settings
 
@@ -587,6 +791,7 @@ Existing fields reused: `_villages_food`, `_villages_fed_day`. Node metadata:
 | `living_villages_craft_seconds` | 120 | Work seconds per crafted item |
 | `living_villages_tier_supply_days` | 3 | Days of village-supplied crafting per tier |
 | `living_villages_player_meal_price` | 1 | Emeralds a player pays for a tavern meal; 0 makes them free |
+| `living_villages_spawn_unemployed` | 0 | Villagers of a new village left without a job at generation |
 
 ## Performance
 
@@ -628,6 +833,11 @@ branch, and each leaves the game playable with `living_villages_economy` on or o
 | 9 | Demand and hunger price terms; tier advancement from village supply; theft gossip | 3, 8 |
 | 10 | Economy tab, need bubble, inspector fields, census weight | 5 |
 | 11 | Quarrier, porter, trade trips; the Builder buys from villagers | 6, 7 |
+| 11b | Rent to the Builder's bench; dinner and rent logging; emeralds in the probe census | 1, 11 |
+| 11c | Donations at the holiday service, alms, gossip about villagers | 6, 11b |
+| 11d | `wants.lua`: goods that wear out; stone tools | 3, 8 |
+| 11e | Leather: the leatherworker's cow herd, books, cooked meat | 4, 11d |
+| 11f | Staffing a new village: every job and bed assigned at generation | — |
 | 12 | Peddler; holiday market sells real surplus | 6, 11 |
 
 ### 1. Clock, hunger and the tavern
@@ -739,14 +949,92 @@ Landed as the quarrier and porter in `labour.lua`, `trade_trips.lua` (installed 
 `far_trips.lua` errand and a busy field for `conversation.lua`, and the inspector's
 `Trade trip` and `Builder wants` lines.
 
+### 11b. Rent
+
+Rent owed to the Builder's bench by the tenants of its houses and, in a generated
+village, by farmers and fishermen; paid at the end of a conversation with the Builder,
+or by errand to the bench chest. The keeper pays for food what it sells for as
+dinners, with a tab for fractions. Dinner and rent payments logged; the probe census
+records the emeralds of each villager, the pantry and each bench chest; the
+inspector's `Rent` line. Done when a probe run of six game days,
+with ticket 11's staging (a small house and a cobble generator), shows rent reaching the
+bench from farmers and fishermen and the Builder spending it on materials without a
+player, and the census shows where the village's emeralds sit on each day. (Finishing
+the house was dropped: it also needs planks, logs, glass panes, carved stone brick and a
+bed, which no villager sells yet; see Open questions.)
+
+Landed as `rent.lua` (installed in `init.lua`, settled at the end of each conversation
+before the exchange), `builder.lua` marking a finished building's beds, the keeper's
+dinner pricing and tab in `keeper_supply.lua`, dinner logging in `meal.lua`,
+`possessions.is_food_chest` keeping farm and pantry emeralds out of rent and the
+Builder's purse, the keeper delivering at its jukebox, and the probe census's daily
+emerald line (`farms` for chests beside a composter). Rent errands and trade trips go on
+once they stand where their walk was headed, since `navigation.lua` can drop a walk's
+arrival callback when another mover takes the villager over. Run 32 (seed 2007, chunk
+208,768) showed farmers paying rent on days 5, 6 and 7, the Builder taking it from the
+bench chest each time and buying 28 and then 15 cobble from the nitwit with it.
+
+### 11c. Donations and alms
+
+Donations to the cleric at the end of the holiday service, from attendees with savings;
+good gossip about the donor, using villager ids as gossip subjects, with their own share
+of what passes in a conversation; standing moving `exchange.lua`'s price by up to a
+tenth; alms to attendees who cannot pay for a dinner. Done when a probe run over a
+holiday shows a farmer donating, the cleric keeping half, a broke villager getting alms
+and then buying a dinner, and the donor's standing spreading in conversation.
+
+### 11d. Goods that wear out
+
+`wants.lua` and its reading in the ledger and the work loops; stone hoe, axe and
+pickaxe. Done when a probe run shows a farmer, woodcutter or quarrier buying a stone
+tool from the tool smith, working faster with it, and buying another once it wears out.
+
+### 11e. Leather
+
+The leatherworker's cow herd, books in `wants.lua`, cooked meat on the tavern menu.
+Done when a probe run shows leather reaching the librarian from a herd, a book made
+from it bought and read, and beef reaching the butcher and, cooked, the tavern.
+
+### 11f. Staffing a new village
+
+`village_staffing.lua`: staffing at generation (see Staffing a new village), the
+`living_villages_spawn_unemployed` setting, the nearest-to-bed rule for later job seekers
+in place of `farm_jobs.lua`. Done when a probe run on
+seed 2007 chunk 208,768 shows, before the first morning, every job block claimed by
+the villager whose bed is nearest it, the Builder and the keeper among them, the set
+number left unemployed, and no villager changing job on day 1; and when a grown child
+takes the free block nearest its bed.
+
 ### 12. Peddlers and the market
 
-Peddler activity; `market.lua` stalls stocked from real surplus; browsers buy.
+Peddler activity; `market.lua` stalls stocked from real surplus; browsers buy. The
+cartographer's banners (wool and a stick) sell to villagers decorating for the market.
 
 ## Open questions
 
-- Pacing: hunger rate, craft time and starting stock all need probe runs on real
-  villages before they are more than guesses.
+- Pacing: hunger rate, craft time, starting stock and rent all need probe runs on
+  real villages before they are more than guesses.
+- Whether the Builder becomes the next place money piles up, once the census has
+  nothing left to build. If so, the Builder could spend its surplus on upkeep, or rent
+  could fall with its savings.
+- Iron: no villager makes it, so the weapon smith's and the armorer's goods have no
+  village supply. A miner activity, or iron golems' drops, could supply it. Until
+  warriors exist (Warriors), the fletcher, the weapon smith and the armorer sell only
+  to players, against Principle 6.
+- Once the basic money loops work: whether the keeper should keep a margin, and what it
+  would spend it on.
+- The Builder's other materials: a small house needs planks, logs, glass panes, carved
+  stone brick and a bed besides cobble. The woodcutter fells logs but sells no planks,
+  and nobody makes glass, carved stone brick or beds, so no Builder finishes a house
+  without a player yet.
+- Money piling up at the tavern: in run 32 the pantry held 15 of the village's 41
+  emeralds by day 6, since dinners bring in more than the keeper pays for food.
+- Trade trips for bread end "no trade" with the seller found in person; the trip now
+  logs which check refused. Whole-emerald prices on cheap goods are the suspect, as with
+  the keeper's pay before its tab.
+- `navigation.lua` drops a walk's arrival callback when another mover takes over the
+  villager; errands work around it by checking where they stand, but the callback should
+  either fire or report the walk lost.
 - Whether a peddler walks to another village is the start of the next phase, and
   needs its own design (routes between villages, news carried across them).
 - Whether stashes should be protected from players beyond the gossip cost, for
