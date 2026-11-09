@@ -17,7 +17,7 @@ local ORIGIN, MARGIN = M.ORIGIN, M.MARGIN
 -- the village generator is absent. Not every branch has all of them.
 local FURNISHERS = {
 	tavern = "tavern_schematic.lua", church = "church_schematic.lua", library = "library_schematic.lua",
-	belltower = "belltower_schematic.lua",
+	belltower = "belltower_schematic.lua", farm = "farm_schematic.lua",
 }
 
 -- The Builder's house has no stock schematic to extract, so it comes from the mod.
