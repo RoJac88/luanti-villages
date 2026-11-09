@@ -50,6 +50,7 @@ local common = dofile(core.get_modpath("living_villages") .. "/common.lua")
 local possessions = dofile(core.get_modpath("living_villages") .. "/possessions.lua")
 local news = dofile(core.get_modpath("living_villages") .. "/market_news.lua")
 local tally = dofile(core.get_modpath("living_villages") .. "/economy_tally.lua")
+local wants = dofile(core.get_modpath("living_villages") .. "/wants.lua")
 
 local TICK_SECONDS = 2
 local RETRY_SECONDS = 60
@@ -589,6 +590,12 @@ local function work(self, activity, target)
 		item, count = M.cut(self, target)
 	end
 	if item then
+		-- A tool makes the next one come sooner, and wears (wants.lua).
+		local use = (target.kind == "fell" and "fell") or (target.kind == "cobble" and "mine") or nil
+		if use then
+			local now = core.get_gametime()
+			self._villages_labour_next = now + TICK_SECONDS / wants.use(self, use, possessions.take_held, now)
+		end
 		tally.note(self, {[item] = count})
 		core.log("action", string.format("[living_villages] villager %s gathered %d %s", short_id(self), count, item))
 	elseif target.kind == "plant" or target.kind == "replant" then

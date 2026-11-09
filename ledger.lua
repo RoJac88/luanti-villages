@@ -269,7 +269,9 @@ end
 
 -- input: {id, profession, max_tier, held = {item = count}, food_points, hunger_per_day,
 -- foods = {item = points} (food.POINTS), extra = {item = count} (a Builder's missing
--- materials)}. Returns {targets, needs, surplus, value = function(item)}.
+-- materials, goods that wear out), worth = {item = emeralds} (the most an item is worth
+-- to it whatever its need: what a good that wears out brings over its life, wants.lua)}.
+-- Returns {targets, needs, surplus, value = function(item)}.
 function M.assess(input)
 	local targets = {}
 	local function want(item, count)
@@ -313,7 +315,9 @@ function M.assess(input)
 		local price = M.price(item)
 		if not price then return nil end
 		if item == EMERALD then return 1 end
-		return price * M.urgency(held[item] or 0, targets[item] or 0)
+		local value = price * M.urgency(held[item] or 0, targets[item] or 0)
+		local most = input.worth and input.worth[item]
+		return most and math.min(value, most) or value
 	end
 	return {targets = targets, needs = needs, surplus = surplus, value = value}
 end

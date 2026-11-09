@@ -30,6 +30,9 @@ return {
 		{makes = "mcl_tools:axe_stone", count = 1, tier = 1, from = {{COBBLE, 3}, {STICK, 2}}},
 		{makes = "mcl_tools:shovel_stone", count = 1, tier = 1, from = {{COBBLE, 1}, {STICK, 2}}},
 		{makes = "mcl_farming:hoe_stone", count = 1, tier = 1, from = {{COBBLE, 2}, {STICK, 2}}},
+		-- Its own sticks, from a woodcutter's logs (ticket 11d): no villager sells sticks.
+		{makes = STICK, count = 4, tier = 1, from = {{"mcl_core:wood", 2}}},
+		{makes = "mcl_core:wood", count = 4, tier = 1, from = {{"mcl_core:tree", 1}}},
 	},
 	weapon_smith = {
 		{makes = "mcl_tools:axe_iron", count = 1, tier = 1, from = {{IRON, 3}, {STICK, 2}}, fuel = 3},

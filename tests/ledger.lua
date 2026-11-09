@@ -80,7 +80,17 @@ local builder = ledger.assess({id = "bo", profession = "mason", max_tier = 1, ex
 assert(builder.needs["mcl_core:cobble"] == 40)
 -- top: the largest worth first.
 local top = ledger.top(smithy.needs, smithy.value, 1)
-assert(#top == 1 and top[1].item == "mcl_core:coal_lump", top[1].item)
+-- Logs for its own sticks (ticket 11d) are the tool smith's dearest need.
+assert(#top == 1 and top[1].item == "mcl_core:tree", top[1].item)
+assert(smithy.needs["mcl_core:tree"] == 4 and smithy.needs["mcl_core:wood"] == 8)
+-- worth caps a value whatever the need: a good that wears out is worth what it brings.
+local capped = ledger.assess({id = "f", profession = "farmer", held = {},
+	extra = {["mcl_farming:hoe_stone"] = 1}, worth = {["mcl_farming:hoe_stone"] = 100}})
+assert(capped.needs["mcl_farming:hoe_stone"] == 1)
+assert(capped.value("mcl_farming:hoe_stone") == 100, capped.value("mcl_farming:hoe_stone"))
+local cheap = ledger.assess({id = "f", profession = "farmer", held = {},
+	extra = {["mcl_farming:hoe_stone"] = 1}, worth = {["mcl_farming:hoe_stone"] = 500}})
+assert(cheap.value("mcl_farming:hoe_stone") == ledger.price("mcl_farming:hoe_stone") * ledger.MAX_URGENCY)
 
 -- A crafting profession wants its recipes' inputs (recipes.lua), and coal where they smelt.
 local smith_inputs = ledger.inputs("tool_smith", 1)
