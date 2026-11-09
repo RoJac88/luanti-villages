@@ -92,8 +92,13 @@ minetest = {
 			get_inventory = function() return c.inv end,
 		}
 	end,
-	find_nodes_in_area = function(minp, maxp)
+	find_nodes_in_area = function(minp, maxp, names)
 		local found = {}
+		local wants_chests = false
+		for _, name in ipairs(type(names) == "table" and names or {names}) do
+			if tostring(name):find("chest") then wants_chests = true end
+		end
+		if not wants_chests then return found end
 		for k in pairs(chests) do
 			local x, y, z = k:match("(-?%d+),(-?%d+),(-?%d+)")
 			local p = {x = tonumber(x), y = tonumber(y), z = tonumber(z)}

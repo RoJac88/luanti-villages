@@ -166,6 +166,12 @@ local function near(pos, radius, names)
 		{x = pos.x + radius, y = pos.y + radius, z = pos.z + radius}, names) > 0
 end
 
+-- The tavern's pantry or a farm's chest: whatever emeralds are in it are its keeper's
+-- or its farmer's (dinner money, pay for food), never a Builder's purse or a rent drop.
+function M.is_food_chest(pos)
+	return near(pos, PANTRY_RADIUS, {JUKEBOX}) or near(pos, 1, COMPOSTERS)
+end
+
 -- A chest that does a job: the tavern's pantry, a farm's chest, a Builder's.
 function M.is_work_chest(pos)
 	return near(pos, PANTRY_RADIUS, {JUKEBOX}) or near(pos, 1, COMPOSTERS) or near(pos, WORKSHOP_RADIUS, {BENCH})

@@ -7,7 +7,8 @@
 --   nearest work chest with food within SUPPLY_RADIUS of the jukebox: a farmer's (the
 --   chest nearest a claimed composter, the one farmer.lua stores its surplus in) or a
 --   fisherman's claimed barrel, where fisherman.lua puts its cod. It takes up to CARRY of
---   bread, potatoes, cod and wheat and carries them back.
+--   bread, potatoes, cod and wheat and carries them back to its jukebox, from where it fills
+--   the pantry (a pantry chest behind the bar may have nowhere to stand by it).
 -- * It buys what it takes (ticket 4): setting out, it takes up to PURSE emeralds from
 --   the pantry, and leaves in the work chest what the food will sell for as dinners, for
 --   its farmer or fisherman to collect: DINNER (meal.lua's VILLAGER_PRICE) for each meal
@@ -241,8 +242,11 @@ end
 local function supply(self, jukebox, now)
 	if self._villages_supply_target then
 		-- The walk ended without arriving: try again later.
-		core.log("action", string.format("[living_villages] keeper %s gave up walking to %s",
-			tostring(self._id):sub(1, 6), core.pos_to_string(self._villages_supply_target)))
+		local route, pos = self._villages_goto_route, self.object:get_pos()
+		core.log("action", string.format("[living_villages] keeper %s gave up walking to %s (%s away, state %s, route %s)",
+			tostring(self._id):sub(1, 6), core.pos_to_string(self._villages_supply_target),
+			pos and string.format("%.1f", vector.distance(pos, self._villages_supply_target)) or "?", tostring(self.state),
+			route and (tostring(route.status) .. "/" .. tostring(route.reason)) or "none"))
 		self._villages_supply_target = nil
 		self._villages_supply_next = now + RETRY_SECONDS
 		return
@@ -251,8 +255,10 @@ local function supply(self, jukebox, now)
 	self._villages_supply_next = now + CHECK_SECONDS
 	local chests = pantry.chests(jukebox)
 	if not chests then return end
+	-- Delivered from beside the jukebox, its own post, which it reaches every shift: a
+	-- pantry chest behind the bar may have nowhere to stand by it (seed 2007's tavern).
 	if carried(self) > 0 then
-		return go(self, chests[1], now, function(entity) deliver(entity, jukebox) end)
+		return go(self, jukebox, now, function(entity) deliver(entity, jukebox) end)
 	end
 	if M.meals(chests) >= TARGET_MEALS then return end
 	local source = M.source(jukebox, chests)

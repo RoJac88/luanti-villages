@@ -197,6 +197,9 @@ assert(rent.accrue(fay) == 1 and rent.payable(fay) == 0 and rent.settle({fay, bo
 fay._villages_belongings[EMERALD] = 5
 assert(rent.settle({fay, liv}) == 0 and fay._villages_rent.owed == 1)
 
+-- A farm's chest nearer the bench is not where rent goes: its emeralds are the farmer's.
+local farm_chest = place({x = 1, y = 1, z = 1}, "mcl_chests:chest_small")
+place({x = 1, y = 1, z = 2}, "mcl_composters:composter")
 -- Owing what it can pay, it pays by errand in its putter stage: walks to the bench's chest.
 work(fay, PERIOD * 2)
 assert(rent.accrue(fay) == rent.RENT_CAP)

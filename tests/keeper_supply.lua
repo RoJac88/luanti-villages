@@ -160,15 +160,15 @@ supply.step(kate, now + 1)
 assert(not trip, "waits for the next check")
 now = now + supply.CHECK_SECONDS
 supply.step(kate, now)
-assert(trip and vector.equals(trip.target, pantry_chest), "carries it to the pantry")
-arrive_at(pantry_chest)
+assert(trip and vector.equals(trip.target, jukebox), "carries it back to the jukebox, beside the pantry")
+arrive_at(jukebox)
 assert(inventories[key(pantry_chest)]["mcl_farming:bread"] == 4)
 assert(inventories[key(pantry_chest)]["mcl_farming:wheat_item"] == 10)
 assert(next(kate._villages_farm_pouch) == nil, "pouch emptied")
 -- What it did not spend goes back.
 kate._villages_farm_pouch = {["mcl_core:emerald"] = 2, ["mcl_farming:bread"] = 1}
 supply.step(kate, now + supply.CHECK_SECONDS)
-arrive_at(pantry_chest)
+arrive_at(jukebox)
 assert(inventories[key(pantry_chest)]["mcl_core:emerald"] == 2 and inventories[key(pantry_chest)]["mcl_farming:bread"] == 5)
 inventories[key(pantry_chest)]["mcl_core:emerald"], inventories[key(pantry_chest)]["mcl_farming:bread"] = nil, 4
 kate._villages_supply_next = nil

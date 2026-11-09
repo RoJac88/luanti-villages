@@ -21,7 +21,7 @@
 --   a tenant of a member Builder's bench hands it what it owes, belongings to belongings.
 --   Otherwise, owing anything it can pay, it goes by errand (`_villages_rent_errand`, the
 --   chest) in its putter stage: it walks to the bench's nearest chest (farm_stock.find_chests,
---   the Builder's CHEST_RADIUS) and leaves the emeralds there, where builder_market.lua
+--   the Builder's CHEST_RADIUS; never a farm's chest or the pantry) and leaves the emeralds there, where builder_market.lua
 --   tops the Builder's purse up from. A failed errand waits for the next day. (The probe
 --   showed conversations with the Builder too rare, and too often cut short, to rely on.)
 --
@@ -233,7 +233,10 @@ function M.step(self, now)
 			or rent.errand_day == core.get_day_count() then
 			return
 		end
-		local chest = stock.find_chests(rent.bench, CHEST_RADIUS)[1]
+		local chest
+		for _, pos in ipairs(stock.find_chests(rent.bench, CHEST_RADIUS)) do
+			if not possessions.is_food_chest(pos) then chest = pos break end
+		end
 		if not chest then return end
 		errand = {chest = vector.new(chest), tries = 0}
 		self._villages_rent_errand = errand
