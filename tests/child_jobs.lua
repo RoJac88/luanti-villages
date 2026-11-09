@@ -178,14 +178,14 @@ end
 
 -- An adult beside a free workstation still gets the job.
 reset()
-local adult = make_villager("adult", {child = false})
+local adult = make_villager("adult", {child = false, _bed = {x = 0, y = 0, z = 0}})
 entity_def.do_custom(adult, 1)
 assert(adult._profession == "farmer", "an adult takes the free workstation")
 assert(adult._jobsite and claimed_by(composter) == "adult")
 
 -- A child does not: no profession, no jobsite, no claim, on any tick.
 reset()
-local kid, kid_props = make_villager("kid", {child = true})
+local kid, kid_props = make_villager("kid", {child = true, _bed = {x = 0, y = 0, z = 0}})
 for _ = 1, 5 do entity_def.do_custom(kid, 1) end
 assert(kid._profession == "unemployed", "child profession: " .. tostring(kid._profession))
 assert(kid._jobsite == nil, "child must hold no jobsite")

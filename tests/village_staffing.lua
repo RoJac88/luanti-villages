@@ -18,6 +18,10 @@ minetest = {
 	registered_nodes = {},
 	log = function(level, text) table.insert(logs, level .. " " .. text) end,
 	pos_to_string = key,
+	string_to_pos = function(text)
+		local x, y, z = text:match("(-?%d+),(-?%d+),(-?%d+)")
+		return x and {x = tonumber(x), y = tonumber(y), z = tonumber(z)}
+	end,
 	get_item_group = function() return 0 end,
 	after = function(seconds, fn) table.insert(afters, {seconds = seconds, fn = fn}) end,
 	get_node_or_nil = function(pos)
@@ -129,7 +133,7 @@ settlements.place_schematics = function(info)
 				local id = "v" .. key(bed)
 				nodes[key(bed)] = BED
 				metas[key(bed)] = {villager = id}
-				table.insert(objects, {name = "mobs_mc:villager", _id = id, _bed = bed,
+				table.insert(building.asleep or objects, {name = "mobs_mc:villager", _id = id, _bed = bed,
 					_profession = building.profession or "unemployed", pos = {x = bed.x, y = bed.y, z = bed.z + 1}})
 			end
 			if building.fail then error("boom") end
@@ -151,7 +155,12 @@ local roles = {
 		return true
 	end},
 }
-assert(staffing.install(settlements, structures, roles))
+local stored = {}
+local storage = {
+	get_string = function(_, k) return stored[k] or "" end,
+	set_string = function(_, k, v) stored[k] = v ~= "" and v or nil end,
+}
+assert(staffing.install(settlements, structures, roles, minetest, storage))
 assert(staffing.install(settlements, structures, roles), "a second install is a no-op")
 local wrapped = settlements.place_schematics
 
@@ -251,6 +260,41 @@ do
 	assert(villager("v4,1,1")._villages_keeper, "the bed nearest the jukebox keeps the tavern")
 	assert(villager("v1,1,1")._profession == "farmer")
 	assert(count_logs("2 employed") == 1)
+end
+
+-- A villager not loaded when its village is staffed is paired by its bed; its block is
+-- held under its id, and the job is finished when it loads.
+do
+	reset()
+	settings[staffing.SETTING] = "1"
+	local house = {{x = 0, y = 0, z = 0}, {x = 30, y = 5, z = 9}}
+	nodes[key({x = 2, y = 1, z = 2})] = COMPOSTER
+	nodes[key({x = 6, y = 1, z = 2})] = JUKEBOX
+	-- Spawned, but their mapblocks are not active.
+	local asleep = {}
+	wrapped({{pos = house[1], schematic = house, asleep = asleep,
+		beds = {{x = 1, y = 1, z = 1}, {x = 7, y = 1, z = 1}, {x = 30, y = 1, z = 1}}}})
+	land(1)
+	assert(#objects == 0 and #asleep == 3)
+	assert(metas[key({x = 2, y = 1, z = 2})].villager == "v1,1,1", "held under its id")
+	assert(metas[key({x = 6, y = 1, z = 2})].villager == "v7,1,1")
+	assert(stored["staffing:v30,1,1"] == "unemployed")
+	local by_id = {}
+	for _, e in ipairs(asleep) do by_id[e._id] = e end
+	staffing.apply_pending(by_id["v1,1,1"], roles)
+	assert(by_id["v1,1,1"]._profession == "farmer" and by_id["v1,1,1"]._jobsite.x == 2)
+	assert(metas[key({x = 2, y = 1, z = 2})].villager == "v1,1,1")
+	staffing.apply_pending(by_id["v7,1,1"], roles)
+	assert(by_id["v7,1,1"]._villages_keeper, "the jukebox through the keeper's own claim")
+	staffing.apply_pending(by_id["v30,1,1"], roles)
+	assert(by_id["v30,1,1"]._villages_left_unemployed)
+	assert(next(stored) == nil, "nothing left pending")
+	-- A block someone else took meanwhile is not taken from them.
+	stored["staffing:late"] = key({x = 2, y = 1, z = 2})
+	local late = {_id = "late", _profession = "unemployed"}
+	staffing.apply_pending(late, roles)
+	assert(not late._jobsite and metas[key({x = 2, y = 1, z = 2})].villager == "v1,1,1")
+	settings[staffing.SETTING] = nil
 end
 
 -- Too few blocks: those without one are not held out of work, so a block built later is theirs.

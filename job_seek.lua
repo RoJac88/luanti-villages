@@ -24,6 +24,9 @@ local SCAN_SECONDS = 20
 local SCAN_JITTER = 10
 local TRIP_SECONDS = 5
 local UNREACHABLE_SECONDS = 300
+-- How long a villager with no bed waits for one before it looks from where it stands:
+-- a game day at the default speed.
+local BEDLESS_SECONDS = 1200
 -- Close enough to claim: beside the block, as a planned approach ends.
 local REACH = 2.5
 
@@ -37,9 +40,6 @@ local function key(pos)
 end
 
 -- Where its job should be near: its bed, or where it stands if it has none.
-local function home(self)
-	return self._bed or self.object:get_pos()
-end
 
 local function claim_near(self, site, roles)
 	local pos = self.object:get_pos()
@@ -47,22 +47,41 @@ local function claim_near(self, site, roles)
 end
 
 -- The block this villager is after: the one it has, while that is still free, or
--- else the nearest to its bed, looked for once in a while.
+-- else the nearest to its bed, looked for once in a while. The second result says
+-- to hold off: no bed to measure from just now.
+--
+-- Vanilla clears `_bed` for a while in several cases (check_bed, validate_bed in
+-- mobs_mc/villager.lua), and a block chosen from where the villager happens to
+-- stand is not the one by its bed (run 39). So a villager without a bed waits, kept
+-- from vanilla's own search, and only after BEDLESS_SECONDS goes by where it stands;
+-- a block chosen so is given up once the bed is back.
 local function sought(self, search, roles, now)
 	local current = self._villages_farm_seek
+	local bed = self._bed
 	local function skipped(site)
 		return (search.skip[key(site)] or 0) > now
 	end
-	if current and not skipped(current) and job_blocks.is_free(current, roles) then return current end
+	if bed then search.bedless_since = nil end
+	-- A block chosen without the bed is looked at again once the bed is known.
+	local stale = current and bed and search.chosen_from_bed == false
+	if current and not stale and not skipped(current) and job_blocks.is_free(current, roles) then
+		return current
+	end
 	-- Someone else got there first; there may be another.
 	if current then search.next_scan = nil end
+	if not bed then
+		search.bedless_since = search.bedless_since or now
+		if now - search.bedless_since < BEDLESS_SECONDS then return nil, true end
+	end
 	if now < (search.next_scan or 0) then return nil end
 	search.next_scan = now + SCAN_SECONDS + math.random() * SCAN_JITTER
-	local from = home(self)
+	local from = bed or self.object:get_pos()
 	if not from then return nil end
 	local minp, maxp = common.farm_job_box(from)
 	local sites = core.find_nodes_in_area(minp, maxp, job_blocks.search_nodes(roles))
-	return job_blocks.nearest_free(from, sites, roles, skipped)
+	local site = job_blocks.nearest_free(from, sites, roles, skipped)
+	if site then search.chosen_from_bed = bed ~= nil end
+	return site
 end
 
 local function give_up(self, search, now)
@@ -123,17 +142,17 @@ function M.install(def, navigation, roles)
 			searches[self] = search
 		end
 		local now = core.get_gametime()
-		local site = sought(self, search, roles, now)
+		local site, hold = sought(self, search, roles, now)
 		if site ~= self._villages_farm_seek then search.trip_started = nil end
 		self._villages_farm_seek = site
-		if not site then return original_custom(self, dtime) end
+		if not site and not hold then return original_custom(self, dtime) end
 
 		local trades = self._trades
 		self._trades = TRADED
 		local result = original_custom(self, dtime)
 		self._trades = trades
 
-		if result == false or self.following or self.state == "gowp" then return result end
+		if not site or result == false or self.following or self.state == "gowp" then return result end
 		if not job_blocks.eligible(self) then return result end
 		if common.is_work_time(self) or common.schedule_stage(nil, self) == "free" then
 			seek(self, search, navigation, roles, now)

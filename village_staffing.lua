@@ -34,6 +34,10 @@ local FIND_RADIUS = 8
 
 -- Villager ids whose village is still being placed.
 local awaiting = {}
+-- Mod storage, for jobs given to villagers not loaded when their village was staffed.
+local storage
+local PENDING = "staffing:"
+local UNEMPLOYED = "unemployed"
 
 -- How many of a new village's villagers are left without a job.
 function M.unemployed(engine)
@@ -76,11 +80,22 @@ local function note_beds(batch, p1, p2)
 end
 
 -- Pairs and claims. Returns the summary it logs.
+-- A villager whose mapblock is not active when its village is staffed (a village
+-- generated at the edge of what is loaded) is no entity yet. It is paired by its bed
+-- all the same: its block is claimed in the node's meta under its id, as vanilla's
+-- claim is, and the rest waits in mod storage for it to load (M.apply_pending).
+local function reserve(id, block, roles)
+	if not job_blocks.is_free(block, roles) then return false end
+	core.get_meta(block):set_string("villager", id)
+	if storage then storage:set_string(PENDING .. id, core.pos_to_string(block)) end
+	return true
+end
+
 function M.staff(batch, roles, unemployed)
 	local villagers = {}
 	for id, bed in pairs(batch.beds) do
 		local entity = find_villager(id, bed)
-		if entity and job_blocks.eligible(entity) then
+		if not entity or job_blocks.eligible(entity) then
 			table.insert(villagers, {id = id, bed = bed, entity = entity})
 		end
 	end
@@ -97,7 +112,10 @@ function M.staff(batch, roles, unemployed)
 	end
 	table.sort(blocks, by_position)
 	local limit = math.max(0, #villagers - unemployed)
-	local function try(v, block) return job_blocks.claim(v.entity, block, roles) end
+	local function try(v, block)
+		if v.entity then return job_blocks.claim(v.entity, block, roles) end
+		return reserve(v.id, block, roles)
+	end
 	-- The bench and the jukebox first: a village wants its Builder and its keeper, and a
 	-- tavern often stands apart from every bed, so closest-first would leave it to
 	-- keeper.lua's evening take-over, which moves someone off a job on the first day.
@@ -118,7 +136,13 @@ function M.staff(batch, roles, unemployed)
 		local employed = {}
 		for _, pair in ipairs(taken) do employed[pair.villager] = true end
 		for _, v in ipairs(villagers) do
-			if not employed[v] then v.entity[job_blocks.LEFT_UNEMPLOYED] = true end
+			if not employed[v] then
+				if v.entity then
+					v.entity[job_blocks.LEFT_UNEMPLOYED] = true
+				elseif storage then
+					storage:set_string(PENDING .. v.id, UNEMPLOYED)
+				end
+			end
 		end
 	end
 	local summary = {villagers = #villagers, blocks = #blocks, employed = #taken,
@@ -145,8 +169,11 @@ local wrappers = setmetatable({}, {__mode = "k"})
 
 -- Wraps settlements.place_schematics; install it outside every other wrapper, so
 -- one batch covers the whole village. Returns true if installed (or already is).
-function M.install(settlements, structures, roles, engine)
+function M.install(settlements, structures, roles, engine, mod_storage)
 	engine = engine or core
+	if type(mod_storage) == "userdata" or (type(mod_storage) == "table" and mod_storage.get_string) then
+		storage = mod_storage
+	end
 	if type(settlements) == "table" and wrappers[settlements.place_schematics] then return true end
 	if type(settlements) ~= "table" or type(settlements.place_schematics) ~= "function"
 			or type(structures) ~= "table" or type(structures.place_schematic) ~= "function" then
@@ -201,10 +228,32 @@ end
 
 -- Holds a villager whose village is still being placed back from every job module
 -- inside this wrapper: it gets its job from staffing.
-function M.install_villager(def)
+-- Finishes what staffing gave a villager that was not loaded then: the job held in
+-- its block's meta, through that block's own claim, or being left out of work.
+function M.apply_pending(self, roles)
+	if not storage or not self._id then return end
+	local held = storage:get_string(PENDING .. self._id)
+	if held == "" then return end
+	storage:set_string(PENDING .. self._id, "")
+	if held == UNEMPLOYED then
+		if job_blocks.eligible(self) then self[job_blocks.LEFT_UNEMPLOYED] = true end
+		return
+	end
+	local block = core.string_to_pos(held)
+	if not block or core.get_meta(block):get_string("villager") ~= self._id then return end
+	-- Its own claim checks the block is free; it is this villager's.
+	core.get_meta(block):set_string("villager", "")
+	if not job_blocks.claim(self, block, roles) and job_blocks.is_free(block, roles) then
+		core.log("action", string.format("[living_villages] villager %s could not take the job "
+			.. "staffing gave it at %s; it is free again", tostring(self._id), held))
+	end
+end
+
+function M.install_villager(def, roles)
 	local original_custom = def.do_custom
 	def.do_custom = function(self, dtime)
 		if M.awaiting(self) then return end
+		M.apply_pending(self, roles)
 		return original_custom(self, dtime)
 	end
 end

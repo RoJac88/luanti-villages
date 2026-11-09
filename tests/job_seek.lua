@@ -103,8 +103,10 @@ local function villager(pos, extra)
 	local entity = {
 		_id = "v" .. tostring(math.random(1e9)), _profession = "unemployed", state = "stand",
 		object = {get_pos = function() return pos end},
+		_bed = {x = pos.x, y = pos.y, z = pos.z},
 	}
 	for k, v in pairs(extra or {}) do entity[k] = v end
+	if entity._bed == false then entity._bed = nil end
 	return entity
 end
 local function reset()
@@ -318,6 +320,27 @@ do
 	def.do_custom(v, 0.1)
 	assert(v._profession == "unemployed" and not v._villages_farm_seek and #trips == 0)
 	assert(vanilla_seen:find("traded_once", 1, true) and v._trades == nil)
+end
+
+-- No bed for now: it waits, kept from vanilla's search, and only after a day goes by
+-- where it stands. A block chosen so is dropped once the bed is back.
+do
+	reset()
+	nodes[key({x = 1, y = 0, z = 0})] = COMPOSTER
+	local far = {x = 40, y = 0, z = 0}
+	nodes[key({x = 41, y = 0, z = 0})] = BARREL
+	local v = villager({x = 0, y = 0, z = 0}, {_bed = false})
+	def.do_custom(v, 0.1)
+	assert(v._profession == "unemployed" and not v._villages_farm_seek and #trips == 0)
+	assert(vanilla_seen:find("traded_once", 1, true), "vanilla's search is held off too")
+	now = now + 1201
+	v.state = "gowp" -- walking, so it chooses but does not claim yet
+	def.do_custom(v, 0.1)
+	assert(v._villages_farm_seek and v._villages_farm_seek.x == 1, "after a day, from where it stands")
+	v._bed = far
+	now = now + 31
+	def.do_custom(v, 0.1)
+	assert(v._villages_farm_seek.x == 41, "the bed is back: the block by it")
 end
 
 assert(common.farm_job_box)

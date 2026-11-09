@@ -596,7 +596,7 @@ core.register_on_mods_loaded(function()
 	-- Outside every role above, so none of them sees a child with a job (#262).
 	dofile(core.get_modpath("living_villages") .. "/child_jobs.lua").install(def)
 	-- Outside every job module: a villager of a village still being placed waits for staffing.
-	village_staffing.install_villager(def)
+	village_staffing.install_villager(def, job_roles)
 	-- One copy of seat.lua, so that its reservations cover both the tavern's
 	-- chairs and the church's.
 	local seat = dofile(core.get_modpath("living_villages") .. "/seat.lua")
@@ -678,7 +678,8 @@ if not dofile(core.get_modpath("living_villages") .. "/loomless_house.lua").inst
 end
 village_index = dofile(core.get_modpath("living_villages") .. "/village_index.lua")
 -- Outermost, so one batch covers every building of the village.
-if not village_staffing.install(rawget(_G, "settlements"), rawget(_G, "mcl_structures"), job_roles) then
+if not village_staffing.install(rawget(_G, "settlements"), rawget(_G, "mcl_structures"), job_roles, core,
+		path_storage) then
 	core.log("warning", "[living_villages] new villages are not staffed: settlements.place_schematics "
 		.. "or mcl_structures.place_schematic is missing; villagers find their own jobs")
 end
