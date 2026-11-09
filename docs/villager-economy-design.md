@@ -604,6 +604,39 @@ because three professions' village demand depends on it (Principle 6).
 - **Open:** whether threats wake warriors at night or a watch keeps one awake; whether
   guards use the armor stand as their post.
 
+## Staffing a new village
+
+A generated village is staffed the moment it is placed, not by a race for workstations.
+Every unemployed villager today takes the nearest free job block, so on the first day
+they all crowd the composters (`farm_jobs.lua` puts farming first), a villager can end
+up working across the village from its bed, and a probe run spends its first day
+waiting for jobs to settle.
+
+- **When.** `settlements.place_schematics` places a village's buildings, but each one
+  lands later, through `emerge_area`, and VoxeLibre spawns a villager on each red bed
+  in that building's after-placement callback (`mcl_villages/buildings.lua`
+  `spawn_villagers`), with `_bed` and the bed's meta set. While the original runs,
+  `mcl_structures.place_schematic` is wrapped to count those callbacks; when the last
+  one has run, every bed, job block and villager exists, and staffing runs once.
+- **Who gets what.** The job blocks are every workstation in the village area
+  (`common.lua`'s workstation table), the Builder's bench and the tavern's jukebox. The
+  villagers are those just spawned, each on its own bed. Pairs are taken greedily, the
+  closest job block and bed first, until one side runs out. Each pair is claimed as
+  VoxeLibre's `employ` claims one: the block's meta `villager`, `_jobsite`,
+  `_profession` and the texture (`init.lua`'s mirror of `set_textures`); the bench and
+  the jukebox through `builder.lua`'s and `keeper.lua`'s own claims, so their
+  saved state is what it would have been. Beds stay as spawned, so each villager works at
+  the job nearest its bed.
+- **Left unemployed.** `living_villages_spawn_unemployed` villagers are left without a
+  job: those whose beds are furthest from any block still free. They are the labour pool
+  (forager, woodcutter, quarrier); the probe's `lv_probe_nitwits` stays for nitwits.
+- **Later job seekers.** A child grown up or a villager who loses its job takes the free
+  job block nearest its bed, of any kind, in place of VoxeLibre's nearest to where it
+  stands. This replaces `farm_jobs.lua`'s farming first: a composter no longer comes
+  ahead of other jobs. `child_jobs.lua` still keeps children from taking any.
+- **Scope.** New villages only. A village generated before this keeps the jobs its
+  villagers took.
+
 ## What the player sees
 
 **Prices.** Java's demand term, which `gossip.lua` left out "since neither exists
@@ -758,6 +791,7 @@ chests and barrels: what the keeper still owes there for food.
 | `living_villages_craft_seconds` | 120 | Work seconds per crafted item |
 | `living_villages_tier_supply_days` | 3 | Days of village-supplied crafting per tier |
 | `living_villages_player_meal_price` | 1 | Emeralds a player pays for a tavern meal; 0 makes them free |
+| `living_villages_spawn_unemployed` | 0 | Villagers of a new village left without a job at generation |
 
 ## Performance
 
@@ -803,6 +837,7 @@ branch, and each leaves the game playable with `living_villages_economy` on or o
 | 11c | Donations at the holiday service, alms, gossip about villagers | 6, 11b |
 | 11d | `wants.lua`: goods that wear out; stone tools | 3, 8 |
 | 11e | Leather: the leatherworker's cow herd, books, cooked meat | 4, 11d |
+| 11f | Staffing a new village: every job and bed assigned at generation | — |
 | 12 | Peddler; holiday market sells real surplus | 6, 11 |
 
 ### 1. Clock, hunger and the tavern
@@ -946,6 +981,16 @@ tool from the tool smith, working faster with it, and buying another once it wea
 The leatherworker's cow herd, books in `wants.lua`, cooked meat on the tavern menu.
 Done when a probe run shows leather reaching the librarian from a herd, a book made
 from it bought and read, and beef reaching the butcher and, cooked, the tavern.
+
+### 11f. Staffing a new village
+
+`village_staffing.lua`: staffing at generation (see Staffing a new village), the
+`living_villages_spawn_unemployed` setting, the nearest-to-bed rule for later job seekers
+in place of `farm_jobs.lua`. Done when a probe run on
+seed 2007 chunk 208,768 shows, before the first morning, every job block claimed by
+the villager whose bed is nearest it, the Builder and the keeper among them, the set
+number left unemployed, and no villager changing job on day 1; and when a grown child
+takes the free block nearest its bed.
 
 ### 12. Peddlers and the market
 
