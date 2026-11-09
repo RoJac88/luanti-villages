@@ -217,4 +217,51 @@ local before = plain.do_custom
 possessions.install(plain)
 assert(plain.do_custom == before)
 
+-- Eating (ticket 4): at or below 8 points, the best food it carries, then its stash's
+-- if it stands by it; not above 8, and not a child.
+settings.living_villages_economy = nil
+local kim = {_id = "kim", _villages_food = 9, _villages_belongings = {["mcl_farming:bread"] = 2, ["mcl_farming:carrot_item"] = 3}}
+assert(#possessions.eat(kim) == 0, "not hungry enough")
+kim._villages_food = 8
+local eaten = possessions.eat(kim)
+assert(#eaten == 1 and eaten[1] == "mcl_farming:bread" and kim._villages_food == 12)
+assert(possessions.food_carried(kim) == 4 + 3)
+kim._villages_food = 0
+possessions.eat(kim)
+assert(kim._villages_food == 7 and possessions.count(kim, "mcl_farming:bread") == 0 and possessions.count(kim, "mcl_farming:carrot_item") == 0)
+-- Its stash, only within reach.
+local kim_bed, kim_chest = {x = 500, y = 0, z = 0}, {x = 502, y = 0, z = 0}
+bed(kim_bed, "kim")
+chest(kim_chest)
+kim._bed = kim_bed
+assert(possessions.claim_stash(kim))
+local larder = {["mcl_farming:bread"] = 3}
+local stash_meta = minetest.get_meta
+minetest.get_meta = function(pos)
+	local meta = stash_meta(pos)
+	if key(pos) == key(kim_chest) then
+		meta.get_inventory = function()
+			return {
+				get_size = function() return 27 end,
+				remove_item = function(_, _, item)
+					local name = item:match("^%S+")
+					local n = (larder[name] or 0) > 0 and 1 or 0
+					larder[name] = (larder[name] or 0) - n
+					return {get_count = function() return n end}
+				end,
+			}
+		end
+	end
+	return meta
+end
+local kim_at = {x = 520, y = 0, z = 0}
+kim.object = {get_pos = function() return kim_at end}
+kim._villages_food = 4
+assert(#possessions.eat(kim) == 0 and larder["mcl_farming:bread"] == 3, "too far from its stash")
+kim_at = {x = 501, y = 0, z = 0}
+possessions.eat(kim)
+assert(kim._villages_food == 12 and larder["mcl_farming:bread"] == 1)
+minetest.get_meta = stash_meta
+assert(#possessions.eat({_id = "tot", child = true, _villages_belongings = {["mcl_farming:bread"] = 1}}) == 0)
+
 print("possessions.lua: ok")

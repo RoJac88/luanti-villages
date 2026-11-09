@@ -15,9 +15,17 @@
 -- vanilla does nothing about, as for the bell (#127). Cost: the shepherd does one
 -- cheap tick a second, and only while a player is within mob range; a sheep drives
 -- itself only while it is being pulled.
+--
+-- With the economy on (ticket 4), every SHEAR_SECONDS of the work stage the shepherd
+-- shears one of its sheep within SHEAR_REACH that has its wool, as a player's shears
+-- do (mobs_mc/sheep.lua): 1 to 3 wool of the sheep's colour, into the shepherd's
+-- belongings (possessions.lua), up to KEEP_WOOL of a colour. The wool grows back when
+-- the sheep next eats grass, as vanilla's does.
 local core = minetest
 local common = dofile(core.get_modpath("living_villages") .. "/common.lua")
 local cells = dofile(core.get_modpath("living_villages") .. "/cells.lua")
+local clock = dofile(core.get_modpath("living_villages") .. "/economy_clock.lua")
+local possessions = dofile(core.get_modpath("living_villages") .. "/possessions.lua")
 
 local SHEEP = "mobs_mc:sheep"
 local SETTING = "living_villages_flock_size"
@@ -357,6 +365,46 @@ end
 
 local function herding_stage(self)
 	return common.schedule_stage(nil, self) == "work"
+end
+
+local SHEAR_SECONDS = 90
+local SHEAR_REACH = 4
+local KEEP_WOOL = 16
+-- mobs_mc/sheep.lua's colours (a file-local there) and the wool each gives.
+local WOOL = {
+	unicolor_white = "white", unicolor_dark_orange = "brown", unicolor_grey = "silver",
+	unicolor_darkgrey = "grey", unicolor_blue = "blue", unicolor_dark_green = "green",
+	unicolor_green = "lime", unicolor_violet = "purple", unicolor_light_red = "pink",
+	unicolor_yellow = "yellow", unicolor_orange = "orange", unicolor_red = "red",
+	unicolor_cyan = "cyan", unicolor_red_violet = "magenta", unicolor_black = "black",
+	unicolor_light_blue = "light_blue",
+}
+local SHEARED_TEXTURE = {"blank.png", "mobs_mc_sheep.png"}
+
+-- Shears one sheep near the shepherd, if one has its wool. Returns the wool and count.
+local function shear(self, session, pos)
+	for _, ent in ipairs(session.sheep) do
+		local at = valid_sheep(ent) and ent.object:get_pos()
+		if at and not ent.gotten and not ent.child and vector.distance(at, pos) <= SHEAR_REACH then
+			local wool = "mcl_wool:" .. (WOOL[ent.color or "unicolor_white"] or "white")
+			if possessions.count(self, wool) >= KEEP_WOOL then return nil end
+			ent.gotten = true
+			ent.base_texture = SHEARED_TEXTURE
+			ent.object:set_properties({textures = SHEARED_TEXTURE})
+			core.sound_play("mcl_tools_shears_cut", {pos = at}, true)
+			local count = math.random(1, 3)
+			possessions.add(self, wool, count)
+			return wool, count
+		end
+	end
+	return nil
+end
+
+local function shear_tick(self, session, pos)
+	if not clock.enabled() or not herding_stage(self) then return end
+	if session.clock < (session.shear_at or 0) then return end
+	session.shear_at = session.clock + SHEAR_SECONDS
+	shear(self, session, pos)
 end
 
 -- Where the shepherd grazes: about the nearest bell, or else about its loom. The radius
@@ -829,6 +877,7 @@ local function tick(self, session, bell)
 		for _, ent in ipairs(session.sheep) do steer(ent, pos) end
 		spawn_sheep(self, session, pos, size, count)
 	end
+	shear_tick(self, session, pos)
 	herd_tick(self, session, pos, bell)
 end
 
@@ -1041,7 +1090,7 @@ return {
 		return text
 	end,
 	-- Exposed for tests.
-	sessions = sessions, states = states, registry = registry,
+	sessions = sessions, states = states, registry = registry, shear = shear, SHEAR_SECONDS = SHEAR_SECONDS,
 	roofed = roofed, find_spot = find_spot,
 	FAR = FAR, NEAR = NEAR, RUN_DISTANCE = RUN_DISTANCE, VILLAGE_CAP = VILLAGE_CAP,
 	tune = tune, HERD_LOOM = HERD_LOOM, GRACE = GRACE, LEASH = LEASH,

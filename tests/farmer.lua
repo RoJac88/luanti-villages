@@ -3,10 +3,13 @@ local support = dofile("tests/support/farm_world.lua")
 local world, def, farmer_module, farmer
 
 local job = {x = 0, y = 2, z = 0}
+-- Set to false for the cases that predate the economy: everyone fed free.
+local economy
 
 -- A fresh world, with a claimed composter and a farmer beside it.
 local function setup(fields)
 	world = support.new()
+	if economy ~= nil then world.settings.living_villages_economy = economy end
 	support.claim(world, job, "farmer-1")
 	def = {do_custom = function() end}
 	farmer_module = dofile("farmer.lua")
@@ -306,7 +309,9 @@ support.chest(world, {x = 2, y = 2, z = 0}, nil, {"mcl_farming:wheat_seeds 20"})
 step(2)
 assert(pouch("mcl_farming:wheat_seeds") == 0)
 
--- Handing out food. Another villager, standing where a test wants it.
+-- Handing out food with the economy off: everyone is fed free, all they want.
+economy = false
+-- Another villager, standing where a test wants it.
 local function neighbour(x, z, fields)
 	local other = support.farmer(world, {x = x, y = 2, z = z}, fields)
 	other._id, other._profession = "other-" .. x .. "-" .. z, "mason"
@@ -402,6 +407,48 @@ support.chest(world, {x = 2, y = 2, z = 0}, nil, {"mcl_farming:bread 20"})
 neighbour(1, 1)
 step(2)
 assert(pouch("mcl_farming:bread") == 0, "deposit-only")
+economy = nil
+
+-- With the economy on. Its household, any child and itself still eat free.
+local function belongings(v, name) return (v._villages_belongings or {})[name] or 0 end
+setup({_bed = {x = 0, y = 2, z = 10}, _villages_farm_pouch = {["mcl_farming:bread"] = 8}})
+local spouse = neighbour(2, 1, {_bed = {x = 3, y = 2, z = 12}, _villages_food = 4})
+local child = neighbour(1, 1, {child = true})
+child._id = "child"
+step(3)
+assert(spouse._villages_food == 12 and child._villages_fed_day == world.day, "household and children free")
+assert(belongings(farmer, "mcl_core:emerald") == 0)
+
+-- A neighbour with an emerald and no food buys a bundle: six loaves for one emerald,
+-- eats what it wants and keeps the rest.
+setup({_bed = {x = 0, y = 2, z = 10}, _villages_farm_pouch = {["mcl_farming:bread"] = 12}})
+local buyer = neighbour(2, 1, {_bed = {x = 30, y = 2, z = 0}, _villages_food = 4,
+	_villages_belongings = {["mcl_core:emerald"] = 2}})
+step()
+assert(belongings(buyer, "mcl_core:emerald") == 1 and belongings(farmer, "mcl_core:emerald") == 1)
+assert(buyer._villages_food == 12 and belongings(buyer, "mcl_farming:bread") == 4)
+assert(pouch("mcl_farming:bread") == 6)
+step(3)
+assert(belongings(buyer, "mcl_core:emerald") == 1, "carrying food, it does not buy more")
+
+-- No emerald: nothing, unless it is starving, when it gets one item free.
+setup({_villages_farm_pouch = {["mcl_farming:bread"] = 12}})
+local broke = neighbour(2, 1, {_villages_food = 4})
+local starving = neighbour(1, 1, {_villages_food = 0})
+step(3)
+assert(broke._villages_food == 4 and starving._villages_food == 4 and pouch("mcl_farming:bread") == 11)
+
+-- Less than a bundle to spare: no sale, and no walk to a buyer.
+setup({_villages_farm_pouch = {["mcl_farming:bread"] = 5}})
+local waiting = neighbour(20, 0, {_villages_food = 4, _villages_belongings = {["mcl_core:emerald"] = 1}})
+step(3)
+assert(#farmer.walks == 0 and belongings(waiting, "mcl_core:emerald") == 1)
+
+-- Emeralds the keeper left in its chest go in its belongings when it next stores.
+setup({_villages_farm_pouch = {["mcl_bone_meal:bone_meal"] = 4, ["mcl_farming:carrot_item"] = 30}})
+local till = support.chest(world, {x = 2, y = 2, z = 0}, nil, {"mcl_core:emerald 3"})
+step(3)
+assert(belongings(farmer, "mcl_core:emerald") == 3 and till:get_stack("main", 1):get_name() ~= "mcl_core:emerald")
 
 -- Only in the work stage, and only a farmer holding its composter.
 local function untouched(label)

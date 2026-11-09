@@ -19,6 +19,9 @@
 -- the tavern's pantry (by a jukebox), a farm's chest (beside a composter), a Builder's
 -- (by its bench). farm_stock.find_chests leaves stashes out, so farmers, Builders and
 -- keepers never take from one.
+--
+-- It eats what it owns (ticket 4): at or below EAT_AT points, the best food in its
+-- belongings, then in its stash if it stands within STASH_REACH of it.
 local core = minetest
 local clock = dofile(core.get_modpath("living_villages") .. "/economy_clock.lua")
 local stock = dofile(core.get_modpath("living_villages") .. "/farm_stock.lua")
@@ -38,6 +41,9 @@ local JUKEBOX = "mcl_jukebox:jukebox"
 local BENCH = "living_villages:builder_block"
 local COMPOSTERS = {"mcl_composters:composter", "mcl_composters:composter_ready"}
 for level = 1, 7 do COMPOSTERS[#COMPOSTERS + 1] = "mcl_composters:composter_" .. level end
+-- It eats at or below this many points, one item at a time, best first.
+local EAT_AT = food.FULL - food.HUNGRY
+local STASH_REACH = 4
 local DOUBLE_HALVES = {["mcl_chests:chest_left"] = true, ["mcl_chests:chest_right"] = true}
 
 -- What a profession starts with: a little of what it works with, from its trade table's
@@ -236,6 +242,55 @@ function M.claim_stash(self)
 	return nil
 end
 
+-- Foods, most points first.
+local FOODS_BY_POINTS = {}
+for item in pairs(food.POINTS) do FOODS_BY_POINTS[#FOODS_BY_POINTS + 1] = item end
+table.sort(FOODS_BY_POINTS, function(a, b)
+	if food.POINTS[a] ~= food.POINTS[b] then return food.POINTS[a] > food.POINTS[b] end
+	return a < b
+end)
+M.FOODS_BY_POINTS = FOODS_BY_POINTS
+
+-- Food points in its belongings.
+function M.food_carried(self)
+	local total = 0
+	for item, points in pairs(food.POINTS) do total = total + M.count(self, item) * points end
+	return total
+end
+
+local function stash_food(self)
+	local stash = self._villages_stash
+	local pos = self.object and self.object:get_pos()
+	if not stash or not pos or vector.distance(pos, stash) > STASH_REACH or not owned_by(stash, self) then return nil end
+	for _, item in ipairs(FOODS_BY_POINTS) do
+		for _, half in ipairs(halves(stash)) do
+			local inv = core.get_meta(half):get_inventory()
+			if inv:remove_item("main", item .. " 1"):get_count() == 1 then return item end
+		end
+	end
+	return nil
+end
+
+-- Eats from its belongings, then its stash, while at or below EAT_AT. Returns what it ate.
+function M.eat(self)
+	if self.child or self._villages_sleeping then return {} end
+	local eaten = {}
+	while food.points(self) <= EAT_AT do
+		local item
+		for _, candidate in ipairs(FOODS_BY_POINTS) do
+			if M.take(self, candidate, 1) == 1 then item = candidate break end
+		end
+		item = item or stash_food(self)
+		if not item then break end
+		food.receive(self, item)
+		eaten[#eaten + 1] = item
+	end
+	if #eaten > 0 and self.object and core.sound_play then
+		core.sound_play("mcl_hunger_bite", {max_hear_distance = 12, gain = 0.33, object = self.object}, true)
+	end
+	return eaten
+end
+
 local next_check = setmetatable({}, {__mode = "k"})
 
 function M.step(self, now)
@@ -243,6 +298,7 @@ function M.step(self, now)
 	next_check[self] = now + CLAIM_SECONDS
 	M.endow(self)
 	M.claim_stash(self)
+	M.eat(self)
 end
 
 function M.install(def)

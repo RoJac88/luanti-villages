@@ -18,7 +18,14 @@ local CHEST_NODES = {
 	"mcl_chests:chest", "mcl_chests:chest_small", "mcl_chests:chest_left", "mcl_chests:chest_right",
 }
 
-local M = {CAPACITY = POUCH_CAPACITY, CHEST_NODES = CHEST_NODES}
+-- A fisherman's barrel is its work chest (fisherman.lua), so goods move in and out of
+-- it as of a chest; find_chests never offers one for a farmer's surplus.
+local BARREL_NODES = {"mcl_barrels:barrel_closed", "mcl_barrels:barrel_open"}
+local CONTAINER_NODES = {}
+for _, name in ipairs(CHEST_NODES) do CONTAINER_NODES[#CONTAINER_NODES + 1] = name end
+for _, name in ipairs(BARREL_NODES) do CONTAINER_NODES[#CONTAINER_NODES + 1] = name end
+
+local M = {CAPACITY = POUCH_CAPACITY, CHEST_NODES = CHEST_NODES, BARREL_NODES = BARREL_NODES}
 
 local function pouch_of(self)
 	self._villages_farm_pouch = self._villages_farm_pouch or {}
@@ -93,7 +100,7 @@ end
 local function is_chest(pos)
 	local node = core.get_node_or_nil(pos)
 	if not node then return false end
-	for _, name in ipairs(CHEST_NODES) do
+	for _, name in ipairs(CONTAINER_NODES) do
 		if node.name == name then return true end
 	end
 	return false

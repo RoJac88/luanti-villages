@@ -130,8 +130,9 @@ when read, like gossip decay.
 | 1 to 3 | Hungry | Production and gathering at half rate; prices to players include a hunger term; seeks food before puttering |
 | 0 | Starving | No production, no health regeneration, no restocking |
 
-A villager eats when its points are at or below `FULL - 4` and it has food, at the
-home stage, from its pouch first and then its stash. Tavern dinner is the other
+A villager eats when its points are at or below `FULL - 4` and it has food: from its
+belongings, and then from its stash when it stands within 4 of it (`possessions.eat`,
+checked once a minute). Tavern dinner is the other
 place it eats (see [The tavern](#the-tavern)). Eating uses `food.receive` and
 `food.show_handover`'s eating sound; food never goes on the ground.
 
@@ -212,8 +213,8 @@ Every good in the village has a source in this section or comes from a player.
 | Profession | Change |
 |---|---|
 | Farmer | Unchanged: crops into the pouch |
-| Fisherman | Each completed cycle (`fisherman.lua`, which today only restocks) also puts a fish in the pouch, by vanilla's fishing loot odds for fish |
-| Shepherd | Shears a flock sheep with wool during the work stage (`flock.lua`), adding its wool to the pouch. Wool grows back on vanilla sheep |
+| Fisherman | One completed cycle in four (`fisherman.lua`, which before only restocked) lands a fish by vanilla's fishing odds: cod in its barrel, up to 16, for the keeper to buy; anything else in its belongings, up to 8 of a kind |
+| Shepherd | Every 90 s of the work stage shears a flock sheep within 4 that has its wool (`flock.lua`), 1 to 3 wool of its colour into its belongings, up to 16 a colour. Wool grows back when the sheep eats grass, as on vanilla sheep |
 | Keeper | Cooks raw pantry ingredients into menu items (see [The tavern](#the-tavern)) |
 
 ### Jobsite crafting
@@ -302,18 +303,25 @@ with `food.show_handover`'s animation. Three channels, in order:
 
 `farmer.lua`'s `hand_over` gives food only to:
 
-- its household: villagers sharing its bed's house (the beds within the same
-  building as its own) and their children, free;
-- a villager at 0 points, one item free (a farmer's handout);
-- the tavern pantry, sold in bulk at the pantry chest (a deposit target next to its
-  own chest);
-- anyone else who pays its asking price, through exchange.
+- itself, its household (villagers whose beds are within 5 across and 4 up or down of
+  its own, which is as near as beds tell to the same house) and every child, free;
+- anyone else who has an emerald and carries no food: a bundle, as many as vanilla's
+  trades sell for one emerald (6 loaves, 26 potatoes), of which it eats what it wants
+  and keeps the rest;
+- a villager at 0 points that cannot buy, one item free (a farmer's handout);
+- the tavern: the keeper buys from its chest (see [The tavern](#the-tavern)); the
+  farmer collects the emeralds left there when it next stores its surplus.
+
+With the economy off it feeds everyone free, as before.
 
 ## The tavern
 
 - **Pantry.** The chests within 6 of the keeper's jukebox; the stock tavern's chest
-  stands 3 behind it. The keeper fetches food for it from the farms (ticket 1);
-  from ticket 4 farmers and fishermen sell into it.
+  stands 3 behind it. The keeper fetches food for it from the farms' chests and the
+  fishermen's barrels, and from ticket 4 buys it: it takes up to 8 emeralds from the
+  pantry and leaves what it takes is worth at vanilla's prices, rounded, in the work
+  chest. While villagers dine free (until ticket 6) a pantry has little money, so the
+  keeper takes the food even when it cannot pay all of it.
 - **Cooking.** The keeper turns raw pantry items into its menu items over its shift:
   bread from wheat, baked potatoes from potatoes, cooked fish from raw fish.
 - **Dinner.** `meal.lua` serves a guest only when the pantry has a menu item: it
@@ -393,8 +401,8 @@ village turns raw materials into goods.
 |---|---|
 | `food.lua` | Falling points on the economic clock; eating from pouch and stash; hunger states |
 | `farm_stock.lua` | Pouch functions move to `possessions.lua`; chest transfers stay |
-| `farmer.lua` | `hand_over` limited to household, handout, pantry and paying buyers |
-| `fisherman.lua` | A fish per completed cycle into the pouch |
+| `farmer.lua` | `hand_over` limited to household, children, handout and paying buyers |
+| `fisherman.lua` | A catch one cycle in four: cod into its barrel, other fish into its belongings |
 | `flock.lua` | Shearing during the work stage |
 | `keeper.lua`, `meal.lua`, `player_meals.lua` | Pantry, cooking, paid dinners, paid player meals |
 | `gossip.lua` | Market news memory and exchange; demand and hunger terms beside reputation in the `wanted` wrapper |
@@ -526,9 +534,12 @@ beyond the inspector showing each villager's top needs and surplus
 
 ### 4. Food distribution and real goods
 
-`farmer.lua` household, handout, pantry and selling; fish per cycle; shearing.
-Done when a farmer sells bread to a neighbour for emeralds, stocks the pantry and
-still feeds its children free.
+`farmer.lua` household, handout and selling; the keeper buying at work chests and
+barrels; eating from belongings and stash; fish per cycle into the barrel; shearing.
+Villagers still dine at the tavern free: only farmers and fishermen earn yet, so
+paying would run everyone else's emeralds out before ticket 6 gives them an income.
+Done when a farmer sells bread to a neighbour for emeralds, the keeper pays for what
+it fetches, and a farmer still feeds its children free.
 
 ### 5. Market news
 

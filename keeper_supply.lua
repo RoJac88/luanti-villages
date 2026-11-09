@@ -4,10 +4,16 @@
 -- keeper supplies it:
 --
 -- * In its free hours, while the pantry holds fewer than TARGET_MEALS, it walks to the
---   work chest of a farmer near the tavern (the chest nearest a claimed composter, the one
---   farmer.lua stores its surplus in, within SUPPLY_RADIUS of the jukebox), takes up to
---   CARRY of bread, potatoes and wheat, and carries them back. Ticket 4 turns this into
---   buying.
+--   nearest work chest with food within SUPPLY_RADIUS of the jukebox: a farmer's (the
+--   chest nearest a claimed composter, the one farmer.lua stores its surplus in) or a
+--   fisherman's claimed barrel, where fisherman.lua puts its cod. It takes up to CARRY of
+--   bread, potatoes, cod and wheat and carries them back.
+-- * It buys what it takes (ticket 4): setting out, it takes up to PURSE emeralds from
+--   the pantry, and leaves in the work chest what the food is worth at vanilla's prices
+--   (ledger.lua), rounded, for its farmer or fisherman to collect. Villagers eat at the
+--   tavern free until ticket 6, so a pantry often has no emeralds but what players pay
+--   for meals; the keeper pays what it carries and takes the food anyway, so the tavern
+--   keeps feeding the village. What it did not spend goes back in the pantry.
 -- * Over its shift at the jukebox it cooks the pantry's raw food into its menu, one dish
 --   every COOK_SECONDS: three wheat to a loaf, a potato baked, a raw cod cooked.
 -- * A newly generated tavern's chest gets STARTING_STOCK on top of its loot, through
@@ -21,6 +27,7 @@ local clock = dofile(core.get_modpath("living_villages") .. "/economy_clock.lua"
 local pantry = dofile(core.get_modpath("living_villages") .. "/tavern_pantry.lua")
 local stock = dofile(core.get_modpath("living_villages") .. "/farm_stock.lua")
 local keeper = dofile(core.get_modpath("living_villages") .. "/keeper.lua")
+local ledger = dofile(core.get_modpath("living_villages") .. "/ledger.lua")
 
 local SUPPLY_RADIUS = 48
 local COMPOSTER_HEIGHT = 8
@@ -29,6 +36,8 @@ local TARGET_MEALS = 12
 local CHECK_SECONDS = 30
 local RETRY_SECONDS = 120
 local COOK_SECONDS = 10
+local PURSE = 8
+local EMERALD = "mcl_core:emerald"
 -- How near the chest a walk must end for the keeper to reach into it.
 local REACH = 3
 
@@ -37,7 +46,7 @@ local WHEAT = "mcl_farming:wheat_item"
 local POTATO = "mcl_farming:potato_item"
 local COD = "mcl_fishing:fish_raw"
 -- What it fetches, most wanted first.
-local SUPPLIES = {BREAD, POTATO, WHEAT}
+local SUPPLIES = {BREAD, POTATO, COD, WHEAT}
 local RECIPES = {
 	{from = WHEAT, count = 3, to = BREAD},
 	{from = POTATO, count = 1, to = "mcl_farming:potato_item_baked"},
@@ -51,7 +60,7 @@ for level = 1, 7 do COMPOSTERS[#COMPOSTERS + 1] = "mcl_composters:composter_" ..
 local M = {
 	SUPPLY_RADIUS = SUPPLY_RADIUS, CARRY = CARRY, TARGET_MEALS = TARGET_MEALS,
 	CHECK_SECONDS = CHECK_SECONDS, RETRY_SECONDS = RETRY_SECONDS, COOK_SECONDS = COOK_SECONDS,
-	STARTING_STOCK = STARTING_STOCK,
+	STARTING_STOCK = STARTING_STOCK, PURSE = PURSE,
 }
 
 local function menu_items()
@@ -84,20 +93,24 @@ local function supplies_in(pos)
 	return false
 end
 
--- The nearest farmer's work chest with something to fetch, never a pantry chest.
+-- The nearest work chest with something to fetch, a farmer's or a fisherman's barrel,
+-- never a pantry chest.
 function M.source(jukebox, chests)
 	local r = SUPPLY_RADIUS
+	local minp = {x = jukebox.x - r, y = jukebox.y - COMPOSTER_HEIGHT, z = jukebox.z - r}
+	local maxp = {x = jukebox.x + r, y = jukebox.y + COMPOSTER_HEIGHT, z = jukebox.z + r}
 	local best, best_distance
-	for _, composter in ipairs(core.find_nodes_in_area(
-		{x = jukebox.x - r, y = jukebox.y - COMPOSTER_HEIGHT, z = jukebox.z - r},
-		{x = jukebox.x + r, y = jukebox.y + COMPOSTER_HEIGHT, z = jukebox.z + r}, COMPOSTERS)) do
-		if core.get_meta(composter):get_string("villager") ~= "" then
-			local own = stock.find_chests(composter)[1]
-			if own and not is_pantry(chests, own) and supplies_in(own) then
-				local distance = vector.distance(own, jukebox)
-				if not best or distance < best_distance then best, best_distance = own, distance end
-			end
+	local function consider(pos)
+		if pos and not is_pantry(chests, pos) and supplies_in(pos) then
+			local distance = vector.distance(pos, jukebox)
+			if not best or distance < best_distance then best, best_distance = pos, distance end
 		end
+	end
+	for _, composter in ipairs(core.find_nodes_in_area(minp, maxp, COMPOSTERS)) do
+		if core.get_meta(composter):get_string("villager") ~= "" then consider(stock.find_chests(composter)[1]) end
+	end
+	for _, barrel in ipairs(core.find_nodes_in_area(minp, maxp, stock.BARREL_NODES)) do
+		if core.get_meta(barrel):get_string("villager") ~= "" then consider(barrel) end
 	end
 	return best
 end
@@ -108,25 +121,47 @@ local function carried(self)
 	return total
 end
 
+-- What goods are worth at vanilla's prices, rounded to whole emeralds.
+function M.worth(goods)
+	local value = 0
+	for item, count in pairs(goods) do value = value + count * (ledger.price(item) or 0) end
+	return math.floor(value + 0.5)
+end
+
+local function take_purse(self, chests)
+	for _, chest in ipairs(chests) do
+		local want = PURSE - stock.count(self, EMERALD)
+		if want <= 0 then break end
+		stock.take_from_chest(self, chest, EMERALD, want)
+	end
+end
+
 local function fetch(self, chest)
 	local room = CARRY - carried(self)
+	local taken = {}
 	for _, item in ipairs(SUPPLIES) do
 		if room <= 0 then break end
-		room = room - stock.take_from_chest(self, chest, item, room)
+		local moved = stock.take_from_chest(self, chest, item, room)
+		if moved > 0 then taken[item] = moved end
+		room = room - moved
 	end
-	core.log("action", string.format("[living_villages] keeper %s fetched %d food for the pantry",
-		tostring(self._id), carried(self)))
+	local paid = stock.put_in_chest(self, chest, EMERALD, math.min(M.worth(taken), stock.count(self, EMERALD)))
+	core.log("action", string.format("[living_villages] keeper %s fetched %d food for the pantry, paying %d emerald(s)",
+		tostring(self._id), carried(self), paid))
 end
 
 local function deliver(self, jukebox)
 	local chests = pantry.chests(jukebox)
 	if not chests then return end
 	local delivered = 0
-	for _, item in ipairs(SUPPLIES) do
+	local goods = {EMERALD}
+	for _, item in ipairs(SUPPLIES) do goods[#goods + 1] = item end
+	for _, item in ipairs(goods) do
 		for _, chest in ipairs(chests) do
 			local count = stock.count(self, item)
 			if count == 0 then break end
-			delivered = delivered + stock.put_in_chest(self, chest, item, count)
+			local moved = stock.put_in_chest(self, chest, item, count)
+			if item ~= EMERALD then delivered = delivered + moved end
 		end
 	end
 	core.log("action", string.format("[living_villages] keeper %s stocked the pantry with %d food",
@@ -182,6 +217,7 @@ local function supply(self, jukebox, now)
 		self._villages_supply_next = now + RETRY_SECONDS
 		return
 	end
+	take_purse(self, chests)
 	go(self, source, now, function(entity) fetch(entity, source) end)
 end
 

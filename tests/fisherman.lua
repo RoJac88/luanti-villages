@@ -91,6 +91,8 @@ minetest = {
 			set_string = function(_, field, value)
 				if field == "villager" then meta_store[k] = value end
 			end,
+			-- No barrel here holds anything; the catch test gives one an inventory.
+			get_inventory = function() return {get_size = function() return 0 end} end,
 		}
 	end,
 	get_item_group = function() return 0 end,
@@ -1379,6 +1381,63 @@ do
 	assert(not fisherman._villages_fish_rod, "no rod entity must be spawned without mcl_fishing:fishing_rod")
 	minetest.registered_items["mcl_fishing:fishing_rod"] = {}
 	timeofday, water_sites = 0, {}
+end
+
+-- The catch (ticket 4): one cycle in four lands a fish by mcl_fishing's odds; cod goes
+-- in the barrel up to BARREL_COD, anything else in its belongings, and the keeper's
+-- emeralds in the barrel go in its belongings.
+do
+	local _, _, catch = dofile("fisherman.lua")
+	assert(catch.pick_catch(0) == "mcl_fishing:fish_raw" and catch.pick_catch(0.6) == "mcl_fishing:salmon_raw")
+	assert(catch.pick_catch(0.86) == "mcl_fishing:clownfish_raw" and catch.pick_catch(0.99) == "mcl_fishing:pufferfish_raw")
+	local held = {}
+	local function count(name) return held[name] or 0 end
+	local barrel_inv = {
+		get_size = function() return 27 end,
+		get_list = function()
+			local out = {}
+			for name, n in pairs(held) do
+				out[#out + 1] = {get_name = function() return name end, get_count = function() return n end}
+			end
+			return out
+		end,
+		room_for_item = function() return true end,
+		add_item = function(_, _, item) held[item] = count(item) + 1 end,
+		remove_item = function(_, _, item)
+			local name, n = item:match("^(%S+) (%d+)")
+			n = math.min(tonumber(n), count(name))
+			held[name] = count(name) - n
+			return {get_count = function() return n end}
+		end,
+	}
+	local plain_meta = minetest.get_meta
+	minetest.get_meta = function(pos)
+		local meta = plain_meta(pos)
+		meta.get_inventory = function() return barrel_inv end
+		return meta
+	end
+	local finn = {_id = "finn", _jobsite = barrel_for("finn", {x = 50, y = 0, z = 0})}
+	local rolls, real_random = {}, math.random
+	math.random = function(n)
+		local roll = table.remove(rolls, 1)
+		if n then return roll end
+		return roll
+	end
+	rolls = {2}
+	assert(catch.land_catch(finn) == nil, "three cycles in four land nothing")
+	held["mcl_core:emerald"] = 3
+	rolls = {1, 0.1}
+	local fish, where = catch.land_catch(finn)
+	assert(fish == "mcl_fishing:fish_raw" and where == "barrel" and count("mcl_fishing:fish_raw") == 1)
+	assert(count("mcl_core:emerald") == 0 and finn._villages_belongings["mcl_core:emerald"] == 3, "collects its pay")
+	rolls = {1, 0.7}
+	fish, where = catch.land_catch(finn)
+	assert(fish == "mcl_fishing:salmon_raw" and where == "belongings" and finn._villages_belongings[fish] == 1)
+	held["mcl_fishing:fish_raw"] = catch.BARREL_COD
+	rolls = {1, 0.1}
+	assert(catch.land_catch(finn) == nil and count("mcl_fishing:fish_raw") == catch.BARREL_COD, "barrel's share is full")
+	math.random = real_random
+	minetest.get_meta = plain_meta
 end
 
 print("fisherman.lua: ok")
