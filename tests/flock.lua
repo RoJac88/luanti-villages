@@ -27,7 +27,14 @@ minetest = {
 	get_gametime = function() return now end,
 	get_day_count = function() return day end,
 	get_item_group = function() return 0 end,
-	settings = {get = function(_, name) return settings[name] end},
+	settings = {
+		get = function(_, name) return settings[name] end,
+		get_bool = function(_, name, default)
+			if settings[name] == nil then return default end
+			return settings[name] == true
+		end,
+	},
+	sound_play = function() end,
 	registered_nodes = {
 		air = {walkable = false},
 		["mcl_core:stone"] = {walkable = true, groups = {material_stone = 1}},
@@ -98,6 +105,7 @@ local function make_sheep(x, z)
 	obj.get_pos = function() if obj.removed then return nil end return pos end
 	obj.set_pos = function(_, p) pos.x, pos.y, pos.z = p.x, p.y, p.z end
 	obj.get_luaentity = function() return ent end
+	obj.set_properties = function(_, props) ent.properties = props end
 	ent.object = obj
 	ent.pos = pos
 	ent.velocity = 0
@@ -895,5 +903,28 @@ time = 19000 / 24000
 tick(rover, 2)
 assert(flock.sessions[rover].herd == nil and rover._villages_goto_route.market_token == other_token
 	and rover.state == "gowp", "ending a herd leaves an unrelated replacement route alone")
+
+-- Shearing (ticket 4): one sheep within reach with its wool, 1 to 3 of its colour into
+-- the shepherd's belongings; a sheared sheep or a lamb is passed over.
+reset()
+local shearer = shepherd(0, 0)
+local session = {sheep = {}}
+local lamb = make_sheep(1, 0)
+lamb.child = true
+local bare = make_sheep(1, 1)
+bare.gotten = true
+local far_sheep = make_sheep(10, 0)
+session.sheep = {lamb, bare, far_sheep}
+assert(flock.shear(shearer, session, shearer.pos) == nil, "nothing to shear in reach")
+local woolly = make_sheep(0, 1)
+woolly.color = "unicolor_black"
+table.insert(session.sheep, woolly)
+local wool, count = flock.shear(shearer, session, shearer.pos)
+assert(wool == "mcl_wool:black" and count >= 1 and count <= 3)
+assert(shearer._villages_belongings[wool] == count and woolly.gotten and woolly.properties.textures[1] == "blank.png")
+assert(flock.shear(shearer, session, shearer.pos) == nil, "once until it grows back")
+woolly.gotten = false
+shearer._villages_belongings[wool] = 16
+assert(flock.shear(shearer, session, shearer.pos) == nil, "it keeps no more than 16 of a colour")
 
 print("flock: ok")

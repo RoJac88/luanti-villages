@@ -6,12 +6,25 @@
 -- while it has work here common.activity_override answers for it, as flock.lua
 -- does for a shepherd. With nothing to do it lets vanilla have it again, which is
 -- also when vanilla's do_work unlocks its trades.
+--
+-- Who it feeds (docs/villager-economy-design.md, The farmer's food). With the economy
+-- on: itself, its household (villagers whose beds are within HOUSEHOLD_RADIUS of its
+-- own, the same house as near as beds tell) and every child, free and as much as they
+-- want; a starving villager one item free; anyone else who carries no food and has an
+-- emerald buys a bundle, as many of the food as vanilla's trades sell for one emerald
+-- (six loaves), eats what it wants of it and keeps the rest (possessions.lua). The
+-- emerald goes in the farmer's belongings, as do any the keeper leaves in its chest
+-- for the food it fetched (keeper_supply.lua), which it collects when it next stores
+-- its surplus. With the economy off it feeds everyone free, as it always did.
 local core = minetest
 local common = dofile(core.get_modpath("living_villages") .. "/common.lua")
 local field = dofile(core.get_modpath("living_villages") .. "/farm_field.lua")
 local stock = dofile(core.get_modpath("living_villages") .. "/farm_stock.lua")
 local compost = dofile(core.get_modpath("living_villages") .. "/farm_compost.lua")
 local food = dofile(core.get_modpath("living_villages") .. "/food.lua")
+local clock = dofile(core.get_modpath("living_villages") .. "/economy_clock.lua")
+local possessions = dofile(core.get_modpath("living_villages") .. "/possessions.lua")
+local ledger = dofile(core.get_modpath("living_villages") .. "/ledger.lua")
 
 local TICK_SECONDS = 1
 local IDLE_SECONDS = 5
@@ -67,6 +80,9 @@ local HANDOVER_REACH = 3
 local DELIVERY_RADIUS = 32
 local FOOD_SEED_KEEP = {["mcl_farming:potato_item"] = 4, ["mcl_farming:carrot_item"] = 4}
 local WITHDRAW_FOOD = 8
+-- Beds this near its own, across and up or down, are its household's.
+local HOUSEHOLD_RADIUS, HOUSEHOLD_HEIGHT = 5, 4
+local EMERALD = "mcl_core:emerald"
 -- A round feeds a few villagers, or gives up after chasing them this many times, and
 -- the next waits a while: villagers walk about, and the field needs tending too.
 local ROUND_FED = 4
@@ -207,7 +223,17 @@ local function wants_to_deposit(self)
 	return extra >= DEPOSIT_TRIGGER or not DEPOSIT_KEEP[item] or not stock.has_harvest_room(self)
 end
 
+-- Emeralds left in its chest for food taken from it go in its belongings.
+local function collect_pay(self, pos)
+	local count = stock.chest_count(pos, EMERALD)
+	if count == 0 then return 0 end
+	local moved = core.get_meta(pos):get_inventory():remove_item("main", EMERALD .. " " .. count):get_count()
+	if moved > 0 then possessions.add(self, EMERALD, moved) end
+	return moved
+end
+
 local function deposit(self, pos, session, now)
+	if clock.enabled() then collect_pay(self, pos) end
 	local item, extra = excess_item(self)
 	if not item then return end
 	local _, fitted = stock.put_in_chest(self, pos, item, extra)
@@ -317,15 +343,91 @@ local function spare_food(self, session)
 	return nil
 end
 
--- Feeds the villager all it wants, from what the farmer can spare.
-local function hand_over(self, target, session)
-	local given
-	while food.wants(target) do
-		local item = spare_food(self, session)
-		if not item then break end
-		stock.take(self, item, 1)
+local function same_house(a, b)
+	return a ~= nil and b ~= nil and math.abs(a.x - b.x) <= HOUSEHOLD_RADIUS
+		and math.abs(a.z - b.z) <= HOUSEHOLD_RADIUS and math.abs(a.y - b.y) <= HOUSEHOLD_HEIGHT
+end
+
+-- How many of the food one emerald buys, from vanilla's prices (ledger.lua).
+local function bundle(item)
+	local price = ledger.price(item)
+	if not price or price <= 0 then return nil end
+	return math.max(1, math.floor(1 / price + 0.5))
+end
+
+-- The best food it has a whole bundle of to spare, and the bundle's size.
+local function food_for_sale(self, session)
+	for _, item in ipairs(food.FOODS) do
+		local size = bundle(item)
+		if size and not (session.sowing and field.is_seed(item))
+			and stock.count(self, item) - (FOOD_SEED_KEEP[item] or 0) >= size then
+			return item, size
+		end
+	end
+	return nil
+end
+
+-- What a villager gets from it: free (all it wants), sale (a bundle for an emerald),
+-- handout (one item), or nil.
+local function terms(self, target)
+	if target == self or target.child or not clock.enabled() or same_house(self._bed, target._bed) then
+		return "free"
+	end
+	if possessions.emeralds(target) > 0 and possessions.food_carried(target) == 0 then return "sale" end
+	if food.state(target) == "starving" then return "handout" end
+	return nil
+end
+
+-- The terms it can meet with what it has now: one who would buy but finds no whole
+-- bundle on offer still gets a handout if it is starving.
+local function deal_for(self, target, session)
+	local deal = terms(self, target)
+	if deal == "sale" and not food_for_sale(self, session) then
+		deal = food.state(target) == "starving" and "handout" or nil
+	end
+	if deal and deal ~= "sale" and not spare_food(self, session) then return nil end
+	return deal
+end
+
+-- Whether to seek this villager out: someone it can serve now, or, while it has no food
+-- at all, someone it would serve once it fetches some (plot_jobs).
+local function worth_seeking(self, target, session)
+	if deal_for(self, target, session) then return true end
+	return terms(self, target) ~= nil and not spare_food(self, session)
+end
+
+local function sell(self, target, session)
+	local item, size = food_for_sale(self, session)
+	if not item or possessions.take(target, EMERALD, 1) < 1 then return nil end
+	possessions.add(self, EMERALD, 1)
+	stock.take(self, item, size)
+	local left = size
+	while left > 0 and food.wants(target) do
 		food.receive(target, item)
-		given = item
+		left = left - 1
+	end
+	if left > 0 then possessions.add(target, item, left) end
+	core.log("action", string.format("[living_villages] farmer %s sold %d %s to %s for an emerald",
+		tostring(self._id), size, item, tostring(target._id)))
+	return item
+end
+
+-- Feeds the villager on its terms, from what the farmer can spare.
+local function hand_over(self, target, session)
+	local deal = deal_for(self, target, session)
+	if not deal then return false end
+	local given
+	if deal == "sale" then
+		given = sell(self, target, session)
+	else
+		while food.wants(target) do
+			local item = spare_food(self, session)
+			if not item then break end
+			stock.take(self, item, 1)
+			food.receive(target, item)
+			given = item
+			if deal == "handout" then break end
+		end
 	end
 	if given and target ~= self then
 		food.show_handover(self.object:get_pos(), target.object:get_pos(), given, target.object)
@@ -353,7 +455,7 @@ local function hungry_villagers(self, session, now)
 	for _, object in ipairs(core.get_objects_inside_radius(self._jobsite, DELIVERY_RADIUS)) do
 		local other = object:get_luaentity()
 		local at = other and other ~= self and other.name == "mobs_mc:villager" and object:get_pos()
-		if at and other._id and food.wants(other) then
+		if at and other._id and food.wants(other) and worth_seeking(self, other, session) then
 			local cell = vector.round(at)
 			table.insert(positions, cell)
 			by_cell[key(cell)] = other

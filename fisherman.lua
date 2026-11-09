@@ -7,9 +7,26 @@
 -- Vanilla's do_work calls a villager back to its jobsite every few seconds, so
 -- while it is at the water or on its way common.activity_override answers for it,
 -- as for a farmer in its field.
+--
+-- With the economy on (ticket 4) a completed cycle lands a fish one time in
+-- CATCH_ONE_IN, of a kind by vanilla's fishing odds (mcl_fishing). Cod goes in its
+-- barrel, up to BARREL_COD, for the keeper to buy for the tavern (keeper_supply.lua);
+-- anything else goes in its belongings, up to KEEP_OTHER of a kind (possessions.lua).
+-- Emeralds the keeper left in the barrel go in its belongings as it puts the next fish in.
 local core = minetest
 local common = dofile(core.get_modpath("living_villages") .. "/common.lua")
 local cells = dofile(core.get_modpath("living_villages") .. "/cells.lua")
+local clock = dofile(core.get_modpath("living_villages") .. "/economy_clock.lua")
+local possessions = dofile(core.get_modpath("living_villages") .. "/possessions.lua")
+local CATCH_ONE_IN = 4
+local BARREL_COD = 16
+local KEEP_OTHER = 8
+local COD = "mcl_fishing:fish_raw"
+local EMERALD = "mcl_core:emerald"
+-- mcl_fishing's weights for the fish it catches.
+local CATCHES = {
+	{COD, 60}, {"mcl_fishing:salmon_raw", 25}, {"mcl_fishing:clownfish_raw", 2}, {"mcl_fishing:pufferfish_raw", 13},
+}
 local BARREL = "mcl_barrels:barrel_closed"
 -- Measured from the barrel, which keeps the stand well inside vanilla's
 -- RESETTLE_DISTANCE (100), past which it would give the barrel up.
@@ -371,6 +388,56 @@ local function end_fishing_session(self)
 	self._villages_fish_route = nil
 end
 
+local function barrel_inventory(self)
+	local pos = self._jobsite
+	local node = pos and core.get_node_or_nil(pos)
+	if not node or node.name ~= BARREL then return nil end
+	local inv = core.get_meta(pos):get_inventory()
+	if inv:get_size("main") == 0 then return nil end
+	return inv
+end
+
+local function count_in(inv, name)
+	local total = 0
+	for _, stack in ipairs(inv:get_list("main") or {}) do
+		if stack:get_name() == name then total = total + stack:get_count() end
+	end
+	return total
+end
+
+-- A kind of fish by mcl_fishing's weights, from a roll in [0, 1).
+local function pick_catch(roll)
+	local total = 0
+	for _, entry in ipairs(CATCHES) do total = total + entry[2] end
+	local at = roll * total
+	for _, entry in ipairs(CATCHES) do
+		at = at - entry[2]
+		if at < 0 then return entry[1] end
+	end
+	return CATCHES[#CATCHES][1]
+end
+
+-- One completed cycle's catch, if any. Returns the fish and where it went.
+local function land_catch(self)
+	if not clock.enabled() or math.random(CATCH_ONE_IN) ~= 1 then return nil end
+	local fish = pick_catch(math.random())
+	local inv = barrel_inventory(self)
+	if inv then
+		local pay = count_in(inv, EMERALD)
+		if pay > 0 then possessions.add(self, EMERALD, inv:remove_item("main", EMERALD .. " " .. pay):get_count()) end
+	end
+	if fish == COD then
+		if inv and count_in(inv, COD) < BARREL_COD and inv:room_for_item("main", COD) then
+			inv:add_item("main", COD)
+			return fish, "barrel"
+		end
+		return nil
+	end
+	if possessions.count(self, fish) >= KEEP_OTHER then return nil end
+	possessions.add(self, fish, 1)
+	return fish, "belongings"
+end
+
 local function advance_fishing_session(self)
 	local session = self._villages_fish_session
 	local now = core.get_gametime()
@@ -383,6 +450,7 @@ local function advance_fishing_session(self)
 	else
 		remove_bobber(self)
 		restock_trades(self)
+		land_catch(self)
 		session.phase, session.phase_ends_at = "cast", now + CAST_SECONDS
 	end
 end
@@ -520,4 +588,5 @@ local function activity_override(villager, stage)
 	return nil
 end
 
-return install, activity_override
+-- The third value is for tests.
+return install, activity_override, {land_catch = land_catch, pick_catch = pick_catch, BARREL_COD = BARREL_COD}

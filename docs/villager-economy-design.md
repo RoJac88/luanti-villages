@@ -130,8 +130,9 @@ when read, like gossip decay.
 | 1 to 3 | Hungry | Production and gathering at half rate; prices to players include a hunger term; seeks food before puttering |
 | 0 | Starving | No production, no health regeneration, no restocking |
 
-A villager eats when its points are at or below `FULL - 4` and it has food, at the
-home stage, from its pouch first and then its stash. Tavern dinner is the other
+A villager eats when its points are at or below `FULL - 4` and it has food: from its
+belongings, and then from its stash when it stands within 4 of it (`possessions.eat`,
+checked once a minute). Tavern dinner is the other
 place it eats (see [The tavern](#the-tavern)). Eating uses `food.receive` and
 `food.show_handover`'s eating sound; food never goes on the ground.
 
@@ -140,27 +141,33 @@ Children do not get hungry. Their household feeds them once a day, as now
 
 ## Possessions
 
-`possessions.lua`, generalizing `farm_stock.lua`.
+`possessions.lua`.
 
-- **Pouch.** The existing saved field `_villages_farm_pouch` becomes every
-  villager's pouch (its name is kept: saved state is not renamed). Capacity stays
-  `POUCH_CAPACITY` (128). `farm_stock.lua`'s count/add/take functions move here and
-  `farm_stock.lua` keeps its chest transfers on top of them. Drops on death, as now.
-- **Emeralds.** Held in the pouch as `mcl_core:emerald`, so they drop with it and
-  cost no new field.
+- **Belongings.** `_villages_belongings`, item name to count, carried, dropped where
+  the villager dies. It is kept apart from the work pouch (`_villages_farm_pouch`,
+  `farm_stock.lua`), which the farmer, the Builder and the keeper treat as goods for
+  their job: they empty it into work chests, wait for it to be empty, and drop it when
+  the job goes. A shared pouch would have sent a farmer's emeralds into its farm chest
+  and kept a Builder from ever finishing. The pouch stays the job's; belongings are
+  the villager's.
+- **Emeralds.** Held in the belongings as `mcl_core:emerald`.
 - **Stash.** The chest nearest the villager's bed, within
-  `living_villages_stash_radius` (8), claimed by `villages_owner` = the villager's
-  `_id` in the chest's node metadata. A claimed chest is never another villager's
-  stash. Generated chests, chests a Builder placed (`builder_block.lua`'s house
-  setup) and chests a player placed are all eligible, as for the farmer (#26). The
-  farmer's own chest by its composter stays its work chest; its stash is by its bed.
-- **Succession.** A stash belongs to the bed. A villager who takes a bed whose
-  chest names a dead or missing owner claims it and inherits what is in it, as a new
-  Builder inherits a bench's project.
-- **Starting stock.** On first activation (`_villages_endowed` unset) a villager
-  gets a profession stock (`STARTING_STOCK`: a farmer some seeds and bread, a smith a
-  few coal and ingots, everyone 3 to 6 emeralds), into its pouch. Villagers born in
-  the village get emeralds only.
+  `living_villages_stash_radius` (8), claimed in the chest's meta: `villages_owner`
+  (the villager's `_id`) and `villages_owner_bed` (the bed it was claimed from); both
+  halves of a double chest. Generated chests and chests a player placed are eligible.
+  Work chests never are: a tavern's pantry (within 6 of a jukebox), a farm's chest
+  (beside a composter), a Builder's (within 6 of its bench). `farm_stock.find_chests`
+  leaves stashes out, so farmers, Builders and keepers never take from one.
+- **Succession.** A stash belongs to the bed. A villager whose bed is the one a chest
+  was claimed from, and whose owner no longer holds that bed (vanilla's `villager` bed
+  meta names someone else or no one), takes the chest and what is in it. A villager
+  that moves to another bed gives up its old chest.
+- **Starting stock.** 3 to 6 emeralds when a villager is first seen as an adult
+  (`_villages_endowed`), and a kit (`KITS`: a farmer some seeds and bread, a smith a
+  few coal and ingots) the first time it has a profession that has one
+  (`_villages_kit`), once in its life, so taking a job away and back cannot mint more.
+  A villager born in the village gets the same when it grows up: births are a source
+  of emeralds, limited by food.
 - **Theft.** A player who takes from a claimed stash within sight of a villager
   (gossip's witness rule: 16 nodes, line of sight) gives that villager
   `minor_negative` gossip. The owner, when it next checks its stash, records the
@@ -170,14 +177,15 @@ Children do not get hungry. Their household feeds them once a day, as now
 
 `ledger.lua`, pure: no engine calls beyond what is passed in.
 
-**Base prices.** `trade_prices.lua` is a checked-in table of an emerald base price
-per item, extracted from VoxeLibre's profession trade tables by
-`tools/extract_trades/`. The tables are a `local` in `mobs_mc/villager.lua` and are
-not exposed, so the tool evaluates that block with stubs, as
-`tools/extract_schematics/` regenerates fixtures, and is rerun when the supported
-VoxeLibre version changes. A buy offer of N items for 1 emerald prices an item at
-1/N; a sell offer of E emeralds for N items at E/N. Where an item has both, the base
-is their geometric mean. Items in no table (logs, cobble, saplings, sticks' sources)
+**Base prices.** `trade_tables.lua` is a checked-in copy of VoxeLibre's profession
+trade tables, extracted by `tools/extract_trades/`. The tables are a `local` in
+`mobs_mc/villager.lua` and are not exposed, so the tool cuts that block out and
+evaluates it with stubs; it is rerun when the supported VoxeLibre version changes,
+and `tests/trade_tables.lua` fails when the installed VoxeLibre no longer matches.
+`ledger.lua` derives prices from the raw trades when first asked. A buy offer of N
+items for E emeralds prices an item at E/N; a sell offer of N items for E emeralds
+(and perhaps a second ingredient, at its own price) at the same. Where an item has
+both, the base is their geometric mean. Items in no table (logs, cobble, saplings, sticks' sources)
 get a short hand-written table in `ledger.lua`, consistent with their crafting
 yield (planks at a quarter of a log, and so on).
 
@@ -205,8 +213,8 @@ Every good in the village has a source in this section or comes from a player.
 | Profession | Change |
 |---|---|
 | Farmer | Unchanged: crops into the pouch |
-| Fisherman | Each completed cycle (`fisherman.lua`, which today only restocks) also puts a fish in the pouch, by vanilla's fishing loot odds for fish |
-| Shepherd | Shears a flock sheep with wool during the work stage (`flock.lua`), adding its wool to the pouch. Wool grows back on vanilla sheep |
+| Fisherman | One completed cycle in four (`fisherman.lua`, which before only restocked) lands a fish by vanilla's fishing odds: cod in its barrel, up to 16, for the keeper to buy; anything else in its belongings, up to 8 of a kind |
+| Shepherd | Every 90 s of the work stage shears a flock sheep within 4 that has its wool (`flock.lua`), 1 to 3 wool of its colour into its belongings, up to 16 a colour. Wool grows back when the sheep eats grass, as on vanilla sheep |
 | Keeper | Cooks raw pantry ingredients into menu items (see [The tavern](#the-tavern)) |
 
 ### Jobsite crafting
@@ -214,7 +222,7 @@ Every good in the village has a source in this section or comes from a player.
 Professions with no work loop craft at their jobsite. `production.lua` holds one
 recipe list per profession: outputs from that profession's sell offers, inputs from
 the real crafting recipe where there is one. A test checks every output against the
-profession's trade table in `trade_prices.lua`. Over work-stage economic clock time
+profession's trade table in `trade_tables.lua`. Over work-stage economic clock time
 spent at its jobsite, a villager makes recipe outputs at
 `living_villages_craft_seconds` per item (default 120), taking the inputs from its
 pouch and stash. With no inputs it makes nothing. Examples, illustrative until the
@@ -273,6 +281,13 @@ most `NEWS_ENTRIES` (24) entries:
 This makes the well, the bell, the church social and the tavern the village's
 market-information network. A villager who talks a lot finds trades sooner.
 
+`market_news.lua` holds it; `conversation.lua` calls its `exchange` beside
+`gossip.exchange`, so gossip's own setting does not turn the market off. Each
+listener's ledger view is worked out once per conversation. What each member knows is
+fixed before anyone speaks, so news crosses one hop per conversation. An item it needs
+offered, or has spare wanted, weighs 4 times more; freshness falls linearly over
+`NEWS_DAYS` to a floor of a tenth; each hop divides the weight by one more.
+
 ## Exchange between villagers
 
 `exchange.lua`. A trade happens only when the buyer's value for the goods is above
@@ -295,18 +310,25 @@ with `food.show_handover`'s animation. Three channels, in order:
 
 `farmer.lua`'s `hand_over` gives food only to:
 
-- its household: villagers sharing its bed's house (the beds within the same
-  building as its own) and their children, free;
-- a villager at 0 points, one item free (a farmer's handout);
-- the tavern pantry, sold in bulk at the pantry chest (a deposit target next to its
-  own chest);
-- anyone else who pays its asking price, through exchange.
+- itself, its household (villagers whose beds are within 5 across and 4 up or down of
+  its own, which is as near as beds tell to the same house) and every child, free;
+- anyone else who has an emerald and carries no food: a bundle, as many as vanilla's
+  trades sell for one emerald (6 loaves, 26 potatoes), of which it eats what it wants
+  and keeps the rest;
+- a villager at 0 points that cannot buy, one item free (a farmer's handout);
+- the tavern: the keeper buys from its chest (see [The tavern](#the-tavern)); the
+  farmer collects the emeralds left there when it next stores its surplus.
+
+With the economy off it feeds everyone free, as before.
 
 ## The tavern
 
 - **Pantry.** The chests within 6 of the keeper's jukebox; the stock tavern's chest
-  stands 3 behind it. The keeper fetches food for it from the farms (ticket 1);
-  from ticket 4 farmers and fishermen sell into it.
+  stands 3 behind it. The keeper fetches food for it from the farms' chests and the
+  fishermen's barrels, and from ticket 4 buys it: it takes up to 8 emeralds from the
+  pantry and leaves what it takes is worth at vanilla's prices, rounded, in the work
+  chest. While villagers dine free (until ticket 6) a pantry has little money, so the
+  keeper takes the food even when it cannot pay all of it.
 - **Cooking.** The keeper turns raw pantry items into its menu items over its shift:
   bread from wheat, baked potatoes from potatoes, cooked fish from raw fish.
 - **Dinner.** `meal.lua` serves a guest only when the pantry has a menu item: it
@@ -386,8 +408,8 @@ village turns raw materials into goods.
 |---|---|
 | `food.lua` | Falling points on the economic clock; eating from pouch and stash; hunger states |
 | `farm_stock.lua` | Pouch functions move to `possessions.lua`; chest transfers stay |
-| `farmer.lua` | `hand_over` limited to household, handout, pantry and paying buyers |
-| `fisherman.lua` | A fish per completed cycle into the pouch |
+| `farmer.lua` | `hand_over` limited to household, children, handout and paying buyers |
+| `fisherman.lua` | A catch one cycle in four: cod into its barrel, other fish into its belongings |
 | `flock.lua` | Shearing during the work stage |
 | `keeper.lua`, `meal.lua`, `player_meals.lua` | Pantry, cooking, paid dinners, paid player meals |
 | `gossip.lua` | Market news memory and exchange; demand and hunger terms beside reputation in the `wanted` wrapper |
@@ -411,15 +433,17 @@ New `_villages_*` entity fields, never to be renamed once released:
 |---|---|
 | `_villages_econ_clock`, `_villages_econ_stamp` | Economic clock |
 | `_villages_food_at` | Clock reading at which food points were last decayed |
-| `_villages_endowed` | Starting stock given |
+| `_villages_belongings` | What a villager owns and carries, emeralds included |
+| `_villages_endowed` | Emeralds given |
+| `_villages_kit` | The profession whose kit it was given |
+| `_villages_stash` | Its stash chest's position (the claim itself is in the chest's meta) |
 | `_villages_market_news` | Market news list |
 | `_villages_labour` | Today's activity and the day it was chosen |
 | `_villages_grove` | Positions of saplings a woodcutter planted |
 | `_villages_tier_supply` | Days crafted from village supply at the current tier |
 
-Existing fields reused: `_villages_farm_pouch` (every villager's pouch, emeralds
-included), `_villages_food`, `_villages_fed_day`. Node metadata: `villages_owner` on
-stash and pantry chests.
+Existing fields reused: `_villages_food`, `_villages_fed_day`. Node metadata:
+`villages_owner` and `villages_owner_bed` on stash chests.
 
 ## Settings
 
@@ -448,7 +472,7 @@ stash and pantry chests.
 Each new module gets a test in `tests/` that stubs the engine, as the existing ones
 do. `ledger.lua`, `production.lua`'s recipes, `economy_clock.lua`'s gap rule and
 `exchange.lua`'s settlement are pure and tested directly. A test checks every
-recipe output against `trade_prices.lua`. `tools/lv_probe` gains an `LV_PROBE_ECONOMY`
+recipe output against `trade_tables.lua`. `tools/lv_probe` gains an `LV_PROBE_ECONOMY`
 mode that runs a village for several game days and logs per-day production,
 consumption, trades, news spread and food levels, so pacing can be tuned on real
 villages. `docs/economy-scenarios.md` holds manual in-game checks for what neither
@@ -463,7 +487,7 @@ branch, and each leaves the game playable with `living_villages_economy` on or o
 |---|---|---|
 | 1 | Economic clock, hunger, pantry dinners, paid player meals, the keeper's supply trips and cooking | — |
 | 2 | `possessions.lua`: pouch for every villager, emeralds, stash claim and succession, starting stock | — |
-| 3 | `tools/extract_trades/`, `trade_prices.lua`, `ledger.lua` (pure) | 2 |
+| 3 | `tools/extract_trades/`, `trade_tables.lua`, `ledger.lua` (pure) | 2 |
 | 4 | Farmer's distribution rules; fisherman's fish; shepherd's shearing | 1, 2, 3 |
 | 5 | Market news in gossip | 3 |
 | 6 | End-of-conversation exchange | 4, 5 |
@@ -500,23 +524,29 @@ and cooking; and a probe run shows a generated tavern's pantry stocked.
 
 ### 2. Possessions
 
-Pouch API in `possessions.lua` over `_villages_farm_pouch`, `farm_stock.lua` on top
-of it, stash claim by `villages_owner`, succession on bed change, starting stock,
-drop on death for every villager. `keeper.lua`'s `take_over` clears
-`_villages_farm_pouch` with the old job's fields; once the pouch holds a villager's
-belongings it must keep it instead. Done when every villager carries a stock after
-first activation and a dead villager's pouch drops.
+`possessions.lua`: belongings apart from the work pouch, emeralds, kits, the stash
+claim with its work-chest exclusions and succession, drop on death; stashes left out of
+`farm_stock.find_chests`. `keeper.lua`'s `take_over` drops the old job's pouch instead
+of deleting it. Villagers still eat at the tavern free: with no income before tickets 4
+and 6, paying for dinner would only run their emeralds out. Done when every villager
+owns its emeralds and kit after first activation, claims a stash by its bed that no
+work chest is, and drops its belongings on death.
 
 ### 3. Prices and ledger
 
 The extraction tool, the generated table, the hand table for unlisted items, and
-`ledger.lua`'s targets, need, surplus and value. Pure; no behaviour change yet.
+`ledger.lua`'s targets, need, surplus and value. Pure; no behaviour change yet,
+beyond the inspector showing each villager's top needs and surplus
+(`possessions.assess`, from its belongings, stash and food).
 
 ### 4. Food distribution and real goods
 
-`farmer.lua` household, handout, pantry and selling; fish per cycle; shearing.
-Done when a farmer sells bread to a neighbour for emeralds, stocks the pantry and
-still feeds its children free.
+`farmer.lua` household, handout and selling; the keeper buying at work chests and
+barrels; eating from belongings and stash; fish per cycle into the barrel; shearing.
+Villagers still dine at the tavern free: only farmers and fishermen earn yet, so
+paying would run everyone else's emeralds out before ticket 6 gives them an income.
+Done when a farmer sells bread to a neighbour for emeralds, the keeper pays for what
+it fetches, and a farmer still feeds its children free.
 
 ### 5. Market news
 

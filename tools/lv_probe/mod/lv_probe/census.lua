@@ -1,6 +1,13 @@
 -- Jobsite census (#217): after a village is built, let the villagers live a
 -- working morning, then record every villager's profession and jobsite and
 -- every workstation node's claim. Only runs when lv_probe_census is set.
+--
+-- lv_probe_news = 1 (economy ticket 5) lets the day run instead of holding the work
+-- stage, so villagers meet at the well, the bell and the tavern, and records how far
+-- each villager's market news has spread: every 60 s, for each villager, how many of
+-- the others have heard something from it (`_villages_market_news`). The record gains
+-- `news`: the village's size, the timeline of the best and median reach, and the final
+-- reach per villager.
 local core = minetest
 
 local census = {}
@@ -14,6 +21,32 @@ local STATIONS = {
 	"mcl_smithing_table:table", "mcl_brewing:stand_000", "mcl_stonecutter:stonecutter",
 	"living_villages:pulpit", "group:cauldron",
 }
+
+local function news_mode()
+	return core.settings:get_bool("lv_probe_news", false)
+end
+
+-- For each villager id, how many other villagers have heard news from it.
+local function news_reach(entities)
+	local reach = {}
+	for _, e in ipairs(entities) do reach[e._id] = 0 end
+	for _, e in ipairs(entities) do
+		local from = {}
+		for _, entry in ipairs(e._villages_market_news or {}) do from[entry.who] = true end
+		for who in pairs(from) do
+			if reach[who] then reach[who] = reach[who] + 1 end
+		end
+	end
+	return reach
+end
+
+local function reach_summary(reach)
+	local values = {}
+	for _, n in pairs(reach) do values[#values + 1] = n end
+	table.sort(values)
+	if #values == 0 then return 0, 0 end
+	return values[#values], values[math.floor((#values + 1) / 2)]
+end
 
 local function round1(v) return math.floor(v * 10 + 0.5) / 10 end
 local function vec(p) return {x = round1(p.x), y = round1(p.y), z = round1(p.z)} end
@@ -58,17 +91,35 @@ function census.run(area, emit, done)
 	local finish_watch = putter > 0 and wells.available() and wells.watch(minp, maxp) or nil
 	local waited = 0
 	local timeline, last = {}, {}
+	local news_timeline = {}
+	local function adults()
+		local found = {}
+		for _, object in ipairs(core.get_objects_inside_radius(center, radius)) do
+			local e = object:get_luaentity()
+			if e and e.name == "mobs_mc:villager" and e._id and not e.child and inside(object:get_pos(), minp, maxp) then
+				found[#found + 1] = e
+			end
+		end
+		return found
+	end
 	local function tick()
 		-- Setting the time back counts as a new day (get_day_count), which would give every
 		-- villager a fresh roll each tick, so a putter census stops the clock instead.
 		local wanted = waited < putter and (tonumber(core.settings:get("lv_probe_tod")) or 0.24) or 0.33
-		if putter > 0 then
+		if news_mode() then
+			if waited == 0 then core.set_timeofday(0.24) end
+		elseif putter > 0 then
 			core.settings:set("time_speed", "0")
 			if waited == 0 or waited == putter then core.set_timeofday(wanted) end
 		else
 			core.set_timeofday(wanted)
 		end
 		waited = waited + 10
+		if news_mode() and waited % 60 == 0 then
+			local best, median = reach_summary(news_reach(adults()))
+			news_timeline[#news_timeline + 1] = {t = waited, day = core.get_day_count(),
+				tod = math.floor(core.get_timeofday() * 100 + 0.5) / 100, best = best, median = median}
+		end
 		-- What each villager held at each step, so a change shows when it happened.
 		for _, object in ipairs(core.get_objects_inside_radius(center, radius)) do
 			local e = object:get_luaentity()
@@ -118,8 +169,16 @@ function census.run(area, emit, done)
 				claimant = claim ~= "" and by_id[claim] and by_id[claim].profession or nil,
 			}
 		end
+		local news
+		if news_mode() then
+			local everyone = adults()
+			local reach = news_reach(everyone)
+			local final = {}
+			for id, n in pairs(reach) do final[id:sub(1, 6)] = n end
+			news = {adults = #everyone, timeline = news_timeline, reach = final}
+		end
 		emit({type = "census", seconds = seconds, villagers = villagers, stations = stations, timeline = timeline,
-			wells = finish_watch and finish_watch() or nil})
+			wells = finish_watch and finish_watch() or nil, news = news})
 		done()
 	end
 	core.after(10, tick)

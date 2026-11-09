@@ -164,6 +164,10 @@ living_villages_economy (Villager economy) bool true
 # and 12 is full. 0 turns hunger off.
 living_villages_hunger_per_day (Villager hunger per day) float 4 0 12
 
+# How far from its bed a villager looks for a chest to keep its things in. A chest by a jukebox, a
+# composter or a builder's bench does a job and is never one.
+living_villages_stash_radius (Villager stash radius) int 8 0 16
+
 # An unemployed villager takes a free composter it can reach ahead of any other job, and looks for
 # one this far away (other jobs: 48 nodes, up and down as well; composters: 24 up and down).
 living_villages_farm_job_radius (Range to look for a free composter) int 96 48 120
