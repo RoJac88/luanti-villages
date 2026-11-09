@@ -274,6 +274,18 @@ assert(second and not (second.pos.x == first.x and second.pos.z == first.z), "th
 -- Prices it has heard for acacia count for woodcutting.
 assert(labour.choose({asks("mcl_core:acaciatree", 0.5)}, both, nil, 0) == "woodcutter")
 
+-- Charcoal: logs past 16 burn 8 to 7, the commonest log first, up to 32 charcoal.
+local colin = villager({_id = "colin"})
+possessions.add(colin, "mcl_core:tree", 20)
+possessions.add(colin, "mcl_core:acaciatree", 13)
+assert(labour.burn_charcoal(colin) == 14, "two burns")
+assert(count(colin, "mcl_core:tree") == 12 and count(colin, "mcl_core:acaciatree") == 5, "the commonest each time")
+assert(count(colin, "mcl_core:charcoal_lump") == 14 and logs[#logs]:find("burned 14 charcoal"))
+assert(labour.burn_charcoal(colin) == 0, "17 logs left: one burn would leave fewer than 16")
+possessions.add(colin, "mcl_core:charcoal_lump", 20)
+possessions.add(colin, "mcl_core:tree", 40)
+assert(labour.burn_charcoal(colin) == 0, "34 charcoal: enough")
+
 -- The inspector line, and nothing with the economy off.
 assert(labour.status(villager({_profession = "farmer"})) == "not looking for work")
 settings.living_villages_economy = false

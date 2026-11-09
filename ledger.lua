@@ -12,12 +12,18 @@
 -- farmer buys crops from players but grows them); its outputs are what it sells. That is
 -- the dependency graph between professions.
 --
+-- A crafting profession (recipes.lua) also wants what its recipes take, CRAFT_BATCH
+-- crafts' worth, and coal for those that smelt; what it makes counts among its outputs.
+-- Charcoal stands in for coal (SUBSTITUTES): a villager holding either counts both
+-- toward the one target, so it needs neither once it has enough of the two together.
+--
 -- assess() turns one villager's state into targets (what it wants to hold), needs,
 -- surplus and a value for any item: base price times urgency, which rises from 1 toward
 -- 3 as a need nears its whole target and falls toward 0.5 the further a holding runs
 -- past its target and reserve.
 local core = minetest
 local tables = dofile(core.get_modpath("living_villages") .. "/trade_tables.lua")
+local recipes = dofile(core.get_modpath("living_villages") .. "/recipes.lua")
 
 local EMERALD = "mcl_core:emerald"
 -- Days of food a villager wants to have by it.
@@ -27,6 +33,12 @@ local INPUT_CAP = 32
 -- Of a target, this share is never sold.
 local RESERVE_SHARE = 0.25
 local MAX_URGENCY, MIN_URGENCY = 3, 0.5
+-- Crafts' worth of each recipe input it wants to hold, and lumps of fuel.
+local CRAFT_BATCH = 4
+local FUEL_BATCH = 4
+local COAL = "mcl_core:coal_lump"
+-- Item to the item it stands in for.
+local SUBSTITUTES = {["mcl_core:charcoal_lump"] = COAL}
 
 local HAND_PRICES = {
 	-- A log is four planks, a plank two sticks (the fletcher buys 32 sticks for one).
@@ -97,7 +109,7 @@ local PREFERENCES = {
 
 local M = {
 	EMERALD = EMERALD, FOOD_DAYS = FOOD_DAYS, MAX_URGENCY = MAX_URGENCY, MIN_URGENCY = MIN_URGENCY,
-	PREFERENCES = PREFERENCES, version = tables.version,
+	PREFERENCES = PREFERENCES, SUBSTITUTES = SUBSTITUTES, COAL = COAL, version = tables.version,
 }
 
 local function mean(spec) return (spec.min + spec.max) / 2 end
@@ -177,6 +189,12 @@ function M.inputs(profession, max_tier)
 			if not makes[item] then found[item] = math.min(math.max(found[item] or 0, trade.wanted[1].min), INPUT_CAP) end
 		end
 	end
+	for _, recipe in ipairs(recipes[profession] or {}) do
+		for _, input in ipairs(recipe.from) do
+			found[input[1]] = math.max(found[input[1]] or 0, math.min(input[2] * CRAFT_BATCH, INPUT_CAP))
+		end
+		if recipe.fuel then found[COAL] = math.max(found[COAL] or 0, FUEL_BATCH) end
+	end
 	return found
 end
 
@@ -186,6 +204,7 @@ function M.outputs(profession, max_tier)
 	if role then return role.outputs end
 	local found = {}
 	for item in pairs(MAKES[profession] or {}) do found[item] = true end
+	for _, recipe in ipairs(recipes[profession] or {}) do found[recipe.makes] = true end
 	local entry = tables.professions[profession]
 	for _, trade in ipairs(entry and entry.trades or {}) do
 		local offered = trade.offered[1]
@@ -254,16 +273,28 @@ function M.assess(input)
 	for item, count in pairs(M.preferences(input.id)) do want(item, count) end
 	for item, count in pairs(input.extra or {}) do targets[item] = (targets[item] or 0) + count end
 
-	local held = input.held or {}
+	for item, base in pairs(SUBSTITUTES) do
+		if targets[base] then targets[item] = targets[base] end
+	end
+
+	local raw = input.held or {}
+	-- An item and its substitutes count together.
+	local held = {}
+	for item, count in pairs(raw) do held[item] = count end
+	for item, base in pairs(SUBSTITUTES) do
+		local together = (raw[item] or 0) + (raw[base] or 0)
+		if together > 0 then held[item], held[base] = together, together end
+	end
 	local needs, surplus = {}, {}
 	for item, target in pairs(targets) do
 		local short = target - (held[item] or 0)
 		if short > 0 then needs[item] = short end
 	end
-	for item, count in pairs(held) do
+	for item, count in pairs(raw) do
 		if item ~= EMERALD then
 			local target = targets[item] or 0
-			local spare = count - target - math.ceil(target * RESERVE_SHARE)
+			-- A substitute's spare is what the pair holds past the target, up to its own count.
+			local spare = math.min(held[item] - target - math.ceil(target * RESERVE_SHARE), count)
 			if spare > 0 then surplus[item] = spare end
 		end
 	end

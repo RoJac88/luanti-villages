@@ -1,0 +1,168 @@
+-- Run with: lua tests/production.lua
+local now, day, time = 1000, 5, 9000 / 24000
+local settings = {}
+local logs = {}
+
+vector = {
+	new = function(a) return {x = a.x, y = a.y, z = a.z} end,
+	distance = function(a, b) return math.sqrt((a.x - b.x) ^ 2 + (a.y - b.y) ^ 2 + (a.z - b.z) ^ 2) end,
+}
+
+minetest = {
+	get_modpath = function() return "." end,
+	get_gametime = function() return now end,
+	get_day_count = function() return day end,
+	get_timeofday = function() return time end,
+	get_item_group = function() return 0 end,
+	registered_nodes = {},
+	settings = {
+		get = function(_, name) return settings[name] end,
+		get_bool = function(_, name, default)
+			if settings[name] == nil then return default end
+			return settings[name]
+		end,
+	},
+	log = function(_, message) logs[#logs + 1] = message end,
+	pos_to_string = function(p) return "(" .. p.x .. "," .. p.y .. "," .. p.z .. ")" end,
+	get_objects_inside_radius = function() return {} end,
+}
+
+local production = dofile("production.lua")
+local possessions = dofile("possessions.lua")
+local tables = dofile("trade_tables.lua")
+local recipes = dofile("recipes.lua")
+
+-- Every output is sold by its profession, or goes into another of its own recipes.
+for profession, list in pairs(recipes) do
+	local entry = tables.professions[profession]
+	assert(entry, profession .. " has a trade table")
+	local sold, used = {}, {}
+	for _, trade in ipairs(entry.trades) do sold[trade.offered[1].item] = true end
+	for _, recipe in ipairs(list) do
+		for _, input in ipairs(recipe.from) do used[input[1]] = true end
+	end
+	for _, recipe in ipairs(list) do
+		assert(sold[recipe.makes] or used[recipe.makes], profession .. " neither sells nor uses " .. recipe.makes)
+		assert(recipe.count >= 1 and #recipe.from >= 1 and recipe.tier >= 1)
+	end
+end
+
+local function smith(fields)
+	local pos = {x = 0, y = 1, z = 0}
+	local v = {_id = "tobias", _profession = "tool_smith", _jobsite = {x = 1, y = 1, z = 0}, _villages_food = 10}
+	for k, value in pairs(fields or {}) do v[k] = value end
+	v.object = {get_pos = function() return pos end}
+	v.move_to = function(p) pos = p end
+	return v
+end
+local function count(v, item) return possessions.count(v, item) end
+
+-- With nothing to craft with it makes nothing, banks nothing, and holds its restock.
+local idle = smith()
+assert(production.choose(idle) == nil)
+assert(production.work(idle, 600) == 0 and idle._villages_craft == nil)
+assert(production.restock_held(idle) == "nothing to craft with")
+assert(production.status(idle) == "nothing to craft with")
+
+-- With cobble and sticks: every stone tool sells for an emerald, so the one that takes
+-- least, the shovel (1 cobble), adds the most.
+local tobias = smith()
+possessions.add(tobias, "mcl_core:cobble", 7)
+possessions.add(tobias, "mcl_core:stick", 6)
+assert(production.restock_held(tobias) == nil)
+assert(production.choose(tobias).makes == "mcl_tools:shovel_stone")
+-- 100 s banks toward 120; 30 more makes one, carrying 10 over.
+assert(production.work(tobias, 100) == 0 and tobias._villages_craft == 100)
+assert(production.work(tobias, 30) == 1 and tobias._villages_craft == 10)
+assert(count(tobias, "mcl_tools:shovel_stone") == 1 and count(tobias, "mcl_core:cobble") == 6)
+assert(logs[#logs]:find("made 1 mcl_tools:shovel_stone", 1, true))
+-- A long gap makes several, up to what the inputs allow: 4 sticks make two more.
+assert(production.work(tobias, 1000) == 2)
+assert(count(tobias, "mcl_core:stick") == 0 and tobias._villages_craft == nil, "nothing left: nothing banked")
+
+-- Hungry works at half the rate; starving not at all, and holds its restock.
+local hungry = smith({_villages_food = 2})
+possessions.add(hungry, "mcl_core:cobble", 3)
+possessions.add(hungry, "mcl_core:stick", 2)
+assert(production.work(hungry, 200) == 0 and hungry._villages_craft == 100)
+local starving = smith({_villages_food = 0})
+possessions.add(starving, "mcl_core:cobble", 3)
+possessions.add(starving, "mcl_core:stick", 2)
+assert(production.work(starving, 500) == 0)
+assert(production.restock_held(starving) == "starving")
+
+-- Fuel: a lump is 8 smelts, charcoal burned first, the rest kept for the next item.
+local bram = smith({_id = "bram", _profession = "butcher"})
+possessions.add(bram, "mcl_mobitems:porkchop", 2)
+possessions.add(bram, "mcl_core:coal_lump", 1)
+possessions.add(bram, "mcl_core:charcoal_lump", 1)
+assert(production.work(bram, 240) == 2)
+assert(count(bram, "mcl_mobitems:cooked_porkchop") == 2 and count(bram, "mcl_core:coal_lump") == 1)
+assert(count(bram, "mcl_core:charcoal_lump") == 0 and bram._villages_fuel == 6)
+-- No fuel and no lump: raw meat stays raw.
+local cold = smith({_id = "cold", _profession = "butcher"})
+possessions.add(cold, "mcl_mobitems:chicken", 3)
+assert(production.choose(cold) == nil and production.restock_held(cold) == "nothing to craft with")
+
+-- A full stock of an output: it stops making that one.
+local full = smith()
+possessions.add(full, "mcl_core:cobble", 1)
+possessions.add(full, "mcl_core:stick", 2)
+possessions.add(full, "mcl_tools:shovel_stone", production.STOCK)
+assert(production.choose(full) == nil)
+
+-- Outputs that feed another recipe: a librarian with cane and leather makes paper, then books.
+local lena = smith({_id = "lena", _profession = "librarian"})
+possessions.add(lena, "mcl_core:reeds", 3)
+possessions.add(lena, "mcl_mobitems:leather", 1)
+assert(production.choose(lena).makes == "mcl_core:paper")
+assert(production.work(lena, 360) == 1 and count(lena, "mcl_core:paper") == 3)
+assert(production.choose(lena).makes == "mcl_books:book")
+
+-- Clock time counts only at work by the jobsite.
+local walker = smith()
+possessions.add(walker, "mcl_core:cobble", 3)
+possessions.add(walker, "mcl_core:stick", 2)
+assert(production.at_work(walker))
+walker.move_to({x = 10, y = 1, z = 0})
+assert(not production.at_work(walker), "away from the jobsite")
+walker.move_to({x = 0, y = 1, z = 0})
+time = 0.9
+assert(not production.at_work(walker), "not the work stage")
+time = 9000 / 24000
+
+-- The restock guard: a vanilla call that set order "work" and unlocked trades is undone
+-- for a villager that can make nothing; one with inputs keeps its restock.
+local function vanilla_arrives(self)
+	self.order = "work"
+	self._trades = "unlocked"
+end
+local def = {do_custom = function(self) vanilla_arrives(self) end}
+production.install(def)
+local stuck = smith({_trades = "locked"})
+def.do_custom(stuck, 0.1)
+assert(stuck._trades == "locked" and stuck.order == "work", "restock held back")
+assert(logs[#logs]:find("did not restock: nothing to craft with"))
+local supplied = smith({_trades = "locked"})
+possessions.add(supplied, "mcl_core:cobble", 3)
+possessions.add(supplied, "mcl_core:stick", 2)
+def.do_custom(supplied, 0.1)
+assert(supplied._trades == "unlocked", "restocked")
+-- Already at work: nothing to undo.
+local working = smith({_trades = "locked", order = "work"})
+def.do_custom(working, 0.1)
+assert(working._trades == "unlocked")
+-- Not a crafting profession: vanilla restocks.
+local cleric = smith({_profession = "cleric", _trades = "locked"})
+def.do_custom(cleric, 0.1)
+assert(cleric._trades == "unlocked" and production.status(cleric) == "not a crafting profession")
+
+-- With the economy off, nothing is installed and nothing is held.
+settings.living_villages_economy = false
+assert(production.restock_held(starving) == nil)
+local off = {do_custom = function() end}
+local plain = off.do_custom
+production.install(off)
+assert(off.do_custom == plain)
+
+print("production.lua: ok")

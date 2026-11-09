@@ -629,15 +629,39 @@ meal.tick(vera, 0.1, jukebox)
 now = now + 5
 meal.tick(vera, 0.1, jukebox)
 assert(not vera._villages_meal and meal.explain(vera, jukebox) == "the pantry is empty")
--- A loaf in the pantry: served, taken out, and it feeds her.
+-- A loaf in the pantry, but she has no emerald: not served, nothing used up.
 pantry_items["mcl_farming:bread"] = 1
+meal.tick(vera, 0.1, jukebox)
+assert(not vera._villages_meal and meal.explain(vera, jukebox):find("cannot pay"), meal.explain(vera, jukebox))
+assert(pantry_items["mcl_farming:bread"] == 1)
+-- Fed well enough already: she does not order, emerald or not.
+vera._villages_belongings = {["mcl_core:emerald"] = 2}
+vera._villages_food = 10
+meal.tick(vera, 0.1, jukebox)
+assert(not vera._villages_meal and meal.explain(vera, jukebox) == "the diner is not hungry")
+-- Hungry with an emerald: served, she pays into the pantry, and it feeds her.
+vera._villages_food = nil
 meal.tick(vera, 0.1, jukebox)
 assert(vera._villages_meal and vera._villages_meal.item == "mcl_farming:bread", "served from the pantry")
 assert(pantry_items["mcl_farming:bread"] == nil, "taken out of the pantry")
 assert(vera._villages_food == 4, "fed when served")
+assert(vera._villages_belongings["mcl_core:emerald"] == 1 and pantry_items["mcl_core:emerald"] == 1, "paid an emerald")
 now = now + 20
 meal.tick(vera, 0.1, jukebox)
 assert(not vera._villages_meal)
+-- The keeper's household eats free: a bed in the keeper's house.
+day = day + 1
+local hal = {_id = "hal", _villages_seat = {table = tabletop}, _bed = {x = 1, y = 0, z = 3}}
+hal.object = {get_pos = function() return {x = 2, y = 0, z = 0} end}
+pantry_items["mcl_farming:bread"] = 1
+now = now + 10
+meal.tick(hal, 0.1, jukebox)
+now = now + 5
+meal.tick(hal, 0.1, jukebox)
+assert(hal._villages_meal and hal._villages_food == 4 and pantry_items["mcl_core:emerald"] == 1, "household eats free")
+now = now + 20
+meal.tick(hal, 0.1, jukebox)
+pantry_items["mcl_core:emerald"] = nil
 
 -- A player pays an emerald into the pantry for the meal.
 day = day + 1

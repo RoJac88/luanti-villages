@@ -8,8 +8,8 @@
 -- also when vanilla's do_work unlocks its trades.
 --
 -- Who it feeds (docs/villager-economy-design.md, The farmer's food). With the economy
--- on: itself, its household (villagers whose beds are within HOUSEHOLD_RADIUS of its
--- own, the same house as near as beds tell) and every child, free and as much as they
+-- on: itself, its household (villagers whose beds are in the same house as its
+-- own, possessions.same_house) and every child, free and as much as they
 -- want; a starving villager one item free; anyone else who carries no food and has an
 -- emerald buys a bundle, as many of the food as vanilla's trades sell for one emerald
 -- (six loaves), eats what it wants of it and keeps the rest (possessions.lua). The
@@ -81,7 +81,6 @@ local DELIVERY_RADIUS = 32
 local FOOD_SEED_KEEP = {["mcl_farming:potato_item"] = 4, ["mcl_farming:carrot_item"] = 4}
 local WITHDRAW_FOOD = 8
 -- Beds this near its own, across and up or down, are its household's.
-local HOUSEHOLD_RADIUS, HOUSEHOLD_HEIGHT = 5, 4
 local EMERALD = "mcl_core:emerald"
 -- A round feeds a few villagers, or gives up after chasing them this many times, and
 -- the next waits a while: villagers walk about, and the field needs tending too.
@@ -343,10 +342,7 @@ local function spare_food(self, session)
 	return nil
 end
 
-local function same_house(a, b)
-	return a ~= nil and b ~= nil and math.abs(a.x - b.x) <= HOUSEHOLD_RADIUS
-		and math.abs(a.z - b.z) <= HOUSEHOLD_RADIUS and math.abs(a.y - b.y) <= HOUSEHOLD_HEIGHT
-end
+local same_house = possessions.same_house
 
 -- How many of the food one emerald buys, from vanilla's prices (ledger.lua).
 local function bundle(item)

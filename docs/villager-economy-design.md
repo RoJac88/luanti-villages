@@ -136,6 +136,11 @@ checked once a minute). Tavern dinner is the other
 place it eats (see [The tavern](#the-tavern)). Eating uses `food.receive` and
 `food.show_handover`'s eating sound; food never goes on the ground.
 
+An adult never fed (`_villages_food` unset) starts at 8 points, fed but not full, so
+a new village is not found starving with nothing made and nothing restocked, and
+births still wait on the farm (ticket 8, found when the first crafting probe made
+nothing).
+
 Children do not get hungry. Their household feeds them once a day, as now
 (`_villages_fed_day`), and they take no part in trade.
 
@@ -219,26 +224,47 @@ Every good in the village has a source in this section or comes from a player.
 
 ### Jobsite crafting
 
-Professions with no work loop craft at their jobsite. `production.lua` holds one
-recipe list per profession: outputs from that profession's sell offers, inputs from
-the real crafting recipe where there is one. A test checks every output against the
-profession's trade table in `trade_tables.lua`. Over work-stage economic clock time
-spent at its jobsite, a villager makes recipe outputs at
+Professions with no work loop craft at their jobsite (ticket 8). `recipes.lua` holds
+one recipe list per profession, pure data that `ledger.lua` also reads: outputs from
+that profession's sell offers, or inputs of its own recipes (paper and books for the
+librarian's bookshelves), inputs from the real crafting recipe. A test checks every
+output against the profession's trade table in `trade_tables.lua`. `production.lua`
+does the making. Over work-stage economic clock time spent within 3 of its jobsite, a
+villager banks seconds (`_villages_craft`) and makes a recipe's outputs at
 `living_villages_craft_seconds` per item (default 120), taking the inputs from its
-pouch and stash. With no inputs it makes nothing. Examples, illustrative until the
-recipe ticket fixes them:
+belongings and then its stash, wherever it stands. With no inputs it makes nothing and
+banks nothing. A hungry villager works at half the rate, a starving one not at all.
+
+It makes the recipe that adds most by its own values (the output's value less the
+inputs' and the fuel's), among those it has inputs and fuel for and whose output it
+holds fewer than its target plus 16 of. A surplus output's value falls, so a smith
+moves from one tool to the next. Smelted goods take one furnace smelt each, and the
+smiths one per ingot they forge. A coal or charcoal lump is 8 smelts, and the smelts
+left over are kept (`_villages_fuel`). A crafting profession's ledger targets 4 crafts of
+each recipe input, and 4 lumps of coal where its recipes smelt.
 
 | Profession | Makes | From |
 |---|---|---|
-| Tool smith | Stone tools | Cobble, sticks |
-| Fletcher | Arrows | Sticks, flint, feathers |
-| Librarian | Books | Paper, leather |
-| Mason | Bricks, polished stone | Clay, stone |
-| Butcher | Cooked meat | Raw meat, coal or charcoal |
-| Armorer, weapon smith | Iron gear | Iron, coal or charcoal |
+| Tool smith | Stone pickaxe, axe, shovel, hoe | Cobble, sticks |
+| Weapon smith | Iron axe | Iron, sticks, fuel |
+| Armorer | Iron helmet, chestplate, leggings, boots | Iron, fuel |
+| Butcher | Cooked porkchop, cooked chicken | Raw meat, fuel |
+| Fletcher | Arrows; flint; bows | Flint, sticks, feathers; gravel; sticks, string |
+| Librarian | Paper; books; planks; bookshelves; glass | Sugar cane; paper, leather; oak logs; planks, books; sand, fuel |
+| Leatherworker | Leather armour | Leather |
+| Mason | Bricks; chiselled stone bricks; polished andesite, granite, diorite | Clay, fuel; stone; the raw stone |
 
-Charcoal counts wherever vanilla's tables ask for coal, so a village can supply its
-smiths from its own woodcutters.
+The farmer, fisherman and shepherd make their goods in their own loops. The cleric's
+goods have no recipe, and the cartographer's map needs a compass a village cannot make,
+so these five restock as vanilla does. Enchanted goods are never made. Kits were
+topped up so each crafting profession can make its first goods: feathers for the
+fletcher, leather for the librarian, cobble for the tool smith, a fourth ingot for the
+armorer and sticks for the weapon smith.
+
+Charcoal counts wherever vanilla's tables ask for coal: the ledger counts the two
+together toward one target, and fuel burns either, charcoal first. So a village can
+supply its smiths from its own woodcutters, who burn charcoal (see below). The butcher's
+cooked meat became food (porkchop 6, chicken 5).
 
 ### Nitwit and unemployed labour
 
@@ -253,7 +279,7 @@ guard is untouched.
 | Activity | Site | Rule |
 |---|---|---|
 | Forager | Wild plants within 32 of its bed | Sweet berry bushes (`mcl_farming:sweet_berry_bush_*`) at their last stage, apples from the ground (dropped by leaves), mushrooms, flowers, sugar cane above its bottom block. Only what grows back |
-| Woodcutter | A grove near its bed | Plants saplings, fells only trees grown from saplings it planted (positions kept on the villager, `_villages_grove`, at most 8), replants each one, and smelts some logs into charcoal at a furnace in reach. Wild trees are never cut |
+| Woodcutter | A grove near its bed | Plants saplings, fells only trees grown from saplings it planted (positions kept on the villager, `_villages_grove`, at most 8), replants each one, and burns some logs into charcoal. Wild trees are never cut |
 | Quarrier | A cobblestone generator within 32 | Mines cobble a player's water-and-lava machine makes (`mcl_core`'s "Lava cooling" ABM). Never digs terrain |
 | Porter | Stashes of villagers who hire it | Carries goods for a buyer's trade trip, for a fee |
 | Peddler | The village | Buys surplus below the going price and sells where it has heard of need, keeping the margin (ticket 12) |
@@ -270,7 +296,9 @@ Every species that grows from one sapling counts (oak, birch, spruce, jungle,
 acacia), so a savanna village cuts acacia; a wild tree is told from a house's logs by
 its own leaves above it. A trip to a tree ends on an open cell beside the trunk, and
 a target it could not reach is passed over for 5 minutes.
-Charcoal waits for ticket 8's crafting. Trips stay within 50 of the bed, so
+From ticket 8, after each felling it burns 8 of the logs it carries past 16 into 7
+charcoal, up to 32: eight logs smelted with one lump of the charcoal as fuel, in a clamp
+by the grove rather than a furnace. Trips stay within 50 of the bed, so
 `far_trips.lua` is not needed, and labour leaves `activity_override` alone: a nitwit's
 work stage has no jobsite for vanilla to send it to. Apples (3 points) and sweet
 berries (1) became food.
@@ -353,13 +381,16 @@ With the economy off it feeds everyone free, as before.
   stands 3 behind it. The keeper fetches food for it from the farms' chests and the
   fishermen's barrels, and from ticket 4 buys it: it takes up to 8 emeralds from the
   pantry and leaves what it takes is worth at vanilla's prices, rounded, in the work
-  chest. While villagers dine free (until ticket 8) a pantry has little money, so the
-  keeper takes the food even when it cannot pay all of it.
+  chest. A pantry may run short of money, so the keeper takes the food even when it
+  cannot pay all of it.
 - **Cooking.** The keeper turns raw pantry items into its menu items over its shift:
   bread from wheat, baked potatoes from potatoes, cooked fish from raw fish.
 - **Dinner.** `meal.lua` serves a guest only when the pantry has a menu item: it
-  takes the item, the guest gains its food points and pays the keeper its price in
-  emeralds. Only the keeper's own household eats free. With an empty pantry the
+  takes the item, the guest gains its food points and pays one emerald from its
+  belongings into the pantry (from ticket 8). The keeper and its household (beds in
+  the same house, `possessions.same_house`) eat free. A guest is served only at or
+  below 8 points, the mark at which it eats what it carries, so one fed from home
+  keeps its emeralds; one that cannot pay is not served. With an empty pantry the
   guest is seated and nothing is served.
 - **Player meals.** `player_meals.lua` takes the meal from the pantry and charges
   the player one emerald from their inventory before serving. A player with no
@@ -377,9 +408,12 @@ buys pays more for it; one with a glut of what it sells sells cheaper. A hungry
 villager adds a hunger term to what it sells.
 
 **Restocking.** Vanilla restocks a villager's locked trades in `unlock_trades` when
-it arrives at its jobsite (`mobs_mc/villager.lua`, `do_work`). A wrapper skips that
-for a starving villager, and for a crafting profession whose stash and pouch hold no
-recipe inputs. The fisherman's per-cycle restock is unchanged.
+it arrives at its jobsite (`mobs_mc/villager.lua`, `do_work`). Both are local to
+VoxeLibre's file, so `production.lua` wraps `do_custom` instead: when a call turns the
+order to "work" and changes `_trades`, it puts `_trades` back for a starving villager,
+and for a crafting profession that cannot make one craft from what its belongings and
+stash hold. It tries again on its next arrival. The fisherman's per-cycle restock is
+unchanged.
 
 **Tiers.** Vanilla raises `_max_trade_tier` when a player first uses a trade at
 the top tier, or with a 1 in 5 chance on a freshly restocked one. In addition, a
@@ -467,6 +501,8 @@ New `_villages_*` entity fields, never to be renamed once released:
 | `_villages_labour` | Today's activity and the day it was chosen |
 | `_villages_grove` | Positions of saplings a woodcutter planted |
 | `_villages_sapling_day` | The day a woodcutter last took a sapling from under a wild oak |
+| `_villages_craft` | Work seconds banked toward the next crafted item |
+| `_villages_fuel` | Furnace smelts left from the last coal or charcoal lump burned |
 | `_villages_tier_supply` | Days crafted from village supply at the current tier |
 
 Existing fields reused: `_villages_food`, `_villages_fed_day`. Node metadata:
@@ -597,6 +633,11 @@ the unemployed gather and sell, and the share choosing wood falls after its pric
 
 `production.lua` recipes and crafting over the clock; restock wrapper. Done when a
 toolsmith without inputs stops restocking and one with inputs makes tools.
+
+Landed with it: `recipes.lua`, read by the ledger too, so crafting professions want
+and buy their inputs; charcoal counted as coal and burned by woodcutters; cooked meat
+as food; the kits topped up; and villagers paying an emerald for tavern dinners, now
+that every crafting profession has goods to sell.
 
 ### 9. Player-facing prices and tiers
 

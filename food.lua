@@ -28,6 +28,9 @@ local POINTS = {
 	["mcl_fishing:fish_cooked"] = 4,
 	["mcl_mushrooms:mushroom_stew"] = 5,
 	["mcl_farming:pumpkin_pie"] = 6,
+	-- What the butcher cooks (production.lua), on the same scale.
+	["mcl_mobitems:cooked_porkchop"] = 6,
+	["mcl_mobitems:cooked_chicken"] = 5,
 }
 local FULL = 12
 -- Below this an adult is hungry; at 0, starving.

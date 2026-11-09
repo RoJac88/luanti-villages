@@ -78,4 +78,19 @@ assert(builder.needs["mcl_core:cobble"] == 40)
 local top = ledger.top(smithy.needs, smithy.value, 1)
 assert(#top == 1 and top[1].item == "mcl_core:coal_lump", top[1].item)
 
+-- A crafting profession wants its recipes' inputs (recipes.lua), and coal where they smelt.
+local smith_inputs = ledger.inputs("tool_smith", 1)
+assert(smith_inputs["mcl_core:cobble"] == 12 and smith_inputs["mcl_core:stick"] == 8, smith_inputs["mcl_core:cobble"])
+assert(ledger.inputs("mason", 1)["mcl_core:coal_lump"] == 4, "bricks are smelted")
+assert(ledger.outputs("librarian")["mcl_books:book"] and ledger.outputs("tool_smith")["mcl_tools:pick_stone"])
+-- Charcoal stands in for coal: the two count together toward one target.
+local burner = ledger.assess({
+	id = "sam", profession = "tool_smith", max_tier = 1,
+	held = {["mcl_core:coal_lump"] = 5, ["mcl_core:charcoal_lump"] = 6},
+})
+assert(burner.needs["mcl_core:coal_lump"] == 4 and burner.needs["mcl_core:charcoal_lump"] == 4)
+assert(burner.value("mcl_core:charcoal_lump") > ledger.price("mcl_core:charcoal_lump"), "needed like coal")
+local stocked = ledger.assess({id = "sam", profession = "tool_smith", max_tier = 1, held = {["mcl_core:charcoal_lump"] = 30}})
+assert(not stocked.needs["mcl_core:coal_lump"] and stocked.surplus["mcl_core:charcoal_lump"] == 11)
+
 print("ledger.lua: ok")

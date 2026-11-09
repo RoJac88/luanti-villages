@@ -24,7 +24,11 @@
 --   kind planted. Wild trees are never cut: with no sapling and no grove it takes one
 --   sapling from under a wild tree, once a day. Any species that grows from a single
 --   sapling (SPECIES: oak, birch, spruce, jungle, acacia), so a savanna village cuts
---   acacia. Charcoal waits for jobsite crafting (ticket 8).
+--   acacia. Of the logs it carries past CHARCOAL_KEEP, every CHARCOAL_LOGS become
+--   CHARCOAL_MAKES charcoal after a felling, up to KEEP_GATHERED: eight logs smelted with
+--   one lump of the charcoal as fuel, as a furnace would, burned in a clamp by the
+--   grove. Charcoal stands in for coal (ledger.lua), so the smiths' fuel can come from
+--   the village (production.lua).
 --
 -- Trips are planned walks (navigation.lua's gopath), within 50 of the bed, so vanilla
 -- never calls the villager home mid-trip. A trunk is solid, so a trip to a tree ends on
@@ -53,6 +57,8 @@ local PATH_GAP = 3
 local WILD_TREE_RADIUS = 32
 -- An acacia's crown leans up to 3 out from its trunk; GROVE_CLEAR keeps others that far.
 local BRANCH_RADIUS, TRUNK_MAX = 3, 12
+local CHARCOAL = "mcl_core:charcoal_lump"
+local CHARCOAL_KEEP, CHARCOAL_LOGS, CHARCOAL_MAKES = 16, 8, 7
 
 -- Trees that grow from one sapling: log, sapling and leaves.
 local SPECIES = {
@@ -90,7 +96,7 @@ local NAMES = {"forager", "woodcutter"}
 
 local M = {
 	ACTIVITIES = ACTIVITIES, YESTERDAY_BIAS = YESTERDAY_BIAS, GROVE_MAX = GROVE_MAX,
-	KEEP_GATHERED = KEEP_GATHERED,
+	KEEP_GATHERED = KEEP_GATHERED, CHARCOAL_KEEP = CHARCOAL_KEEP,
 }
 
 local function short_id(self)
@@ -394,6 +400,28 @@ local function plant(self, pos, prefer)
 	return true
 end
 
+-- Turns logs it carries past CHARCOAL_KEEP into charcoal, the commonest log first.
+-- Returns the charcoal made.
+function M.burn_charcoal(self)
+	local made = 0
+	while possessions.count(self, CHARCOAL) < KEEP_GATHERED do
+		local total, most, most_count = 0, nil, 0
+		for _, log in ipairs(LOGS) do
+			local count = possessions.count(self, log)
+			total = total + count
+			if count > most_count then most, most_count = log, count end
+		end
+		if total < CHARCOAL_KEEP + CHARCOAL_LOGS or most_count < CHARCOAL_LOGS then break end
+		possessions.take(self, most, CHARCOAL_LOGS)
+		possessions.add(self, CHARCOAL, CHARCOAL_MAKES)
+		made = made + CHARCOAL_MAKES
+	end
+	if made > 0 then
+		core.log("action", string.format("[living_villages] villager %s burned %d charcoal", short_id(self), made))
+	end
+	return made
+end
+
 -- Works one woodcutter job. Returns the item gained and how many, or nil.
 function M.cut(self, target)
 	local spots = grove(self)
@@ -404,6 +432,7 @@ function M.cut(self, target)
 		possessions.add(self, log, logs)
 		possessions.add(self, sapling, 1)
 		if not plant(self, target.pos, sapling) then table.remove(spots, target.index) end
+		M.burn_charcoal(self)
 		return log, logs
 	elseif target.kind == "replant" then
 		local node = core.get_node_or_nil(target.pos)
