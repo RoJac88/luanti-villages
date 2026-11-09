@@ -334,6 +334,8 @@ do
 	assert(rows[COBBLE].need == 32 and rows[COBBLE].missing == 32 and rows[COBBLE].price == nil)
 	assert(rows[BUCKET].need == 1 and rows[BUCKET].price == 1, "water can be bought")
 	assert(report.left == 33 and report.total > report.left, "the air it wants inside is already there")
+	-- Short, it wants the priced materials it lacks (builder_market.lua), and nothing once not.
+	assert(entity._villages_builder_wants and entity._villages_builder_wants[COBBLE] == 32, "posts its shortage")
 
 	-- Chests near the bench count; so does what it carries; and not one chest further.
 	world.set({x = 40, y = 1, z = 0}, CHEST)
@@ -358,6 +360,7 @@ do
 	assert(not builder.load_project(BENCH_POS).started)
 	advance(entity, 10)
 	local started = builder.load_project(BENCH_POS)
+	assert(entity._villages_builder_wants == nil, "nothing wanted once all is there")
 	assert(started.state == "collecting" and started.started)
 end
 

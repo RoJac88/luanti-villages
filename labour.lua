@@ -29,6 +29,16 @@
 --   one lump of the charcoal as fuel, as a furnace would, burned in a clamp by the
 --   grove. Charcoal stands in for coal (ledger.lua), so the smiths' fuel can come from
 --   the village (production.lua).
+-- * quarrier (ticket 11): mines the cobble a player's cobblestone generator makes,
+--   within QUARRY_RADIUS of its bed, up to QUARRY_KEEP. A generator's cobble is told
+--   from terrain by what made it: VoxeLibre's "Lava cooling" ABM (mcl_core/functions.lua)
+--   turns flowing lava into cobble where water touches it from the side or above, so a
+--   cobble node with lava and water both beside or above it is one; taken, the lava
+--   flows back and cools again. Terrain is never dug.
+-- * porter (ticket 11): carries goods for others on trade trips (trade_trips.lua), hired
+--   at the end of a conversation; labour.lua only chooses it. Its site is the market: it
+--   is open when the villager has heard of an item one villager needs and another has
+--   spare, and its income is PORTER_INCOME, a fee or two a day.
 --
 -- Trips are planned walks (navigation.lua's gopath), within 50 of the bed, so vanilla
 -- never calls the villager home mid-trip. A trunk is solid, so a trip to a tree ends on
@@ -60,6 +70,12 @@ local WILD_TREE_RADIUS = 32
 local BRANCH_RADIUS, TRUNK_MAX = 3, 12
 local CHARCOAL = "mcl_core:charcoal_lump"
 local CHARCOAL_KEEP, CHARCOAL_LOGS, CHARCOAL_MAKES = 16, 8, 7
+local COBBLE = "mcl_core:cobble"
+local QUARRY_RADIUS, QUARRY_HEIGHT = 32, 8
+-- A Builder wants cobble by the hundred, so a quarrier keeps more of it.
+local QUARRY_KEEP = 64
+-- Where lava or water may touch a generator's cobble from: the four sides and above.
+local TOUCHING = {{1, 0, 0}, {-1, 0, 0}, {0, 0, 1}, {0, 0, -1}, {0, 1, 0}}
 
 -- Trees that grow from one sapling: log, sapling and leaves.
 local SPECIES = {
@@ -87,17 +103,20 @@ local OPEN = {"air", "group:plant", "group:flower", "group:grass"}
 local ACTIVITIES = {
 	forager = {rate = 12, goods = {[BERRY] = 0.5, [APPLE] = 0.25, [CANE] = 0.25}},
 	woodcutter = {rate = 10, goods = {}},
+	quarrier = {rate = 32, goods = {[COBBLE] = 1}},
+	porter = {rate = 0, goods = {}},
 }
+local PORTER_INCOME = 2
 -- A woodcutter's goods are one species at a time: the best price heard for any.
 for _, species in ipairs(SPECIES) do
 	ACTIVITIES.woodcutter.goods[species.log] = 0.9
 	ACTIVITIES.woodcutter.goods[species.sapling] = 0.1
 end
-local NAMES = {"forager", "woodcutter"}
+local NAMES = {"forager", "woodcutter", "quarrier", "porter"}
 
 local M = {
 	ACTIVITIES = ACTIVITIES, YESTERDAY_BIAS = YESTERDAY_BIAS, GROVE_MAX = GROVE_MAX,
-	KEEP_GATHERED = KEEP_GATHERED, CHARCOAL_KEEP = CHARCOAL_KEEP,
+	KEEP_GATHERED = KEEP_GATHERED, CHARCOAL_KEEP = CHARCOAL_KEEP, QUARRY_KEEP = QUARRY_KEEP,
 }
 
 local function short_id(self)
@@ -157,13 +176,32 @@ local function asking_prices(heard)
 	return best
 end
 
+-- Whether it has heard of a trade waiting: an item one villager needs and another has.
+function M.trade_waiting(heard)
+	local needed, offered = {}, {}
+	for _, entry in ipairs(heard) do
+		if entry.kind == "needs" then needed[entry.item] = needed[entry.item] or {} needed[entry.item][entry.who] = true end
+		if entry.kind == "has" then offered[entry.item] = offered[entry.item] or {} offered[entry.item][entry.who] = true end
+	end
+	for item, buyers in pairs(needed) do
+		for seller in pairs(offered[item] or {}) do
+			for buyer in pairs(buyers) do
+				if buyer ~= seller then return true end
+			end
+		end
+	end
+	return false
+end
+
 -- Expected income of each activity from what it has heard.
 function M.incomes(heard)
 	local prices = asking_prices(heard)
 	local incomes = {}
 	for name, activity in pairs(ACTIVITIES) do
 		local income = 0
-		if name == "woodcutter" then
+		if name == "porter" then
+			income = M.trade_waiting(heard) and PORTER_INCOME or 0
+		elseif name == "woodcutter" then
 			for _, species in ipairs(SPECIES) do
 				local here = activity.rate * (0.9 * (prices[species.log] or 0) + 0.1 * (prices[species.sapling] or 0))
 				income = math.max(income, here)
@@ -391,6 +429,45 @@ function M.wood_target(self)
 	return nil
 end
 
+-- Quarrier sites.
+
+local function touched_by(pos, group)
+	for _, offset in ipairs(TOUCHING) do
+		local node = core.get_node_or_nil({x = pos.x + offset[1], y = pos.y + offset[2], z = pos.z + offset[3]})
+		if node and core.get_item_group(node.name, group) > 0 then return true end
+	end
+	return false
+end
+
+-- Whether the cobble at pos is a generator's: lava and water both beside or above it.
+function M.is_generated(pos)
+	local node = core.get_node_or_nil(pos)
+	return node ~= nil and node.name == COBBLE and touched_by(pos, "lava") and touched_by(pos, "water")
+end
+
+-- Every generator cobble within reach of its bed, as {pos, kind = "cobble"}.
+function M.quarry_targets(self)
+	local bed = self._bed
+	local targets = {}
+	if not bed or possessions.count(self, COBBLE) >= QUARRY_KEEP then return targets end
+	local minp, maxp = area(bed, QUARRY_RADIUS, QUARRY_HEIGHT)
+	for _, pos in ipairs(core.find_nodes_in_area(minp, maxp, {COBBLE})) do
+		if M.is_generated(pos) then targets[#targets + 1] = {pos = pos, kind = "cobble"} end
+	end
+	return targets
+end
+
+-- Mines one generator cobble. Returns the item and how many, or nil.
+function M.quarry(self, target)
+	if not M.is_generated(target.pos) then return nil end
+	core.remove_node(target.pos)
+	possessions.add(self, COBBLE, 1)
+	if core.sound_play then
+		core.sound_play("default_dig_cracky", {pos = target.pos, gain = 0.5, max_hear_distance = 16}, true)
+	end
+	return COBBLE, 1
+end
+
 -- Plants a sapling it carries at pos, `prefer`'s kind if it has one.
 local function plant(self, pos, prefer)
 	local below = core.get_node_or_nil({x = pos.x, y = pos.y - 1, z = pos.z})
@@ -459,6 +536,8 @@ local function available(self)
 	local open = {}
 	if #M.forage_targets(self) > 0 then open.forager = true end
 	if #grove(self) > 0 or carried_sapling(self) or wild_tree(self) then open.woodcutter = true end
+	if #M.quarry_targets(self) > 0 then open.quarrier = true end
+	if M.trade_waiting(news.heard(self)) then open.porter = true end
 	return open
 end
 
@@ -501,7 +580,13 @@ end
 
 local function work(self, activity, target)
 	local item, count
-	if activity == "forager" then item, count = M.forage(self, target) else item, count = M.cut(self, target) end
+	if activity == "forager" then
+		item, count = M.forage(self, target)
+	elseif activity == "quarrier" then
+		item, count = M.quarry(self, target)
+	else
+		item, count = M.cut(self, target)
+	end
 	if item then
 		tally.note(self, {[item] = count})
 		core.log("action", string.format("[living_villages] villager %s gathered %d %s", short_id(self), count, item))
@@ -526,11 +611,13 @@ function M.step(self, now)
 	self._villages_labour_next = now + TICK_SECONDS
 	local activity = M.today(self)
 	local pos = self.object:get_pos()
-	if not activity or not pos then return end
+	-- A porter's work is its trips (trade_trips.lua).
+	if not activity or not pos or activity == "porter" then return end
 	local target, distance
-	if activity == "forager" then
+	if activity == "forager" or activity == "quarrier" then
 		local open = {}
-		for _, candidate in ipairs(M.forage_targets(self)) do
+		local candidates = activity == "forager" and M.forage_targets(self) or M.quarry_targets(self)
+		for _, candidate in ipairs(candidates) do
 			if not is_skipped(self, candidate.pos) then open[#open + 1] = candidate end
 		end
 		target, distance = nearest(pos, open)
@@ -547,6 +634,10 @@ function M.step(self, now)
 	-- Trunks are solid: stand beside one.
 	local goal = target.pos
 	if target.kind == "sapling" or target.kind == "fell" then goal = beside(target.pos) end
+	-- A generator's cobble is solid too: beside it, or a step lower with it at head height.
+	if target.kind == "cobble" then
+		goal = beside(target.pos) or beside({x = target.pos.x, y = target.pos.y - 1, z = target.pos.z})
+	end
 	if not goal then
 		skip(self, target.pos)
 		return
@@ -595,6 +686,7 @@ function M.status(self)
 	if not labour or labour.day ~= core.get_day_count() then return "not chosen today" end
 	local text = labour.activity or "nothing to do"
 	if labour.activity == "woodcutter" then text = text .. ", grove of " .. #(self._villages_grove or {}) end
+	if labour.activity == "porter" then text = text .. (self._villages_trade_trip and ", on a trip" or ", waiting for hire") end
 	return text
 end
 

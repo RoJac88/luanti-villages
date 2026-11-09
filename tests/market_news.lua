@@ -92,6 +92,16 @@ assert(news.interest(view, bread, now) > news.interest(view, old_bread, now))
 -- One wanting what the listener has spare interests it too.
 local wanting = {item = "mcl_core:coal_lump", who = "x", kind = "needs", count = 6, heard = now, hops = 0}
 assert(news.interest(possessions.assess(ann), wanting, now) > news.interest(possessions.assess(ann), coal, now))
+-- An offer that completes a trade it heard of interests a listener that wants neither:
+-- it has heard a smith needs coal, so an offer of coal is news worth passing on.
+do
+	local known = news.wanted_and_had({{item = "mcl_core:coal_lump", who = "smith", kind = "needs", heard = now, hops = 1}})
+	assert(news.interest(view, coal, now, known) > news.interest(view, coal, now))
+	local seller_known = news.wanted_and_had({{item = "mcl_core:cobble", who = "q", kind = "has", heard = now, hops = 1}})
+	local wants_cobble = {item = "mcl_core:cobble", who = "b", kind = "needs", count = 40, heard = now, hops = 0}
+	assert(news.interest(view, wants_cobble, now, seller_known) > news.interest(view, wants_cobble, now))
+	assert(news.interest(view, coal, now, seller_known) == news.interest(view, coal, now), "another item: no help")
+end
 
 -- Stale news is forgotten when next read.
 now = now + news.lifetime() + 1

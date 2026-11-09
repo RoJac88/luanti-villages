@@ -372,6 +372,8 @@ function M.assess(self)
 		food_points = food.points(self),
 		hunger_per_day = self.child and 0 or food.hunger_per_day(),
 		foods = food.POINTS,
+		-- What a Builder's chests are short of (builder_market.lua).
+		extra = self._villages_builder and self._villages_builder_wants or nil,
 	})
 end
 

@@ -14,7 +14,10 @@
 -- In a finished conversation each member tells each other up to NEWS_SHARE entries,
 -- its own and its hearsay, picked at random weighted by the listener's interest: an
 -- item the listener needs offered, or an item it has spare wanted, weighs INTEREST_MATCH
--- times more; fresher news and news from fewer hops away weigh more. Passing news on
+-- times more; so does an entry that completes a trade the listener has already heard of
+-- (an offer of what it heard someone needs, or a want of what it heard someone has), so
+-- news of supply and demand finds its way through villagers who want neither (ticket 11);
+-- fresher news and news from fewer hops away weigh more. Passing news on
 -- costs a hop. The listener keeps the freshest entry per (item, who, kind) and never
 -- one about itself. News older than NEWS_DAYS game days is forgotten when the list is
 -- next read; past NEWS_ENTRIES the least interesting entries go.
@@ -55,12 +58,24 @@ local function same(a, b)
 	return a.item == b.item and a.who == b.who and a.kind == b.kind
 end
 
--- How much a villager whose ledger view is `view` cares to hear the entry.
-function M.interest(view, entry, now)
+-- What a list of entries says is needed and had: {needs = {item = true}, has = {...}}.
+function M.wanted_and_had(list)
+	local known = {needs = {}, has = {}}
+	for _, entry in ipairs(list or {}) do known[entry.kind][entry.item] = true end
+	return known
+end
+
+-- How much a villager whose ledger view is `view` cares to hear the entry. `known`
+-- (wanted_and_had of what it has heard), if given, makes a trade it completes count.
+function M.interest(view, entry, now, known)
 	local weight = 1
 	if view then
 		if entry.kind == "has" and view.needs[entry.item] then weight = INTEREST_MATCH end
 		if entry.kind == "needs" and view.surplus[entry.item] then weight = INTEREST_MATCH end
+	end
+	if known then
+		if entry.kind == "has" and known.needs[entry.item] then weight = INTEREST_MATCH end
+		if entry.kind == "needs" and known.has[entry.item] then weight = INTEREST_MATCH end
 	end
 	local freshness = math.max(1 - (now - entry.heard) / lifetime(), MIN_FRESHNESS)
 	return weight * freshness / (1 + entry.hops)
@@ -125,7 +140,8 @@ end
 local function trim(listener, view, now)
 	local list = listener._villages_market_news
 	if not list or #list <= NEWS_ENTRIES then return end
-	table.sort(list, function(a, b) return M.interest(view, a, now) > M.interest(view, b, now) end)
+	local known = M.wanted_and_had(list)
+	table.sort(list, function(a, b) return M.interest(view, a, now, known) > M.interest(view, b, now, known) end)
 	for i = #list, NEWS_ENTRIES + 1, -1 do list[i] = nil end
 end
 
@@ -133,9 +149,10 @@ end
 -- and hearsay), given the listener's ledger view. Returns how many the listener kept.
 function M.tell(known, listener, view, now)
 	local candidates, total = {}, 0
+	local heard = M.wanted_and_had(listener._villages_market_news)
 	for _, entry in ipairs(known) do
 		if entry.who ~= listener._id then
-			local weight = M.interest(view, entry, now)
+			local weight = M.interest(view, entry, now, heard)
 			candidates[#candidates + 1] = {entry = entry, weight = weight}
 			total = total + weight
 		end

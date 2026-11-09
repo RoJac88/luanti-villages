@@ -21,6 +21,10 @@ local GROUPS = {
 	["mcl_flowers:tallgrass"] = {plant = 1},
 	["mcl_core:sapling"] = {plant = 1},
 	["mcl_core:acaciasapling"] = {plant = 1},
+	["mcl_core:lava_flowing"] = {lava = 3},
+	["mcl_core:lava_source"] = {lava = 3},
+	["mcl_core:water_source"] = {water = 3},
+	["mcl_core:water_flowing"] = {water = 3},
 }
 
 ItemStack = function(text)
@@ -296,5 +300,67 @@ local def = {do_custom = function() end}
 local before_custom = def.do_custom
 labour.install(def)
 assert(def.do_custom == before_custom)
+
+-- Quarrier: only a generator's cobble, lava and water both beside or above it.
+do
+	settings.living_villages_economy = nil
+	local function at(x, y, z) return {x = x, y = y, z = z} end
+	local saved = {}
+	for k, v in pairs(nodes) do saved[k] = v end
+	for k in pairs(nodes) do nodes[k] = nil end
+	-- A generator 6 east of the bed: lava, the cobble, water; a floor to stand on in front.
+	nodes[key(at(5, 1, 0))] = "mcl_core:lava_source"
+	nodes[key(at(6, 1, 0))] = "mcl_core:cobble"
+	nodes[key(at(7, 1, 0))] = "mcl_core:water_flowing"
+	nodes[key(at(6, 0, 1))] = "mcl_core:stone"
+	-- Terrain cobble, and cobble by lava alone: not mined.
+	nodes[key(at(-6, 1, 0))] = "mcl_core:cobble"
+	nodes[key(at(-6, 1, 3))] = "mcl_core:cobble"
+	nodes[key(at(-5, 1, 3))] = "mcl_core:lava_flowing"
+	assert(labour.is_generated(at(6, 1, 0)))
+	assert(not labour.is_generated(at(-6, 1, 0)) and not labour.is_generated(at(-6, 1, 3)))
+	-- Water below does not count: lava cools only from the side or above.
+	nodes[key(at(7, 1, 0))] = nil
+	nodes[key(at(6, 0, 0))] = "mcl_core:water_source"
+	assert(not labour.is_generated(at(6, 1, 0)))
+	nodes[key(at(6, 0, 0))] = nil
+	nodes[key(at(7, 1, 0))] = "mcl_core:water_flowing"
+
+	local quinn = villager({_id = "quinn"})
+	local targets = labour.quarry_targets(quinn)
+	assert(#targets == 1 and targets[1].kind == "cobble" and targets[1].pos.x == 6)
+	-- Chosen by the price of cobble heard; with none heard, among what it has sites for.
+	assert(labour.choose({asks("mcl_core:cobble", 0.05)}, {forager = true, quarrier = true}, nil, 0) == "quarrier")
+	quinn._villages_labour = {day = day, activity = "quarrier"}
+	labour.step(quinn, now + 1000)
+	assert(#quinn.walks == 1 and quinn.walks[1].x == 6 and quinn.walks[1].z == 1, "stands in front of it")
+	quinn.arrive()
+	assert(count(quinn, "mcl_core:cobble") == 1 and nodes[key(at(6, 1, 0))] == nil, "mined, the lava will flow back")
+	assert(quinn._villages_tally.made["mcl_core:cobble"] == 1)
+	-- Full, it stops.
+	possessions.add(quinn, "mcl_core:cobble", labour.QUARRY_KEEP)
+	nodes[key(at(6, 1, 0))] = "mcl_core:cobble"
+	assert(#labour.quarry_targets(quinn) == 0)
+	for k in pairs(nodes) do nodes[k] = nil end
+	for k, v in pairs(saved) do nodes[k] = v end
+end
+
+-- Porter: open when it has heard of a trade waiting, one villager needing what another
+-- has; its income is a fee or two; its day is left to trade_trips.lua.
+do
+	settings.living_villages_economy = nil
+	local wants = {item = "mcl_core:coal_lump", kind = "needs", price = 0.2, who = "smith", heard = now, hops = 1}
+	local offers = {item = "mcl_core:coal_lump", kind = "has", price = 0.05, who = "cole", heard = now, hops = 1}
+	assert(labour.trade_waiting({wants, offers}))
+	assert(not labour.trade_waiting({wants}) and not labour.trade_waiting({offers}))
+	assert(not labour.trade_waiting({wants, {item = "mcl_core:coal_lump", kind = "has", who = "smith", heard = now, hops = 0}}),
+		"a villager does not trade with itself")
+	assert(labour.incomes({wants, offers}).porter > 0 and labour.incomes({}).porter == 0)
+	assert(labour.choose({wants, offers}, {porter = true, forager = true}, nil, 0) == "porter")
+	local pam = villager({_id = "pam", _villages_labour = {day = day, activity = "porter"}})
+	labour.step(pam, now + 5000)
+	assert(#pam.walks == 0, "it walks only on a trip")
+	assert(labour.status(pam) == "porter, waiting for hire")
+end
 
 print("labour.lua: ok")
