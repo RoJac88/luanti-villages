@@ -107,10 +107,10 @@ with no work stage, and the first is often one), and `lv_probe_nitwits = N` make
 start, since a new village's unemployed soon find jobsites and leave `labour.lua` no one to drive.
 
 Where the money sits (economy ticket 11b): with `lv_probe_news`, the first step of each game day logs
-`[lv_probe] emeralds day N: villagers T (the five richest), pouches, stashes, pantry, bench, barrels, other`, and the census
+`[lv_probe] emeralds day N: villagers T (the five richest), pouches, stashes, pantry, farms, bench, barrels, other`, and the census
 record gains `emeralds`, one snapshot per day and one at the end. Villagers' emeralds are their belongings;
 pouches are what they carry for work (a keeper's purse while it buys food); chests count as a stash when a villager
-claims them, the pantry within 6 of a jukebox, the Builder's within 32 of a bench; barrels are fishermen's. Dinner (`paid N emerald(s) for dinner`) and rent (`rent to builder`, `rent into the chest`) are logged too.
+claims them, the pantry within 6 of a jukebox, farms' beside a composter (the keeper pays farmers there), the Builder's within 32 of a bench; barrels are fishermen's. Dinner (`paid N emerald(s) for dinner`) and rent (`rent to builder`, `rent into the chest`) are logged too.
 
 `LV_PROBE_CENSUS_PUTTER=SECONDS` (with a census) holds the morning Putter stage for the first SECONDS of the
 census, then work time, and adds `wells` to the census line (`wells.lua`): the wells `well.lua` found, villagers

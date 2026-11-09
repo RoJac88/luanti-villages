@@ -27,8 +27,9 @@
 -- logs where the village's emeralds sit (`[lv_probe] emeralds day N: ...`) and keeps it in
 -- the record's `emeralds` list: each adult's own (profession and count), what villagers
 -- carry in their work pouches (a keeper's purse on its way to buy food), and the chests'
--- by kind: stashes (claimed by a villager), the pantry (within 6 of a jukebox), the
--- Builder's (within 32 of a bench), fishermen's barrels and any other.
+-- by kind: stashes (claimed by a villager), the pantry (within 6 of a jukebox), farms' (beside
+-- a composter, where the keeper pays farmers), the Builder's (within 32 of a bench),
+-- fishermen's barrels and any other.
 local core = minetest
 
 local census = {}
@@ -93,19 +94,23 @@ local function emerald_snapshot(entities, minp, maxp)
 	table.sort(villagers, function(a, b) return a.emeralds > b.emeralds or (a.emeralds == b.emeralds and a.id < b.id) end)
 	local jukeboxes = core.find_nodes_in_area(minp, maxp, {"mcl_jukebox:jukebox"})
 	local benches = core.find_nodes_in_area(minp, maxp, {"living_villages:builder_block"})
+	local composter_names = {"mcl_composters:composter", "mcl_composters:composter_ready"}
+	for level = 1, 7 do composter_names[#composter_names + 1] = "mcl_composters:composter_" .. level end
+	local composters = core.find_nodes_in_area(minp, maxp, composter_names)
 	local function near(p, list, r)
 		for _, q in ipairs(list) do
 			if math.abs(p.x - q.x) <= r and math.abs(p.z - q.z) <= r and math.abs(p.y - q.y) <= 4 then return true end
 		end
 		return false
 	end
-	local chests = {stash = 0, pantry = 0, bench = 0, barrel = 0, other = 0}
+	local chests = {stash = 0, pantry = 0, farm = 0, bench = 0, barrel = 0, other = 0}
 	for _, p in ipairs(core.find_nodes_in_area(minp, maxp, BARRELS)) do chests.barrel = chests.barrel + emeralds_in(p) end
 	for _, p in ipairs(core.find_nodes_in_area(minp, maxp, CHESTS)) do
 		local n = emeralds_in(p)
 		if n > 0 then
 			local kind = core.get_meta(p):get_string("villages_owner") ~= "" and "stash"
-				or near(p, jukeboxes, 6) and "pantry" or near(p, benches, 32) and "bench" or "other"
+				or near(p, jukeboxes, 6) and "pantry" or near(p, composters, 1) and "farm"
+				or near(p, benches, 32) and "bench" or "other"
 			chests[kind] = chests[kind] + n
 		end
 	end
@@ -232,9 +237,9 @@ function census.run(area, emit, done)
 				local v = snap.villagers[i]
 				top[#top + 1] = string.format("%s %s=%d", tostring(v.profession), v.id, v.emeralds)
 			end
-			core.log("action", string.format("[lv_probe] emeralds day %d: villagers %d (%s), pouches %d, stashes %d, pantry %d, bench %d, barrels %d, other %d",
+			core.log("action", string.format("[lv_probe] emeralds day %d: villagers %d (%s), pouches %d, stashes %d, pantry %d, farms %d, bench %d, barrels %d, other %d",
 				snap.day, snap.held, table.concat(top, ", "), snap.pouches, snap.chests.stash, snap.chests.pantry,
-				snap.chests.bench, snap.chests.barrel, snap.chests.other))
+				snap.chests.farm, snap.chests.bench, snap.chests.barrel, snap.chests.other))
 		end
 		-- What each villager held at each step, so a change shows when it happened.
 		for _, object in ipairs(core.get_objects_inside_radius(center, radius)) do
