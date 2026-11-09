@@ -507,13 +507,14 @@ end
 -- and not otherwise.
 do
 	clear()
-	local exchanges, news = {}, {}
+	local exchanges, news, trades = {}, {}, {}
 	local inner = {
 		on_activate = function() end, on_die = function() end, do_custom = function() end,
 		get_staticdata = function() return {} end,
 	}
 	conversation.install(inner, {exchange = function(members) exchanges[#exchanges + 1] = members end},
-		{exchange = function(members) news[#news + 1] = members end})
+		{exchange = function(members) news[#news + 1] = members end},
+		{exchange = function(members) trades[#trades + 1] = members end})
 	local function run(group)
 		for _ = 1, 400 do
 			for _, v in ipairs(group) do inner.do_custom(v, conversation.SCAN_MAX + 1) end
@@ -531,6 +532,7 @@ do
 	inner.do_custom(a, 0.1)
 	assert(#exchanges == 1 and #exchanges[1] == 2, "the first to finish passes it on for both")
 	assert(#news == 1 and news[1] == exchanges[1], "market news with it")
+	assert(#trades == 1 and trades[1] == exchanges[1], "and then trade")
 	local seen = {}
 	for _, member in ipairs(exchanges[1]) do seen[member] = true end
 	assert(seen[a] and seen[b], "both are in it")

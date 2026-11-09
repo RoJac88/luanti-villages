@@ -8,6 +8,10 @@
 -- the others have heard something from it (`_villages_market_news`). The record gains
 -- `news`: the village's size, the timeline of the best and median reach, and the final
 -- reach per villager.
+--
+-- lv_probe_seed_goods = "<item> <count>" (with lv_probe_news; economy ticket 6) puts that
+-- many of the item in every other adult's belongings at the first step, so a new village
+-- has something to trade before it has made anything; trades show as `trade:` log lines.
 local core = minetest
 
 local census = {}
@@ -115,6 +119,17 @@ function census.run(area, emit, done)
 			core.set_timeofday(wanted)
 		end
 		waited = waited + 10
+		local seed = core.settings:get("lv_probe_seed_goods") or ""
+		if news_mode() and waited == 10 and seed ~= "" then
+			local item, count = seed:match("^(%S+)%s+(%d+)$")
+			for i, e in ipairs(adults()) do
+				if item and i % 2 == 1 then
+					e._villages_belongings = e._villages_belongings or {}
+					e._villages_belongings[item] = (e._villages_belongings[item] or 0) + tonumber(count)
+					core.log("action", "[lv_probe] seeded " .. seed .. " on villager " .. e._id:sub(1, 6))
+				end
+			end
+		end
 		if news_mode() and waited % 60 == 0 then
 			local best, median = reach_summary(news_reach(adults()))
 			news_timeline[#news_timeline + 1] = {t = waited, day = core.get_day_count(),
