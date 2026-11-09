@@ -34,7 +34,10 @@ local SATURATION = 1.5
 -- meal never gives more than HUNGER, so a slow server still feeds in full.
 local BITES = 10
 local EMERALD = "mcl_core:emerald"
+-- Unset, a villager's dinner price: ledger.SCALE with the economy on (ticket 11h), else 1.
 local DEFAULT_PRICE = 1
+local SCALE = dofile(core.get_modpath("living_villages") .. "/ledger.lua").SCALE
+local clock = dofile(core.get_modpath("living_villages") .. "/economy_clock.lua")
 
 local meal
 local M = {}
@@ -79,7 +82,7 @@ end
 
 local function price()
 	local value = core.settings and tonumber(core.settings:get("living_villages_player_meal_price"))
-	return math.max(math.floor(value or DEFAULT_PRICE), 0)
+	return math.max(math.floor(value or (clock.enabled() and SCALE or DEFAULT_PRICE)), 0)
 end
 
 local function payment(name)

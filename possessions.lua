@@ -132,12 +132,20 @@ local function roll(self, n)
 end
 
 -- Emeralds when first seen as an adult; a kit the first time it has a profession that has one.
+-- One endowed before prices scaled (`_villages_emerald_scale` unset) has its emeralds
+-- multiplied up to ledger.SCALE once.
 function M.endow(self)
 	if self.child or not self._id then return false end
 	local given = false
 	if not self._villages_endowed then
-		M.add(self, EMERALD, 3 + roll(self, 4))
-		self._villages_endowed = true
+		M.add(self, EMERALD, (3 + roll(self, 4)) * ledger.SCALE)
+		self._villages_endowed, self._villages_emerald_scale = true, ledger.SCALE
+		given = true
+	elseif self._villages_emerald_scale ~= ledger.SCALE then
+		-- Endowed at vanilla's prices (before ticket 11h): its emeralds scale once.
+		local held = M.emeralds(self)
+		if held > 0 then M.add(self, EMERALD, held * (ledger.SCALE / (self._villages_emerald_scale or 1) - 1)) end
+		self._villages_emerald_scale = ledger.SCALE
 		given = true
 	end
 	local kit = KITS[self._profession]

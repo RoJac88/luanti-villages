@@ -69,8 +69,9 @@ local WALK_TIMEOUT = 120
 local MAX_TRIES = 3
 local CHASES = 3
 local SKIP_SECONDS = 600
-local PORTER_FEE = 1
-local PURSE = 8
+-- In emeralds at ledger.SCALE (ticket 11h).
+local PORTER_FEE = 1 * ledger.SCALE
+local PURSE = 8 * ledger.SCALE
 local EMERALD = "mcl_core:emerald"
 local VILLAGER = "mobs_mc:villager"
 

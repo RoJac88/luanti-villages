@@ -630,9 +630,9 @@ questions).
 | The Builder's sales to players (`builder_materials.SALES`) | 1 to 16 | 64 to 1024 |
 | Player trades (below) | vanilla | emeralds times 64 |
 
-`exchange.lua`'s smallest sale stays one emerald, now a quarter of a stick. The
-farmer's food sale, today a bundle sized to be worth one emerald, becomes one item at
-its price rounded to whole emeralds.
+`exchange.lua`'s smallest sale stays one emerald, now half a stick. The farmer's food
+sale keeps its bundle (as many as vanilla sells for one emerald, six loaves), now for
+64 emeralds.
 
 **Player trades.** The emeralds in each trade the player sees are multiplied by
 `SCALE` in the player's detached trade lists, where `gossip.lua` already sets the

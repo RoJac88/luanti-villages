@@ -31,6 +31,7 @@
 local core = minetest
 local common = dofile(core.get_modpath("living_villages") .. "/common.lua")
 local clock = dofile(core.get_modpath("living_villages") .. "/economy_clock.lua")
+local SCALE = dofile(core.get_modpath("living_villages") .. "/ledger.lua").SCALE
 local pantry = dofile(core.get_modpath("living_villages") .. "/tavern_pantry.lua")
 local stock = dofile(core.get_modpath("living_villages") .. "/farm_stock.lua")
 local keeper = dofile(core.get_modpath("living_villages") .. "/keeper.lua")
@@ -42,9 +43,10 @@ local TARGET_MEALS = 12
 local CHECK_SECONDS = 30
 local RETRY_SECONDS = 120
 local COOK_SECONDS = 10
-local PURSE = 8
-local DINNER = 1
-local TAB_CAP = 8
+-- In emeralds at ledger.SCALE (ticket 11h).
+local PURSE = 8 * SCALE
+local DINNER = 1 * SCALE
+local TAB_CAP = 8 * SCALE
 local TAB = "villages_keeper_tab"
 -- The tab is kept to 4 places: a third and two thirds written down must still make one.
 local EPSILON = 1e-3

@@ -3,16 +3,20 @@ minetest = {get_modpath = function() return "." end}
 local ledger = dofile("ledger.lua")
 local function near(a, b) return math.abs(a - b) < 1e-9 end
 
--- Base prices from VoxeLibre's tables.
-assert(near(ledger.price("mcl_farming:wheat_item"), 1 / 20), "the farmer buys 20 wheat for one")
-assert(near(ledger.price("mcl_farming:bread"), 1 / 6), "and sells 6 bread for one")
-assert(near(ledger.price("mcl_core:iron_ingot"), 1 / 4))
+-- Base prices from VoxeLibre's tables, times SCALE (ticket 11h): vanilla's emerald is
+-- 64 of the economy's, so the cheapest goods are worth whole emeralds.
+local S = ledger.SCALE
+assert(S == 64)
+assert(near(ledger.price("mcl_farming:wheat_item"), S / 20), "the farmer buys 20 wheat for one")
+assert(near(ledger.price("mcl_farming:bread"), S / 6), "and sells 6 bread for one")
+assert(near(ledger.price("mcl_core:iron_ingot"), S / 4))
+assert(near(ledger.price("mcl_core:stick"), 2), "32 sticks for one: the cheapest, worth 2")
 -- Bought (18 for one) and sold (one for one) somewhere: the geometric mean.
-assert(near(ledger.price("mcl_wool:white"), math.sqrt(1 / 18)))
+assert(near(ledger.price("mcl_wool:white"), S * math.sqrt(1 / 18)))
 -- Emeralds and a second ingredient: 1 emerald and 6 raw cod (15 for one) make 6 cooked.
-assert(near(ledger.price("mcl_fishing:fish_cooked"), (1 + 6 / 15) / 6))
+assert(near(ledger.price("mcl_fishing:fish_cooked"), S * (1 + 6 / 15) / 6))
 -- Hand prices for what no table has, and none for what nothing prices.
-assert(near(ledger.price("mcl_core:tree"), 0.25) and ledger.price("mcl_core:cobble"))
+assert(near(ledger.price("mcl_core:tree"), S * 0.25) and ledger.price("mcl_core:cobble"))
 assert(ledger.price("mcl_core:emerald") == 1)
 assert(ledger.price("no:such_item") == nil)
 -- Every item that appears in a trade has a price, except what only comes with something else.

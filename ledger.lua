@@ -6,7 +6,10 @@
 -- a second ingredient, priced where known) at the same. An item both bought and sold
 -- somewhere is priced at the geometric mean of the two, since vanilla buys cheap and
 -- sells dear. Items in no table (logs, cobble, seeds) are priced in HAND_PRICES,
--- consistent with what crafting makes of them.
+-- consistent with what crafting makes of them. Every price is then multiplied by SCALE
+-- (ticket 11h): at vanilla's prices an emerald is 32 sticks, so a sale of a few cheap
+-- goods came to a fraction of one and could not be paid. Every emerald amount in the
+-- mod scales with it; a stick is worth 2.
 --
 -- A profession's inputs are what its trade table buys, less what it makes itself (a
 -- farmer buys crops from players but grows them); its outputs are what it sells. That is
@@ -26,6 +29,8 @@ local tables = dofile(core.get_modpath("living_villages") .. "/trade_tables.lua"
 local recipes = dofile(core.get_modpath("living_villages") .. "/recipes.lua")
 
 local EMERALD = "mcl_core:emerald"
+-- Emeralds now per emerald at vanilla's prices.
+local SCALE = 64
 -- Days of food a villager wants to have by it.
 local FOOD_DAYS = 3
 -- The most of one input a villager wants at once.
@@ -108,7 +113,7 @@ local PREFERENCES = {
 }
 
 local M = {
-	EMERALD = EMERALD, FOOD_DAYS = FOOD_DAYS, MAX_URGENCY = MAX_URGENCY, MIN_URGENCY = MIN_URGENCY,
+	EMERALD = EMERALD, SCALE = SCALE, FOOD_DAYS = FOOD_DAYS, MAX_URGENCY = MAX_URGENCY, MIN_URGENCY = MIN_URGENCY,
 	PREFERENCES = PREFERENCES, SUBSTITUTES = SUBSTITUTES, COAL = COAL, version = tables.version,
 }
 
@@ -162,6 +167,7 @@ local function derive()
 			result[trade.offered[1].item] = combine(trade.offered[1].item)
 		end
 	end
+	for item, price in pairs(result) do result[item] = price * SCALE end
 	result[EMERALD] = 1
 	return result
 end

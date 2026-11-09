@@ -1513,7 +1513,7 @@ function M.report(self)
 			report.rows, report.left, report.total = found.rows, found.left, found.total
 			report.blocked = report.blocked or found.blocked[1]
 			for _, row in ipairs(found.rows) do
-				row.price = row.missing > 0 and materials.SALES[row.item] or nil
+				row.price = row.missing > 0 and materials.sale_price(row.item) or nil
 			end
 		end
 		report.earthwork = project.earthwork and (#project.earthwork.cuts + #project.earthwork.fills) or 0
@@ -1525,7 +1525,7 @@ end
 -- nearest chest with room, where the Builder will find it, or else to the player.
 -- Returns true, or false and a reason (a message id for builder_status.lua).
 function M.buy(self, player, item)
-	local price = materials.SALES[item]
+	local price = materials.sale_price(item)
 	if not price then return false, "not_for_sale" end
 	local bench = M.claimed_bench(self)
 	local project = bench and M.load_project(bench)

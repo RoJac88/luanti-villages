@@ -18,9 +18,16 @@
 --
 -- Prices go in the player's detached "wanted" list, which is what vanilla charges and
 -- draws from, never in _trades: other players see their own prices, and the fisherman's
--- restock (fisherman.lua) and market sellers still read the real trades.
+-- restock (fisherman.lua) and market sellers still read the real trades. With the economy
+-- on, every emerald in the window (both wanted slots and the offered one) is first
+-- multiplied by ledger.SCALE (ticket 11h), as every emerald amount in the mod is, and the
+-- reputation term with it; the emerald stacks to STACK_MAX so the dearest price fits.
 local core = minetest
 local demand = dofile(core.get_modpath("living_villages") .. "/demand.lua")
+local SCALE = dofile(core.get_modpath("living_villages") .. "/ledger.lua").SCALE
+local EMERALD = "mcl_core:emerald"
+-- The emerald's stack with the economy on: vanilla's 64 stacks of 64.
+local STACK_MAX = 4096
 
 local TYPES = {
 	trading = {gain = 4, decay = 2, cost = 20, max = 25, multiplier = 1},
@@ -224,28 +231,63 @@ local function priced_form(trader, player_name, formname, formspec)
 	local base = inv and inv:get_stack("wanted", 1)
 	if not base or base:is_empty() then return formspec end
 	local offered = inv:get_stack("offered", 1)
-	local demanded = demand.count(trader, base:get_name(), base:get_count(), offered:get_name(), base:get_stack_max())
+	local wanted2 = inv:get_stack("wanted", 2)
+	-- Vanilla's emeralds at the economy's scale.
+	local scale = demand.enabled() and SCALE or 1
+	local function scaled(stack)
+		if stack:get_name() ~= EMERALD or scale == 1 then return stack end
+		local out = ItemStack(stack)
+		out:set_count(math.min(stack:get_count() * scale, stack:get_stack_max()))
+		return out
+	end
+	local first_scale = base:get_name() == EMERALD and scale or 1
+	local demanded = demand.count(trader, base:get_name(), base:get_count() * first_scale, offered:get_name(),
+		base:get_stack_max())
 	local count = price(demanded, enabled() and reputation(trader, player_name) or 0,
-		price_multiplier(offered), base:get_stack_max())
-	if count == base:get_count() then return formspec end
+		price_multiplier(offered) * first_scale, base:get_stack_max())
 	local priced = ItemStack(base)
 	priced:set_count(count)
-	local first, last = formspec:find("item_image[2,1;1,1;" .. base:to_string() .. "]", 1, true)
-	if not first then
-		core.log("warning", "[living_villages] gossip: the trade window has changed, prices stay as they are")
-		return formspec
+	-- Each slot vanilla drew: its list and index, the drawing to find, and the new stack.
+	local changes = {{"wanted", 1, "item_image[2,1;1,1;" .. base:to_string() .. "]", priced, "item_image[2,1;1,1;"}}
+	if not wanted2:is_empty() then
+		changes[#changes + 1] = {"wanted", 2, "item_image[3,1;1,1;" .. wanted2:to_string() .. "]", scaled(wanted2),
+			"item_image[3,1;1,1;"}
 	end
-	inv:set_stack("wanted", 1, priced)
+	changes[#changes + 1] = {"offered", 1, "item_image[5.76,1;1,1;" .. offered:get_name() .. " " .. offered:get_count() .. "]",
+		scaled(offered), "item_image[5.76,1;1,1;", true}
+	local changed = {}
+	for _, change in ipairs(changes) do
+		local list, index, drawn, stack = change[1], change[2], change[3], change[4]
+		if stack:to_string() ~= inv:get_stack(list, index):to_string() then
+			if not formspec:find(drawn, 1, true) then
+				core.log("warning", "[living_villages] gossip: the trade window has changed, prices stay as they are")
+				return formspec
+			end
+			changed[#changed + 1] = change
+		end
+	end
+	if #changed == 0 then return formspec end
+	for _, change in ipairs(changed) do
+		local list, index, drawn, stack, prefix, by_name = change[1], change[2], change[3], change[4], change[5], change[6]
+		inv:set_stack(list, index, stack)
+		local first, last = formspec:find(drawn, 1, true)
+		local text = by_name and (stack:get_name() .. " " .. stack:get_count()) or stack:to_string()
+		formspec = formspec:sub(1, first - 1) .. prefix .. text .. "]" .. formspec:sub(last + 1)
+	end
 	-- Paging judges items already in the input slots before the show, at the base price.
 	local callbacks = core.detached_inventories and core.detached_inventories[formname]
 	if callbacks and callbacks.on_put and not inv:is_empty("input") then
 		callbacks.on_put(inv, "input", 1, ItemStack(""), core.get_player_by_name(player_name))
 	end
-	return formspec:sub(1, first - 1) .. "item_image[2,1;1,1;" .. priced:to_string() .. "]" .. formspec:sub(last + 1)
+	return formspec
 end
 
 local function install_prices(def)
 	local sessions, taking = {}, {}
+	-- Scaled prices fit one slot: the dearest, the bell, is 2304 (ticket 11h).
+	if demand.enabled() and core.override_item and core.registered_items[EMERALD] then
+		core.override_item(EMERALD, {stack_max = STACK_MAX})
+	end
 	local original_rightclick = def.on_rightclick
 	def.on_rightclick = function(self, clicker)
 		local name = clicker and clicker.is_player and clicker:is_player() and clicker:get_player_name()

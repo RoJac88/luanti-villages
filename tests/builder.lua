@@ -332,7 +332,7 @@ do
 	local rows = {}
 	for _, row in ipairs(report.rows) do rows[row.item] = row end
 	assert(rows[COBBLE].need == 32 and rows[COBBLE].missing == 32 and rows[COBBLE].price == nil)
-	assert(rows[BUCKET].need == 1 and rows[BUCKET].price == 1, "water can be bought")
+	assert(rows[BUCKET].need == 1 and rows[BUCKET].price == 64, "water can be bought, at 64 with the economy on")
 	assert(report.left == 33 and report.total > report.left, "the air it wants inside is already there")
 	-- Short, it wants the priced materials it lacks (builder_market.lua), and nothing once not.
 	assert(entity._villages_builder_wants and entity._villages_builder_wants[COBBLE] == 32, "posts its shortage")
@@ -424,7 +424,8 @@ local shoppers = 0
 local function shopper(pos, emeralds)
 	shoppers = shoppers + 1
 	local inv = support.chest(world, {x = 99, y = 99, z = shoppers})
-	if emeralds > 0 then inv:add_item("main", "mcl_core:emerald " .. emeralds) end
+	-- Counted in vanilla emeralds: 64 each at the economy's scale (ticket 11h).
+	if emeralds > 0 then inv:add_item("main", "mcl_core:emerald " .. emeralds * 64) end
 	local player = {
 		inv = inv,
 		is_player = function() return true end,
@@ -455,7 +456,7 @@ do
 	local player = shopper(near, 5)
 	ok, why = builder.buy(entity, player, BUCKET)
 	assert(ok and why == "in_inventory")
-	assert(player.inv:contains_item("main", "mcl_core:emerald 4") and not player.inv:contains_item("main", "mcl_core:emerald 5"))
+	assert(player.inv:contains_item("main", "mcl_core:emerald 256") and not player.inv:contains_item("main", "mcl_core:emerald 257"))
 	assert(player.inv:contains_item("main", BUCKET))
 
 	-- A chest: it goes there, and then it is no longer lacking, so it cannot be bought again.
@@ -466,7 +467,7 @@ do
 	assert(stock.chest_count({x = -14, y = 1, z = 0}, BUCKET) == 1)
 	ok, why = builder.buy(entity, player, BUCKET)
 	assert(not ok and why == "not_needed")
-	assert(player.inv:contains_item("main", "mcl_core:emerald 4"), "and is not charged for it")
+	assert(player.inv:contains_item("main", "mcl_core:emerald 256"), "and is not charged for it")
 
 	-- A full chest and a full player: it lands at the player's feet, not nowhere.
 	world.meta({x = -14, y = 1, z = 0}).inv:remove_item("main", BUCKET)

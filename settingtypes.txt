@@ -123,8 +123,9 @@ living_villages_bell_hangout (Villagers gather at the bell) bool true
 living_villages_player_meals (Players are served a meal at tavern tables) bool true
 
 # Emeralds a player pays for a tavern meal, into the tavern's pantry: a chest within 6 nodes of its
-# jukebox. A tavern with no pantry serves free. 0 makes every meal free.
-living_villages_player_meal_price (Price of a tavern meal for players) int 1 0 64
+# jukebox. A tavern with no pantry serves free. 0 makes every meal free. With the economy on,
+# where every emerald amount is 64 times vanilla's, the default is 64; off, it is 1.
+living_villages_player_meal_price (Price of a tavern meal for players) int 64 0 4096
 
 # Idle villagers standing near each other sometimes stop and face one another in
 # twos and threes for a few seconds, as if talking (#242). Turned off, gossip does not spread either.

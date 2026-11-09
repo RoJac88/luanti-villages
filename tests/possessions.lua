@@ -83,10 +83,11 @@ assert(possessions.take(v, "mcl_core:emerald", 5) == 3 and v._villages_belonging
 assert(possessions.take(v, "mcl_core:emerald", 1) == 0)
 assert(v._villages_farm_pouch == nil, "the work pouch is not touched")
 
--- Endowment: 3 to 6 emeralds once, and a kit for the first profession that has one.
+-- Endowment: 3 to 6 vanilla emeralds (192 to 384 at the economy's scale, ticket 11h)
+-- once, and a kit for the first profession that has one.
 assert(possessions.endow(v))
 local emeralds = possessions.emeralds(v)
-assert(emeralds >= 3 and emeralds <= 6)
+assert(emeralds >= 192 and emeralds <= 384 and emeralds % 64 == 0, emeralds)
 assert(possessions.count(v, "mcl_farming:bread") == 3 and v._villages_kit == "farmer")
 assert(not possessions.endow(v), "only once")
 v._profession = "librarian"
@@ -100,9 +101,13 @@ assert(possessions.emeralds(twin) == emeralds and possessions.total(twin) == eme
 local kid = {_id = "kid", child = true, _profession = "unemployed"}
 assert(not possessions.endow(kid) and kid._villages_belongings == nil)
 kid.child = nil
-assert(possessions.endow(kid) and possessions.emeralds(kid) >= 3 and not kid._villages_kit)
+assert(possessions.endow(kid) and possessions.emeralds(kid) >= 192 and not kid._villages_kit)
 kid._profession = "mason"
 assert(possessions.endow(kid) and possessions.count(kid, "mcl_core:stone") == 8, "kit with its first job")
+-- Endowed at vanilla's prices, before the scale: its emeralds are multiplied once.
+local old = {_id = "old", _profession = "nitwit", _villages_endowed = true, _villages_belongings = {["mcl_core:emerald"] = 5}}
+assert(possessions.endow(old) and possessions.emeralds(old) == 320 and old._villages_emerald_scale == 64)
+assert(not possessions.endow(old) and possessions.emeralds(old) == 320, "only once")
 
 -- Death drops what it owns, in stacks.
 local rich = {_id = "rich"}

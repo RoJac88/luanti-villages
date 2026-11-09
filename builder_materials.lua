@@ -219,4 +219,16 @@ M.SALES = {
 	["mcl_bells:bell"] = 16,
 }
 
+-- What the Builder asks for an item on sale, or nil: SALES, times ledger.SCALE with
+-- the economy on (ticket 11h), when every emerald amount scales.
+local clock, scale
+function M.sale_price(item)
+	local price = M.SALES[item]
+	if not price then return nil end
+	clock = clock or dofile(core.get_modpath("living_villages") .. "/economy_clock.lua")
+	if not clock.enabled() then return price end
+	scale = scale or dofile(core.get_modpath("living_villages") .. "/ledger.lua").SCALE
+	return price * scale
+end
+
 return M

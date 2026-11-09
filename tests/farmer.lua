@@ -419,30 +419,31 @@ step(3)
 assert(spouse._villages_food == 12 and child._villages_fed_day == world.day, "household and children free")
 assert(belongings(farmer, "mcl_core:emerald") == 0)
 
--- A neighbour with an emerald and no food buys a bundle: six loaves for one emerald,
--- eats what it wants and keeps the rest.
+-- A neighbour with a bundle's price and no food buys a bundle: six loaves for one
+-- vanilla emerald, 64 at the economy's scale (ticket 11h); eats what it wants and keeps
+-- the rest.
 setup({_bed = {x = 0, y = 2, z = 10}, _villages_farm_pouch = {["mcl_farming:bread"] = 12}})
 local buyer = neighbour(2, 1, {_bed = {x = 30, y = 2, z = 0}, _villages_food = 4,
-	_villages_belongings = {["mcl_core:emerald"] = 2}})
+	_villages_belongings = {["mcl_core:emerald"] = 128}})
 step()
-assert(belongings(buyer, "mcl_core:emerald") == 1 and belongings(farmer, "mcl_core:emerald") == 1)
+assert(belongings(buyer, "mcl_core:emerald") == 64 and belongings(farmer, "mcl_core:emerald") == 64)
 assert(buyer._villages_food == 12 and belongings(buyer, "mcl_farming:bread") == 4)
 assert(pouch("mcl_farming:bread") == 6)
 step(3)
-assert(belongings(buyer, "mcl_core:emerald") == 1, "carrying food, it does not buy more")
+assert(belongings(buyer, "mcl_core:emerald") == 64, "carrying food, it does not buy more")
 
--- No emerald: nothing, unless it is starving, when it gets one item free.
+-- Short of a bundle's price: nothing, unless it is starving, when it gets one item free.
 setup({_villages_farm_pouch = {["mcl_farming:bread"] = 12}})
-local broke = neighbour(2, 1, {_villages_food = 4})
+local broke = neighbour(2, 1, {_villages_food = 4, _villages_belongings = {["mcl_core:emerald"] = 63}})
 local starving = neighbour(1, 1, {_villages_food = 0})
 step(3)
 assert(broke._villages_food == 4 and starving._villages_food == 4 and pouch("mcl_farming:bread") == 11)
 
 -- Less than a bundle to spare: no sale, and no walk to a buyer.
 setup({_villages_farm_pouch = {["mcl_farming:bread"] = 5}})
-local waiting = neighbour(20, 0, {_villages_food = 4, _villages_belongings = {["mcl_core:emerald"] = 1}})
+local waiting = neighbour(20, 0, {_villages_food = 4, _villages_belongings = {["mcl_core:emerald"] = 64}})
 step(3)
-assert(#farmer.walks == 0 and belongings(waiting, "mcl_core:emerald") == 1)
+assert(#farmer.walks == 0 and belongings(waiting, "mcl_core:emerald") == 64)
 
 -- Emeralds the keeper left in its chest go in its belongings when it next stores.
 setup({_villages_farm_pouch = {["mcl_bone_meal:bone_meal"] = 4, ["mcl_farming:carrot_item"] = 30}})
