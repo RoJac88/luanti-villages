@@ -5,6 +5,11 @@
 -- (builder_status.lua) in place of vanilla's handler. So it counts as untraded, and
 -- vanilla's validate_jobsite makes it unemployed the moment its bench goes.
 --
+-- What it builds next is the stock mix (village_census.lua), with the building that holds
+-- the jobsite of the village's worst gap counting double (economy_report.lua): the gap is
+-- read from this Builder's market news and the villagers loaded near the bench. M.economy
+-- gives the same report to the bench's Economy tab (builder_bench_menu.lua).
+--
 -- The project is kept in the bench's meta, not on the villager, so that whoever claims the
 -- bench next carries on. What is built so far is not kept at all: building_template.lua
 -- reads it from the world.
@@ -24,6 +29,8 @@
 local core = minetest
 local common = dofile(core.get_modpath("living_villages") .. "/common.lua")
 local census = dofile(core.get_modpath("living_villages") .. "/village_census.lua")
+local economy_clock = dofile(core.get_modpath("living_villages") .. "/economy_clock.lua")
+local economy_report = dofile(core.get_modpath("living_villages") .. "/economy_report.lua")
 local materials = dofile(core.get_modpath("living_villages") .. "/builder_materials.lua")
 local site_finder = dofile(core.get_modpath("living_villages") .. "/builder_site.lua")
 local stock = dofile(core.get_modpath("living_villages") .. "/farm_stock.lua")
@@ -384,6 +391,35 @@ function M.set_source(bench, source)
 	end
 end
 
+-- What the Builder knows of the market: its own news and what it has heard (market_news.lua).
+local function builder_news(self)
+	local news = dofile(core.get_modpath("living_villages") .. "/market_news.lua")
+	local possessions = dofile(core.get_modpath("living_villages") .. "/possessions.lua")
+	local now = core.get_gametime()
+	local known = news.own(self, possessions.assess(self), now)
+	for _, entry in ipairs(news.heard(self, now)) do known[#known + 1] = entry end
+	return known
+end
+
+-- The bench's economy report (economy_report.lua), for its Economy tab and the census, or
+-- nil with the economy off. What was heard comes from the bench's Builder, if it is loaded.
+function M.economy(bench)
+	if not economy_clock.enabled() then return nil end
+	local villagers = economy_report.around(bench, VILLAGE_RADIUS)
+	local id = core.get_meta(bench):get_string("villager")
+	local heard
+	for _, villager in ipairs(villagers) do
+		if villager._villages_builder and villager._id == id then heard = builder_news(villager) end
+	end
+	return economy_report.build(heard, villagers, core.get_day_count())
+end
+
+-- The stock buildings the census counts double at this bench, or nil.
+local function favoured(bench)
+	local report = M.economy(bench)
+	return report and report.gaps and economy_report.favoured(report.gaps) or nil
+end
+
 local function pick_from(scan, record, source)
 	local weights, totals = {}, {}
 	for _, entry in ipairs(scan.entries) do
@@ -419,7 +455,7 @@ function M.options(bench, source)
 	local schematic_table = settlements and settlements.schematic_table
 	local shares = census.shares(record, schematic_table) or {}
 	local counts = census.current(record)
-	local next_name = census.pick(record, schematic_table, totals_of_buildings())
+	local next_name = census.pick(record, schematic_table, totals_of_buildings(), favoured(bench))
 	for name, share in pairs(shares) do
 		local measured = measure({building = name}) or {}
 		rows[#rows + 1] = {
@@ -456,10 +492,14 @@ local function choose(self, session, bench)
 	if source then return choose_custom(self, session, bench, source, record) end
 	session.no_projects = nil
 	local settlements = rawget(_G, "settlements")
-	local building = census.pick(record, settlements and settlements.schematic_table, totals_of_buildings())
+	local report = M.economy(bench)
+	local gap = report and report.gaps and report.gaps[1]
+	local building = census.pick(record, settlements and settlements.schematic_table, totals_of_buildings(),
+		gap and economy_report.favoured(report.gaps))
 	if not building then return end
 	save_project(bench, {state = "finding_site", building = building})
-	core.log("action", string.format("[living_villages] builder %s will put up a %s", tostring(self._id), building))
+	core.log("action", string.format("[living_villages] builder %s will put up a %s%s", tostring(self._id), building,
+		gap and (" (no " .. gap.profession .. " in the village)") or ""))
 end
 
 local function start_search(self, session, bench, project)

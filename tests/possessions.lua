@@ -225,6 +225,7 @@ assert(#possessions.eat(kim) == 0, "not hungry enough")
 kim._villages_food = 8
 local eaten = possessions.eat(kim)
 assert(#eaten == 1 and eaten[1] == "mcl_farming:bread" and kim._villages_food == 12)
+assert(kim._villages_tally.used["mcl_farming:bread"] == 1, "a meal is in its tally")
 assert(possessions.food_carried(kim) == 4 + 3)
 kim._villages_food = 0
 possessions.eat(kim)
@@ -283,5 +284,13 @@ assert(spent._villages_food == 0)
 local tot = {_id = "tot2", child = true}
 possessions.step(tot, 10000)
 assert(tot._villages_food == nil)
+
+-- A Builder is a mason to vanilla, but has no mason's wants; a real mason has.
+do
+	local mason = {_id = "mo", _profession = "mason", _villages_food = 20}
+	local builder = {_id = "bo", _profession = "mason", _villages_builder = true, _villages_food = 20}
+	assert(possessions.assess(mason).needs["mcl_core:clay_lump"], "the mason wants clay")
+	assert(not possessions.assess(builder).needs["mcl_core:clay_lump"], "the Builder does not")
+end
 
 print("possessions.lua: ok")

@@ -30,6 +30,7 @@ local clock = dofile(core.get_modpath("living_villages") .. "/economy_clock.lua"
 local stock = dofile(core.get_modpath("living_villages") .. "/farm_stock.lua")
 local ledger = dofile(core.get_modpath("living_villages") .. "/ledger.lua")
 local food = dofile(core.get_modpath("living_villages") .. "/food.lua")
+local tally = dofile(core.get_modpath("living_villages") .. "/economy_tally.lua")
 
 local DEFAULT_STASH_RADIUS = 8
 local STASH_HEIGHT = 3
@@ -292,6 +293,7 @@ function M.eat(self)
 		if not item then break end
 		food.receive(self, item)
 		eaten[#eaten + 1] = item
+		tally.note(self, nil, {[item] = 1})
 	end
 	if #eaten > 0 and self.object and core.sound_play then
 		core.sound_play("mcl_hunger_bite", {max_hear_distance = 12, gain = 0.33, object = self.object}, true)
@@ -360,10 +362,11 @@ function M.same_house(a, b)
 end
 
 -- The ledger's view of this villager (ledger.lua): its targets, needs, surplus and values.
+-- A keeper by its role; a Builder (a mason to vanilla, builder.lua) has no trade of its own.
 function M.assess(self)
 	return ledger.assess({
 		id = self._id,
-		profession = self._villages_keeper and "keeper" or self._profession,
+		profession = (self._villages_keeper and "keeper") or (self._villages_builder and "builder") or self._profession,
 		max_tier = self._max_trade_tier or 1,
 		held = M.held(self),
 		food_points = food.points(self),

@@ -39,6 +39,7 @@ local clock = dofile(core.get_modpath("living_villages") .. "/economy_clock.lua"
 local common = dofile(core.get_modpath("living_villages") .. "/common.lua")
 local possessions = dofile(core.get_modpath("living_villages") .. "/possessions.lua")
 local news = dofile(core.get_modpath("living_villages") .. "/market_news.lua")
+local tally = dofile(core.get_modpath("living_villages") .. "/economy_tally.lua")
 
 local TICK_SECONDS = 2
 local RETRY_SECONDS = 60
@@ -414,6 +415,7 @@ function M.burn_charcoal(self)
 		if total < CHARCOAL_KEEP + CHARCOAL_LOGS or most_count < CHARCOAL_LOGS then break end
 		possessions.take(self, most, CHARCOAL_LOGS)
 		possessions.add(self, CHARCOAL, CHARCOAL_MAKES)
+		tally.note(self, {[CHARCOAL] = CHARCOAL_MAKES}, {[most] = CHARCOAL_LOGS})
 		made = made + CHARCOAL_MAKES
 	end
 	if made > 0 then
@@ -501,6 +503,7 @@ local function work(self, activity, target)
 	local item, count
 	if activity == "forager" then item, count = M.forage(self, target) else item, count = M.cut(self, target) end
 	if item then
+		tally.note(self, {[item] = count})
 		core.log("action", string.format("[living_villages] villager %s gathered %d %s", short_id(self), count, item))
 	elseif target.kind == "plant" or target.kind == "replant" then
 		core.log("action", string.format("[living_villages] villager %s tended its grove at %s (%d trees)",
