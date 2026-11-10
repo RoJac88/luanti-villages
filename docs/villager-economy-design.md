@@ -1068,7 +1068,10 @@ yet shown. Choices from those runs:
 * News also passes at the tavern (`meal.lua`): once an evening a seated villager swaps
   market news with the keeper on duty, served or not, so the keeper carries one diner's
   need to another's supply. In run 50 the farmer had four conversations in three hours
-  and never heard of the tool smith's hoe, which it posted as a need all along.
+  and never heard of the tool smith's hoe, which it posted as a need all along. The
+  cleric does the same for its congregation once a holiday (`alms.church_news`), in the
+  pass after the service: the service allows no conversations, and the social stage
+  after it lasts seconds.
 
 ### 11e. Leather
 

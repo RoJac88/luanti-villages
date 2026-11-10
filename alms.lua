@@ -19,6 +19,11 @@
 -- (`_villages_alms_got`). Donations are taken first, so today's gifts can go out today;
 -- what is left waits for the next holiday.
 --
+-- News. Each villager there also swaps market news with the cleric once a holiday
+-- (`_villages_church_news`), as diners do with the keeper (meal.lua): the service is no
+-- time for conversations, and the social stage after it lasts seconds, so the cleric
+-- carries what one churchgoer needs to another that has it.
+--
 -- SAVINGS and MAJOR are in dinners, which carry ledger.SCALE (ticket 11h): the design's
 -- 8 and 5 emeralds were written before money was scaled.
 --
@@ -29,6 +34,7 @@ local common = dofile(core.get_modpath("living_villages") .. "/common.lua")
 local cleric = dofile(core.get_modpath("living_villages") .. "/cleric.lua")
 local possessions = dofile(core.get_modpath("living_villages") .. "/possessions.lua")
 local ledger = dofile(core.get_modpath("living_villages") .. "/ledger.lua")
+local news = dofile(core.get_modpath("living_villages") .. "/market_news.lua")
 
 local EMERALD = ledger.EMERALD
 local DINNER = ledger.DINNER
@@ -104,12 +110,21 @@ local function congregation(pulpit)
 	return list
 end
 
--- Donations first, then alms, among `list`.
+-- Swaps market news with the cleric, once a holiday. Returns whether it did.
+function M.church_news(priest, villager, day)
+	if villager == priest or villager._villages_church_news == day then return false end
+	villager._villages_church_news = day
+	news.exchange({villager, priest})
+	return true
+end
+
+-- Donations first, then alms, then news, among `list`.
 function M.hold(priest, list, day, gossip)
 	for _, villager in ipairs(list) do
 		if villager ~= priest then M.collect(priest, villager, list, day, gossip) end
 	end
 	for _, villager in ipairs(list) do M.give(priest, villager, day) end
+	for _, villager in ipairs(list) do M.church_news(priest, villager, day) end
 end
 
 local next_check = setmetatable({}, {__mode = "k"})
