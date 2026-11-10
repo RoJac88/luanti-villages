@@ -24,6 +24,7 @@ local compost = dofile(core.get_modpath("living_villages") .. "/farm_compost.lua
 local food = dofile(core.get_modpath("living_villages") .. "/food.lua")
 local clock = dofile(core.get_modpath("living_villages") .. "/economy_clock.lua")
 local possessions = dofile(core.get_modpath("living_villages") .. "/possessions.lua")
+local wants = dofile(core.get_modpath("living_villages") .. "/wants.lua")
 local ledger = dofile(core.get_modpath("living_villages") .. "/ledger.lua")
 
 local TICK_SECONDS = 1
@@ -192,6 +193,8 @@ end
 local function harvest(self, pos, session, now)
 	local drops = field.harvest(pos)
 	if not drops then return end
+	-- A hoe makes the next job come sooner, and wears (wants.lua).
+	session.next_at = now + TICK_SECONDS / wants.use(self, "harvest", possessions.take_held, now)
 	local has_chest = #chests_of(self, session, now) > 0
 	for _, drop in ipairs(drops) do
 		local name = drop:match("^%S+")

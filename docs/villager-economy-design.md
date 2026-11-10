@@ -1174,3 +1174,10 @@ cartographer's banners (wool and a stick) sell to villagers decorating for the m
   needs its own design (routes between villages, news carried across them).
 - Whether stashes should be protected from players beyond the gossip cost, for
   servers that want it, is left to a later setting.
+- Directions set on 2026-11-09, to be planned later:
+  - **The Builder's missing materials** become trades of existing professions: a villager
+    that sells wood also sells planks, taking the matching logs off its stock; the mason
+    sells carved stone; and so on.
+  - **Iron** comes from a future alchemist profession, which turns other raw materials
+    into iron.
+  - **Money piling up at the tavern** is answered with other expenses for the tavern.

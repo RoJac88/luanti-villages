@@ -112,7 +112,10 @@ local function skip(self, who, item)
 end
 
 -- The buyer's value over the base price, or 1.
+-- How urgent a need is: the view's own (ledger.lua), not capped by what a good that
+-- wears out is worth (run 46: a hoe, worth 1.6 times its price, never made a trip).
 function M.urgency(view, item)
+	if view.urgency then return view.urgency(item) end
 	local price, value = ledger.price(item), view.value(item)
 	if not price or price <= 0 or not value then return 1 end
 	return value / price

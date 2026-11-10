@@ -50,6 +50,23 @@ for _, entry in ipairs(own) do
 end
 assert(found_coal, "its spare coal is news")
 
+-- A surplus outside its top few is still told once it has heard someone needs it.
+do
+	local smith = villager("tess", {["mcl_tools:shovel_stone"] = 6, ["mcl_tools:axe_stone"] = 5,
+		["mcl_tools:pick_stone"] = 4, ["mcl_farming:hoe_stone"] = 1})
+	local function tells_hoe()
+		for _, entry in ipairs(news.own(smith, possessions.assess(smith), now)) do
+			if entry.kind == "has" and entry.item == "mcl_farming:hoe_stone" then return true end
+		end
+		return false
+	end
+	assert(not tells_hoe(), "a single hoe is outranked")
+	smith._villages_market_news = {{item = "mcl_farming:hoe_stone", who = "fern", kind = "needs", count = 1,
+		price = 100, heard = now, hops = 1}}
+	assert(tells_hoe(), "told once someone needs it")
+	smith._villages_market_news = nil
+end
+
 -- A finished conversation: each hears the other, one hop away, and nothing about itself.
 math.randomseed(1)
 local bob = villager("bob", {["mcl_farming:wheat_item"] = 50})

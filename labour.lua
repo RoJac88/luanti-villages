@@ -50,6 +50,7 @@ local common = dofile(core.get_modpath("living_villages") .. "/common.lua")
 local possessions = dofile(core.get_modpath("living_villages") .. "/possessions.lua")
 local news = dofile(core.get_modpath("living_villages") .. "/market_news.lua")
 local tally = dofile(core.get_modpath("living_villages") .. "/economy_tally.lua")
+local wants = dofile(core.get_modpath("living_villages") .. "/wants.lua")
 
 local TICK_SECONDS = 2
 local RETRY_SECONDS = 60
@@ -166,17 +167,6 @@ function M.eligible(self)
 	return self._profession == "nitwit" or (self._profession == "unemployed" and not self._jobsite)
 end
 
--- The best price asked for each item among what it has heard.
-local function asking_prices(heard)
-	local best = {}
-	for _, entry in ipairs(heard) do
-		if entry.kind == "needs" and entry.price and entry.price > (best[entry.item] or 0) then
-			best[entry.item] = entry.price
-		end
-	end
-	return best
-end
-
 -- Whether it has heard of a trade waiting: an item one villager needs and another has.
 function M.trade_waiting(heard)
 	local needed, offered = {}, {}
@@ -196,7 +186,7 @@ end
 
 -- Expected income of each activity from what it has heard.
 function M.incomes(heard)
-	local prices = asking_prices(heard)
+	local prices = news.asking(heard)
 	local incomes = {}
 	for name, activity in pairs(ACTIVITIES) do
 		local income = 0
@@ -589,6 +579,12 @@ local function work(self, activity, target)
 		item, count = M.cut(self, target)
 	end
 	if item then
+		-- A tool makes the next one come sooner, and wears (wants.lua).
+		local use = (target.kind == "fell" and "fell") or (target.kind == "cobble" and "mine") or nil
+		if use then
+			local now = core.get_gametime()
+			self._villages_labour_next = now + TICK_SECONDS / wants.use(self, use, possessions.take_held, now)
+		end
 		tally.note(self, {[item] = count})
 		core.log("action", string.format("[living_villages] villager %s gathered %d %s", short_id(self), count, item))
 	elseif target.kind == "plant" or target.kind == "replant" then

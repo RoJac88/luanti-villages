@@ -269,7 +269,11 @@ end
 
 -- input: {id, profession, max_tier, held = {item = count}, food_points, hunger_per_day,
 -- foods = {item = points} (food.POINTS), extra = {item = count} (a Builder's missing
--- materials)}. Returns {targets, needs, surplus, value = function(item)}.
+-- materials, goods that wear out), worth = {item = emeralds} (the most an item is worth
+-- to it whatever its need: what a good that wears out brings over its life, wants.lua)}.
+-- Returns {targets, needs, surplus, value = function(item), urgency = function(item)}:
+-- urgency is the need's own (M.urgency), before `worth` caps the value, so a good that
+-- wears out, wanted whole, is still as urgent as any other need (trade_trips.lua).
 function M.assess(input)
 	local targets = {}
 	local function want(item, count)
@@ -313,9 +317,14 @@ function M.assess(input)
 		local price = M.price(item)
 		if not price then return nil end
 		if item == EMERALD then return 1 end
-		return price * M.urgency(held[item] or 0, targets[item] or 0)
+		local value = price * M.urgency(held[item] or 0, targets[item] or 0)
+		local most = input.worth and input.worth[item]
+		return most and math.min(value, most) or value
 	end
-	return {targets = targets, needs = needs, surplus = surplus, value = value}
+	local function urgency(item)
+		return M.urgency(held[item] or 0, targets[item] or 0)
+	end
+	return {targets = targets, needs = needs, surplus = surplus, value = value, urgency = urgency}
 end
 
 -- The items with the largest need or surplus first, by value, for news and the inspector.

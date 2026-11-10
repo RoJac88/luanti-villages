@@ -30,6 +30,7 @@ local clock = dofile(core.get_modpath("living_villages") .. "/economy_clock.lua"
 local stock = dofile(core.get_modpath("living_villages") .. "/farm_stock.lua")
 local ledger = dofile(core.get_modpath("living_villages") .. "/ledger.lua")
 local food = dofile(core.get_modpath("living_villages") .. "/food.lua")
+local wants = dofile(core.get_modpath("living_villages") .. "/wants.lua")
 local tally = dofile(core.get_modpath("living_villages") .. "/economy_tally.lua")
 
 local DEFAULT_STASH_RADIUS = 8
@@ -378,6 +379,10 @@ end
 -- The ledger's view of this villager (ledger.lua): its targets, needs, surplus and values.
 -- A keeper by its role; a Builder (a mason to vanilla, builder.lua) has no trade of its own.
 function M.assess(self)
+	local extra, worth = wants.targets(self)
+	for item, count in pairs(self._villages_builder and self._villages_builder_wants or {}) do
+		extra[item] = (extra[item] or 0) + count
+	end
 	return ledger.assess({
 		id = self._id,
 		profession = (self._villages_keeper and "keeper") or (self._villages_builder and "builder") or self._profession,
@@ -386,8 +391,9 @@ function M.assess(self)
 		food_points = food.points(self),
 		hunger_per_day = self.child and 0 or food.hunger_per_day(),
 		foods = food.POINTS,
-		-- What a Builder's chests are short of (builder_market.lua).
-		extra = self._villages_builder and self._villages_builder_wants or nil,
+		-- What a Builder's chests are short of (builder_market.lua), and goods that wear out (wants.lua).
+		extra = extra,
+		worth = worth,
 	})
 end
 
