@@ -286,4 +286,14 @@ inventories[key(another)] = {}
 settlements.fill_chest(another)
 assert(#filled == 1 and inventories[key(another)]["mcl_farming:bread"] == 6)
 
+
+-- Cooked beef it bought from the butcher (ticket 11e) goes from its belongings to the pantry.
+do
+	local buyer = {_id = "kate2", _villages_keeper = true, _villages_belongings = {["mcl_mobitems:cooked_beef"] = 2}}
+	local before = pantry.count(chests, "mcl_mobitems:cooked_beef")
+	assert(supply.shelve(buyer, chests) == 2)
+	assert(pantry.count(chests, "mcl_mobitems:cooked_beef") == before + 2)
+	assert(dofile("possessions.lua").count(buyer, "mcl_mobitems:cooked_beef") == 0)
+end
+
 print("keeper_supply.lua: ok")

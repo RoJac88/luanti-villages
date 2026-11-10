@@ -46,6 +46,8 @@ return {
 	butcher = {
 		{makes = "mcl_mobitems:cooked_porkchop", count = 1, tier = 2, from = {{"mcl_mobitems:porkchop", 1}}, fuel = 1},
 		{makes = "mcl_mobitems:cooked_chicken", count = 1, tier = 2, from = {{"mcl_mobitems:chicken", 1}}, fuel = 1},
+		-- The leatherworker's herd's beef (herd.lua, ticket 11e), for the tavern.
+		{makes = "mcl_mobitems:cooked_beef", count = 1, tier = 1, from = {{"mcl_mobitems:beef", 1}}, fuel = 1},
 	},
 	fletcher = {
 		{makes = "mcl_bows:arrow", count = 4, tier = 1,
@@ -60,12 +62,9 @@ return {
 		{makes = "mcl_books:bookshelf", count = 1, tier = 1, from = {{"mcl_core:wood", 6}, {"mcl_books:book", 3}}},
 		{makes = "mcl_core:glass", count = 1, tier = 3, from = {{"mcl_core:sand", 1}}, fuel = 1},
 	},
-	leatherworker = {
-		{makes = "mcl_armor:helmet_leather", count = 1, tier = 2, from = {{LEATHER, 5}}},
-		{makes = "mcl_armor:chestplate_leather", count = 1, tier = 1, from = {{LEATHER, 8}}},
-		{makes = "mcl_armor:leggings_leather", count = 1, tier = 1, from = {{LEATHER, 7}}},
-		{makes = "mcl_armor:boots_leather", count = 1, tier = 2, from = {{LEATHER, 4}}},
-	},
+	-- No leatherworker: its leather comes from its herd (herd.lua, ticket 11e) and goes to
+	-- the librarian's books. Armour no villager wears would hold a recipe batch of leather
+	-- (32) back from them, and its player trades need no stock.
 	mason = {
 		{makes = "mcl_core:brick", count = 1, tier = 1, from = {{"mcl_core:clay_lump", 1}}, fuel = 1},
 		{makes = "mcl_core:stonebrickcarved", count = 1, tier = 2, from = {{"mcl_core:stone", 1}}},

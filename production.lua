@@ -8,7 +8,7 @@
 -- choose, it takes the inputs from its belongings, then its stash wherever it stands
 -- (possessions.take_held), and the made items go into its belongings. With nothing it
 -- can make, nothing is banked. A hungry villager banks at half the rate and a starving
--- one not at all (food.lua's states).
+-- one not at all (food.lua's states); one reading a book (wants.lua) a fifth faster.
 --
 -- Which recipe: of those it has the inputs and fuel for, and whose output it holds fewer
 -- than its target plus STOCK of (see below for one nobody wants), the one that adds most by its own values (ledger.lua):
@@ -54,6 +54,7 @@ local ledger = dofile(core.get_modpath("living_villages") .. "/ledger.lua")
 local recipes = dofile(core.get_modpath("living_villages") .. "/recipes.lua")
 local tally = dofile(core.get_modpath("living_villages") .. "/economy_tally.lua")
 local news = dofile(core.get_modpath("living_villages") .. "/market_news.lua")
+local wants = dofile(core.get_modpath("living_villages") .. "/wants.lua")
 
 local DEFAULT_CRAFT_SECONDS = 120
 local JOBSITE_REACH = 3
@@ -237,8 +238,10 @@ end
 local function rate(self)
 	local state = food.state(self)
 	if state == "starving" then return 0 end
-	if state == "hungry" then return 0.5 end
-	return 1
+	-- A book being read (wants.lua, ticket 11e) speeds it up.
+	local reading = wants.reading_rate(self, possessions.take_held, core.get_gametime())
+	if state == "hungry" then return 0.5 * reading end
+	return reading
 end
 
 local last_read = setmetatable({}, {__mode = "k"})

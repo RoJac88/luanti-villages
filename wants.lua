@@ -13,6 +13,11 @@
 -- values it at most at what it brings over its life (`worth`): its uses, times the
 -- goods one use yields at their price, times the rate's gain. Market news posts the
 -- need, and conversations and trade trips buy it as any other.
+--
+-- A book (ticket 11e) lasts days, not uses: every adult wants one, and reads one it holds
+-- whenever it next works (M.use, and production.lua's crafting through M.reading_rate).
+-- For BOOK.days of game time after (`_villages_wants.book.until`) its work goes BOOK.rate
+-- faster; then the book is used up. Its worth is that gain on DAILY_WORK a day.
 local core = minetest
 local ledger = dofile(core.get_modpath("living_villages") .. "/ledger.lua")
 
@@ -26,6 +31,11 @@ M.GOODS = {
 	{key = "pickaxe", item = "mcl_tools:pick_stone", activities = {quarrier = true}, use = "mine",
 		uses = 64, rate = 1.5, yields = {["mcl_core:cobble"] = 1}},
 }
+M.BOOK = {key = "book", item = "mcl_books:book", days = 3, rate = 1.2}
+-- Game seconds in a day at the default time_speed (72).
+M.DAY_SECONDS = 1200
+-- A day's work, in emeralds, for a book's worth: four dinners.
+M.DAILY_WORK = 4 * ledger.DINNER
 -- Of its uses, this share left and it wants the next one.
 M.NEARLY_WORN = 1 / 8
 -- Uses between the lines that log how fast the work goes.
@@ -66,15 +76,55 @@ function M.worth(good)
 	return good.uses * per_use * (good.rate - 1)
 end
 
+local function reads(self)
+	return not self.child and self._id ~= nil
+end
+
+function M.book_worth()
+	return M.BOOK.days * M.DAILY_WORK * (M.BOOK.rate - 1)
+end
+
 -- For the ledger: {item = 1} for each good it should get, and {item = worth} for each it wants.
-function M.targets(self)
+function M.targets(self, now)
 	local targets, worth = {}, {}
 	for _, good in ipairs(M.goods(self)) do
 		local current = M.in_use(self, good)
 		if not current or current.left <= good.uses * M.NEARLY_WORN then targets[good.item] = 1 end
 		worth[good.item] = M.worth(good)
 	end
+	if reads(self) then
+		local book = self._villages_wants and self._villages_wants.book
+		now = now or core.get_gametime()
+		local length = M.BOOK.days * M.DAY_SECONDS
+		if not book or book["until"] - now <= length * M.NEARLY_WORN then targets[M.BOOK.item] = 1 end
+		worth[M.BOOK.item] = M.book_worth()
+	end
 	return targets, worth
+end
+
+-- The rate a book gives its work now: BOOK.rate while one is being read, else 1. With
+-- none being read it opens one it holds, through take(self, item, count); one read to
+-- the end is used up.
+function M.reading_rate(self, take, now)
+	if not reads(self) then return 1 end
+	now = now or core.get_gametime()
+	local held = self._villages_wants
+	local book = held and held.book
+	if book and now >= book["until"] then
+		held.book = nil
+		if not next(held) then self._villages_wants = nil end
+		core.log("action", string.format("[living_villages] villager %s finished reading its %s",
+			tostring(self._id):sub(1, 6), M.BOOK.item))
+		book = nil
+	end
+	if not book and take and take(self, M.BOOK.item, 1) > 0 then
+		book = {item = M.BOOK.item, ["until"] = now + M.BOOK.days * M.DAY_SECONDS}
+		self._villages_wants = self._villages_wants or {}
+		self._villages_wants.book = book
+		core.log("action", string.format("[living_villages] villager %s reads a %s",
+			tostring(self._id):sub(1, 6), M.BOOK.item))
+	end
+	return book and M.BOOK.rate or 1
 end
 
 -- Not saved: for the lines that log the pace.
@@ -110,8 +160,14 @@ end
 
 -- One `use` of work (harvest, fell, mine): wears the good in use, taking a new one from
 -- what it holds through take(self, item, count) when it has none. Returns the rate to
--- divide the work's time by: the good's, or 1.
+-- divide the work's time by: the good's, or 1, times a book's (reading_rate).
 function M.use(self, use, take, now)
+	local reading = M.reading_rate(self, take, now)
+	return M.tool_use(self, use, take, now) * reading
+end
+
+-- The tool part of M.use.
+function M.tool_use(self, use, take, now)
 	for _, good in ipairs(M.goods(self)) do
 		if good.use == use then
 			self._villages_wants = self._villages_wants or {}
@@ -147,6 +203,10 @@ function M.status(self)
 	for _, good in ipairs(M.GOODS) do
 		local current = M.in_use(self, good)
 		if current then table.insert(parts, string.format("%s, %d of %d uses left", current.item, current.left, good.uses)) end
+	end
+	local book = self._villages_wants and self._villages_wants.book
+	if book then
+		table.insert(parts, string.format("reading a book, %d s left", math.max(math.floor(book["until"] - core.get_gametime()), 0)))
 	end
 	return #parts > 0 and table.concat(parts, "; ") or "none"
 end
