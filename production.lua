@@ -11,11 +11,15 @@
 -- one not at all (food.lua's states).
 --
 -- Which recipe: of those it has the inputs and fuel for, and whose output it holds fewer
--- than its target plus STOCK of, the one that adds most by its own values (ledger.lua):
+-- than its target plus STOCK of (see below for one nobody wants), the one that adds most by its own values (ledger.lua):
 -- the output's value less the inputs' and the fuel's. Its targets include its recipes'
 -- inputs, so a librarian short of books values making them above a bookshelf. An output
 -- it has heard someone needs (market_news.lua) is worth at least the best price asked,
 -- so a tool smith makes the hoe a farmer wants before a shovel no one does (ticket 11d).
+-- Nor does it make what nobody wants: an output it has heard no one ask for and does
+-- not want itself (no target) it makes only while it holds none, so its inputs are left
+-- for what is asked for (run 48: a tool smith spent the sticks for a farmer's second
+-- hoe on shovels).
 --
 -- Fuel. `_villages_fuel` is smelts left from the last lump burned. A recipe that needs
 -- more burns a coal or charcoal lump (charcoal first, it is the village's own) for 8.
@@ -54,8 +58,10 @@ local news = dofile(core.get_modpath("living_villages") .. "/market_news.lua")
 local DEFAULT_CRAFT_SECONDS = 120
 local JOBSITE_REACH = 3
 local STEP_SECONDS = 5
--- It stops making an output once it holds this many past its target.
+-- It stops making an output once it holds this many past its target, or one if
+-- no one asks for it and it has no target for it.
 local STOCK = 16
+local UNASKED_STOCK = 1
 local SMELTS_PER_LUMP = 8
 local COAL, CHARCOAL = ledger.COAL, "mcl_core:charcoal_lump"
 -- Most crafts in one step, should a long gap have banked many.
@@ -65,7 +71,7 @@ local MAX_TIER = 5
 -- mobs_mc/villager.lua's badges, by tier.
 local BADGES = {"mobs_mc_stone.png", "mobs_mc_iron.png", "mobs_mc_gold.png", "mobs_mc_emerald.png", "mobs_mc_diamond.png"}
 
-local M = {RECIPES = recipes, STOCK = STOCK, SMELTS_PER_LUMP = SMELTS_PER_LUMP, JOBSITE_REACH = JOBSITE_REACH}
+local M = {RECIPES = recipes, STOCK = STOCK, UNASKED_STOCK = UNASKED_STOCK, SMELTS_PER_LUMP = SMELTS_PER_LUMP, JOBSITE_REACH = JOBSITE_REACH}
 
 local function short_id(self)
 	return tostring(self._id):sub(1, 6)
@@ -117,7 +123,9 @@ function M.choose(self, held, view, asks)
 	asks = asks or news.asking(news.heard(self, core.get_gametime()))
 	local best, best_gain
 	for _, recipe in ipairs(list) do
-		local stocked = (held[recipe.makes] or 0) >= (view.targets[recipe.makes] or 0) + STOCK
+		local target = view.targets[recipe.makes] or 0
+		local wanted = target > 0 or (asks[recipe.makes] or 0) > 0
+		local stocked = (held[recipe.makes] or 0) >= (wanted and target + STOCK or UNASKED_STOCK)
 		if not stocked and M.can_make(self, recipe, held) then
 			local gain = M.gain(recipe, view, asks)
 			if not best or gain > best_gain or (gain == best_gain and recipe.makes < best.makes) then

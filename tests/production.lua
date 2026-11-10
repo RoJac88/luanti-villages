@@ -119,6 +119,22 @@ possessions.add(full, "mcl_core:stick", 2)
 possessions.add(full, "mcl_tools:shovel_stone", production.STOCK)
 assert(production.choose(full) == nil)
 
+-- Nobody wants a tool it already holds one of: it keeps its cobble and sticks until
+-- someone asks, then makes that one past the first.
+local idle = smith({_id = "idle"})
+possessions.add(idle, "mcl_core:cobble", 6)
+possessions.add(idle, "mcl_core:stick", 4)
+for _, tool in ipairs({"mcl_tools:pick_stone", "mcl_tools:axe_stone", "mcl_tools:shovel_stone", "mcl_farming:hoe_stone"}) do
+	possessions.add(idle, tool, production.UNASKED_STOCK)
+end
+assert(production.choose(idle, nil, nil, {}) == nil, "makes nothing nobody wants")
+assert(production.choose(idle, nil, nil, {["mcl_farming:hoe_stone"] = 1}).makes == "mcl_farming:hoe_stone")
+-- Holding none, it still makes one.
+local fresh = smith({_id = "fresh"})
+possessions.add(fresh, "mcl_core:cobble", 1)
+possessions.add(fresh, "mcl_core:stick", 2)
+assert(production.choose(fresh, nil, nil, {}).makes == "mcl_tools:shovel_stone")
+
 -- Outputs that feed another recipe: a librarian with cane and leather makes paper, then books.
 local lena = smith({_id = "lena", _profession = "librarian"})
 possessions.add(lena, "mcl_core:reeds", 3)
