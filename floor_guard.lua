@@ -3,13 +3,13 @@
 -- the nearest collision using the average speed over the whole step, then
 -- snaps the object to the face picked by the average speed over just the part
 -- of the step before contact. A villager that jumps from the floor has
--- velocity up and gravity down. Over a step longer than 2 * vy / g (0.58 s for
--- mcl_mobs' 4.3 m/s jump), the whole-step average points down and hits the
--- floor, but the part-step average still points up, so the engine treats the
--- floor as a ceiling and puts the top of the villager's box against the
--- floor's underside: a floor and a body height below, inside the ground,
--- where do_env_damage suffocates it. Lag spikes are what produce such steps,
--- and a villager jumping against a low ceiling holds that velocity for many
+-- velocity up and gravity down. Over a step longer than 2 * vy / g (0.72 s for
+-- the 5.3 m/s jump init.lua gives villagers), the whole-step average points
+-- down and hits the floor, but the part-step average still points up, so the
+-- engine treats the floor as a ceiling and puts the top of the villager's box
+-- against the floor's underside: a floor and a body height below, inside the
+-- ground, where do_env_damage suffocates it. Lag spikes are what produce such
+-- steps, and a villager jumping against a low ceiling holds that velocity for many
 -- ticks in a row.
 --
 -- on_step runs after the engine has moved the object, so a move that passed
@@ -19,7 +19,7 @@
 -- and its old feet, which no fall, step or path can produce.
 local core = minetest
 
--- The snap needs a step longer than 2 * vy / g, which is 0.58 s for a jump and
+-- The snap needs a step longer than 2 * vy / g, which is 0.72 s for a jump and
 -- longer for anything faster. Ordinary steps are left alone, so a move another
 -- mod makes with set_pos between two of them is never undone.
 local MIN_STEP = 0.25
