@@ -30,6 +30,10 @@ M.GOODS = {
 M.NEARLY_WORN = 1 / 8
 -- Uses between the lines that log how fast the work goes.
 M.LOG_EVERY = 16
+-- A gap between two uses up to this long is work going on; a longer one is walking,
+-- waiting for a crop or another stage, which the pace leaves out (run 48: 16 harvests
+-- took 111 s one time and 2053 s the next, by hand).
+M.BURST_GAP = 5
 
 local function wanted_by(self, good)
 	if self.child or not self._id then return false end
@@ -76,6 +80,8 @@ end
 -- Not saved: for the lines that log the pace.
 local paces = setmetatable({}, {__mode = "k"})
 
+-- Logs every LOG_EVERY uses: how long they took, and the seconds per use while working
+-- (the gaps of at most BURST_GAP between one use and the next), which the rate divides.
 local function note_pace(self, good, tool, now)
 	local pace = paces[self]
 	if not pace then
@@ -84,15 +90,21 @@ local function note_pace(self, good, tool, now)
 	end
 	local entry = pace[good.use]
 	if not entry or entry.tool ~= tool then
-		entry = {tool = tool, count = 0, since = now}
+		entry = {tool = tool, count = 0, since = now, busy = 0, gaps = 0}
 		pace[good.use] = entry
 	end
+	if entry.last and now - entry.last <= M.BURST_GAP then
+		entry.busy = entry.busy + (now - entry.last)
+		entry.gaps = entry.gaps + 1
+	end
+	entry.last = now
 	entry.count = entry.count + 1
 	if entry.count >= M.LOG_EVERY then
-		core.log("action", string.format("[living_villages] villager %s: %d %s in %d s %s",
-			tostring(self._id):sub(1, 6), entry.count, good.use, math.floor(now - entry.since + 0.5),
+		local each = entry.gaps > 0 and string.format("%.2f s each while working", entry.busy / entry.gaps) or "no run of work"
+		core.log("action", string.format("[living_villages] villager %s: %d %s in %d s (%s) %s",
+			tostring(self._id):sub(1, 6), entry.count, good.use, math.floor(now - entry.since + 0.5), each,
 			tool and ("with a " .. tool) or "by hand"))
-		pace[good.use] = {tool = tool, count = 0, since = now}
+		pace[good.use] = {tool = tool, count = 0, since = now, busy = 0, gaps = 0, last = now}
 	end
 end
 

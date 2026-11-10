@@ -24,7 +24,7 @@ local function take_from(held)
 	end
 end
 local function logged(pattern)
-	for _, line in ipairs(logs) do if line:find(pattern) then return true end end
+	for _, line in ipairs(logs) do if line:find(pattern, 1, true) then return true end end
 	return false
 end
 
@@ -87,10 +87,15 @@ do
 	logs = {}
 	local cutter = villager({_villages_labour = {day = 1, activity = "woodcutter"}})
 	for i = 1, wants.LOG_EVERY do wants.use(cutter, "fell", nil, i * 3) end
-	assert(logged("16 fell in 45 s by hand"), logs[#logs])
+	assert(logged("16 fell in 45 s (3.00 s each while working) by hand"), logs[#logs])
 	local held = {[AXE] = 1}
 	for i = 1, wants.LOG_EVERY do wants.use(cutter, "fell", take_from(held), 100 + i * 2) end
-	assert(logged("16 fell in 30 s with a " .. AXE), logs[#logs])
+	assert(logged("16 fell in 30 s (2.00 s each while working) with a " .. AXE), logs[#logs])
+	-- A long gap (a walk, a night) counts toward the time, not the pace.
+	logs = {}
+	local walker = villager({_villages_labour = {day = 1, activity = "woodcutter"}})
+	for i = 1, wants.LOG_EVERY do wants.use(walker, "fell", nil, 1000 + i * 3 + (i == 8 and 600 or 0) + (i > 8 and 600 or 0)) end
+	assert(logged("(3.00 s each while working) by hand"), logs[#logs])
 	assert(wants.status(cutter):find("16 of 32 uses left", 1, true), wants.status(cutter))
 end
 
