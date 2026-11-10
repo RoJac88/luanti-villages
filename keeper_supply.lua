@@ -23,6 +23,11 @@
 --   back in the pantry.
 -- * Over its shift at the jukebox it cooks the pantry's raw food into its menu, one dish
 --   every COOK_SECONDS: three wheat to a loaf, a potato baked, a raw cod cooked.
+-- * Dishes it bought in conversation or on a trade trip (ticket 11e: cooked beef from
+--   the butcher, a keeper input in ledger.lua) go from its belongings into the pantry on
+--   its shift, before it cooks. It pays for them with the tavern's money: on shift it
+--   tops its own emeralds up to FLOAT from the pantry, where dinner money goes, so it
+--   does not run out of its starting money.
 -- * A newly generated tavern's chest gets STARTING_STOCK on top of its loot, through
 --   settlements.fill_chest, which the village generator calls for every chest it places.
 --
@@ -36,6 +41,7 @@ local SCALE = ledger.SCALE
 local pantry = dofile(core.get_modpath("living_villages") .. "/tavern_pantry.lua")
 local stock = dofile(core.get_modpath("living_villages") .. "/farm_stock.lua")
 local keeper = dofile(core.get_modpath("living_villages") .. "/keeper.lua")
+local possessions = dofile(core.get_modpath("living_villages") .. "/possessions.lua")
 
 local SUPPLY_RADIUS = 48
 local COMPOSTER_HEIGHT = 8
@@ -48,6 +54,8 @@ local COOK_SECONDS = 10
 local PURSE = 8 * SCALE
 local DINNER = ledger.DINNER
 local TAB_CAP = 8 * SCALE
+-- What it keeps on it from the pantry, for the dishes it buys: eight dinners.
+local FLOAT = 8 * ledger.DINNER
 local TAB = "villages_keeper_tab"
 -- The tab is kept to 4 places: a third and two thirds written down must still make one.
 local EPSILON = 1e-3
@@ -76,7 +84,7 @@ for level = 1, 7 do COMPOSTERS[#COMPOSTERS + 1] = "mcl_composters:composter_" ..
 local M = {
 	SUPPLY_RADIUS = SUPPLY_RADIUS, CARRY = CARRY, TARGET_MEALS = TARGET_MEALS,
 	CHECK_SECONDS = CHECK_SECONDS, RETRY_SECONDS = RETRY_SECONDS, COOK_SECONDS = COOK_SECONDS,
-	STARTING_STOCK = STARTING_STOCK, PURSE = PURSE, DINNER = DINNER, TAB_CAP = TAB_CAP, TAB = TAB,
+	STARTING_STOCK = STARTING_STOCK, PURSE = PURSE, DINNER = DINNER, TAB_CAP = TAB_CAP, TAB = TAB, FLOAT = FLOAT,
 }
 
 local function menu_items()
@@ -273,11 +281,42 @@ local function supply(self, jukebox, now)
 	go(self, source, now, function(entity) fetch(entity, source) end)
 end
 
+-- Moves the menu's dishes from its belongings into the pantry. Returns how many.
+function M.shelve(self, chests)
+	local moved = 0
+	for _, item in ipairs(menu_items()) do
+		local count = possessions.count(self, item)
+		while count > 0 and pantry.has_room(chests, item, 1) do
+			possessions.take(self, item, 1)
+			pantry.put(chests, item, 1)
+			count, moved = count - 1, moved + 1
+		end
+	end
+	if moved > 0 then
+		core.log("action", string.format("[living_villages] keeper %s put %d bought dishes in the pantry",
+			tostring(self._id):sub(1, 6), moved))
+	end
+	return moved
+end
+
+-- Tops its emeralds up to FLOAT from the pantry. Returns how many it took.
+function M.float(self, chests)
+	local short = FLOAT - possessions.emeralds(self)
+	local taken = 0
+	while taken < short and pantry.take(chests, EMERALD) do taken = taken + 1 end
+	if taken > 0 then possessions.add(self, EMERALD, taken) end
+	return taken
+end
+
 local function cook_tick(self, jukebox, now)
 	if self.order ~= "work" or now < (self._villages_cook_next or 0) then return end
 	self._villages_cook_next = now + COOK_SECONDS
 	local chests = pantry.chests(jukebox)
-	if chests then M.cook(chests) end
+	if chests then
+		M.float(self, chests)
+		M.shelve(self, chests)
+		M.cook(chests)
+	end
 end
 
 -- Each tick of a keeper's do_custom.

@@ -37,6 +37,8 @@ local OVERLAY = "(living_villages_villager_profession_butcher.png^[multiply:#8a5
 local MENU = {
 	{tier = 1, wanted = "mcl_core:emerald 1", offered = "mcl_farming:bread", count = 3},
 	{tier = 1, wanted = "mcl_core:emerald 1", offered = "mcl_farming:potato_item_baked", count = 4},
+	-- Bought from the butcher (ticket 11e, keeper_supply.lua).
+	{tier = 1, wanted = "mcl_core:emerald 1", offered = "mcl_mobitems:cooked_beef", count = 2},
 	{tier = 2, wanted = "mcl_core:emerald 1", offered = "mcl_fishing:fish_cooked", count = 2},
 	{tier = 2, wanted = "mcl_core:emerald 2", offered = "mcl_mushrooms:mushroom_stew", count = 1},
 	{tier = 3, wanted = "mcl_core:emerald 3", offered = "mcl_farming:pumpkin_pie", count = 2},

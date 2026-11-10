@@ -32,7 +32,9 @@ local possessions = dofile("possessions.lua")
 local tables = dofile("trade_tables.lua")
 local recipes = dofile("recipes.lua")
 
--- Every output is sold by its profession, or goes into another of its own recipes.
+-- Every output is sold by its profession, goes into another of its own recipes, or is
+-- what the keeper buys for the tavern (the butcher's cooked beef, ticket 11e).
+local keeper_buys = dofile("ledger.lua").inputs("keeper", 1)
 for profession, list in pairs(recipes) do
 	local entry = tables.professions[profession]
 	assert(entry, profession .. " has a trade table")
@@ -42,7 +44,8 @@ for profession, list in pairs(recipes) do
 		for _, input in ipairs(recipe.from) do used[input[1]] = true end
 	end
 	for _, recipe in ipairs(list) do
-		assert(sold[recipe.makes] or used[recipe.makes], profession .. " neither sells nor uses " .. recipe.makes)
+		assert(sold[recipe.makes] or used[recipe.makes] or keeper_buys[recipe.makes],
+			profession .. " neither sells nor uses " .. recipe.makes)
 		assert(recipe.count >= 1 and #recipe.from >= 1 and recipe.tier >= 1)
 	end
 end

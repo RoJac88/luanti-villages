@@ -31,6 +31,7 @@ local POINTS = {
 	-- What the butcher cooks (production.lua), on the same scale.
 	["mcl_mobitems:cooked_porkchop"] = 6,
 	["mcl_mobitems:cooked_chicken"] = 5,
+	["mcl_mobitems:cooked_beef"] = 6,
 }
 local FULL = 12
 -- Below this an adult is hungry; at 0, starving.
