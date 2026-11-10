@@ -1054,9 +1054,9 @@ tool from the tool smith, working faster with it, and buying another once it wea
 
 Landed as `wants.lua`, read by `possessions.assess`, `labour.lua` and `farmer.lua`, with
 changes in `ledger.lua`, `production.lua`, `market_news.lua` and `trade_trips.lua`. Probe
-runs 44 to 48 (seed 2007, chunk 208,768)
-showed a farmer taking a trade trip for a stone hoe, buying it for 67, harvesting with it
-and wearing it out; the second purchase is not yet shown. Choices from those runs:
+runs 44 to 48 (seed 2007, chunk 208,768) showed a farmer taking a trade trip for a stone
+hoe, buying it for 67, harvesting with it and wearing it out; the second purchase is not
+yet shown. Choices from those runs:
 
 * Only a villager still labouring wants a labour tool (run 45).
 * A heard ask counts as at least its price when the tool smith chooses what to make, and
