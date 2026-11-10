@@ -40,6 +40,8 @@ dofile(core.get_modpath("living_villages") .. "/builder_block.lua")
 local MODEL = "living_villages_villager.b3d"
 local BASE = "living_villages_villager_base.png^living_villages_villager_plains.png"
 local SLEEP_BOX = {-0.25, 0, -0.25, 0.25, 0.3, 0.25}
+-- Villager jump strength (see register_on_mods_loaded); vanilla mcl_mobs uses 4.
+local JUMP_HEIGHT = 5
 -- A bed exit is the square a villager stepped into its bed from, so it is
 -- always adjacent to the bed. Anything further is a record left over from
 -- some other bed and must never be teleported back to (#84).
@@ -290,6 +292,12 @@ core.register_on_mods_loaded(function()
 	-- the model and its horizontal collision footprint intact.
 	original_box[5] = math.min(original_box[5], 1.92)
 	def.initial_properties.collisionbox = table.copy(original_box)
+	-- mcl_mobs jumps at jump_height + 0.3 m/s against 1.5 g: vanilla's 4 peaks
+	-- at 0.63 m, so a full block is cleared only by step-up at the very top of
+	-- the jump, and a villager seen in play often bumps a single block and
+	-- falls back. 5 peaks at 0.95 m, which clears it with room to spare and is
+	-- still short of a 1.5-node fence.
+	def.jump_height = JUMP_HEIGHT
 	local original_anim = table.copy(def.animation)
 	local original_child_anim = table.copy(def._child_animations)
 	local original_head_swivel = def.head_swivel
