@@ -294,6 +294,14 @@ do
 	assert(supply.shelve(buyer, chests) == 2)
 	assert(pantry.count(chests, "mcl_mobitems:cooked_beef") == before + 2)
 	assert(dofile("possessions.lua").count(buyer, "mcl_mobitems:cooked_beef") == 0)
+	-- It pays for them from the pantry: topped up to FLOAT, no further, as far as the pantry goes.
+	local possessions = dofile("possessions.lua")
+	local had = pantry.count(chests, "mcl_core:emerald")
+	pantry.put(chests, "mcl_core:emerald", 300)
+	local purse = {_id = "kate3", _villages_keeper = true, _villages_belongings = {["mcl_core:emerald"] = 10}}
+	assert(supply.float(purse, chests) == supply.FLOAT - 10 and possessions.emeralds(purse) == supply.FLOAT)
+	assert(pantry.count(chests, "mcl_core:emerald") == had + 300 - (supply.FLOAT - 10))
+	assert(supply.float(purse, chests) == 0, "already full")
 end
 
 print("keeper_supply.lua: ok")

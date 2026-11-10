@@ -1092,7 +1092,8 @@ the design left open:
   that fifth of four dinners a day.
 * The keeper buys cooked beef as a need (up to 6) and shelves it in the pantry on its
   shift; it is on the menu at 2 for an emerald. It is priced at the ledger's value, not
-  one dinner a piece.
+  one dinner a piece. It pays with the tavern's money: on shift it tops its own emeralds
+  up to 8 dinners from the pantry (`keeper_supply.float`), where dinner money goes.
 
 ### 11f. Staffing a new village
 

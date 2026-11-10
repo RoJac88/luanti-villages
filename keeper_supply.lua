@@ -25,7 +25,9 @@
 --   every COOK_SECONDS: three wheat to a loaf, a potato baked, a raw cod cooked.
 -- * Dishes it bought in conversation or on a trade trip (ticket 11e: cooked beef from
 --   the butcher, a keeper input in ledger.lua) go from its belongings into the pantry on
---   its shift, before it cooks.
+--   its shift, before it cooks. It pays for them with the tavern's money: on shift it
+--   tops its own emeralds up to FLOAT from the pantry, where dinner money goes, so it
+--   does not run out of its starting money.
 -- * A newly generated tavern's chest gets STARTING_STOCK on top of its loot, through
 --   settlements.fill_chest, which the village generator calls for every chest it places.
 --
@@ -52,6 +54,8 @@ local COOK_SECONDS = 10
 local PURSE = 8 * SCALE
 local DINNER = ledger.DINNER
 local TAB_CAP = 8 * SCALE
+-- What it keeps on it from the pantry, for the dishes it buys: eight dinners.
+local FLOAT = 8 * ledger.DINNER
 local TAB = "villages_keeper_tab"
 -- The tab is kept to 4 places: a third and two thirds written down must still make one.
 local EPSILON = 1e-3
@@ -80,7 +84,7 @@ for level = 1, 7 do COMPOSTERS[#COMPOSTERS + 1] = "mcl_composters:composter_" ..
 local M = {
 	SUPPLY_RADIUS = SUPPLY_RADIUS, CARRY = CARRY, TARGET_MEALS = TARGET_MEALS,
 	CHECK_SECONDS = CHECK_SECONDS, RETRY_SECONDS = RETRY_SECONDS, COOK_SECONDS = COOK_SECONDS,
-	STARTING_STOCK = STARTING_STOCK, PURSE = PURSE, DINNER = DINNER, TAB_CAP = TAB_CAP, TAB = TAB,
+	STARTING_STOCK = STARTING_STOCK, PURSE = PURSE, DINNER = DINNER, TAB_CAP = TAB_CAP, TAB = TAB, FLOAT = FLOAT,
 }
 
 local function menu_items()
@@ -295,11 +299,21 @@ function M.shelve(self, chests)
 	return moved
 end
 
+-- Tops its emeralds up to FLOAT from the pantry. Returns how many it took.
+function M.float(self, chests)
+	local short = FLOAT - possessions.emeralds(self)
+	local taken = 0
+	while taken < short and pantry.take(chests, EMERALD) do taken = taken + 1 end
+	if taken > 0 then possessions.add(self, EMERALD, taken) end
+	return taken
+end
+
 local function cook_tick(self, jukebox, now)
 	if self.order ~= "work" or now < (self._villages_cook_next or 0) then return end
 	self._villages_cook_next = now + COOK_SECONDS
 	local chests = pantry.chests(jukebox)
 	if chests then
+		M.float(self, chests)
 		M.shelve(self, chests)
 		M.cook(chests)
 	end
