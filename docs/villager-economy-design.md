@@ -1234,6 +1234,11 @@ an engine load check, without a probe run. Choices the design left open:
   portered, unhired, over any peddling deal (run 52). It is now one fee per hire per
   porter day it has had, from one in two. A seller the market skips (busy walking, or
   not eligible) is logged, and a stall's opening names its seller and goods.
+* In a hilly village most villagers never came to the market: the bell was looked for
+  within 48 across and 16 up or down of each bed, and a bell on a hill 18 above the
+  beds was out of reach (run 52). It is now 64 and 32, and a villager that finds none
+  logs it once a holiday. Villagers also walk at 1.8 m/s by default instead of 1.2
+  (`living_villages_walk_velocity`), so a spread-out village's walks fit their stages.
 * For testing by hand, `/living_villages_market` (`market_test.lua`) opens the market
   now as on a holiday, or starts a working day with labour chosen afresh.
 

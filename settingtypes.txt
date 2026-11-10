@@ -10,6 +10,10 @@ living_villages_cliff_rise (Largest cliff to ramp) int 4 0 32
 # are done first; what does not fit is left as it was.
 living_villages_hole_budget (Hole filling node budget) int 60000 0 1000000
 
+# Villager walking speed in metres a second (vanilla VoxeLibre: 1.2). Running and the
+# walk animation scale with it.
+living_villages_walk_velocity (Villager walking speed) float 1.8 0.5 4
+
 # Villagers wear grass they keep walking over into paths (#12).
 living_villages_natural_paths (Natural paths) bool true
 # Walks over one grass block before it becomes a path.
