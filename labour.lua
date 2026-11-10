@@ -38,7 +38,11 @@
 -- * porter (ticket 11): carries goods for others on trade trips (trade_trips.lua), hired
 --   at the end of a conversation; labour.lua only chooses it. Its site is the market: it
 --   is open when the villager has heard of an item one villager needs and another has
---   spare, and its income is PORTER_INCOME, a fee or two a day.
+--   spare. Its income is what it has found portering pays (ticket 12): one PORTER_FEE
+--   times its hires over its porter days, counted from one hire in two days
+--   (`_villages_porter_record`, {days, hires}: days counted here, hires by
+--   trade_trips.lua), so a porter nobody hires turns to other work. A flat two fees a day
+--   had every unemployed villager portering, unhired, over any small peddling deal.
 -- * peddler (ticket 12): buys surplus below the going price and sells where it has heard
 --   of need, keeping the margin. Its site is the market too: a deal is an item it has
 --   heard one villager has spare at one price and another needs at PEDDLE_MARGIN times
@@ -131,8 +135,8 @@ local ACTIVITIES = {
 	porter = {rate = 0, goods = {}},
 	peddler = {rate = 0, goods = {}},
 }
--- A fee or two a day, in emeralds at ledger.SCALE (ticket 11h), like the prices it is weighed with.
-local PORTER_INCOME = 2 * dofile(core.get_modpath("living_villages") .. "/ledger.lua").SCALE
+-- trade_trips.lua's PORTER_FEE, in emeralds at ledger.SCALE (ticket 11h).
+local PORTER_FEE = 1 * dofile(core.get_modpath("living_villages") .. "/ledger.lua").SCALE
 -- A woodcutter's goods are one species at a time: the best price heard for any.
 for _, species in ipairs(SPECIES) do
 	ACTIVITIES.woodcutter.goods[species.log] = 0.9
@@ -260,14 +264,22 @@ function M.deal(heard, emeralds)
 	return best
 end
 
--- Expected income of each activity from what it has heard, with `emeralds` to buy with.
-function M.incomes(heard, emeralds)
+-- What portering is worth a day to one with this record: a fee per hire it has had per
+-- porter day, starting from one hire in two days.
+function M.porter_income(record)
+	record = record or {}
+	return PORTER_FEE * ((record.hires or 0) + 1) / ((record.days or 0) + 2)
+end
+
+-- Expected income of each activity from what it has heard, with `emeralds` to buy with
+-- and its portering `record`.
+function M.incomes(heard, emeralds, record)
 	local prices = news.asking(heard)
 	local incomes = {}
 	for name, activity in pairs(ACTIVITIES) do
 		local income = 0
 		if name == "porter" then
-			income = M.trade_waiting(heard) and PORTER_INCOME or 0
+			income = M.trade_waiting(heard) and M.porter_income(record) or 0
 		elseif name == "peddler" then
 			local deal = M.deal(heard, emeralds)
 			income = deal and deal.income or 0
@@ -285,8 +297,8 @@ function M.incomes(heard, emeralds)
 end
 
 -- The day's activity among `available` (a set of names), or nil if none. roll is in [0, 1).
-function M.choose(heard, available, yesterday, roll, emeralds)
-	local incomes = M.incomes(heard, emeralds)
+function M.choose(heard, available, yesterday, roll, emeralds, record)
+	local incomes = M.incomes(heard, emeralds, record)
 	local best, best_score
 	local open = {}
 	for _, name in ipairs(NAMES) do
@@ -652,13 +664,19 @@ function M.today(self)
 	M.peddle_tick(self, day)
 	M.choose_home(self)
 	local heard = news.heard(self)
-	local activity = M.choose(heard, available(self), yesterday, math.random(), possessions.emeralds(self))
+	local activity = M.choose(heard, available(self), yesterday, math.random(), possessions.emeralds(self),
+		self._villages_porter_record)
 	-- A peddle under way goes on: what it bought is still to sell.
 	if self._villages_peddle and activity ~= "peddler" then activity = "peddler" end
 	if activity == "peddler" and not self._villages_peddle and not M.start_peddle(self, heard, day) then
 		activity = nil
 	end
 	self._villages_labour = {day = day, activity = activity}
+	if activity == "porter" then
+		local record = self._villages_porter_record or {days = 0, hires = 0}
+		record.days = record.days + 1
+		self._villages_porter_record = record
+	end
 	if activity then
 		core.log("action", string.format("[living_villages] villager %s (%s) works as a %s today",
 			short_id(self), tostring(self._profession), activity))

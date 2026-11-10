@@ -315,10 +315,21 @@ function M.new(options)
 			local goto_route = self._villages_goto_route
 			if unrelated_route(self) or (goto_route
 				and (goto_route.status == "planning" or goto_route.status == "travelling")) then
+				-- Said once a market day, so a seller that never sets up is accounted for.
+				core.log("action", string.format("[living_villages] market seller browsing: villager %s is busy walking (%s)",
+					tostring(self._id):sub(1, 6), goto_route and tostring(goto_route.market_token or goto_route.status) or "another route"))
 				return "browse"
 			end
-			local eligible = M.eligible(self, {})
-			if not eligible then return "browse" end
+			local eligible, why = M.eligible(self, {})
+			if not eligible then
+				-- Keepers, Builders and children never sell; no goods is logged by goods_for.
+				local quiet = {no_goods = true, keeper = true, builder = true, child = true}
+				if not quiet[why] then
+					core.log("action", string.format("[living_villages] market seller browsing: villager %s (%s) %s",
+						tostring(self._id):sub(1, 6), tostring(M.profession(self)), tostring(why)))
+				end
+				return "browse"
+			end
 			local center = bell_session.center
 			if not center then return "browse" end
 			serial = serial + 1
@@ -503,7 +514,8 @@ function M.new(options)
 			session.arrived = true
 			session.stall_day = day
 			if economy then economy.open(self, day) end
-			core.log("action", "[living_villages] market seller opened a stall")
+			core.log("action", string.format("[living_villages] market seller opened a stall: villager %s (%s) shows %s",
+				tostring(self._id):sub(1, 6), tostring(M.profession(self)), table.concat(items, ", ")))
 			return "holding"
 		end
 

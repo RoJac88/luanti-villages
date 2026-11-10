@@ -357,6 +357,15 @@ do
 		"a villager does not trade with itself")
 	assert(labour.incomes({wants, offers}).porter > 0 and labour.incomes({}).porter == 0)
 	assert(labour.choose({wants, offers}, {porter = true, forager = true}, nil, 0) == "porter")
+	-- What portering pays is learnt: a fee per hire per porter day, from one in two.
+	assert(labour.porter_income(nil) == 32 and labour.porter_income({days = 6, hires = 0}) == 8)
+	assert(labour.porter_income({days = 2, hires = 3}) == 64)
+	-- A small peddling deal beats portering nobody hires.
+	local offers2 = {item = "mcl_core:coal_lump", kind = "has", price = 6, count = 4, who = "cole", heard = now, hops = 1}
+	local wants2 = {item = "mcl_core:coal_lump", kind = "needs", price = 14, count = 4, who = "smith", heard = now, hops = 1}
+	local open2 = {porter = true, peddler = true}
+	assert(labour.choose({offers2, wants2}, open2, nil, 0, 1000) == "porter", "a new porter's hopes")
+	assert(labour.choose({offers2, wants2}, open2, nil, 0, 1000, {days = 4, hires = 0}) == "peddler", "after days unhired")
 	local pam = villager({_id = "pam", _villages_labour = {day = day, activity = "porter"}})
 	labour.step(pam, now + 5000)
 	assert(#pam.walks == 0, "it walks only on a trip")
