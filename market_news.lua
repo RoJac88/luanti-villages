@@ -5,7 +5,8 @@
 -- hears of trades sooner.
 --
 -- A villager's own news is its ledger's (possessions.assess, ledger.lua) top OWN_ITEMS
--- needs and surpluses, worked out fresh when it talks, with hops 0. What it has heard is
+-- needs and surpluses, and any other surplus it has heard someone needs, worked out fresh
+-- when it talks, with hops 0. What it has heard is
 -- `_villages_market_news`, a list of at most NEWS_ENTRIES entries:
 --
 --   {item, who = <villager _id>, kind = "has" | "needs", count, price = <its value to
@@ -105,16 +106,27 @@ function M.heard(self, now)
 	return kept
 end
 
--- Its own news, from its ledger view.
+-- Its own news, from its ledger view: its top OWN_ITEMS needs and surpluses, and any
+-- other surplus it has heard someone needs. A single hoe a farmer is after is worth
+-- telling, though the tool smith's spare shovels outrank it (run 47).
 function M.own(self, view, now)
 	local entries = {}
 	local home = self._bed and vector.new(self._bed) or nil
+	local asked = M.wanted_and_had(M.heard(self, now)).needs
 	for kind, list in pairs({needs = view.needs, has = view.surplus}) do
-		for _, top in ipairs(ledger.top(list, view.value, OWN_ITEMS)) do
+		local told = {}
+		local function add(item, count)
+			told[item] = true
 			entries[#entries + 1] = {
-				item = top.item, who = self._id, kind = kind, count = top.count,
-				price = view.value(top.item), home = home, heard = now, hops = 0,
+				item = item, who = self._id, kind = kind, count = count,
+				price = view.value(item), home = home, heard = now, hops = 0,
 			}
+		end
+		for _, top in ipairs(ledger.top(list, view.value, OWN_ITEMS)) do add(top.item, top.count) end
+		if kind == "has" then
+			for item, count in pairs(list) do
+				if asked[item] and not told[item] then add(item, count) end
+			end
 		end
 	end
 	table.sort(entries, function(a, b)
