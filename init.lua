@@ -590,6 +590,8 @@ core.register_on_mods_loaded(function()
 	dofile(core.get_modpath("living_villages") .. "/possessions.lua").install(def)
 	dofile(core.get_modpath("living_villages") .. "/labour.lua").install(def)
 	dofile(core.get_modpath("living_villages") .. "/production.lua").install(def)
+	-- The leatherworker's cow herd (herd.lua, ticket 11e): leather and beef.
+	dofile(core.get_modpath("living_villages") .. "/herd.lua").install(def)
 	cleric.install(def)
 	-- Outside every job above, which it keeps from an unemployed villager with a block to go to.
 	dofile(core.get_modpath("living_villages") .. "/job_seek.lua").install(def, navigation_api, job_roles)

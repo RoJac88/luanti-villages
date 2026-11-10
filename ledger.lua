@@ -65,6 +65,8 @@ local HAND_PRICES = {
 	["mcl_farming:beetroot_seeds"] = 0.01,
 	-- Prepared foods: what goes in, and a little for the cooking.
 	["mcl_farming:potato_item_baked"] = 0.06,
+	-- The butcher's cooked beef, at its cooked porkchop's price (ticket 11e).
+	["mcl_mobitems:cooked_beef"] = 0.2,
 	["mcl_mushrooms:mushroom_brown"] = 0.05,
 	["mcl_mushrooms:mushroom_red"] = 0.05,
 	-- A flower makes a dye (12 for one at the shepherd).
@@ -97,13 +99,17 @@ local MAKES = {
 		["mcl_fishing:clownfish_raw"] = true, ["mcl_fishing:pufferfish_raw"] = true,
 	},
 	shepherd = {},
+	-- Its herd's (herd.lua, ticket 11e).
+	leatherworker = {["mcl_mobitems:leather"] = true, ["mcl_mobitems:beef"] = true},
 }
 for name in pairs({white = 1, brown = 1, black = 1, grey = 1}) do MAKES.shepherd["mcl_wool:" .. name] = true end
 
 -- Roles this mod adds, which have no vanilla table of their own.
 local ROLES = {
 	keeper = {
-		inputs = {["mcl_farming:wheat_item"] = 9, ["mcl_farming:potato_item"] = 6, ["mcl_fishing:fish_raw"] = 6},
+		-- Cooked beef, from the butcher, is its second dish (ticket 11e).
+		inputs = {["mcl_farming:wheat_item"] = 9, ["mcl_farming:potato_item"] = 6, ["mcl_fishing:fish_raw"] = 6,
+			["mcl_mobitems:cooked_beef"] = 6},
 		outputs = {
 			["mcl_farming:bread"] = true, ["mcl_farming:potato_item_baked"] = true, ["mcl_fishing:fish_cooked"] = true,
 			["mcl_mushrooms:mushroom_stew"] = true, ["mcl_farming:pumpkin_pie"] = true,

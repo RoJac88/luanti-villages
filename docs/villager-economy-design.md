@@ -1072,6 +1072,29 @@ The leatherworker's cow herd, books in `wants.lua`, cooked meat on the tavern me
 Done when a probe run shows leather reaching the librarian from a herd, a book made
 from it bought and read, and beef reaching the butcher and, cooked, the tavern.
 
+Landed as `herd.lua` (installed in `init.lua` after `production.lua`), the book in
+`wants.lua` (`BOOK`, `reading_rate`), the butcher's cooked beef in `recipes.lua`, a
+keeper input and menu dish, and `keeper_supply.shelve`. Merged on tests and an engine
+check of the herd (seeded, a calf bred, one slaughtered), without a probe run. Choices
+the design left open:
+
+* The herd is kept, not led: up to 4 adults within 32 of the leatherworker's jobsite,
+  wild adults within 16 taken on, 2 cows seeded once for a herd that never had one, and
+  a stray past 24 that no player sees set back. No following, unlike `flock.lua`.
+* Breeding does not wait for vanilla's mating: every 300 s of the work stage two wheat
+  make a calf (`mcl_mobs.spawn_child`) while the herd has room; past 4 adults it
+  slaughters one instead, its drops (1 to 3 beef, 0 to 2 leather) going into belongings.
+  The leatherworker wants 4 wheat held, which it buys like any need.
+* The leatherworker's armour recipes are gone: they held a batch of 32 leather back from
+  the librarian for armour no villager wears. Its player trades need no stock.
+* A book lasts 3 days of game time from when it is opened, at its owner's next work, and
+  speeds harvesting, labour and crafting by a fifth. Every adult wants one; its worth is
+  that fifth of four dinners a day.
+* The keeper buys cooked beef as a need (up to 6) and shelves it in the pantry on its
+  shift; it is on the menu at 2 for an emerald. It is priced at the ledger's value, not
+  one dinner a piece. It pays with the tavern's money: on shift it tops its own emeralds
+  up to 8 dinners from the pantry (`keeper_supply.float`), where dinner money goes.
+
 ### 11f. Staffing a new village
 
 `village_staffing.lua`: staffing at generation (see Staffing a new village), the

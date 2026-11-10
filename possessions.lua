@@ -39,6 +39,8 @@ local CLAIM_SECONDS = 60
 local STACK = 64
 local OWNER, OWNER_BED = "villages_owner", "villages_owner_bed"
 local EMERALD = "mcl_core:emerald"
+-- herd.lua's HERD_WHEAT, held by a leatherworker for breeding (ticket 11e).
+local HERD_WHEAT_ITEM, HERD_WHEAT = "mcl_farming:wheat_item", 4
 -- Work chests, and how near their node they are.
 local PANTRY_RADIUS = 6
 local WORKSHOP_RADIUS = 6
@@ -382,6 +384,10 @@ function M.assess(self)
 	local extra, worth = wants.targets(self)
 	for item, count in pairs(self._villages_builder and self._villages_builder_wants or {}) do
 		extra[item] = (extra[item] or 0) + count
+	end
+	-- A leatherworker breeds its herd on wheat (herd.lua's HERD_WHEAT).
+	if self._profession == "leatherworker" and not self.child then
+		extra[HERD_WHEAT_ITEM] = (extra[HERD_WHEAT_ITEM] or 0) + HERD_WHEAT
 	end
 	return ledger.assess({
 		id = self._id,
