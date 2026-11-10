@@ -320,6 +320,22 @@ do
 	settings[staffing.SETTING] = nil
 end
 
+-- One composter is staffed even when every bed has a nearer block: a village needs a farmer.
+do
+	reset()
+	local house = {{x = 0, y = 0, z = 0}, {x = 40, y = 5, z = 9}}
+	nodes[key({x = 2, y = 1, z = 2})] = BARREL
+	nodes[key({x = 5, y = 1, z = 2})] = LOOM
+	nodes[key({x = 20, y = 1, z = 2})] = COMPOSTER
+	nodes[key({x = 30, y = 1, z = 2})] = "mcl_composters:composter_3"
+	wrapped({{pos = house[1], schematic = house, beds = {{x = 1, y = 1, z = 1}, {x = 6, y = 1, z = 1}}}})
+	land(1)
+	-- The bed at 6 is nearest the composter at 20 (14) and takes it; the other the barrel.
+	assert(villager("v6,1,1")._profession == "farmer" and villager("v6,1,1")._jobsite.x == 20)
+	assert(villager("v1,1,1")._profession == "fisherman")
+	assert(not metas[key({x = 30, y = 1, z = 2})], "one composter, not every one")
+end
+
 -- Too few blocks: those without one are not held out of work, so a block built later is theirs.
 do
 	reset()

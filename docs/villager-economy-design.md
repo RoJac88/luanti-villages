@@ -1076,6 +1076,9 @@ most from probe runs 38 to 42 (seed 2007, chunk 208,768):
   beside it. A villager without a bed now waits up to a game day before it looks from
   where it stands, and a block chosen so is dropped once the bed is back.
 * The pulpit is a job block too, claimed through `cleric.lua`.
+* One composter, the one nearest any new villager's bed, is paired first with the bench
+  and the jukebox. After 11f seed 2007's village had no farmer, since every bed had a
+  nearer block, and its food comes from farmers.
 
 Runs 39 to 42 each staffed the village at generation: 9 of 11 villagers, each owner's
 bed the nearest of the 11 to its block, the Builder and the keeper among them, 2 left

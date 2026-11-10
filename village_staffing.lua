@@ -12,8 +12,9 @@
 -- holds it up for TIMEOUT seconds at most.
 --
 -- Staffing pairs the village's free job blocks (job_blocks.lua) with its new
--- villagers greedily, the closest block and bed first (the bench and the jukebox
--- before the rest), and claims each pair the way that block is claimed.
+-- villagers greedily, the closest block and bed first (the bench, the jukebox and the
+-- composter nearest a bed before the rest), and claims each pair the way that block
+-- is claimed.
 -- `living_villages_spawn_unemployed` villagers, at most half of them, are left out of
 -- work: greedy pairing stops short by that many, so they are those whose beds are
 -- furthest from any block still free. They carry `_villages_left_unemployed` and no job
@@ -122,10 +123,30 @@ function M.staff(batch, roles, unemployed)
 	-- The bench and the jukebox first: a village wants its Builder and its keeper, and a
 	-- tavern often stands apart from every bed, so closest-first would leave it to
 	-- keeper.lua's evening take-over, which moves someone off a job on the first day.
+	-- And one composter, the one nearest any of their beds: a village's food comes from its
+	-- farmers, and closest-first can leave every composter free (seed 2007 after run 38).
 	local first, rest = {}, {}
+	local farm, farm_distance
 	for _, pos in ipairs(blocks) do
-		local kind = job_blocks.kind(core.get_node_or_nil(pos).name, roles)
-		table.insert((kind == "bench" or kind == "jukebox") and first or rest, pos)
+		local name = core.get_node_or_nil(pos).name
+		local kind = job_blocks.kind(name, roles)
+		if kind == "bench" or kind == "jukebox" then
+			table.insert(first, pos)
+		else
+			table.insert(rest, pos)
+			if job_blocks.profession(name) == "farmer" then
+				for _, v in ipairs(villagers) do
+					local distance = vector.distance(v.bed, pos)
+					if not farm or distance < farm_distance then farm, farm_distance = pos, distance end
+				end
+			end
+		end
+	end
+	if farm then
+		for i, pos in ipairs(rest) do
+			if pos == farm then table.remove(rest, i) break end
+		end
+		table.insert(first, farm)
 	end
 	local taken = job_blocks.pair(villagers, first, limit, try)
 	local placed = {}
