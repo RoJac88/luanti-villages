@@ -39,6 +39,10 @@ do
 	assert(targets[AXE] == 1 and not targets[HOE])
 	targets = wants.targets(villager({_villages_labour = {day = 3, activity = "quarrier"}}))
 	assert(targets[PICK] == 1)
+	-- One that took a job after the morning's choice is no longer a woodcutter.
+	assert(next((wants.targets(villager({_profession = "tool_smith", _jobsite = {x = 0, y = 0, z = 0},
+		_villages_labour = {day = 3, activity = "woodcutter"}})))) == nil)
+	assert(wants.targets(villager({_profession = "nitwit", _villages_labour = {day = 3, activity = "woodcutter"}}))[AXE] == 1)
 	assert(next((wants.targets(villager({_profession = "farmer", child = true})))) == nil)
 	assert(next((wants.targets(villager({_profession = "mason"})))) == nil)
 	-- Worth over its life: more than its price, so it is worth buying.

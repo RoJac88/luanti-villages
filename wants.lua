@@ -2,8 +2,8 @@
 -- villager good for a while and then are used up. Data as recipes.lua is, and the few
 -- functions that read it; it touches no engine state but what it is handed.
 --
--- Each good names its item, who wants it (a profession, or a labour activity taken up
--- that day or last: labour.lua's `_villages_labour`), what wears it (`use`: one harvest,
+-- Each good names its item, who wants it (a profession, or the labour activity of a
+-- villager still labouring: labour.lua's `_villages_labour`), what wears it (`use`: one harvest,
 -- felling or cobble mined is one use), how many uses it lasts and its rate: how much
 -- faster that work goes with it. Every effect is a bonus over the rates without it.
 --
@@ -34,8 +34,11 @@ M.LOG_EVERY = 16
 local function wanted_by(self, good)
 	if self.child or not self._id then return false end
 	if good.professions and good.professions[self._profession] then return true end
+	-- A labour activity counts only while it labours: one that took a job that day still
+	-- carries the morning's `_villages_labour` (run 45, a tool smith wanting an axe).
+	local labours = self._profession == "nitwit" or (self._profession == "unemployed" and not self._jobsite)
 	local labour = self._villages_labour
-	return good.activities ~= nil and labour ~= nil and good.activities[labour.activity] == true
+	return labours and good.activities ~= nil and labour ~= nil and good.activities[labour.activity] == true
 end
 
 -- The goods this villager wants, in M.GOODS order.

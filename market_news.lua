@@ -81,6 +81,17 @@ function M.interest(view, entry, now, known)
 	return weight * freshness / (1 + entry.hops)
 end
 
+-- The best price asked for each item among `heard` (M.heard): what someone needs it at.
+function M.asking(heard)
+	local best = {}
+	for _, entry in ipairs(heard) do
+		if entry.kind == "needs" and entry.price and entry.price > (best[entry.item] or 0) then
+			best[entry.item] = entry.price
+		end
+	end
+	return best
+end
+
 -- What it has heard, with stale news and news about itself dropped.
 function M.heard(self, now)
 	local list = self._villages_market_news

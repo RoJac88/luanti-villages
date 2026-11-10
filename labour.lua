@@ -167,17 +167,6 @@ function M.eligible(self)
 	return self._profession == "nitwit" or (self._profession == "unemployed" and not self._jobsite)
 end
 
--- The best price asked for each item among what it has heard.
-local function asking_prices(heard)
-	local best = {}
-	for _, entry in ipairs(heard) do
-		if entry.kind == "needs" and entry.price and entry.price > (best[entry.item] or 0) then
-			best[entry.item] = entry.price
-		end
-	end
-	return best
-end
-
 -- Whether it has heard of a trade waiting: an item one villager needs and another has.
 function M.trade_waiting(heard)
 	local needed, offered = {}, {}
@@ -197,7 +186,7 @@ end
 
 -- Expected income of each activity from what it has heard.
 function M.incomes(heard)
-	local prices = asking_prices(heard)
+	local prices = news.asking(heard)
 	local incomes = {}
 	for name, activity in pairs(ACTIVITIES) do
 		local income = 0

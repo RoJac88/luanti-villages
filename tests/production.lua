@@ -71,6 +71,14 @@ possessions.add(tobias, "mcl_core:cobble", 7)
 possessions.add(tobias, "mcl_core:stick", 6)
 assert(production.restock_held(tobias) == nil)
 assert(production.choose(tobias).makes == "mcl_tools:shovel_stone")
+-- Heard of a farmer that needs a hoe, at more than its own value: it makes that first.
+tobias._villages_market_news = {{kind = "needs", item = "mcl_farming:hoe_stone", count = 1, who = "farmer1",
+	price = 150, heard = now, hops = 1}}
+assert(production.choose(tobias).makes == "mcl_farming:hoe_stone")
+-- An ask below its own value changes nothing.
+tobias._villages_market_news[1].price = 1
+assert(production.choose(tobias).makes == "mcl_tools:shovel_stone")
+tobias._villages_market_news = nil
 -- 100 s banks toward 120; 30 more makes one, carrying 10 over.
 assert(production.work(tobias, 100) == 0 and tobias._villages_craft == 100)
 assert(production.work(tobias, 30) == 1 and tobias._villages_craft == 10)

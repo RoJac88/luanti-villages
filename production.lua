@@ -13,7 +13,9 @@
 -- Which recipe: of those it has the inputs and fuel for, and whose output it holds fewer
 -- than its target plus STOCK of, the one that adds most by its own values (ledger.lua):
 -- the output's value less the inputs' and the fuel's. Its targets include its recipes'
--- inputs, so a librarian short of books values making them above a bookshelf.
+-- inputs, so a librarian short of books values making them above a bookshelf. An output
+-- it has heard someone needs (market_news.lua) is worth at least the best price asked,
+-- so a tool smith makes the hoe a farmer wants before a shovel no one does (ticket 11d).
 --
 -- Fuel. `_villages_fuel` is smelts left from the last lump burned. A recipe that needs
 -- more burns a coal or charcoal lump (charcoal first, it is the village's own) for 8.
@@ -47,6 +49,7 @@ local food = dofile(core.get_modpath("living_villages") .. "/food.lua")
 local ledger = dofile(core.get_modpath("living_villages") .. "/ledger.lua")
 local recipes = dofile(core.get_modpath("living_villages") .. "/recipes.lua")
 local tally = dofile(core.get_modpath("living_villages") .. "/economy_tally.lua")
+local news = dofile(core.get_modpath("living_villages") .. "/market_news.lua")
 
 local DEFAULT_CRAFT_SECONDS = 120
 local JOBSITE_REACH = 3
@@ -95,25 +98,28 @@ local function worth(view, item, count)
 	return (view.value(item) or 0) * count
 end
 
--- What a craft adds by the villager's own values.
-function M.gain(recipe, view)
-	local gain = worth(view, recipe.makes, recipe.count)
+-- What a craft adds by the villager's own values, its output at no less than `asks`
+-- (market_news.asking) holds for it.
+function M.gain(recipe, view, asks)
+	local made = math.max(view.value(recipe.makes) or 0, asks and asks[recipe.makes] or 0)
+	local gain = made * recipe.count
 	for _, input in ipairs(recipe.from) do gain = gain - worth(view, input[1], input[2]) end
 	if recipe.fuel then gain = gain - worth(view, COAL, recipe.fuel / SMELTS_PER_LUMP) end
 	return gain
 end
 
--- The recipe it would make next, or nil. `held` and `view` default to its own.
-function M.choose(self, held, view)
+-- The recipe it would make next, or nil. `held`, `view` and `asks` default to its own.
+function M.choose(self, held, view, asks)
 	local list = M.recipes(self)
 	if not list then return nil end
 	held = held or possessions.held(self)
 	view = view or possessions.assess(self)
+	asks = asks or news.asking(news.heard(self, core.get_gametime()))
 	local best, best_gain
 	for _, recipe in ipairs(list) do
 		local stocked = (held[recipe.makes] or 0) >= (view.targets[recipe.makes] or 0) + STOCK
 		if not stocked and M.can_make(self, recipe, held) then
-			local gain = M.gain(recipe, view)
+			local gain = M.gain(recipe, view, asks)
 			if not best or gain > best_gain or (gain == best_gain and recipe.makes < best.makes) then
 				best, best_gain = recipe, gain
 			end
