@@ -1202,6 +1202,29 @@ paying 64 rent, dinners at 64, and the census at 3328 emeralds every day.
 Peddler activity; `market.lua` stalls stocked from real surplus; browsers buy. The
 cartographer's banners (wool and a stick) sell to villagers decorating for the market.
 
+Landed as `market_stall.lua` (handed to `market.lua` by `init.lua` with the economy on),
+the peddler in `labour.lua`, a value floor in `ledger.assess` (`least`), the banner and
+peddle wants in `possessions.assess`, and the cartographer's recipes. Merged on tests and
+an engine load check, without a probe run. Choices the design left open:
+
+* A stall shows its seller's top two spare goods that it carries, by value. One with
+  nothing spare shows the old fixed pair for its profession and sells nothing; a nitwit
+  with nothing spare stays a browser, and one with spare goods, a peddler among them,
+  now keeps a stall.
+* Browsers buy by exchange.lua's rules, for the stall's goods alone: every 5 s the
+  seller offers them to the adults within 6, each once a stall day. Other sellers do
+  not browse.
+* A peddler's deal is an item heard spare at one price and needed at 1.5 times that or
+  more by another villager. Its lot is as many as both sides and its emeralds allow, up
+  to 16, and its bid a third of the way from the asking price to the need's. Buying
+  goes through its own trade trips and conversations: its ledger wants the lot, valued
+  at the bid and no more. Holding the lot, or after a day, it sells at no less than the
+  bid, through conversations, buyers' trips and its stall, for up to 4 days in all.
+  It gathers nothing while peddling.
+* A banner lasts 4 market days. A villager that kept a stall in the last 3 days and
+  has none flying wants one, worth no more than its price. Only white banners, from 6
+  white wool and a stick; the banner is not placed on the stall yet, only logged.
+
 ## Open questions
 
 - Pacing: hunger rate, craft time, starting stock and rent all need probe runs on

@@ -1,5 +1,8 @@
 -- Representative market goods and seller sessions (#291-#293).
 -- This controller is called by the bell wrapper; it does not install entity hooks.
+-- With the economy on (ticket 12) init.lua hands it market_stall.lua (M.use_economy):
+-- a stall then shows what its seller really has spare, flies a banner, and sells to the
+-- browsers near; the fixed goods below are the fallback for a seller with nothing spare.
 local core = minetest
 local common = dofile(core.get_modpath("living_villages") .. "/common.lua")
 local cells = dofile(core.get_modpath("living_villages") .. "/cells.lua")
@@ -35,6 +38,12 @@ end
 
 local M = {}
 
+-- market_stall.lua, with the economy on.
+local economy
+function M.use_economy(stall)
+	economy = stall
+end
+
 function M.profession(villager)
 	return villager._profession
 end
@@ -48,6 +57,20 @@ end
 -- `attempt` is the transient session object, allowing the controller to log
 -- just one fallback reason even if it retries the lookup during that attempt.
 function M.goods_for(villager, attempt)
+	if attempt and attempt.goods then return attempt.goods end
+	if economy then
+		local own = {}
+		for _, name in ipairs(economy.goods(villager) or {}) do
+			local resolved = registered_good(name)
+			if resolved then own[#own + 1] = resolved end
+		end
+		if #own > 0 then
+			local list = {own[1], own[2] or own[1]}
+			-- Kept for the session: eligible() asks every tick.
+			if attempt then attempt.goods = list end
+			return list
+		end
+	end
 	local profession = M.profession(villager)
 	local pair = goods[profession]
 	if not pair then
@@ -360,6 +383,9 @@ function M.new(options)
 				api.leave(self, "packed")
 				return "holding"
 			end
+			if economy and not session.packing_at then
+				economy.serve(self, session.goods, real_now(), session.stall_day)
+			end
 			hold_seller(self, session)
 			return "holding"
 		end
@@ -472,6 +498,8 @@ function M.new(options)
 				return fallback(self, session, "stall lease setup failed")
 			end
 			session.arrived = true
+			session.stall_day = day
+			if economy then economy.open(self, day) end
 			core.log("action", "[living_villages] market seller opened a stall")
 			return "holding"
 		end

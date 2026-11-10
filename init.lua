@@ -615,6 +615,10 @@ core.register_on_mods_loaded(function()
 	-- After the tavern, so its seated-guest check sees a pew first.
 	dofile(core.get_modpath("living_villages") .. "/church.lua").install(def, seat, cleric)
 	local bell = dofile(core.get_modpath("living_villages") .. "/bell.lua")
+	-- With the economy on, stalls show and sell real surplus (market_stall.lua, ticket 12).
+	if dofile(core.get_modpath("living_villages") .. "/economy_clock.lua").enabled() then
+		market.use_economy(dofile(core.get_modpath("living_villages") .. "/market_stall.lua"))
+	end
 	local market_controller = market.new({site = market_site, props = market_props, navigation = navigation_api})
 	bell.install(def, market_controller, navigation_api)
 	-- The shepherd's flock (#215) steers VoxeLibre's own sheep and, while the shepherd

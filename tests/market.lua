@@ -564,4 +564,42 @@ do
 		"a queued plan deferred during a short trade is replanned even if trade ends before a tick")
 end
 
+-- With the economy on (ticket 12): a stall shows the seller's own spare goods, kept for
+-- the session, falls back to the fixed pair with none, flies a banner on opening and
+-- serves browsers while open.
+do
+	local opened, served = {}, {}
+	local own = {seller = {"mcl_core:cobble", "mcl_core:apple"}}
+	registered["mcl_core:cobble"] = {}
+	market.use_economy({
+		goods = function(villager) return own[villager._id] end,
+		open = function(villager, open_day) opened[#opened + 1] = {villager, open_day} end,
+		serve = function(villager, items, _, stall_day) served[#served + 1] = {villager, items, stall_day} end,
+	})
+	local attempt = {}
+	local got = market.goods_for({_id = "seller", _profession = "farmer"}, attempt)
+	assert(got[1] == "mcl_core:cobble" and got[2] == "mcl_core:apple" and attempt.goods == got)
+	own.seller = nil
+	assert(market.goods_for({_id = "seller", _profession = "farmer"}, attempt) == got, "kept for the session")
+	assert(market.goods_for({_id = "seller", _profession = "farmer"}, {})[1] == "mcl_farming:bread", "nothing spare: the fixed pair")
+	own.nina = {"mcl_core:cobble"}
+	local nitwit = market.goods_for({_id = "nina", _profession = "nitwit"}, {})
+	assert(nitwit[1] == "mcl_core:cobble" and nitwit[2] == "mcl_core:cobble", "a nitwit with spare goods sells them")
+	assert(market.eligible({_id = "nina", _profession = "nitwit"}))
+	own.nina = nil
+	assert(not market.eligible({_id = "nina", _profession = "nitwit"}), "and with none, browses")
+
+	local controller, _, _, seller, bell = controller_fixture()
+	own[seller._id] = {"mcl_core:apple"}
+	controller.tick(seller, bell, 0)
+	controller.tick(seller, bell, 0)
+	seller._villages_goto_route.status = "arrived"
+	assert(controller.tick(seller, bell, 0) == "holding")
+	assert(#opened == 1 and opened[1][1] == seller and opened[1][2] == day, "the stall opens with a banner")
+	assert(controller.tick(seller, bell, 0) == "holding")
+	assert(#served >= 1 and served[#served][1] == seller and served[#served][2][1] == "mcl_core:apple"
+		and served[#served][3] == day, "an open stall serves browsers")
+	market.use_economy(nil)
+end
+
 print("market goods and eligibility tests passed")
