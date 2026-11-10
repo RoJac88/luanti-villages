@@ -1065,6 +1065,10 @@ yet shown. Choices from those runs:
 * A trade trip reads the uncapped urgency: a tool's value is capped at its worth, which
   kept urgency below the trip threshold (run 46).
 * Market news always tells a surplus someone has asked for (run 47).
+* News also passes at the tavern (`meal.lua`): once an evening a seated villager swaps
+  market news with the keeper on duty, served or not, so the keeper carries one diner's
+  need to another's supply. In run 50 the farmer had four conversations in three hours
+  and never heard of the tool smith's hoe, which it posted as a need all along.
 
 ### 11e. Leather
 
