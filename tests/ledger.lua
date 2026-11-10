@@ -88,6 +88,8 @@ local capped = ledger.assess({id = "f", profession = "farmer", held = {},
 	extra = {["mcl_farming:hoe_stone"] = 1}, worth = {["mcl_farming:hoe_stone"] = 100}})
 assert(capped.needs["mcl_farming:hoe_stone"] == 1)
 assert(capped.value("mcl_farming:hoe_stone") == 100, capped.value("mcl_farming:hoe_stone"))
+-- The need itself is as urgent as any wanted whole, whatever the cap.
+assert(capped.urgency("mcl_farming:hoe_stone") == ledger.MAX_URGENCY)
 local cheap = ledger.assess({id = "f", profession = "farmer", held = {},
 	extra = {["mcl_farming:hoe_stone"] = 1}, worth = {["mcl_farming:hoe_stone"] = 500}})
 assert(cheap.value("mcl_farming:hoe_stone") == ledger.price("mcl_farming:hoe_stone") * ledger.MAX_URGENCY)

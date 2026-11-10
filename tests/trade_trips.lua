@@ -394,6 +394,23 @@ do
 	assert(trips.activity_override(own, "work") == nil, "the Builder has its own")
 end
 
+-- A farmer with no hoe plans a trip to a tool smith that has one, though the hoe is worth
+-- under URGENT times its price (wants.lua caps it at what it brings): run 46.
+do
+	local HOE = "mcl_farming:hoe_stone"
+	local ledger = dofile("ledger.lua")
+	local fern = villager("fern-farmer", {x = 0, y = 1, z = 0},
+		{_profession = "farmer", _villages_belongings = {[EMERALD] = 200}})
+	local fern_view = possessions.assess(fern)
+	assert(fern_view.needs[HOE] == 1)
+	assert(fern_view.value(HOE) < trips.URGENT * ledger.price(HOE), "capped below URGENT")
+	assert(trips.urgency(fern_view, HOE) >= trips.URGENT)
+	local hoe_news = has_news("tess-smith", HOE, {x = 15, y = 1, z = 0}, ledger.price(HOE) * 0.6)
+	hoe_news.count = 1
+	local hoe_trip = trips.plan(fern, fern_view, {hoe_news}, fern._bed)
+	assert(hoe_trip and hoe_trip.item == HOE and hoe_trip.who == "tess-smith", "a trip for the hoe")
+end
+
 -- Off with the economy: no hire.
 settings.living_villages_economy = false
 assert(#trips.hire({}) == 0)
