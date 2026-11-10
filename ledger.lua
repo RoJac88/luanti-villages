@@ -276,7 +276,9 @@ end
 -- input: {id, profession, max_tier, held = {item = count}, food_points, hunger_per_day,
 -- foods = {item = points} (food.POINTS), extra = {item = count} (a Builder's missing
 -- materials, goods that wear out), worth = {item = emeralds} (the most an item is worth
--- to it whatever its need: what a good that wears out brings over its life, wants.lua)}.
+-- to it whatever its need: what a good that wears out brings over its life, wants.lua),
+-- least = {item = emeralds} (the least it will take for an item: a peddler's stock is
+-- worth what it paid, labour.lua, ticket 12)}.
 -- Returns {targets, needs, surplus, value = function(item), urgency = function(item)}:
 -- urgency is the need's own (M.urgency), before `worth` caps the value, so a good that
 -- wears out, wanted whole, is still as urgent as any other need (trade_trips.lua).
@@ -325,7 +327,9 @@ function M.assess(input)
 		if item == EMERALD then return 1 end
 		local value = price * M.urgency(held[item] or 0, targets[item] or 0)
 		local most = input.worth and input.worth[item]
-		return most and math.min(value, most) or value
+		if most then value = math.min(value, most) end
+		local least = input.least and input.least[item]
+		return least and math.max(value, least) or value
 	end
 	local function urgency(item)
 		return M.urgency(held[item] or 0, targets[item] or 0)

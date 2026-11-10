@@ -38,7 +38,27 @@
 -- * porter (ticket 11): carries goods for others on trade trips (trade_trips.lua), hired
 --   at the end of a conversation; labour.lua only chooses it. Its site is the market: it
 --   is open when the villager has heard of an item one villager needs and another has
---   spare, and its income is PORTER_INCOME, a fee or two a day.
+--   spare. Its income is what it has found portering pays (ticket 12): one PORTER_FEE
+--   times its hires over its porter days, counted from one hire in two days
+--   (`_villages_porter_record`, {days, hires}: days counted here, hires by
+--   trade_trips.lua), so a porter nobody hires turns to other work. A flat two fees a day
+--   had every unemployed villager portering, unhired, over any small peddling deal.
+-- * peddler (ticket 12): buys surplus below the going price and sells where it has heard
+--   of need, keeping the margin. Its site is the market too: a deal is an item it has
+--   heard one villager has spare at one price and another needs at PEDDLE_MARGIN times
+--   that or more (M.deal). Its lot is as many as both sides and its emeralds allow, up
+--   to PEDDLE_MAX, and its income the spread on it. Choosing it sets `_villages_peddle`:
+--   {item, count, bid, sell_at, day, buying}. The bid is BID_SHARE of the way from the
+--   asking price to the need's. Buying, its ledger wants the lot at the bid and no more
+--   (possessions.assess), so its trade trips (trade_trips.lua) and conversations buy it.
+--   Holding the lot, or after PEDDLE_BUY_DAYS, it sells: what it holds is spare, at no
+--   less than the bid, through conversations, buyers' trips to it and its market stall
+--   (market_stall.lua). Sold out, or after PEDDLE_DAYS, the peddle ends (M.peddle_tick).
+--
+-- Home. Every radius above is from the villager's bed. One with no bed (a village has
+-- more villagers than free beds) works from the nearest village bell within BELL_RADIUS
+-- of where it stands when it chooses its day, or with none from that spot
+-- (`_villages_labour_home`, chosen afresh each day, so a bed claimed later takes over).
 --
 -- Trips are planned walks (navigation.lua's gopath), within 50 of the bed, so vanilla
 -- never calls the villager home mid-trip. A trunk is solid, so a trip to a tree ends on
@@ -75,6 +95,13 @@ local COBBLE = "mcl_core:cobble"
 local QUARRY_RADIUS, QUARRY_HEIGHT = 32, 8
 -- A Builder wants cobble by the hundred, so a quarrier keeps more of it.
 local QUARRY_KEEP = 64
+local BELL = "mcl_bells:bell"
+local BELL_RADIUS, BELL_HEIGHT = 48, 16
+local PEDDLE_MARGIN = 1.5
+local PEDDLE_MAX = 16
+local BID_SHARE = 1 / 3
+local PEDDLE_BUY_DAYS = 1
+local PEDDLE_DAYS = 4
 -- Where lava or water may touch a generator's cobble from: the four sides and above.
 local TOUCHING = {{1, 0, 0}, {-1, 0, 0}, {0, 0, 1}, {0, 0, -1}, {0, 1, 0}}
 
@@ -106,19 +133,22 @@ local ACTIVITIES = {
 	woodcutter = {rate = 10, goods = {}},
 	quarrier = {rate = 32, goods = {[COBBLE] = 1}},
 	porter = {rate = 0, goods = {}},
+	peddler = {rate = 0, goods = {}},
 }
--- A fee or two a day, in emeralds at ledger.SCALE (ticket 11h), like the prices it is weighed with.
-local PORTER_INCOME = 2 * dofile(core.get_modpath("living_villages") .. "/ledger.lua").SCALE
+-- trade_trips.lua's PORTER_FEE, in emeralds at ledger.SCALE (ticket 11h).
+local PORTER_FEE = 1 * dofile(core.get_modpath("living_villages") .. "/ledger.lua").SCALE
 -- A woodcutter's goods are one species at a time: the best price heard for any.
 for _, species in ipairs(SPECIES) do
 	ACTIVITIES.woodcutter.goods[species.log] = 0.9
 	ACTIVITIES.woodcutter.goods[species.sapling] = 0.1
 end
-local NAMES = {"forager", "woodcutter", "quarrier", "porter"}
+local NAMES = {"forager", "woodcutter", "quarrier", "porter", "peddler"}
 
 local M = {
 	ACTIVITIES = ACTIVITIES, YESTERDAY_BIAS = YESTERDAY_BIAS, GROVE_MAX = GROVE_MAX,
 	KEEP_GATHERED = KEEP_GATHERED, CHARCOAL_KEEP = CHARCOAL_KEEP, QUARRY_KEEP = QUARRY_KEEP,
+	PEDDLE_MARGIN = PEDDLE_MARGIN, PEDDLE_MAX = PEDDLE_MAX, BID_SHARE = BID_SHARE,
+	PEDDLE_BUY_DAYS = PEDDLE_BUY_DAYS, PEDDLE_DAYS = PEDDLE_DAYS,
 }
 
 local function short_id(self)
@@ -127,6 +157,32 @@ end
 
 -- Targets each villager could not reach, by position, until when. Not saved.
 local skipped = setmetatable({}, {__mode = "k"})
+
+-- Where its work is reckoned from: its bed, or its day's home (M.choose_home).
+local function home(self)
+	return self._bed or self._villages_labour_home
+end
+M.home = home
+
+-- A bedless villager's home for the day: the nearest bell near it, or where it stands.
+function M.choose_home(self)
+	if self._bed then
+		self._villages_labour_home = nil
+		return self._bed
+	end
+	local pos = self.object and self.object:get_pos()
+	if not pos then return self._villages_labour_home end
+	pos = vector.round(pos)
+	local best, best_distance
+	for _, bell in ipairs(core.find_nodes_in_area(
+		{x = pos.x - BELL_RADIUS, y = pos.y - BELL_HEIGHT, z = pos.z - BELL_RADIUS},
+		{x = pos.x + BELL_RADIUS, y = pos.y + BELL_HEIGHT, z = pos.z + BELL_RADIUS}, {BELL})) do
+		local distance = vector.distance(pos, bell)
+		if distance <= BELL_RADIUS and (not best or distance < best_distance) then best, best_distance = bell, distance end
+	end
+	self._villages_labour_home = best and vector.new(best) or pos
+	return self._villages_labour_home
+end
 
 local function key(pos)
 	return pos.x .. "," .. pos.y .. "," .. pos.z
@@ -184,14 +240,49 @@ function M.trade_waiting(heard)
 	return false
 end
 
--- Expected income of each activity from what it has heard.
-function M.incomes(heard)
+-- The best deal a peddler with `emeralds` has heard of, or nil: {item, count, bid,
+-- sell_at, income}. The asking price is what the one with it spare values it at, the
+-- selling price what the one in need does.
+function M.deal(heard, emeralds)
+	local best
+	for _, has in ipairs(heard) do
+		if has.kind == "has" and has.price and has.price > 0 then
+			for _, need in ipairs(heard) do
+				if need.kind == "needs" and need.item == has.item and need.who ~= has.who and need.price
+					and need.price >= has.price * PEDDLE_MARGIN then
+					local bid = has.price + (need.price - has.price) * BID_SHARE
+					local count = math.min(has.count or 0, need.count or 0, PEDDLE_MAX, math.floor((emeralds or 0) / bid))
+					local income = count * (need.price - bid)
+					if count >= 1 and (not best or income > best.income
+						or (income == best.income and has.item < best.item)) then
+						best = {item = has.item, count = count, bid = bid, sell_at = need.price, income = income}
+					end
+				end
+			end
+		end
+	end
+	return best
+end
+
+-- What portering is worth a day to one with this record: a fee per hire it has had per
+-- porter day, starting from one hire in two days.
+function M.porter_income(record)
+	record = record or {}
+	return PORTER_FEE * ((record.hires or 0) + 1) / ((record.days or 0) + 2)
+end
+
+-- Expected income of each activity from what it has heard, with `emeralds` to buy with
+-- and its portering `record`.
+function M.incomes(heard, emeralds, record)
 	local prices = news.asking(heard)
 	local incomes = {}
 	for name, activity in pairs(ACTIVITIES) do
 		local income = 0
 		if name == "porter" then
-			income = M.trade_waiting(heard) and PORTER_INCOME or 0
+			income = M.trade_waiting(heard) and M.porter_income(record) or 0
+		elseif name == "peddler" then
+			local deal = M.deal(heard, emeralds)
+			income = deal and deal.income or 0
 		elseif name == "woodcutter" then
 			for _, species in ipairs(SPECIES) do
 				local here = activity.rate * (0.9 * (prices[species.log] or 0) + 0.1 * (prices[species.sapling] or 0))
@@ -206,8 +297,8 @@ function M.incomes(heard)
 end
 
 -- The day's activity among `available` (a set of names), or nil if none. roll is in [0, 1).
-function M.choose(heard, available, yesterday, roll)
-	local incomes = M.incomes(heard)
+function M.choose(heard, available, yesterday, roll, emeralds, record)
+	local incomes = M.incomes(heard, emeralds, record)
 	local best, best_score
 	local open = {}
 	for _, name in ipairs(NAMES) do
@@ -260,7 +351,7 @@ end
 
 -- Every forager target, as {pos, kind, object}.
 function M.forage_targets(self)
-	local bed = self._bed
+	local bed = home(self)
 	local targets = {}
 	if not bed then return targets end
 	if possessions.count(self, BERRY) < KEEP_GATHERED then
@@ -341,7 +432,7 @@ end
 
 -- A new grove spot, nearest the bed first, or nil.
 function M.grove_spot(self)
-	local bed = self._bed
+	local bed = home(self)
 	if not bed then return nil end
 	local minp, maxp = area(bed, GROVE_RADIUS, GROVE_HEIGHT)
 	local candidates = {}
@@ -362,8 +453,9 @@ end
 -- A wild tree to take a sapling from under: the foot of a trunk with its own leaves
 -- above, which the logs in a house never have. Returns its position and species.
 local function wild_tree(self)
-	if not self._bed then return nil end
-	local minp, maxp = area(self._bed, WILD_TREE_RADIUS, FORAGE_HEIGHT)
+	local bed = home(self)
+	if not bed then return nil end
+	local minp, maxp = area(bed, WILD_TREE_RADIUS, FORAGE_HEIGHT)
 	for _, pos in ipairs(core.find_nodes_in_area(minp, maxp, LOGS)) do
 		local species = BY_LOG[core.get_node_or_nil(pos).name]
 		local below = core.get_node_or_nil({x = pos.x, y = pos.y - 1, z = pos.z})
@@ -438,7 +530,7 @@ end
 
 -- Every generator cobble within reach of its bed, as {pos, kind = "cobble"}.
 function M.quarry_targets(self)
-	local bed = self._bed
+	local bed = home(self)
 	local targets = {}
 	if not bed or possessions.count(self, COBBLE) >= QUARRY_KEEP then return targets end
 	local minp, maxp = area(bed, QUARRY_RADIUS, QUARRY_HEIGHT)
@@ -529,7 +621,38 @@ local function available(self)
 	if #grove(self) > 0 or carried_sapling(self) or wild_tree(self) then open.woodcutter = true end
 	if #M.quarry_targets(self) > 0 then open.quarrier = true end
 	if M.trade_waiting(news.heard(self)) then open.porter = true end
+	if self._villages_peddle or M.deal(news.heard(self), possessions.emeralds(self)) then open.peddler = true end
 	return open
+end
+
+-- Starts a peddle from the best deal heard. Returns it, or nil.
+function M.start_peddle(self, heard, day)
+	local deal = M.deal(heard, possessions.emeralds(self))
+	if not deal then return nil end
+	self._villages_peddle = {item = deal.item, count = deal.count, bid = deal.bid, sell_at = deal.sell_at,
+		day = day, buying = true}
+	core.log("action", string.format("[living_villages] villager %s peddles %d %s: buys at up to %.1f, heard of need at %.1f",
+		short_id(self), deal.count, deal.item, deal.bid, deal.sell_at))
+	return self._villages_peddle
+end
+
+-- Moves a peddle on: from buying to selling once it holds the lot or the buying days
+-- are over, and to its end once sold out or its days are over.
+function M.peddle_tick(self, day)
+	local peddle = self._villages_peddle
+	if not peddle then return nil end
+	local held = possessions.count(self, peddle.item)
+	if peddle.buying and (held >= peddle.count or day > peddle.day + PEDDLE_BUY_DAYS - 1) then
+		peddle.buying = nil
+		core.log("action", string.format("[living_villages] villager %s has %d %s to peddle", short_id(self), held, peddle.item))
+	end
+	if not peddle.buying and (held == 0 or day >= peddle.day + PEDDLE_DAYS) then
+		core.log("action", string.format("[living_villages] villager %s ends its peddle of %s (%d left)",
+			short_id(self), peddle.item, held))
+		self._villages_peddle = nil
+		return nil
+	end
+	return peddle
 end
 
 -- Today's activity, choosing it first if the day is new.
@@ -538,19 +661,40 @@ function M.today(self)
 	local labour = self._villages_labour
 	if labour and labour.day == day then return labour.activity end
 	local yesterday = labour and labour.activity
-	local activity = M.choose(news.heard(self), available(self), yesterday, math.random())
+	M.peddle_tick(self, day)
+	M.choose_home(self)
+	local heard = news.heard(self)
+	local activity = M.choose(heard, available(self), yesterday, math.random(), possessions.emeralds(self),
+		self._villages_porter_record)
+	-- A peddle under way goes on: what it bought is still to sell.
+	if self._villages_peddle and activity ~= "peddler" then activity = "peddler" end
+	if activity == "peddler" and not self._villages_peddle and not M.start_peddle(self, heard, day) then
+		activity = nil
+	end
 	self._villages_labour = {day = day, activity = activity}
+	if activity == "porter" then
+		local record = self._villages_porter_record or {days = 0, hires = 0}
+		record.days = record.days + 1
+		self._villages_porter_record = record
+	end
 	if activity then
 		core.log("action", string.format("[living_villages] villager %s (%s) works as a %s today",
 			short_id(self), tostring(self._profession), activity))
 	else
 		local trees = 0
-		if self._bed then
-			local minp, maxp = area(self._bed, WILD_TREE_RADIUS, FORAGE_HEIGHT)
+		local from = home(self)
+		if from then
+			local minp, maxp = area(from, WILD_TREE_RADIUS, FORAGE_HEIGHT)
 			trees = #core.find_nodes_in_area(minp, maxp, LOGS)
 		end
-		core.log("action", string.format("[living_villages] villager %s (%s) finds no work today (bed %s, %d logs near)",
-			short_id(self), tostring(self._profession), self._bed and core.pos_to_string(self._bed) or "none", trees))
+		local where = self._bed and ("bed " .. core.pos_to_string(self._bed))
+			or (from and ("no bed, works from " .. core.pos_to_string(from))) or "no bed"
+		-- What it heard, so a log tells no deal from no news (ticket 12).
+		local kinds = {needs = 0, has = 0}
+		for _, entry in ipairs(heard) do kinds[entry.kind] = (kinds[entry.kind] or 0) + 1 end
+		core.log("action", string.format("[living_villages] villager %s (%s) finds no work today (%s, %d logs near, "
+			.. "heard %d news: %d needs, %d has, no peddling deal)",
+			short_id(self), tostring(self._profession), where, trees, #heard, kinds.needs, kinds.has))
 	end
 	return activity
 end
@@ -608,6 +752,11 @@ function M.step(self, now)
 	self._villages_labour_next = now + TICK_SECONDS
 	local activity = M.today(self)
 	local pos = self.object:get_pos()
+	-- A peddler's work is its trades: buying, then selling (M.peddle_tick).
+	if activity == "peddler" then
+		M.peddle_tick(self, core.get_day_count())
+		return
+	end
 	-- A porter's work is its trips (trade_trips.lua).
 	if not activity or not pos or activity == "porter" then return end
 	local target, distance
@@ -684,6 +833,11 @@ function M.status(self)
 	local text = labour.activity or "nothing to do"
 	if labour.activity == "woodcutter" then text = text .. ", grove of " .. #(self._villages_grove or {}) end
 	if labour.activity == "porter" then text = text .. (self._villages_trade_trip and ", on a trip" or ", waiting for hire") end
+	local peddle = self._villages_peddle
+	if labour.activity == "peddler" and peddle then
+		text = text .. string.format(", %s %d %s at %.1f", peddle.buying and "buying" or "selling",
+			peddle.buying and peddle.count or possessions.count(self, peddle.item), peddle.item, peddle.bid)
+	end
 	return text
 end
 

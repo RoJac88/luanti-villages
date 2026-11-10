@@ -42,6 +42,13 @@ local BASE = "living_villages_villager_base.png^living_villages_villager_plains.
 local SLEEP_BOX = {-0.25, 0, -0.25, 0.25, 0.3, 0.25}
 -- Villager jump strength (see register_on_mods_loaded); vanilla mcl_mobs uses 4.
 local JUMP_HEIGHT = 5
+-- Villager walking speed in m/s (living_villages_walk_velocity); vanilla's is 1.2, which
+-- left a spread-out village's errands, trips and market walks taking most of a stage.
+-- Running and the walk animation scale with it, so legs keep pace with the ground.
+local VANILLA_WALK = 1.2
+local WALK_VELOCITY = tonumber(core.settings and core.settings:get("living_villages_walk_velocity")) or 1.8
+if WALK_VELOCITY <= 0 then WALK_VELOCITY = VANILLA_WALK end
+local WALK_SCALE = WALK_VELOCITY / VANILLA_WALK
 -- A bed exit is the square a villager stepped into its bed from, so it is
 -- always adjacent to the bed. Anything further is a record left over from
 -- some other bed and must never be teleported back to (#84).
@@ -72,8 +79,8 @@ local profession_overlay = {
 local badges = {"stone", "iron", "gold", "emerald", "diamond"}
 local animation = {
 	stand_start = 0, stand_end = 0,
-	walk_start = 0, walk_end = 40, walk_speed = 35,
-	run_start = 0, run_end = 40, run_speed = 35,
+	walk_start = 0, walk_end = 40, walk_speed = math.floor(35 * WALK_SCALE + 0.5),
+	run_start = 0, run_end = 40, run_speed = math.floor(35 * WALK_SCALE + 0.5),
 	sleep_start = 82, sleep_end = 82, sleep_speed = 0,
 }
 
@@ -298,6 +305,8 @@ core.register_on_mods_loaded(function()
 	-- falls back. 5 peaks at 0.95 m, which clears it with room to spare and is
 	-- still short of a 1.5-node fence.
 	def.jump_height = JUMP_HEIGHT
+	def.walk_velocity = WALK_VELOCITY
+	def.run_velocity = (def.run_velocity or 2 * VANILLA_WALK) * WALK_SCALE
 	local original_anim = table.copy(def.animation)
 	local original_child_anim = table.copy(def._child_animations)
 	local original_head_swivel = def.head_swivel
@@ -615,7 +624,13 @@ core.register_on_mods_loaded(function()
 	-- After the tavern, so its seated-guest check sees a pew first.
 	dofile(core.get_modpath("living_villages") .. "/church.lua").install(def, seat, cleric)
 	local bell = dofile(core.get_modpath("living_villages") .. "/bell.lua")
+	-- With the economy on, stalls show and sell real surplus (market_stall.lua, ticket 12).
+	if dofile(core.get_modpath("living_villages") .. "/economy_clock.lua").enabled() then
+		market.use_economy(dofile(core.get_modpath("living_villages") .. "/market_stall.lua"))
+	end
 	local market_controller = market.new({site = market_site, props = market_props, navigation = navigation_api})
+	-- /living_villages_market, for testing the market and labour by hand.
+	dofile(core.get_modpath("living_villages") .. "/market_test.lua").install()
 	bell.install(def, market_controller, navigation_api)
 	-- The shepherd's flock (#215) steers VoxeLibre's own sheep and, while the shepherd
 	-- grazes it, answers get_activity for it. A farmer out in its field and a fisherman at the water are answered the same way.

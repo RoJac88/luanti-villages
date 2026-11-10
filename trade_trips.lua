@@ -548,6 +548,10 @@ function M.hire(members)
 							value = view.value(trip.item),
 						}
 						porter._villages_trade_trip = trip
+						-- What portering pays, for its choice of work (labour.lua).
+						local record = porter._villages_porter_record or {days = 1, hires = 0}
+						record.hires = record.hires + 1
+						porter._villages_porter_record = record
 						hires[#hires + 1] = {porter = porter, client = client, trip = trip}
 						log("villager %s hired porter %s with %d emerald(s) for %d %s from %s", short_id(client._id),
 							short_id(porter._id), purse, trip.want, trip.item, short_id(trip.who))

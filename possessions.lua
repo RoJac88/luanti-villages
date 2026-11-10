@@ -41,6 +41,8 @@ local OWNER, OWNER_BED = "villages_owner", "villages_owner_bed"
 local EMERALD = "mcl_core:emerald"
 -- herd.lua's HERD_WHEAT, held by a leatherworker for breeding (ticket 11e).
 local HERD_WHEAT_ITEM, HERD_WHEAT = "mcl_farming:wheat_item", 4
+-- market_stall.lua's banner and BANNER_DAYS (ticket 12): a stall keeper wants a banner.
+local BANNER, BANNER_DAYS = "mcl_banners:banner_item_white", 3
 -- Work chests, and how near their node they are.
 local PANTRY_RADIUS = 6
 local WORKSHOP_RADIUS = 6
@@ -389,6 +391,24 @@ function M.assess(self)
 	if self._profession == "leatherworker" and not self.child then
 		extra[HERD_WHEAT_ITEM] = (extra[HERD_WHEAT_ITEM] or 0) + HERD_WHEAT
 	end
+	-- One that kept a stall lately and has no banner flying wants one, worth no more than
+	-- its price (market_stall.lua).
+	local stall_day, day = self._villages_stall_day, core.get_day_count and core.get_day_count()
+	if stall_day and day and day - stall_day <= BANNER_DAYS and (self._villages_banner_left or 0) <= 0 then
+		extra[BANNER] = (extra[BANNER] or 0) + 1
+		worth[BANNER] = math.min(worth[BANNER] or math.huge, ledger.price(BANNER) or math.huge)
+	end
+	-- A peddler (labour.lua): buying, it wants its lot at its bid and no more; holding it,
+	-- it takes no less than the bid, so it never sells at a loss.
+	local least
+	local peddle = self._villages_peddle
+	if peddle then
+		if peddle.buying then
+			extra[peddle.item] = (extra[peddle.item] or 0) + peddle.count
+			worth[peddle.item] = peddle.bid
+		end
+		least = {[peddle.item] = peddle.bid}
+	end
 	return ledger.assess({
 		id = self._id,
 		profession = (self._villages_keeper and "keeper") or (self._villages_builder and "builder") or self._profession,
@@ -400,6 +420,7 @@ function M.assess(self)
 		-- What a Builder's chests are short of (builder_market.lua), and goods that wear out (wants.lua).
 		extra = extra,
 		worth = worth,
+		least = least,
 	})
 end
 

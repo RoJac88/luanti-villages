@@ -357,10 +357,88 @@ do
 		"a villager does not trade with itself")
 	assert(labour.incomes({wants, offers}).porter > 0 and labour.incomes({}).porter == 0)
 	assert(labour.choose({wants, offers}, {porter = true, forager = true}, nil, 0) == "porter")
+	-- What portering pays is learnt: a fee per hire per porter day, from one in two.
+	assert(labour.porter_income(nil) == 32 and labour.porter_income({days = 6, hires = 0}) == 8)
+	assert(labour.porter_income({days = 2, hires = 3}) == 64)
+	-- A small peddling deal beats portering nobody hires.
+	local offers2 = {item = "mcl_core:coal_lump", kind = "has", price = 6, count = 4, who = "cole", heard = now, hops = 1}
+	local wants2 = {item = "mcl_core:coal_lump", kind = "needs", price = 14, count = 4, who = "smith", heard = now, hops = 1}
+	local open2 = {porter = true, peddler = true}
+	assert(labour.choose({offers2, wants2}, open2, nil, 0, 1000) == "porter", "a new porter's hopes")
+	assert(labour.choose({offers2, wants2}, open2, nil, 0, 1000, {days = 4, hires = 0}) == "peddler", "after days unhired")
 	local pam = villager({_id = "pam", _villages_labour = {day = day, activity = "porter"}})
 	labour.step(pam, now + 5000)
 	assert(#pam.walks == 0, "it walks only on a trip")
 	assert(labour.status(pam) == "porter, waiting for hire")
+end
+
+-- No bed: it works from the nearest bell near it, or where it stands; a bed takes over.
+do
+	local bea = villager({_id = "bea", _bed = false})
+	bea.move_to({x = 200, y = 1, z = 200})
+	nodes[key({x = 205, y = 4, z = 200})] = "mcl_bells:bell"
+	nodes[key({x = 210, y = 1, z = 200})] = "mcl_farming:sweet_berry_bush_3"
+	local from = labour.choose_home(bea)
+	assert(from.x == 205 and from.y == 4 and bea._villages_labour_home and labour.home(bea) == bea._villages_labour_home)
+	local found = false
+	for _, target in ipairs(labour.forage_targets(bea)) do
+		if target.pos.x == 210 and target.pos.z == 200 then found = true end
+	end
+	assert(found, "it forages about the bell")
+	nodes[key({x = 205, y = 4, z = 200})] = nil
+	from = labour.choose_home(bea)
+	assert(from.x == 200 and from.z == 200, "no bell: where it stands")
+	bea._bed = {x = 1, y = 1, z = 1}
+	assert(labour.choose_home(bea) == bea._bed and bea._villages_labour_home == nil, "a bed takes over")
+	nodes[key({x = 210, y = 1, z = 200})] = nil
+end
+
+-- Peddler: a deal is an item heard spare at one price and needed at PEDDLE_MARGIN times
+-- that elsewhere; it buys at its bid, then sells, and the peddle ends sold out.
+do
+	local COAL = "mcl_core:coal_lump"
+	-- Prices at ledger.SCALE, as heard.
+	local S = 64
+	local offers = {item = COAL, kind = "has", price = 4 * S, count = 10, who = "cole", heard = now, hops = 1}
+	local wants = {item = COAL, kind = "needs", price = 10 * S, count = 6, who = "smith", heard = now, hops = 1}
+	local deal = labour.deal({offers, wants}, 100000)
+	assert(deal and deal.item == COAL and deal.count == 6 and deal.bid == 4 * S + 6 * S * labour.BID_SHARE and deal.sell_at == 10 * S)
+	assert(math.abs(deal.income - 6 * (10 * S - deal.bid)) < 1e-9)
+	assert(labour.deal({offers, wants}, 12 * S).count == 2, "as many as its emeralds buy")
+	assert(labour.deal({offers, wants}, S) == nil, "none at all")
+	assert(labour.deal({offers, {item = COAL, kind = "needs", price = 5 * S, count = 6, who = "smith", heard = now, hops = 1}}, 100000) == nil,
+		"too thin a margin")
+	assert(labour.deal({offers, {item = COAL, kind = "needs", price = 10 * S, count = 6, who = "cole", heard = now, hops = 1}}, 100000) == nil,
+		"not from and to the same villager")
+	assert(labour.incomes({offers, wants}, 100000).peddler > 0 and labour.incomes({offers, wants}, 0).peddler == 0)
+
+	local pedro = villager({_id = "pedro", _villages_belongings = {["mcl_core:emerald"] = 100000},
+		_villages_market_news = {offers, wants}})
+	day = day + 1
+	-- With no site for anything else, it peddles.
+	assert(labour.today(pedro) == "peddler")
+	local peddle = pedro._villages_peddle
+	assert(peddle and peddle.buying and peddle.item == COAL and peddle.count == 6 and peddle.day == day)
+	assert(labour.status(pedro):find("buying 6", 1, true))
+	-- Holding the lot, it sells.
+	possessions.add(pedro, COAL, 6)
+	labour.peddle_tick(pedro, day)
+	assert(not peddle.buying and labour.status(pedro):find("selling 6", 1, true))
+	-- A peddle under way is today's work whatever it hears.
+	pedro._villages_market_news = nil
+	day = day + 1
+	assert(labour.today(pedro) == "peddler")
+	-- Sold out, it ends.
+	possessions.take(pedro, COAL, 6)
+	labour.peddle_tick(pedro, day)
+	assert(pedro._villages_peddle == nil)
+	-- Buying gives way to selling after its buying days, and a peddle with nothing bought ends.
+	pedro._villages_peddle = {item = COAL, count = 6, bid = 6 * S, sell_at = 10 * S, day = day, buying = true}
+	possessions.add(pedro, COAL, 2)
+	labour.peddle_tick(pedro, day + labour.PEDDLE_BUY_DAYS)
+	assert(pedro._villages_peddle and not pedro._villages_peddle.buying)
+	labour.peddle_tick(pedro, day + labour.PEDDLE_DAYS)
+	assert(pedro._villages_peddle == nil, "its days are over")
 end
 
 print("labour.lua: ok")

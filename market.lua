@@ -1,5 +1,8 @@
 -- Representative market goods and seller sessions (#291-#293).
 -- This controller is called by the bell wrapper; it does not install entity hooks.
+-- With the economy on (ticket 12) init.lua hands it market_stall.lua (M.use_economy):
+-- a stall then shows what its seller really has spare, flies a banner, and sells to the
+-- browsers near; the fixed goods below are the fallback for a seller with nothing spare.
 local core = minetest
 local common = dofile(core.get_modpath("living_villages") .. "/common.lua")
 local cells = dofile(core.get_modpath("living_villages") .. "/cells.lua")
@@ -35,6 +38,12 @@ end
 
 local M = {}
 
+-- market_stall.lua, with the economy on.
+local economy
+function M.use_economy(stall)
+	economy = stall
+end
+
 function M.profession(villager)
 	return villager._profession
 end
@@ -48,6 +57,20 @@ end
 -- `attempt` is the transient session object, allowing the controller to log
 -- just one fallback reason even if it retries the lookup during that attempt.
 function M.goods_for(villager, attempt)
+	if attempt and attempt.goods then return attempt.goods end
+	if economy then
+		local own = {}
+		for _, name in ipairs(economy.goods(villager) or {}) do
+			local resolved = registered_good(name)
+			if resolved then own[#own + 1] = resolved end
+		end
+		if #own > 0 then
+			local list = {own[1], own[2] or own[1]}
+			-- Kept for the session: eligible() asks every tick.
+			if attempt then attempt.goods = list end
+			return list
+		end
+	end
 	local profession = M.profession(villager)
 	local pair = goods[profession]
 	if not pair then
@@ -292,10 +315,21 @@ function M.new(options)
 			local goto_route = self._villages_goto_route
 			if unrelated_route(self) or (goto_route
 				and (goto_route.status == "planning" or goto_route.status == "travelling")) then
+				-- Said once a market day, so a seller that never sets up is accounted for.
+				core.log("action", string.format("[living_villages] market seller browsing: villager %s is busy walking (%s)",
+					tostring(self._id):sub(1, 6), goto_route and tostring(goto_route.market_token or goto_route.status) or "another route"))
 				return "browse"
 			end
-			local eligible = M.eligible(self, {})
-			if not eligible then return "browse" end
+			local eligible, why = M.eligible(self, {})
+			if not eligible then
+				-- Keepers, Builders and children never sell; no goods is logged by goods_for.
+				local quiet = {no_goods = true, keeper = true, builder = true, child = true}
+				if not quiet[why] then
+					core.log("action", string.format("[living_villages] market seller browsing: villager %s (%s) %s",
+						tostring(self._id):sub(1, 6), tostring(M.profession(self)), tostring(why)))
+				end
+				return "browse"
+			end
 			local center = bell_session.center
 			if not center then return "browse" end
 			serial = serial + 1
@@ -360,6 +394,9 @@ function M.new(options)
 				api.leave(self, "packed")
 				return "holding"
 			end
+			if economy and not session.packing_at then
+				economy.serve(self, session.goods, real_now(), session.stall_day)
+			end
 			hold_seller(self, session)
 			return "holding"
 		end
@@ -389,7 +426,10 @@ function M.new(options)
 				hold_seller(self, session)
 				return "holding"
 			end
-			if status == "exhausted" then return fallback(self, session, "no stall site found") end
+			if status == "exhausted" then
+				local why = site.reasons and (" (turned down: " .. site.reasons(session.search) .. ")") or ""
+				return fallback(self, session, "no stall site found" .. why)
+			end
 			session.reservation = reservation
 			session.layout = reservation.layout
 			if not start_market_walk(self, session) then
@@ -472,7 +512,10 @@ function M.new(options)
 				return fallback(self, session, "stall lease setup failed")
 			end
 			session.arrived = true
-			core.log("action", "[living_villages] market seller opened a stall")
+			session.stall_day = day
+			if economy then economy.open(self, day) end
+			core.log("action", string.format("[living_villages] market seller opened a stall: villager %s (%s) shows %s",
+				tostring(self._id):sub(1, 6), tostring(M.profession(self)), table.concat(items, ", ")))
 			return "holding"
 		end
 

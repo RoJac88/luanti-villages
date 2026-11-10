@@ -9,10 +9,11 @@
 local core = minetest
 local common = dofile(core.get_modpath("living_villages") .. "/common.lua")
 local BELL = "mcl_bells:bell"
--- How far from its bed a villager looks for a bell: its own village, as for
--- the tavern (tavern.lua).
-local SEARCH_RADIUS = 48
-local SEARCH_HEIGHT = 16
+-- How far from its bed a villager looks for a bell: its own village. A hilly one
+-- spreads wide and tall (ticket 12: a bell 18 above most beds, and 54 to 70 across from
+-- others, drew one villager to the market), so this is wider than the tavern's.
+local SEARCH_RADIUS = 64
+local SEARCH_HEIGHT = 32
 -- How often a villager with no bell looks again.
 local SEARCH_SECONDS = 5
 -- Villagers drift within this many nodes of the bell, and take a spot at least
@@ -222,9 +223,17 @@ local function join(self, pos, dtime, market_only)
 	end
 	if not bell then
 		if now() < (self._villages_bell_checked or 0) then return end
-		local site = nearest_bell(self, self._bed or vector.round(pos))
+		local origin = self._bed or vector.round(pos)
+		local site = nearest_bell(self, origin)
 		if not site then
 			self._villages_bell_checked = now() + SEARCH_SECONDS
+			-- Once a holiday, so a villager missing the gathering shows in the log.
+			local day = core.get_day_count and core.get_day_count()
+			if day and self._villages_bell_missed ~= day then
+				self._villages_bell_missed = day
+				core.log("action", string.format("[living_villages] villager %s finds no bell within %d of %s",
+					tostring(self._id):sub(1, 6), SEARCH_RADIUS, core.pos_to_string and core.pos_to_string(vector.round(origin)) or "?"))
+			end
 			return
 		end
 		local center = center_of(site)

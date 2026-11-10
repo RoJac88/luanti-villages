@@ -17,8 +17,9 @@
 --   goods a village can supply, never enchanted ones.
 --
 -- Left out, so they restock as vanilla does: the farmer, fisherman and shepherd, whose
--- work loops make their goods; the cleric, whose goods have no recipe; the
--- cartographer, whose map needs a compass a village cannot make. Fletching flint from
+-- work loops make their goods; the cleric, whose goods have no recipe. The cartographer
+-- makes only banners (ticket 12), for stalls (market_stall.lua): its map needs a compass
+-- a village cannot make. Fletching flint from
 -- gravel is one for one, where a player digging gets flint one time in ten: the
 -- fletcher's table sells it that way.
 local COBBLE, STICK = "mcl_core:cobble", "mcl_core:stick"
@@ -48,6 +49,12 @@ return {
 		{makes = "mcl_mobitems:cooked_chicken", count = 1, tier = 2, from = {{"mcl_mobitems:chicken", 1}}, fuel = 1},
 		-- The leatherworker's herd's beef (herd.lua, ticket 11e), for the tavern.
 		{makes = "mcl_mobitems:cooked_beef", count = 1, tier = 1, from = {{"mcl_mobitems:beef", 1}}, fuel = 1},
+	},
+	-- White wool from the shepherd, sticks of its own (mcl_banners' recipe: six wool, a stick).
+	cartographer = {
+		{makes = "mcl_banners:banner_item_white", count = 1, tier = 4, from = {{"mcl_wool:white", 6}, {STICK, 1}}},
+		{makes = STICK, count = 4, tier = 1, from = {{"mcl_core:wood", 2}}},
+		{makes = "mcl_core:wood", count = 4, tier = 1, from = {{"mcl_core:tree", 1}}},
 	},
 	fletcher = {
 		{makes = "mcl_bows:arrow", count = 4, tier = 1,
