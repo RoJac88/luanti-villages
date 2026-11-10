@@ -19,6 +19,12 @@
 -- time to night, then back to the morning: a new day (get_day_count) whose work stage no
 -- villager saw the start of from the wrong side.
 --
+-- lv_probe_skip_nights = true (with lv_probe_news) skips the night once every villager is
+-- asleep (the keeper last, at 19000): from NIGHT_FROM it sets the time to MORNING, just
+-- before the putter stage, a new day as midnight would be. Game time (get_gametime) runs
+-- on, so the economic clock, hunger and crop growth count no skipped hours: a run sees
+-- more days per real minute, and less eaten and grown per day.
+--
 -- lv_probe_nitwits = N (with lv_probe_news; economy ticket 7) makes N unemployed adults
 -- nitwits at the first step. A new village's unemployed soon all find jobsites, and
 -- nitwits never do, so labour.lua has someone to drive.
@@ -33,6 +39,8 @@
 local core = minetest
 
 local census = {}
+-- lv_probe_skip_nights: the sleep stage, keeper included, and the morning it skips to.
+local NIGHT_FROM, NIGHT_TO, MORNING = 19200 / 24000, 5300 / 24000, 5400 / 24000
 local wells = dofile(core.get_modpath("lv_probe") .. "/wells.lua")
 
 local STATIONS = {
@@ -163,6 +171,7 @@ function census.run(area, emit, done)
 	local news_timeline = {}
 	local money, money_day = {}, nil
 	local skipping, skipped = nil, 0
+	local nights = 0
 	local schedule = core.get_modpath("living_villages")
 		and dofile(core.get_modpath("living_villages") .. "/common.lua") or nil
 	local function adults()
@@ -195,6 +204,15 @@ function census.run(area, emit, done)
 				end
 			end
 			if waited == 0 and skip == 0 then core.set_timeofday(0.24) end
+			if not skipping and core.settings:get_bool("lv_probe_skip_nights", false) then
+				local tod = core.get_timeofday()
+				if tod >= NIGHT_FROM or tod < NIGHT_TO then
+					core.set_timeofday(MORNING)
+					nights = nights + 1
+					core.log("action", string.format("[lv_probe] skipped the night to day %d (%d skipped)",
+						core.get_day_count(), nights))
+				end
+			end
 		elseif putter > 0 then
 			core.settings:set("time_speed", "0")
 			if waited == 0 or waited == putter then core.set_timeofday(wanted) end

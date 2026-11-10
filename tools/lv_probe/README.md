@@ -106,6 +106,11 @@ Two more for economy runs: `lv_probe_skip_days = N` starts the census N days lat
 with no work stage, and the first is often one), and `lv_probe_nitwits = N` makes N unemployed adults nitwits at the
 start, since a new village's unemployed soon find jobsites and leave `labour.lua` no one to drive.
 
+`lv_probe_skip_nights = true` (with `lv_probe_news`) skips each night once every villager is asleep, setting the time to
+just before the morning: about 44% of a game day, so a long economy run takes a little over half the time. Game time
+runs on, so the economic clock, hunger and crop growth count no skipped hours; per-day food and harvest figures run
+low, while anything counted per real minute is unchanged. Each skip logs `[lv_probe] skipped the night to day N`.
+
 Where the money sits (economy ticket 11b): with `lv_probe_news`, the first step of each game day logs
 `[lv_probe] emeralds day N: villagers T (the five richest), pouches, stashes, pantry, farms, bench, barrels, other`, and the census
 record gains `emeralds`, one snapshot per day and one at the end. Villagers' emeralds are their belongings;
