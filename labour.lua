@@ -51,6 +51,11 @@
 --   less than the bid, through conversations, buyers' trips to it and its market stall
 --   (market_stall.lua). Sold out, or after PEDDLE_DAYS, the peddle ends (M.peddle_tick).
 --
+-- Home. Every radius above is from the villager's bed. One with no bed (a village has
+-- more villagers than free beds) works from the nearest village bell within BELL_RADIUS
+-- of where it stands when it chooses its day, or with none from that spot
+-- (`_villages_labour_home`, chosen afresh each day, so a bed claimed later takes over).
+--
 -- Trips are planned walks (navigation.lua's gopath), within 50 of the bed, so vanilla
 -- never calls the villager home mid-trip. A trunk is solid, so a trip to a tree ends on
 -- an open cell beside it. A target it could not reach is passed over for SKIP_SECONDS
@@ -86,6 +91,8 @@ local COBBLE = "mcl_core:cobble"
 local QUARRY_RADIUS, QUARRY_HEIGHT = 32, 8
 -- A Builder wants cobble by the hundred, so a quarrier keeps more of it.
 local QUARRY_KEEP = 64
+local BELL = "mcl_bells:bell"
+local BELL_RADIUS, BELL_HEIGHT = 48, 16
 local PEDDLE_MARGIN = 1.5
 local PEDDLE_MAX = 16
 local BID_SHARE = 1 / 3
@@ -146,6 +153,32 @@ end
 
 -- Targets each villager could not reach, by position, until when. Not saved.
 local skipped = setmetatable({}, {__mode = "k"})
+
+-- Where its work is reckoned from: its bed, or its day's home (M.choose_home).
+local function home(self)
+	return self._bed or self._villages_labour_home
+end
+M.home = home
+
+-- A bedless villager's home for the day: the nearest bell near it, or where it stands.
+function M.choose_home(self)
+	if self._bed then
+		self._villages_labour_home = nil
+		return self._bed
+	end
+	local pos = self.object and self.object:get_pos()
+	if not pos then return self._villages_labour_home end
+	pos = vector.round(pos)
+	local best, best_distance
+	for _, bell in ipairs(core.find_nodes_in_area(
+		{x = pos.x - BELL_RADIUS, y = pos.y - BELL_HEIGHT, z = pos.z - BELL_RADIUS},
+		{x = pos.x + BELL_RADIUS, y = pos.y + BELL_HEIGHT, z = pos.z + BELL_RADIUS}, {BELL})) do
+		local distance = vector.distance(pos, bell)
+		if distance <= BELL_RADIUS and (not best or distance < best_distance) then best, best_distance = bell, distance end
+	end
+	self._villages_labour_home = best and vector.new(best) or pos
+	return self._villages_labour_home
+end
 
 local function key(pos)
 	return pos.x .. "," .. pos.y .. "," .. pos.z
@@ -306,7 +339,7 @@ end
 
 -- Every forager target, as {pos, kind, object}.
 function M.forage_targets(self)
-	local bed = self._bed
+	local bed = home(self)
 	local targets = {}
 	if not bed then return targets end
 	if possessions.count(self, BERRY) < KEEP_GATHERED then
@@ -387,7 +420,7 @@ end
 
 -- A new grove spot, nearest the bed first, or nil.
 function M.grove_spot(self)
-	local bed = self._bed
+	local bed = home(self)
 	if not bed then return nil end
 	local minp, maxp = area(bed, GROVE_RADIUS, GROVE_HEIGHT)
 	local candidates = {}
@@ -408,8 +441,9 @@ end
 -- A wild tree to take a sapling from under: the foot of a trunk with its own leaves
 -- above, which the logs in a house never have. Returns its position and species.
 local function wild_tree(self)
-	if not self._bed then return nil end
-	local minp, maxp = area(self._bed, WILD_TREE_RADIUS, FORAGE_HEIGHT)
+	local bed = home(self)
+	if not bed then return nil end
+	local minp, maxp = area(bed, WILD_TREE_RADIUS, FORAGE_HEIGHT)
 	for _, pos in ipairs(core.find_nodes_in_area(minp, maxp, LOGS)) do
 		local species = BY_LOG[core.get_node_or_nil(pos).name]
 		local below = core.get_node_or_nil({x = pos.x, y = pos.y - 1, z = pos.z})
@@ -484,7 +518,7 @@ end
 
 -- Every generator cobble within reach of its bed, as {pos, kind = "cobble"}.
 function M.quarry_targets(self)
-	local bed = self._bed
+	local bed = home(self)
 	local targets = {}
 	if not bed or possessions.count(self, COBBLE) >= QUARRY_KEEP then return targets end
 	local minp, maxp = area(bed, QUARRY_RADIUS, QUARRY_HEIGHT)
@@ -616,6 +650,7 @@ function M.today(self)
 	if labour and labour.day == day then return labour.activity end
 	local yesterday = labour and labour.activity
 	M.peddle_tick(self, day)
+	M.choose_home(self)
 	local heard = news.heard(self)
 	local activity = M.choose(heard, available(self), yesterday, math.random(), possessions.emeralds(self))
 	-- A peddle under way goes on: what it bought is still to sell.
@@ -629,12 +664,19 @@ function M.today(self)
 			short_id(self), tostring(self._profession), activity))
 	else
 		local trees = 0
-		if self._bed then
-			local minp, maxp = area(self._bed, WILD_TREE_RADIUS, FORAGE_HEIGHT)
+		local from = home(self)
+		if from then
+			local minp, maxp = area(from, WILD_TREE_RADIUS, FORAGE_HEIGHT)
 			trees = #core.find_nodes_in_area(minp, maxp, LOGS)
 		end
-		core.log("action", string.format("[living_villages] villager %s (%s) finds no work today (bed %s, %d logs near)",
-			short_id(self), tostring(self._profession), self._bed and core.pos_to_string(self._bed) or "none", trees))
+		local where = self._bed and ("bed " .. core.pos_to_string(self._bed))
+			or (from and ("no bed, works from " .. core.pos_to_string(from))) or "no bed"
+		-- What it heard, so a log tells no deal from no news (ticket 12).
+		local kinds = {needs = 0, has = 0}
+		for _, entry in ipairs(heard) do kinds[entry.kind] = (kinds[entry.kind] or 0) + 1 end
+		core.log("action", string.format("[living_villages] villager %s (%s) finds no work today (%s, %d logs near, "
+			.. "heard %d news: %d needs, %d has, no peddling deal)",
+			short_id(self), tostring(self._profession), where, trees, #heard, kinds.needs, kinds.has))
 	end
 	return activity
 end

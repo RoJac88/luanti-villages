@@ -1227,6 +1227,9 @@ an engine load check, without a probe run. Choices the design left open:
 * The stall site search samples 144 spots instead of 48, and up to 3 nodes above and
   below the bell's floor instead of 1: in manual testing a village's sellers found no
   site at all. A search that finds none logs why its candidates were turned down.
+* A villager with no bed (a village often has more villagers than free beds) found no
+  work at all, since every activity's radius was from its bed. It now works from the
+  nearest bell, or where it stands when it chooses its day.
 * For testing by hand, `/living_villages_market` (`market_test.lua`) opens the market
   now as on a holiday, or starts a working day with labour chosen afresh.
 

@@ -363,6 +363,27 @@ do
 	assert(labour.status(pam) == "porter, waiting for hire")
 end
 
+-- No bed: it works from the nearest bell near it, or where it stands; a bed takes over.
+do
+	local bea = villager({_id = "bea", _bed = false})
+	bea.move_to({x = 200, y = 1, z = 200})
+	nodes[key({x = 205, y = 4, z = 200})] = "mcl_bells:bell"
+	nodes[key({x = 210, y = 1, z = 200})] = "mcl_farming:sweet_berry_bush_3"
+	local from = labour.choose_home(bea)
+	assert(from.x == 205 and from.y == 4 and bea._villages_labour_home and labour.home(bea) == bea._villages_labour_home)
+	local found = false
+	for _, target in ipairs(labour.forage_targets(bea)) do
+		if target.pos.x == 210 and target.pos.z == 200 then found = true end
+	end
+	assert(found, "it forages about the bell")
+	nodes[key({x = 205, y = 4, z = 200})] = nil
+	from = labour.choose_home(bea)
+	assert(from.x == 200 and from.z == 200, "no bell: where it stands")
+	bea._bed = {x = 1, y = 1, z = 1}
+	assert(labour.choose_home(bea) == bea._bed and bea._villages_labour_home == nil, "a bed takes over")
+	nodes[key({x = 210, y = 1, z = 200})] = nil
+end
+
 -- Peddler: a deal is an item heard spare at one price and needed at PEDDLE_MARGIN times
 -- that elsewhere; it buys at its bid, then sells, and the peddle ends sold out.
 do
