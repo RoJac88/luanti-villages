@@ -16,22 +16,45 @@
 --   buyer has spare and carries, as many as make up the midpoint value, again only if
 --   both gain by their own values.
 --
+-- Standing (ticket 11c): a trader that thinks well of the other (gossip.lua, a villager
+-- subject, such as a donor at the holiday service) moves the price toward it, by up to
+-- STANDING_SHIFT of the midpoint at FULL_STANDING, but never past either value: a seller
+-- that likes the buyer charges less, a buyer that likes the seller pays more.
+--
 -- Goods pass from belongings to belongings (possessions.lua) with food.show_handover's
 -- item across. With the economy off nothing is traded.
 local core = minetest
 local clock = dofile(core.get_modpath("living_villages") .. "/economy_clock.lua")
 local possessions = dofile(core.get_modpath("living_villages") .. "/possessions.lua")
 local food = dofile(core.get_modpath("living_villages") .. "/food.lua")
+local gossip = dofile(core.get_modpath("living_villages") .. "/gossip.lua")
 
 local EMERALD = "mcl_core:emerald"
 -- A sale must come to at least this many emeralds before rounding, or it grows: less,
 -- rounded up to a whole emerald, would cost the buyer more than it values the goods.
 local MIN_SALE = 1
+local STANDING_SHIFT = 0.1
+-- major_positive's 20 at its multiplier of 5.
+local FULL_STANDING = 100
 
-local M = {}
+local M = {STANDING_SHIFT = STANDING_SHIFT, FULL_STANDING = FULL_STANDING}
 
 local function short_id(self)
 	return tostring(self._id):sub(1, 6)
+end
+
+-- How well `self` thinks of `other`, from 0 to 1.
+local function standing(self, other)
+	if not other._id then return 0 end
+	local r = gossip.reputation(self, gossip.villager_subject(other._id))
+	return math.min(math.max(r / FULL_STANDING, 0), 1)
+end
+
+-- The midpoint price, moved by each side's standing with the other.
+function M.unit_price(seller, buyer, to_seller, to_buyer)
+	local unit = (to_buyer + to_seller) / 2
+	local shift = STANDING_SHIFT * (standing(buyer, seller) - standing(seller, buyer))
+	return math.min(math.max(unit * (1 + shift), to_seller), to_buyer)
 end
 
 -- How many of the item the villager can hand over now: spare, and carried.
@@ -69,7 +92,7 @@ function M.offer(seller, seller_view, buyer, buyer_view, only)
 		local available = item ~= EMERALD and (not only or item == only) and spare(seller, seller_view, item) or 0
 		local to_buyer, to_seller = buyer_view.value(item), seller_view.value(item)
 		if available > 0 and to_buyer and to_seller and to_buyer > to_seller then
-			local unit = (to_buyer + to_seller) / 2
+			local unit = M.unit_price(seller, buyer, to_seller, to_buyer)
 			local count = math.min(wanted, available)
 			-- No more than its emeralds pay for (unless it barters, below, for the whole lot).
 			local affordable = math.floor(possessions.emeralds(buyer) / unit)
