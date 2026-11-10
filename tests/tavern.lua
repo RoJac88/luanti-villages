@@ -14,6 +14,7 @@ local function parse(k)
 end
 
 vector = {
+	new = function(a) return {x = a.x, y = a.y, z = a.z} end,
 	equals = function(a, b) return a.x == b.x and a.y == b.y and a.z == b.z end,
 	distance = function(a, b) return math.sqrt((a.x - b.x) ^ 2 + (a.y - b.y) ^ 2 + (a.z - b.z) ^ 2) end,
 	add = function(a, n) return {x = a.x + n, y = a.y + n, z = a.z + n} end,

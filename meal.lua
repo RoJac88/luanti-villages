@@ -28,6 +28,12 @@
 -- from home keeps its emeralds. One that cannot pay is not served. Each payment is
 -- logged (ticket 11b), so a probe run shows where the money goes.
 --
+-- News at the tavern: once an evening, a villager seated at a tavern whose keeper is on
+-- duty swaps market news with the keeper (market_news.exchange), served or not. The
+-- keeper hears every diner, so it carries what one needs to another that has it: in
+-- run 50 a farmer had four conversations in three hours and never heard of the tool
+-- smith's hoe. `_villages_tavern_news` holds the day.
+--
 -- Load this once, at top-level load time (init.lua): it registers the entity,
 -- which Luanti allows only then, and the plate holds are its own in-memory
 -- table.
@@ -37,6 +43,7 @@ local keeper = dofile(core.get_modpath("living_villages") .. "/keeper.lua")
 local food = dofile(core.get_modpath("living_villages") .. "/food.lua")
 local pantry = dofile(core.get_modpath("living_villages") .. "/tavern_pantry.lua")
 local possessions = dofile(core.get_modpath("living_villages") .. "/possessions.lua")
+local news = dofile(core.get_modpath("living_villages") .. "/market_news.lua")
 local ENTITY = "living_villages:meal"
 local PLATE = "mcl_itemframes:plate"
 -- A guest waits this long after sitting down before it is served.
@@ -300,13 +307,26 @@ local function serve(self, jukebox)
 	if chests and not self._villages_on_bite then food.receive(self, item) end
 end
 
+-- Swaps market news with the keeper on duty, once a day. Returns whether it did.
+function M.tavern_news(self, jukebox)
+	local today = core.get_day_count()
+	if not is_villager(self) or self._villages_keeper or self._villages_tavern_news == today then return false end
+	local keeper_entity = keeper_on_duty(jukebox)
+	if not keeper_entity then return false end
+	self._villages_tavern_news = today
+	news.exchange({self, keeper_entity})
+	return true
+end
+
 -- Each tick while seated at dinner, after the seat has been held.
 function M.tick(self, dtime, jukebox)
 	local meal = self._villages_meal
 	if not meal then
-		if self._villages_meal_day == core.get_day_count() or not jukebox then return end
+		if not jukebox then return end
 		self._villages_seated_at = self._villages_seated_at or now()
 		if now() - self._villages_seated_at < WAIT_SECONDS then return end
+		M.tavern_news(self, jukebox)
+		if self._villages_meal_day == core.get_day_count() then return end
 		serve(self, jukebox)
 		return
 	end

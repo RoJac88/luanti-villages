@@ -78,6 +78,16 @@ assert(gossip.reputation(rich, subject) == 0)
 assert(alms.status(rich) == "gave 80 on day 8" and alms.status(broke) == "alms on day 8")
 assert(alms.status(priest):find("alms fund 7", 1, true))
 
+-- Each one there swapped market news with the cleric, once this holiday.
+assert(rich._villages_church_news == day and broke._villages_church_news == day and not priest._villages_church_news)
+local heard_rich = false
+for _, entry in ipairs(priest._villages_market_news or {}) do
+	if entry.who == "farmer1" then heard_rich = true end
+end
+assert(heard_rich, "the cleric heard the farmer's news")
+assert(alms.church_news(priest, rich, day) == false and alms.church_news(priest, rich, day + 4) == true)
+rich._villages_church_news = day
+
 -- Once a holiday: a second look the same day changes nothing.
 alms.hold(priest, {broke, priest, rich, middling}, day, gossip)
 assert(emeralds(rich) == alms.SAVINGS + 800 - gift and emeralds(priest) == 40)

@@ -14,6 +14,7 @@ local function parse(k)
 end
 
 vector = {
+	new = function(a) return {x = a.x, y = a.y, z = a.z} end,
 	equals = function(a, b) return a.x == b.x and a.y == b.y and a.z == b.z end,
 	distance = function(a, b) return math.sqrt((a.x - b.x) ^ 2 + (a.y - b.y) ^ 2 + (a.z - b.z) ^ 2) end,
 	round = function(a) return {x = math.floor(a.x + 0.5), y = math.floor(a.y + 0.5), z = math.floor(a.z + 0.5)} end,
@@ -191,6 +192,13 @@ assert(shown.name == "living_villages:meal" and shown.props.wield_item == alice.
 assert(shown.pos.x == 3 and math.abs(shown.pos.y - 0.58) < 1e-6, "on the plate")
 assert(stacks[key(plate)] == nil, "nothing put in the plate's inventory")
 assert(alice._villages_meal_day == day)
+-- Seated at a staffed tavern, she swapped market news with the keeper, once today.
+assert(alice._villages_tavern_news == day and not kate._villages_tavern_news)
+local told_kate = false
+for _, entry in ipairs(kate._villages_market_news or {}) do
+	if entry.who == "alice" then told_kate = true end
+end
+assert(told_kate, "the keeper heard her news")
 def.do_custom(alice, 0.1)
 assert(particles > 0 and sounds > 0, "eats: particles and the bite sound")
 
