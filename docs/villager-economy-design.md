@@ -1224,6 +1224,11 @@ an engine load check, without a probe run. Choices the design left open:
 * A banner lasts 4 market days. A villager that kept a stall in the last 3 days and
   has none flying wants one, worth no more than its price. Only white banners, from 6
   white wool and a stick; the banner is not placed on the stall yet, only logged.
+* The stall site search samples 144 spots instead of 48, and up to 3 nodes above and
+  below the bell's floor instead of 1: in manual testing a village's sellers found no
+  site at all. A search that finds none logs why its candidates were turned down.
+* For testing by hand, `/living_villages_market` (`market_test.lua`) opens the market
+  now as on a holiday, or starts a working day with labour chosen afresh.
 
 ## Open questions
 

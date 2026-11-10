@@ -415,7 +415,10 @@ function M.new(options)
 				hold_seller(self, session)
 				return "holding"
 			end
-			if status == "exhausted" then return fallback(self, session, "no stall site found") end
+			if status == "exhausted" then
+				local why = site.reasons and (" (turned down: " .. site.reasons(session.search) .. ")") or ""
+				return fallback(self, session, "no stall site found" .. why)
+			end
 			session.reservation = reservation
 			session.layout = reservation.layout
 			if not start_market_walk(self, session) then

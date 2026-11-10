@@ -13,8 +13,12 @@ local CARDINALS = {
 }
 local FLOOR_TOLERANCE = 0.1
 local AIR = "air"
-local MAX_CANDIDATES = 48
+-- A lumpy plaza can have few flat spots (ticket 12: a village found none of 48), so
+-- the search samples more and looks a few nodes above and below the bell's floor.
+local MAX_CANDIDATES = 144
 local CANDIDATES_PER_STEP = 4
+local HEIGHTS = {0, 1, -1, 2, -2, 3, -3}
+site.MAX_CANDIDATES, site.CANDIDATES_PER_STEP = MAX_CANDIDATES, CANDIDATES_PER_STEP
 local RESERVATION_SECONDS = 10
 local reservations = {}
 local next_token = 0
@@ -261,6 +265,27 @@ local function candidate_layout(center, dx, dz, y)
 	return layout
 end
 
+-- Why candidates were turned down, counted per reason, for the log.
+local function note(search, reason)
+	search.reasons = search.reasons or {}
+	search.reasons[reason] = (search.reasons[reason] or 0) + 1
+end
+
+-- The reasons a search turned candidates down, most first: "uneven_floor 80, ...".
+function site.reasons(search)
+	local list = {}
+	for reason, count in pairs(type(search) == "table" and search.reasons or {}) do
+		list[#list + 1] = {reason = reason, count = count}
+	end
+	table.sort(list, function(a, b)
+		if a.count ~= b.count then return a.count > b.count end
+		return a.reason < b.reason
+	end)
+	local parts = {}
+	for _, entry in ipairs(list) do parts[#parts + 1] = entry.reason .. " " .. entry.count end
+	return #parts > 0 and table.concat(parts, ", ") or "none tried"
+end
+
 function site.begin_search(center, owner, options)
 	if type(center) ~= "table" or owner == nil then return nil end
 	next_token = next_token + 1
@@ -276,9 +301,10 @@ local function reserve(search, layout)
 	local now = now_from(search.options)
 	expire(now)
 	-- No yield or callback occurs between the last conflict check and insertion.
-	if not valid_layout_base(layout, search.options) then return nil end
+	local ok, reason = valid_layout_base(layout, search.options)
+	if not ok then return nil, reason end
 	for _, other in pairs(reservations) do
-		if conflicts(layout, other) then return nil end
+		if conflicts(layout, other) then return nil, "taken" end
 	end
 	local reservation = {
 		_market_site = site, owner = search.owner, token = search.token,
@@ -308,16 +334,20 @@ function site.step_search(search)
 		examined = examined + 1
 		local dx, dz = sample_offset(search.options)
 		if dx then
-			for _, height in ipairs({0, 1, -1}) do
+			for _, height in ipairs(HEIGHTS) do
 				local layout = candidate_layout(search.center, dx, dz, search.center.y + height)
+				local reservation, reason
 				if layout then
-					local reservation = reserve(search, layout)
+					reservation, reason = reserve(search, layout)
 					if reservation then
 						search.reservation = reservation
 						return "found", reservation
 					end
 				end
+				note(search, reason or "out_of_range")
 			end
+		else
+			note(search, "out_of_range")
 		end
 	end
 	if search.sampled >= MAX_CANDIDATES then

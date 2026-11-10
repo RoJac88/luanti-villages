@@ -112,11 +112,24 @@ local HOLIDAY_KEEPER_SCHEDULE = {
 	{start = 19000, stage = "sleep"},
 }
 
+-- A test can make one day a holiday or a working day (`/living_villages_market`,
+-- market_test.lua): the setting living_villages_holiday_override is "<day>:holiday" or
+-- "<day>:work", set at run time only, and every module's copy of this file reads it.
+local function overridden(day)
+	local value = core.settings and core.settings:get("living_villages_holiday_override")
+	if not value or value == "" or not day then return nil end
+	local at, kind = value:match("^(%d+):(%a+)$")
+	if tonumber(at) ~= day then return nil end
+	return kind == "holiday"
+end
+
 -- mcl_moon advances the phase at midday, so a day's morning reads one phase
 -- behind its evening. The evening's phase stands for the whole day, which keeps
 -- the church morning and the bell afternoon on the same holiday.
 local function is_holiday(days_ahead)
 	days_ahead = days_ahead or 0
+	local forced = overridden(core.get_day_count and core.get_day_count() + days_ahead)
+	if forced ~= nil then return forced end
 	if mcl_moon and mcl_moon.get_moon_phase then
 		local phase = mcl_moon.get_moon_phase()
 		if core.get_timeofday() <= 0.5 then phase = phase + 1 end

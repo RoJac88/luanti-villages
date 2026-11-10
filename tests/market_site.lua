@@ -273,15 +273,17 @@ assert(site.valid(first_reservation.layout, first_reservation), "active reservat
 -- have reversed outward directions and identical exclusive/clearance columns.
 local random_calls = {count = 0}
 local opposite = site.begin_search({x = 22, y = 1, z = 10}, "seller-b", options(18000, 600, clock, random_calls))
-for step = 1, 12 do
+local steps = site.MAX_CANDIDATES / site.CANDIDATES_PER_STEP
+for step = 1, steps do
 	local calls_before = random_calls.count
 	local result = site.step_search(opposite)
 	assert(opposite.sampled <= step * 4, "no step examines more than four horizontal candidates")
 	assert(random_calls.count - calls_before <= 8, "a step generates no more than four horizontal candidates")
-	if step < 12 then assert(result == "pending", "conflicting search remains pending") end
+	if step < steps then assert(result == "pending", "conflicting search remains pending") end
 end
-assert(site.step_search(opposite) == "exhausted", "conflicting opposite-facing stall exhausts at 48")
-assert(opposite.sampled == 48, "search samples no more than 48 horizontal candidates")
+assert(site.step_search(opposite) == "exhausted", "conflicting opposite-facing stall exhausts at MAX_CANDIDATES")
+assert(opposite.sampled == site.MAX_CANDIDATES, "search samples no more than MAX_CANDIDATES horizontal candidates")
+assert(site.reasons(opposite):find("taken", 1, true), "the turned-down reasons are counted")
 assert(site.release(first_reservation), "release frees the first reservation")
 local after_release = site.begin_search({x = 22, y = 1, z = 10}, "seller-b", options(18000, 600, clock))
 local released_status, released_reservation = site.step_search(after_release)
@@ -338,8 +340,8 @@ assert(site.release(expiry_reservation), "arrival failure can release its lease"
 -- The rounded, completed table-pair midpoint must still fit the 4–12 range.
 local edge = site.begin_search({x = 10, y = 1, z = 10}, "edge", options(0, 1200, clock))
 assert(site.step_search(edge) == "pending", "out-of-range rounded midpoint is rejected")
-for _ = 1, 10 do assert(site.step_search(edge) == "pending", "edge samples remain bounded") end
-assert(site.step_search(edge) == "exhausted" and edge.sampled == 48,
+for _ = 1, site.MAX_CANDIDATES / site.CANDIDATES_PER_STEP - 2 do assert(site.step_search(edge) == "pending", "edge samples remain bounded") end
+assert(site.step_search(edge) == "exhausted" and edge.sampled == site.MAX_CANDIDATES,
 	"rounded midpoint outside twelve nodes never reserves")
 
 -- The site module must only read the map; it never edits, emerges, or routes.

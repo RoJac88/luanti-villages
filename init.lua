@@ -620,6 +620,8 @@ core.register_on_mods_loaded(function()
 		market.use_economy(dofile(core.get_modpath("living_villages") .. "/market_stall.lua"))
 	end
 	local market_controller = market.new({site = market_site, props = market_props, navigation = navigation_api})
+	-- /living_villages_market, for testing the market and labour by hand.
+	dofile(core.get_modpath("living_villages") .. "/market_test.lua").install()
 	bell.install(def, market_controller, navigation_api)
 	-- The shepherd's flock (#215) steers VoxeLibre's own sheep and, while the shepherd
 	-- grazes it, answers get_activity for it. A farmer out in its field and a fisherman at the water are answered the same way.
