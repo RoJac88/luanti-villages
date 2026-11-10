@@ -12,6 +12,10 @@
 -- moves the base count first, from the trader's own needs and hunger, and reputation
 -- then moves what it gives. With gossip off only the demand term applies.
 --
+-- Villagers are subjects too (ticket 11c, alms.lua): a donation is good gossip about the
+-- donor, under villager_subject(id), passed in its own share of a conversation, and
+-- exchange.lua reads it as standing.
+--
 -- Decay is worked out when the memory is next read, from the game time, so it costs
 -- nothing per tick. Unlike Java it counts time the villager was unloaded: a villager
 -- with no player within 48 nodes is suspended, so grudges would otherwise hardly fade.
@@ -39,8 +43,13 @@ local TYPES = {
 local TYPE_ORDER = {"major_positive", "minor_positive", "trading", "minor_negative", "major_negative"}
 -- Seconds of game time per decay step.
 local DECAY_SECONDS = 1200
--- At most this many entries pass from one villager to another in one conversation.
+-- At most this many entries pass from one villager to another in one conversation,
+-- and as many again about villagers (ticket 11c), so those do not crowd out players.
 local SHARE_ENTRIES = 10
+local VILLAGER_SHARE_ENTRIES = 10
+-- A villager as a gossip subject: a prefix no player name can hold (names are letters,
+-- digits, - and _), so the two never meet.
+local VILLAGER_PREFIX = "villager:"
 local WITNESS_RADIUS = 16
 local EYE = 1.5
 local PRICE_MULTIPLIER = 0.05
@@ -59,6 +68,14 @@ end
 
 local function short_id(self)
 	return tostring(self._id):sub(1, 6)
+end
+
+local function villager_subject(id)
+	return VILLAGER_PREFIX .. tostring(id)
+end
+
+local function is_villager_subject(subject)
+	return subject:sub(1, #VILLAGER_PREFIX) == VILLAGER_PREFIX
 end
 
 -- This villager's memory, decayed up to now, or nil if it remembers nothing.
@@ -116,29 +133,33 @@ local function reputation(self, subject)
 	return total
 end
 
--- What from can pass on: entries still worth something after the sharing cost.
-local function shareable(from)
+-- What from can pass on about players, or with `villagers` about villagers: entries
+-- still worth something after the sharing cost.
+local function shareable(from, villagers)
 	local list, total = {}, 0
 	for subject, entries in pairs(memory(from) or {}) do
-		for kind, value in pairs(entries) do
-			local info = TYPES[kind]
-			if value > info.cost then
-				local weight = value * math.abs(info.multiplier)
-				list[#list + 1] = {subject = subject, kind = kind, value = value - info.cost, weight = weight}
-				total = total + weight
+		if is_villager_subject(subject) == (villagers == true) then
+			for kind, value in pairs(entries) do
+				local info = TYPES[kind]
+				if value > info.cost then
+					local weight = value * math.abs(info.multiplier)
+					list[#list + 1] = {subject = subject, kind = kind, value = value - info.cost, weight = weight}
+					total = total + weight
+				end
 			end
 		end
 	end
 	return list, total
 end
 
--- from tells to up to SHARE_ENTRIES things, the strongest likeliest. Hearsay does not
--- pile up: to keeps the larger of what it had and what it heard, and what it heard
--- cost something, so it can never come back larger than it went out. Returns how many.
-local function share(from, to)
-	local list, total = shareable(from)
+-- from tells to up to SHARE_ENTRIES things about players and VILLAGER_SHARE_ENTRIES
+-- about villagers, the strongest likeliest. Hearsay does not pile up: to keeps the
+-- larger of what it had and what it heard, and what it heard cost something, so it can
+-- never come back larger than it went out. Returns how many.
+local function share_some(from, to, villagers, limit)
+	local list, total = shareable(from, villagers)
 	local told = 0
-	while #list > 0 and told < SHARE_ENTRIES do
+	while #list > 0 and told < limit do
 		local roll, chosen = math.random() * total, #list
 		for i, candidate in ipairs(list) do
 			roll = roll - candidate.weight
@@ -151,6 +172,10 @@ local function share(from, to)
 		told = told + 1
 	end
 	return told
+end
+
+local function share(from, to)
+	return share_some(from, to, false, SHARE_ENTRIES) + share_some(from, to, true, VILLAGER_SHARE_ENTRIES)
 end
 
 -- Everyone in a finished conversation tells everyone else, both ways.
@@ -461,6 +486,7 @@ return {
 	add = add,
 	reputation = reputation,
 	share = share,
+	villager_subject = villager_subject,
 	exchange = exchange,
 	price = price,
 	status = status,
@@ -468,6 +494,7 @@ return {
 	TYPES = TYPES,
 	DECAY_SECONDS = DECAY_SECONDS,
 	SHARE_ENTRIES = SHARE_ENTRIES,
+	VILLAGER_SHARE_ENTRIES = VILLAGER_SHARE_ENTRIES,
 	WITNESS_RADIUS = WITNESS_RADIUS,
 	REPUTATION_HOSTILE = REPUTATION_HOSTILE,
 	GOLEM_SCAN_SECONDS = GOLEM_SCAN_SECONDS,

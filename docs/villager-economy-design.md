@@ -1030,11 +1030,41 @@ tenth; alms to attendees who cannot pay for a dinner. Done when a probe run over
 holiday shows a farmer donating, the cleric keeping half, a broke villager getting alms
 and then buying a dinner, and the donor's standing spreading in conversation.
 
+Landed as `alms.lua` (installed in `init.lua` after `gossip.lua`), villager subjects in
+`gossip.lua` (`villager_subject`, with their own `VILLAGER_SHARE_ENTRIES` share) and
+`exchange.unit_price`. Merged on tests and an engine load check, without a probe run.
+Choices the design left open:
+
+* The cleric does it all, every second of the social stage, among the villagers within
+  12 of its pulpit (church.lua's social radius): donations first, so a gift can go out
+  as alms the same day. Anyone there counts as an attendee.
+* `SAVINGS` is 8 dinners (144) and a major gift 2 dinners (36): the design's 8 and 5
+  emeralds came before ticket 11h scaled money by 64.
+* Witnesses note `minor_positive` for every gift, and `major_positive` too for a major
+  one. As in Java, `major_positive` costs more to share than it can hold, so only the
+  minor entry spreads.
+* Standing moves the midpoint by up to a tenth at a reputation of 100, the buyer's
+  liking raising it and the seller's lowering it, never past either side's value.
+
 ### 11d. Goods that wear out
 
 `wants.lua` and its reading in the ledger and the work loops; stone hoe, axe and
 pickaxe. Done when a probe run shows a farmer, woodcutter or quarrier buying a stone
 tool from the tool smith, working faster with it, and buying another once it wears out.
+
+Landed as `wants.lua`, read by `possessions.assess`, `labour.lua` and `farmer.lua`, with
+changes in `ledger.lua`, `production.lua`, `market_news.lua` and `trade_trips.lua`. Probe
+runs 44 to 48 (seed 2007, chunk 208,768) showed a farmer taking a trade trip for a stone
+hoe, buying it for 67, harvesting with it and wearing it out; the second purchase is not
+yet shown. Choices from those runs:
+
+* Only a villager still labouring wants a labour tool (run 45).
+* A heard ask counts as at least its price when the tool smith chooses what to make, and
+  a crafter makes an output nobody asks for and it has no target for only while it holds
+  none (runs 46 and 48), so its sticks go to the hoe.
+* A trade trip reads the uncapped urgency: a tool's value is capped at its worth, which
+  kept urgency below the trip threshold (run 46).
+* Market news always tells a surplus someone has asked for (run 47).
 
 ### 11e. Leather
 
