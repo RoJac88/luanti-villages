@@ -214,6 +214,14 @@ function M.new(options)
 		if (self.ready_to_path and not self:ready_to_path(true)) or self.state == "gowp" then
 			return "wait"
 		end
+		-- An earlier walk somewhere else that failed (the church, the bell) leaves its
+		-- route in "retry", and gopath refuses every new goal until it runs out. That
+		-- cooldown keeps a villager from asking again for the same walk; the stall is
+		-- another (ticket 12b: day 48 in the Markets world, every seller after church).
+		local previous = self._villages_goto_route
+		if previous and previous.status == "retry" and previous.market_token ~= session.id then
+			self._villages_goto_route = nil
+		end
 		local started = self:gopath(target, function(entity)
 			local route = entity._villages_goto_route
 			if entity._villages_market_session == session and route
@@ -222,7 +230,13 @@ function M.new(options)
 			end
 		end, true, session.id)
 		local route = self._villages_goto_route
-		if not started or not route or route.market_token ~= session.id then return false end
+		if not started or not route or route.market_token ~= session.id then
+			-- Why, for the log: what gopath left behind.
+			session.refusal = string.format("gopath %s, route %s%s, state %s", tostring(started),
+				route and tostring(route.status) or "none", route and route.reason and (" (" .. route.reason .. ")") or "",
+				tostring(self.state))
+			return false
+		end
 		session.route_id = route.id
 		session.route_paused = nil
 		return true
@@ -456,7 +470,10 @@ function M.new(options)
 				return "walking"
 			end
 			session.start_pending = nil
-			if not started then return fallback(self, session, "no route to stall") end
+			if not started then
+				return fallback(self, session, string.format("no route to stall: villager %s, %s",
+					tostring(self._id):sub(1, 6), tostring(session.refusal)))
+			end
 			return "walking"
 		end
 

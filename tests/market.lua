@@ -593,6 +593,22 @@ do
 		and site.releases == 1, "a seller that never gets to path gives its stall up and frees the site")
 end
 
+-- A failed walk elsewhere left in "retry" does not stop the stall walk (ticket 12b).
+do
+	local controller, _, _, seller, bell = controller_fixture()
+	seller._villages_goto_route = {id = 3, status = "retry", retry_at = 1e9, market_token = "church"}
+	local original = seller.gopath
+	seller.gopath = function(entity, ...)
+		local route = entity._villages_goto_route
+		if route and route.status == "retry" then return false end
+		return original(entity, ...)
+	end
+	controller.tick(seller, bell, 0)
+	assert(controller.tick(seller, bell, 0) == "walking"
+		and seller._villages_goto_route.market_token == seller._villages_market_session.id,
+		"the stall walk replaces a stale retry")
+end
+
 -- With the economy on (ticket 12): a stall shows the seller's own spare goods, kept for
 -- the session, falls back to the fixed pair with none, flies a banner on opening and
 -- serves browsers while open.
