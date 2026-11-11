@@ -4,9 +4,11 @@
 -- stall shows market.lua's fixed goods and nothing is sold.
 --
 -- Goods. A seller's stall shows its top STALL_ITEMS spare goods (its ledger's surplus,
--- possessions.assess), by value, of those it carries: what it really has to sell. A
--- villager with nothing spare falls back to market.lua's fixed pair for its profession,
--- or, with none (a nitwit), stays a browser. A peddler (labour.lua) sells its stock here.
+-- possessions.assess) of those it carries: what it really has to sell. Those it has heard
+-- someone needs (market news) come first, by the price heard asked, then the rest by
+-- value (ticket 12b: in the Markets world stalls showed seeds, bottles, saplings and iron
+-- armour by value, and in 17 stalls no browser bought anything). A villager with
+-- nothing spare keeps no stall and browses (market.lua). A peddler (labour.lua) sells its stock here.
 --
 -- Banners. Opening a stall flies a banner (the cartographer's, recipes.lua): one taken
 -- from the seller's belongings lasts BANNER_MARKETS market days (`_villages_banner_left`).
@@ -17,10 +19,14 @@
 -- Browsers. While the stall is open, every SERVE_SECONDS the seller offers its stall
 -- goods to the adult villagers within SERVE_RADIUS: exchange.lua's end-of-conversation
 -- trade for those items alone (exchange.offer's `only`), each browser once a stall day.
+-- A seller at its own stall browses its neighbours' too (ticket 12b: the Markets world's
+-- cartographer, keeping a stall, never met the shepherd's wool it needed); one still on
+-- its way to its stall does not.
 local core = minetest
 local possessions = dofile(core.get_modpath("living_villages") .. "/possessions.lua")
 local ledger = dofile(core.get_modpath("living_villages") .. "/ledger.lua")
 local exchange = dofile(core.get_modpath("living_villages") .. "/exchange.lua")
+local news = dofile(core.get_modpath("living_villages") .. "/market_news.lua")
 
 local STALL_ITEMS = 2
 local BANNER = "mcl_banners:banner_item_white"
@@ -39,16 +45,23 @@ local function short_id(id)
 	return tostring(id):sub(1, 6)
 end
 
--- Its top spare goods that it carries, by value, at most STALL_ITEMS, or nil.
+-- Its top spare goods that it carries, at most STALL_ITEMS, or nil: those it heard
+-- needed first, by the asking price, then the rest by value.
 function M.goods(villager)
 	local view = possessions.assess(villager)
-	local carried = {}
+	local asking = news.asking(news.heard(villager))
+	local wanted, rest = {}, {}
 	for item, count in pairs(view.surplus) do
 		local spare = math.min(count, possessions.count(villager, item))
-		if spare > 0 then carried[item] = spare end
+		if spare > 0 then
+			if asking[item] then wanted[item] = spare else rest[item] = spare end
+		end
 	end
 	local list = {}
-	for _, top in ipairs(ledger.top(carried, view.value, STALL_ITEMS)) do list[#list + 1] = top.item end
+	for _, top in ipairs(ledger.top(wanted, function(item) return asking[item] end, STALL_ITEMS)) do
+		list[#list + 1] = top.item
+	end
+	for _, top in ipairs(ledger.top(rest, view.value, STALL_ITEMS - #list)) do list[#list + 1] = top.item end
 	return #list > 0 and list or nil
 end
 
@@ -112,7 +125,8 @@ function M.serve(seller, items, now, day)
 	for _, object in ipairs(core.get_objects_inside_radius(pos, SERVE_RADIUS)) do
 		local browser = object:get_luaentity()
 		if browser and browser ~= seller and browser.name == VILLAGER and browser._id and not browser.child
-			and not browser._villages_market_session and list[browser._id] ~= day then
+			and (not browser._villages_market_session or browser._villages_market_session.arrived)
+			and list[browser._id] ~= day then
 			list[browser._id] = day
 			local trade = M.sell(seller, browser, items)
 			if trade then made[#made + 1] = trade end

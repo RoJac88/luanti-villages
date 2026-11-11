@@ -886,6 +886,9 @@ branch, and each leaves the game playable with `living_villages_economy` on or o
 | 11g | Trade trips that finish: on into the work stage, sellers that can make up an emerald, chasing a seller that moves | 11b |
 | 11h | Prices and the money supply times 64; player trades scaled; emeralds stack to 4096 | 11g |
 | 12 | Peddler; holiday market sells real surplus | 6, 11 |
+| 12b | Market fixes: stall walks after the bell walk, stalls that show wanted goods, empty stashes remembered, peddlers that get chosen | 12 |
+| 13 | Village prices that move with supply and demand | 12b |
+| 14 | The mod's own trade window in place of vanilla's trades | 13 |
 
 ### 1. Clock, hunger and the tavern
 
@@ -1208,7 +1211,8 @@ peddle wants in `possessions.assess`, and the cartographer's recipes. Merged on 
 an engine load check, without a probe run. Choices the design left open:
 
 * A stall shows its seller's top two spare goods that it carries, by value. One with
-  nothing spare shows the old fixed pair for its profession and sells nothing; a nitwit
+  nothing spare shows the old fixed pair for its profession and sells nothing (12b:
+  it now keeps no stall); a nitwit
   with nothing spare stays a browser, and one with spare goods, a peddler among them,
   now keeps a stall.
 * Browsers buy by exchange.lua's rules, for the stall's goods alone: every 5 s the
@@ -1241,6 +1245,79 @@ an engine load check, without a probe run. Choices the design left open:
   (`living_villages_walk_velocity`), so a spread-out village's walks fit their stages.
 * For testing by hand, `/living_villages_market` (`market_test.lua`) opens the market
   now as on a holiday, or starts a working day with labour chosen afresh.
+
+### 12b. Market fixes
+
+The Markets world (2026-11-10 and 11, game days 20 to 45, 12 to 16 adults) showed the
+market and peddlers doing almost nothing:
+
+* 37 seller set-ups failed with "no route to stall"; on day 44 all 12 within a second.
+  A seller starts its stall walk while it still walks to the bell, and `gopath` refuses
+  a request while a walk is in progress, which `start_market_walk` took as no route.
+* 17 stalls opened and no villager bought at one. They showed wheat seeds, glass
+  bottles, saplings, a stone shovel and iron armour: the seller's spare goods by value,
+  which nobody needed.
+* The keeper set off 15 times for cooked porkchop from the butcher's empty stash.
+* No villager ever peddled. Deals were heard (wool at 14 needed at 28, porkchop at 10
+  needed at 22), but the unemployed chose woodcutting every day, even with no grove.
+
+The fixes:
+
+* A seller that gopath cannot answer yet (still walking, or waiting out an earlier
+  failed path, which VoxeLibre holds for 30 s) waits up to 45 s for its stall walk
+  instead of giving the stall up (`market.lua`).
+* A stall shows the spare goods its seller heard someone needs first, by the asking
+  price, then the rest by value (`market_stall.lua`).
+* A trip that finds a stash empty forgets the news of that spare and passes the seller
+  over for a game day, not 600 s (`trade_trips.lua`).
+* Gathering is reckoned at what it has yielded, as portering is at its hires: an
+  activity's rate is scaled by what it gathered over the days it was chosen, counted
+  from one day at the full rate (`labour.lua`, `_villages_gather_record`). A woodcutter
+  was reckoned at ten logs a day, about 430 emeralds, against about 90 for the wool
+  deal, while it felled four logs in eleven days.
+* The stall walk goes to the seller's cell, not its feet: on a grass path (15/16 high)
+  the feet are 0.55 below the cell and gopath rounded the goal into the path, "no safe
+  standing space", for every seller of the Markets world's paved square.
+* A refused walk waits out its retry only for the same goal (`navigation.lua`): the
+  failed stall walks' retry also refused the bell walk 30 s later, and those villagers
+  gave the bell up for the stage.
+* A bell is looked for within 80 of the bed, not 64: the Markets world's eastern
+  houses are 66 from its hilltop bell.
+* A villager with nothing spare keeps no stall and browses. The fixed pair for its
+  profession sold nothing and took a place on a square that held about 8 stalls.
+* A seller at its own stall browses its neighbours' stalls: the cartographer, keeping
+  a stall, never met the shepherd's wool it needed.
+
+### 13. Village prices
+
+A base price comes from vanilla's tables and never moves (`ledger.lua`); a villager's
+need moves its value from 0.5 to 3 times it. Needs nobody in the village can supply
+(apples, berries, iron) sit at the full urgency and change nothing, and surplus nobody
+wants (fish in the Markets world) never gets cheaper.
+
+Each village keeps a price for each item, starting at the base price. Once a day it
+moves: up with needs heard and not met, down with surplus heard and not sold, and toward
+the prices real trades settled at. It stays within an eighth and eight times the base
+price. A villager's value is the village price times its own urgency, so labour choice,
+peddling deals, stall stock and player prices all read the same signal. The dinner
+(`ledger.DINNER`) and the labour wages do not move and anchor the rest, so prices move
+against each other and an emerald keeps its worth.
+
+### 14. The mod's own trade window
+
+Vanilla's trade tables, tiers and rare goods (enchanted books, diamond gear) are
+dropped from player trade, to be brought back once the economy works. Talking to a
+villager opens a window of its own:
+
+* **It sells** its real spare goods, taken from its belongings, at its value.
+* **It buys** what it needs, at what it would pay, up to the emeralds it holds. This is
+  how the player takes part: a villager in need is a standing order.
+* **News**: a few needs it heard from others (market news), as a pointer to who wants
+  what. It is not a contract.
+
+Reputation (`gossip.lua`) moves both sides' prices, as it does now. Selling a villager
+something it needs is good gossip, more the more urgent the need. Below a threshold a
+villager will not trade with the player at all.
 
 ## Open questions
 
@@ -1281,3 +1358,6 @@ an engine load check, without a probe run. Choices the design left open:
   - **Iron** comes from a future alchemist profession, which turns other raw materials
     into iron.
   - **Money piling up at the tavern** is answered with other expenses for the tavern.
+- Player stalls on market days (set on 2026-11-11, to refine later): villagers browse a
+  player's stall as any other and buy by the same rule. Whether the player claims a
+  market stall site or places a stall block, and how a stall is priced, are open.

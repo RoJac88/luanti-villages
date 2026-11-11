@@ -564,6 +564,66 @@ do
 		"a queued plan deferred during a short trade is replanned even if trade ends before a tick")
 end
 
+-- Ticket 12b: a seller still walking to the bell, or waiting out a failed path, gets no
+-- answer from gopath. It waits for one instead of giving its stall up, up to START_WAIT.
+do
+	local controller, _, _, seller, bell = controller_fixture()
+	local ready = false
+	seller.ready_to_path = function() return ready end
+	seller.state = "gowp"
+	assert(controller.tick(seller, bell, 0) == "holding", "search pending")
+	assert(controller.tick(seller, bell, 1) == "walking" and seller._villages_goto_route == nil,
+		"a seller that cannot path yet waits without asking gopath")
+	seller.state = "stand"
+	assert(controller.tick(seller, bell, 20) == "walking" and seller._villages_goto_route == nil,
+		"it waits out an earlier failure too")
+	ready = true
+	assert(controller.tick(seller, bell, 1) == "walking" and seller._villages_goto_route
+		and seller._villages_goto_route.market_token == seller._villages_market_session.id,
+		"once it can path it starts its stall walk")
+	assert(controller.tick(seller, bell, 0) == "walking", "and the walk goes on as usual")
+end
+
+do
+	local controller, site, _, seller, bell = controller_fixture()
+	seller.ready_to_path = function() return false end
+	controller.tick(seller, bell, 0)
+	assert(controller.tick(seller, bell, 40) == "walking", "still waiting within the limit")
+	assert(controller.tick(seller, bell, 10) == "browse" and seller._villages_market_session == nil
+		and site.releases == 1, "a seller that never gets to path gives its stall up and frees the site")
+end
+
+-- A failed walk elsewhere left in "retry" does not stop the stall walk (ticket 12b).
+do
+	local controller, _, _, seller, bell = controller_fixture()
+	seller._villages_goto_route = {id = 3, status = "retry", retry_at = 1e9, market_token = "church"}
+	local original = seller.gopath
+	seller.gopath = function(entity, ...)
+		local route = entity._villages_goto_route
+		if route and route.status == "retry" then return false end
+		return original(entity, ...)
+	end
+	controller.tick(seller, bell, 0)
+	assert(controller.tick(seller, bell, 0) == "walking"
+		and seller._villages_goto_route.market_token == seller._villages_market_session.id,
+		"the stall walk replaces a stale retry")
+end
+
+-- The stall walk goes to the seller's cell, not its feet: on a grass path the feet are
+-- 0.55 below the cell and gopath's rounding put the goal in the path (ticket 12b).
+do
+	local controller, _, _, seller, bell = controller_fixture()
+	local asked
+	local original = seller.gopath
+	seller.gopath = function(entity, target, ...)
+		asked = target
+		return original(entity, target, ...)
+	end
+	controller.tick(seller, bell, 0)
+	controller.tick(seller, bell, 0)
+	assert(asked and asked.x == 4 and asked.y == 1 and asked.z == 5, "the seller's own cell")
+end
+
 -- With the economy on (ticket 12): a stall shows the seller's own spare goods, kept for
 -- the session, falls back to the fixed pair with none, flies a banner on opening and
 -- serves browsers while open.
@@ -581,7 +641,8 @@ do
 	assert(got[1] == "mcl_core:cobble" and got[2] == "mcl_core:apple" and attempt.goods == got)
 	own.seller = nil
 	assert(market.goods_for({_id = "seller", _profession = "farmer"}, attempt) == got, "kept for the session")
-	assert(market.goods_for({_id = "seller", _profession = "farmer"}, {})[1] == "mcl_farming:bread", "nothing spare: the fixed pair")
+	assert(market.goods_for({_id = "seller", _profession = "farmer"}, {}) == nil, "nothing spare: no stall (ticket 12b)")
+	assert(not market.eligible({_id = "seller", _profession = "farmer"}), "so it browses")
 	own.nina = {"mcl_core:cobble"}
 	local nitwit = market.goods_for({_id = "nina", _profession = "nitwit"}, {})
 	assert(nitwit[1] == "mcl_core:cobble" and nitwit[2] == "mcl_core:cobble", "a nitwit with spare goods sells them")

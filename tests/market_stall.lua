@@ -53,6 +53,12 @@ assert(goods and #goods == stall.STALL_ITEMS, "two goods")
 local shown = {[goods[1]] = true, [goods[2]] = true}
 assert(shown[BREAD] and shown[APPLE], "the spare goods worth most")
 assert(stall.goods(villager("empty", {})) == nil, "nothing spare, nothing shown")
+-- Spare goods it heard someone needs come first, whatever their value (ticket 12b).
+seller._villages_market_news = {{item = COBBLE, kind = "needs", price = 3, count = 10, who = "mason",
+	heard = now, hops = 1}}
+goods = stall.goods(seller)
+assert(goods[1] == COBBLE and (goods[2] == BREAD or goods[2] == APPLE), "the needed cobble, then by value")
+seller._villages_market_news = nil
 
 -- A banner: taken from belongings on opening, lasting BANNER_MARKETS markets.
 assert(stall.open(seller, day) == false and seller._villages_stall_day == day, "no banner to fly")
@@ -88,6 +94,10 @@ assert(#stall.serve(seller, {BREAD, APPLE}, now + 2 * stall.SERVE_SECONDS, day +
 local other = villager("other", {[EMERALD] = 5 * ledger.SCALE}, {x = 1, y = 0, z = 1}, {_villages_food = 0, _villages_market_session = {}})
 assert(#stall.serve(seller, {BREAD}, now + 3 * stall.SERVE_SECONDS, day + 2) == 1)
 assert(possessions.count(other, BREAD) == 0)
+-- One at its own stall browses its neighbours' (ticket 12b).
+other._villages_market_session = {arrived = true}
+assert(#stall.serve(seller, {BREAD}, now + 4 * stall.SERVE_SECONDS, day + 3) >= 1)
+assert(possessions.count(other, BREAD) > 0, "a neighbouring seller buys")
 
 -- A peddler buying wants its lot at its bid, and no more; holding it, it takes no less.
 local peddler = villager("peddler", {[EMERALD] = 10 * ledger.SCALE}, nil,

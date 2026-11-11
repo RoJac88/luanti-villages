@@ -121,9 +121,13 @@ local near_bell = bell.nearest_bell({_id = "x"}, {x = 0, y = 0, z = 0})
 assert(near_bell.x == 10, "the nearest bell is chosen")
 nodes[key({x = 10, y = 5, z = 0})] = nil
 nodes[key({x = -20, y = 5, z = 0})] = nil
-nodes[key({x = 70, y = 5, z = 0})] = "mcl_bells:bell"
+nodes[key({x = 90, y = 5, z = 0})] = "mcl_bells:bell"
 assert(bell.nearest_bell({_id = "x"}, {x = 0, y = 0, z = 0}) == nil, "a bell beyond reach is not found")
-nodes[key({x = 70, y = 5, z = 0})] = nil
+nodes[key({x = 90, y = 5, z = 0})] = nil
+-- The Markets world's eastern houses, 66 from the bell, are in reach (ticket 12b).
+nodes[key({x = 62, y = 14, z = 17})] = "mcl_bells:bell"
+assert(bell.nearest_bell({_id = "x"}, {x = 0, y = 0, z = 0}), "66 away is in reach")
+nodes[key({x = 62, y = 14, z = 17})] = nil
 -- A bell 18 above and 50 across (ticket 12's hillside bell) is in reach.
 nodes[key({x = 50, y = 18, z = 0})] = "mcl_bells:bell"
 assert(bell.nearest_bell({_id = "x"}, {x = 0, y = 0, z = 0}), "a hillside bell is found")

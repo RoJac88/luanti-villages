@@ -70,6 +70,9 @@ function M.goods_for(villager, attempt)
 			if attempt then attempt.goods = list end
 			return list
 		end
+		-- Nothing spare: it browses. A stall of the fixed pair sold nothing and took
+		-- a place on a full square from a seller with goods (ticket 12b).
+		return nil, "no_goods"
 	end
 	local profession = M.profession(villager)
 	local pair = goods[profession]
@@ -105,6 +108,9 @@ local PACK_EARLIEST = 14750
 local PACK_LATEST = 14916
 local MARKET_END = 15000
 local PACK_DELAY = 1
+-- Seconds a seller waits for gopath to take its stall walk: VoxeLibre waits 30 after a
+-- failed path before it paths again.
+local START_WAIT = 45
 
 -- Entity serialization saves ordinary fields automatically. Integration must
 -- retain this daily guard and discard the live session machinery on reload.
@@ -201,8 +207,29 @@ function M.new(options)
 		return node.name == "mcl_bells:bell"
 	end
 
+	-- True once the walk is under way, "wait" while gopath cannot answer yet, false on
+	-- failure. VoxeLibre's gopath answers nothing while it waits out an earlier failure
+	-- (ready_to_path, mcl_mobs/pathfinding.lua) and navigation's while a walk is in
+	-- progress: on a holiday the sellers are still walking to the bell, and taking that
+	-- as no route failed every seller of a market at once (ticket 12b).
 	local function start_market_walk(self, session)
-		local target = standing_position(session.layout.seller)
+		-- The seller's cell, not where its feet go: gopath rounds its target to a cell,
+		-- and on a grass path (15/16 high) the feet are 0.55 below the cell, which
+		-- rounds into the path itself, where nothing stands (ticket 12b: every seller
+		-- of the Markets world's paved square, "no safe standing space").
+		local cell = session.layout.seller
+		local target = {x = cell.x, y = cell.y, z = cell.z}
+		if (self.ready_to_path and not self:ready_to_path(true)) or self.state == "gowp" then
+			return "wait"
+		end
+		-- An earlier walk somewhere else that failed (the church, the bell) leaves its
+		-- route in "retry", and gopath refuses every new goal until it runs out. That
+		-- cooldown keeps a villager from asking again for the same walk; the stall is
+		-- another (ticket 12b: day 48 in the Markets world, every seller after church).
+		local previous = self._villages_goto_route
+		if previous and previous.status == "retry" and previous.market_token ~= session.id then
+			self._villages_goto_route = nil
+		end
 		local started = self:gopath(target, function(entity)
 			local route = entity._villages_goto_route
 			if entity._villages_market_session == session and route
@@ -211,7 +238,13 @@ function M.new(options)
 			end
 		end, true, session.id)
 		local route = self._villages_goto_route
-		if not started or not route or route.market_token ~= session.id then return false end
+		if not started or not route or route.market_token ~= session.id then
+			-- Why, for the log: what gopath left behind.
+			session.refusal = string.format("gopath %s, route %s%s, state %s", tostring(started),
+				route and tostring(route.status) or "none", route and route.reason and (" (" .. route.reason .. ")") or "",
+				tostring(self.state))
+			return false
+		end
 		session.route_id = route.id
 		session.route_paused = nil
 		return true
@@ -432,8 +465,22 @@ function M.new(options)
 			end
 			session.reservation = reservation
 			session.layout = reservation.layout
-			if not start_market_walk(self, session) then
-				return fallback(self, session, "no route to stall")
+			session.start_pending = true
+		end
+
+		if session.start_pending then
+			local started = start_market_walk(self, session)
+			if started == "wait" then
+				session.start_wait = (session.start_wait or 0) + (dtime or 0)
+				if session.start_wait > START_WAIT then
+					return fallback(self, session, "no route to stall: still waiting to walk")
+				end
+				return "walking"
+			end
+			session.start_pending = nil
+			if not started then
+				return fallback(self, session, string.format("no route to stall: villager %s, %s",
+					tostring(self._id):sub(1, 6), tostring(session.refusal)))
 			end
 			return "walking"
 		end
@@ -449,7 +496,9 @@ function M.new(options)
 				if unrelated_route(self) then
 					return fallback(self, session, "another route took movement ownership")
 				end
-				if not start_market_walk(self, session) then
+				local started = start_market_walk(self, session)
+				if started == "wait" then return "walking" end
+				if not started then
 					return fallback(self, session, "no route to stall after trade")
 				end
 				return "walking"

@@ -12,7 +12,9 @@ local BELL = "mcl_bells:bell"
 -- How far from its bed a villager looks for a bell: its own village. A hilly one
 -- spreads wide and tall (ticket 12: a bell 18 above most beds, and 54 to 70 across from
 -- others, drew one villager to the market), so this is wider than the tavern's.
-local SEARCH_RADIUS = 64
+-- The Markets world's eastern houses are 66 from its hilltop bell, and their villagers
+-- never came to market.
+local SEARCH_RADIUS = 80
 local SEARCH_HEIGHT = 32
 -- How often a villager with no bell looks again.
 local SEARCH_SECONDS = 5

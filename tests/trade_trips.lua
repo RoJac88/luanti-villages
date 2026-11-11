@@ -322,6 +322,31 @@ do
 	assert(hungry._villages_trade_trip == nil)
 end
 
+-- An empty stash (ticket 12b): the news of its spare is forgotten and the seller passed
+-- over for a game day, not the usual while.
+do
+	local stash = chest({x = -20, y = 1, z = 2}, "cid", {})
+	local cid = villager("cid", {x = -20, y = 1, z = 0}, {_villages_belongings = {[EMERALD] = 64}, _villages_stash = stash})
+	cid.teleport({x = -300, y = 1, z = 0})
+	local hungry = villager("hil", {x = 0, y = 1, z = -10}, {_villages_belongings = {[EMERALD] = 5 * 64}, _villages_food = 0})
+	local heard = has_news("cid", "mcl_farming:bread", {x = -20, y = 1, z = 0}, 0.1)
+	hungry._villages_market_news = {heard}
+	time = 6000 / 24000
+	trips.step(hungry, now)
+	assert(hungry._villages_trade_trip, "it goes for bread")
+	hungry.arrive()
+	trips.step(hungry, now + 2)
+	assert(hungry._villages_trade_trip == nil and logs[#logs]:find("nothing to buy in the stash"),
+		"nobody home, and the stash beside its home is empty")
+	assert(hungry._villages_market_news == nil, "what it heard of cid's bread is forgotten")
+	hungry._villages_market_news = {heard}
+	assert(trips.plan(hungry, possessions.assess(hungry), {heard}, hungry._bed) == nil, "heard again, still skipped")
+	now = now + trips.SKIP_SECONDS + 1
+	assert(trips.plan(hungry, possessions.assess(hungry), {heard}, hungry._bed) == nil, "past the usual while")
+	now = now + trips.EMPTY_SKIP_SECONDS
+	assert(trips.plan(hungry, possessions.assess(hungry), {heard}, hungry._bed), "a day later it tries again")
+end
+
 -- Porters: hired at the end of a conversation by a member with a job and an urgent need,
 -- with a purse; it buys at the client's value, delivers the goods and the change, and
 -- keeps its fee.

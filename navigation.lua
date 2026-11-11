@@ -276,6 +276,8 @@ local function fail(self, route_field, reason, target, retry_seconds, planner_re
 		target = target and vector.new(target) or nil,
 		planner = planner_report,
 		market_token = previous and previous.market_token,
+		-- Kept so only the same walk waits out the retry (gopath).
+		goal = previous and previous.goal and vector.new(previous.goal) or nil,
 	})
 	local follow = self._villages_follow
 	if previous and follow and follow.route_field == route_field and follow.route_id == previous.id then
@@ -673,6 +675,7 @@ local function plan_trip(self, destination, candidates, callback_arrived)
 	if not first then
 		self._pf_last_failed = os.time()
 		fail(self, field, "no safe standing space beside " .. destination.kind)
+		if destination.goal then self[field].goal = vector.new(destination.goal) end
 		return false
 	end
 	local reason = "pathfinder could not start a route to " .. destination.kind
@@ -999,7 +1002,13 @@ local function install(def)
 			stop(self)
 			return true
 		end
-		if route and route.status == "retry" and now < route.retry_at then
+		-- A refused walk waits out its retry before it is asked again. A trip somewhere
+		-- else is another walk: a failed stall walk left its retry on the shared goto
+		-- route, and the bell walk asked 30 s later was refused twice and the bell
+		-- given up (the Markets world, every market day).
+		local other_goal = destination.goal and route and route.status == "retry"
+			and route.goal and not same_pos(route.goal, destination.goal)
+		if route and route.status == "retry" and now < route.retry_at and not other_goal then
 			-- Another trip's own walk is none of a refused request's business.
 			if not destination.goal then stop(self) end
 			return false

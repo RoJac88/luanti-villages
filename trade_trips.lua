@@ -69,6 +69,10 @@ local WALK_TIMEOUT = 120
 local MAX_TRIES = 3
 local CHASES = 3
 local SKIP_SECONDS = 600
+-- A seller whose stash it found empty is passed over for a game day (at the default
+-- time_speed), and the news of its spare forgotten (ticket 12b: run on 2026-11-11 had
+-- 15 trips to the butcher's empty stash for cooked porkchop it had heard was spare).
+local EMPTY_SKIP_SECONDS = 1200
 -- In emeralds at ledger.SCALE (ticket 11h).
 local PORTER_FEE = 1 * ledger.SCALE
 local PURSE = 8 * ledger.SCALE
@@ -77,7 +81,7 @@ local VILLAGER = "mobs_mc:villager"
 
 local M = {
 	URGENT = URGENT, TRIP_RADIUS = TRIP_RADIUS, PORTER_FEE = PORTER_FEE, PURSE = PURSE,
-	SKIP_SECONDS = SKIP_SECONDS, PLAN_SECONDS = PLAN_SECONDS,
+	SKIP_SECONDS = SKIP_SECONDS, EMPTY_SKIP_SECONDS = EMPTY_SKIP_SECONDS, PLAN_SECONDS = PLAN_SECONDS,
 }
 
 local function short_id(id)
@@ -106,9 +110,20 @@ local function is_skipped(self, who, item)
 	return list ~= nil and (list[who .. "|" .. item] or 0) > core.get_gametime()
 end
 
-local function skip(self, who, item)
+local function skip(self, who, item, seconds)
 	skipped[self] = skipped[self] or {}
-	skipped[self][who .. "|" .. item] = core.get_gametime() + SKIP_SECONDS
+	skipped[self][who .. "|" .. item] = core.get_gametime() + (seconds or SKIP_SECONDS)
+end
+
+-- Forgets what it heard of `who` having `item` spare: it has seen otherwise.
+local function forget_spare(self, who, item)
+	local list = self._villages_market_news
+	if not list then return end
+	local kept = {}
+	for _, entry in ipairs(list) do
+		if not (entry.kind == "has" and entry.who == who and entry.item == item) then kept[#kept + 1] = entry end
+	end
+	self._villages_market_news = #kept > 0 and kept or nil
 end
 
 -- The buyer's value over the base price, or 1.
@@ -342,8 +357,13 @@ local function finish(self, now)
 	next_plan[self] = now + PLAN_SECONDS
 end
 
-local function fail(self, trip, why, now)
-	skip(self, trip.who, trip.item)
+local function fail(self, trip, why, now, empty)
+	if empty then
+		skip(self, trip.who, trip.item, EMPTY_SKIP_SECONDS)
+		forget_spare(self, trip.who, trip.item)
+	else
+		skip(self, trip.who, trip.item)
+	end
 	log("villager %s gave up on %s from %s: %s", short_id(self._id), trip.item, short_id(trip.who), why)
 	if trip.client and trip.leg ~= "deliver" then
 		trip.leg, trip.tries = "deliver", 0
@@ -429,7 +449,7 @@ function M.advance(self, trip, now)
 		if vector.distance(pos, trip.stash) > REACH then return walk(self, trip, trip.stash, now) end
 		local bought, why = M.buy_from_stash(self, trip, trip.stash)
 		if bought > 0 then return done_buying(self, trip, now) end
-		return fail(self, trip, "nothing to buy in the stash (" .. tostring(why) .. "; before it, " .. tostring(trip.why) .. ")", now)
+		return fail(self, trip, "nothing to buy in the stash (" .. tostring(why) .. "; before it, " .. tostring(trip.why) .. ")", now, true)
 	elseif trip.leg == "deliver" then
 		if vector.distance(pos, trip.client.deliver) > REACH then return walk(self, trip, trip.client.deliver, now) end
 		M.deliver(self, trip)
