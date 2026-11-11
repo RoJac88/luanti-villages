@@ -409,6 +409,16 @@ step(2)
 assert(pouch("mcl_farming:bread") == 0, "deposit-only")
 economy = nil
 
+-- With the economy on, wheat over the keep goes to its belongings first, up to eight, for
+-- sale to villagers (a leatherworker's herd); the rest goes in the chest.
+setup({_villages_farm_pouch = {["mcl_bone_meal:bone_meal"] = 4, ["mcl_farming:bread"] = 12,
+	["mcl_farming:wheat_item"] = 30}})
+support.chest(world, {x = 2, y = 2, z = 0})
+step()
+assert(farmer._villages_belongings and farmer._villages_belongings["mcl_farming:wheat_item"] == 8)
+assert(pouch("mcl_farming:wheat_item") == 3)
+assert(world.meta({x = 2, y = 2, z = 0}).inv:get_stack("main", 1):to_string() == "mcl_farming:wheat_item 19")
+
 -- With the economy on. Its household, any child and itself still eat free.
 local function belongings(v, name) return (v._villages_belongings or {})[name] or 0 end
 setup({_bed = {x = 0, y = 2, z = 10}, _villages_farm_pouch = {["mcl_farming:bread"] = 8}})

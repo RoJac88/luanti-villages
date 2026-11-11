@@ -68,6 +68,10 @@ local DEPOSIT_KEEP = {
 	[BREAD] = 8,
 	[BONE_MEAL] = BONE_MEAL_LIMIT_WITH_CHEST,
 }
+-- With the economy on, wheat over the keep goes to its belongings, up to this much, for
+-- sale to villagers (a leatherworker breeds its herd on it, herd.lua), before the rest
+-- goes in the chest: the pouch and the chest are not goods it trades.
+local SALE_WHEAT = 8
 -- A trip to a chest waits for this much over the keep, unless the pouch is full.
 local DEPOSIT_TRIGGER = 8
 local WITHDRAW_SEEDS = 8
@@ -238,6 +242,15 @@ local function deposit(self, pos, session, now)
 	if clock.enabled() then collect_pay(self, pos) end
 	local item, extra = excess_item(self)
 	if not item then return end
+	if item == WHEAT and clock.enabled() then
+		local room = SALE_WHEAT - possessions.count(self, WHEAT)
+		local moved = room > 0 and stock.take(self, WHEAT, math.min(room, extra)) or 0
+		if moved > 0 then
+			possessions.add(self, WHEAT, moved)
+			extra = extra - moved
+		end
+		if extra <= 0 then return end
+	end
 	local _, fitted = stock.put_in_chest(self, pos, item, extra)
 	if fitted then
 		core.sound_play("default_chest_close", {pos = pos, gain = 0.3, max_hear_distance = 16}, true)

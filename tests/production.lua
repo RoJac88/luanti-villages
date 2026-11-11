@@ -120,6 +120,26 @@ possessions.add(planker, "mcl_core:wood", 3)
 assert(production.work(planker, 240) == 2, "cooks both fish")
 assert(count(planker, "mcl_fishing:fish_cooked") == 2 and count(planker, "mcl_core:wood") == 1)
 assert(math.abs((planker._villages_fuel or 0) - 1) < 1e-9, planker._villages_fuel)
+-- Any species will do (ticket 15): a cartographer with birch logs and white wool splits
+-- them into birch planks, sticks from those, and a banner.
+do
+	local carto = smith({_id = "carto", _profession = "cartographer", _villages_food = 20, _max_trade_tier = 4})
+	possessions.add(carto, "mcl_core:birchtree", 1)
+	possessions.add(carto, "mcl_wool:white", 6)
+	local made = 0
+	for _ = 1, 6 do
+		local recipe = production.choose(carto)
+		if not recipe then break end
+		assert(production.make(carto, recipe))
+		made = made + 1
+	end
+	-- Log to four birch planks, two batches of sticks, then the banner.
+	assert(made == 4 and count(carto, "mcl_core:birchtree") == 0 and count(carto, "mcl_core:wood") == 0)
+	assert(count(carto, "mcl_banners:banner_item_white") == 1 and count(carto, "mcl_wool:white") == 0, "a banner")
+	assert(logs[#logs - 3]:find("made 4 mcl_core:birchwood"), "birch planks, not oak")
+	-- A spruce plank is planks: the bookshelf recipe's oak planks take it.
+	assert(production.have("mcl_core:wood", function(i) return ({["mcl_core:sprucewood"] = 6})[i] end) == 6)
+end
 -- No fuel and no lump: raw meat stays raw.
 local cold = smith({_id = "cold", _profession = "butcher"})
 possessions.add(cold, "mcl_mobitems:chicken", 3)

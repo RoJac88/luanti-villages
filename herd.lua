@@ -4,11 +4,17 @@
 -- A leatherworker with a jobsite keeps up to HERD_SIZE ordinary mobs_mc:cow about it,
 -- marked with its villager id in `_villages_herder` (saved on the cow; the herd is found
 -- again by scanning, so an unload loses nothing, and without this mod the field is
--- inert). Every STEP_SECONDS it counts the marked cows within SCAN_RADIUS of its jobsite
--- and adopts unmarked adult cows within ADOPT_RADIUS until the herd is full. A herd that
--- has never had a cow gets SEED_COWS beside the jobsite once (`_villages_herd_seeded`), as
--- flock.lua's shepherds get their first sheep, since few villages have cows near. A cow
--- past LEASH with no player within UNSEEN is set back beside the jobsite.
+-- inert). Every STEP_SECONDS it counts the marked cows within SCAN_RADIUS of its jobsite.
+-- A herd that has never had a cow gets SEED_COWS beside the jobsite once
+-- (`_villages_herd_seeded`), as flock.lua's shepherds get their first sheep, since few
+-- villages have cows near. After that it grows only by breeding, but a herd down to fewer
+-- than SEED_COWS (they died, or were killed) takes on any unmarked adult cow that comes
+-- within ADOPT_RADIUS until it has SEED_COWS again: a player can lead cows to the
+-- jobsite to restart it.
+--
+-- The herd is bound to the jobsite: a cow past BOUND walks back to it (mcl_mobs'
+-- pathfinding, or a turn toward it), and one past LEASH with no player within UNSEEN is
+-- set back beside it.
 --
 -- In the work stage, every BREED_SECONDS (`_villages_herd_next`, game time):
 -- * with more than HERD_SIZE adults it slaughters one, as a kill would drop it
@@ -38,11 +44,12 @@ local STEP_SECONDS = 10
 local BREED_SECONDS = 300
 local SCAN_RADIUS = 32
 local ADOPT_RADIUS = 16
-local LEASH, UNSEEN = 24, 24
+local BOUND = 10
+local LEASH, UNSEEN = 20, 24
 -- Where a cow is set down: within this of the jobsite, on walkable ground under two air.
 local SPOT_MIN, SPOT_MAX = 2, 6
 
-local M = {HERD_SIZE = HERD_SIZE, SEED_COWS = SEED_COWS, BREED_WHEAT = BREED_WHEAT, HERD_WHEAT = HERD_WHEAT,
+local M = {HERD_SIZE = HERD_SIZE, SEED_COWS = SEED_COWS, BOUND = BOUND, LEASH = LEASH, ADOPT_RADIUS = ADOPT_RADIUS, BREED_WHEAT = BREED_WHEAT, HERD_WHEAT = HERD_WHEAT,
 	BREED_SECONDS = BREED_SECONDS, PROFESSION = PROFESSION, WHEAT = WHEAT}
 
 local function short_id(id)
@@ -111,10 +118,11 @@ local function mark(self, cow)
 	cow.persistent = true
 end
 
--- Fills the herd from wild cows, or seeds it the first time. Returns the herd.
+-- Seeds the herd the first time, or tops one down to fewer than SEED_COWS up from wild
+-- cows near. Returns the herd.
 function M.gather(self, jobsite, herd, wild)
 	for _, cow in ipairs(wild) do
-		if #herd >= HERD_SIZE then break end
+		if #herd >= SEED_COWS then break end
 		mark(self, cow)
 		herd[#herd + 1] = cow
 		core.log("action", string.format("[living_villages] herd: leatherworker %s took on a cow", short_id(self._id)))
@@ -143,15 +151,32 @@ local function player_near(pos)
 	return false
 end
 
--- Sets a stray cow no player sees back beside the jobsite.
-local function leash(jobsite, herd)
+-- Keeps the herd by the jobsite: a cow past BOUND walks back, one past LEASH that no
+-- player sees is set down beside it. Returns how many it turned back.
+function M.keep_near(jobsite, herd)
+	local turned = 0
 	for _, cow in ipairs(herd) do
 		local pos = cow.object:get_pos()
-		if pos and vector.distance(pos, jobsite) > LEASH and not player_near(pos) then
+		local distance = pos and vector.distance(pos, jobsite) or 0
+		if distance > LEASH and not player_near(pos) then
 			local spot = M.spot(jobsite)
-			if spot then cow.object:set_pos(spot) end
+			if spot then
+				cow.object:set_pos(spot)
+				-- mcl_mobs measures fall damage from the height it last stood at.
+				cow.old_y = spot.y
+				turned = turned + 1
+			end
+		elseif distance > BOUND then
+			local home = M.spot(jobsite) or jobsite
+			if cow.gopath then
+				cow:gopath(home, nil, true)
+			elseif cow.go_to_pos then
+				cow:go_to_pos(home)
+			end
+			turned = turned + 1
 		end
 	end
+	return turned
 end
 
 -- Slaughters one adult: beef and leather as its drops would give, into its belongings.
@@ -201,7 +226,7 @@ function M.step(self, now)
 	if self.child or self._profession ~= PROFESSION or not jobsite or not self._id then return end
 	local herd, wild = M.scan(self, jobsite)
 	herd = M.gather(self, jobsite, herd, wild)
-	leash(jobsite, herd)
+	M.keep_near(jobsite, herd)
 	if common.schedule_stage(nil, self) ~= "work" then return end
 	if now < (self._villages_herd_next or 0) then return end
 	self._villages_herd_next = now + BREED_SECONDS

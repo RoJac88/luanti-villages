@@ -1401,6 +1401,22 @@ fetches bread and potatoes from the farmers' chests, buys bread, cooked cod and 
 beef as ledger inputs, and cooks only baked potatoes itself (`keeper_supply.lua`). A new
 tavern's pantry starts with nine loaves in place of six loaves and nine wheat.
 
+**Any species in recipes.** The categories decide what fills a need (ledger, news,
+trades); production must take the same goods. A recipe written with oak logs or planks
+takes any log or planks, the species held most first, and planks split from a log are of
+its species (`production.lua`). Markets showed why: the cartographer bought 14 white wool
+for banners, but the only woodcutter cut birch, and the stick recipe wanted oak.
+
+**Wheat for the herd.** A farmer's crops stay in its pouch and work chest, which are not
+goods it trades, so no villager could buy wheat and the leatherworker's herd never bred.
+With the economy on, a farmer keeps up to 8 wheat over its keep in its belongings when it
+deposits, for sale (`farmer.lua`).
+
+**The herd stays home.** A herd cow past 10 blocks from the leatherworker's jobsite walks
+back; past 20, unseen, it is set down beside it. Only a herd down to fewer than two takes
+on wild cows that come within 16, until it has two: a player can lead cows in to restart
+one (`herd.lua`).
+
 **Players.** No conversions in player trades. The categories still apply: a villager
 that needs food buys any food the player brings, at its price for that item, and the
 window shows such a need as a category ("food, 24 points") with the player's matching
