@@ -1334,6 +1334,19 @@ Reputation (`gossip.lua`) moves both sides' prices, as it does now. Selling a vi
 something it needs is good gossip, more the more urgent the need. Below a threshold a
 villager will not trade with the player at all.
 
+Landed as `trade_window.lua`, installed after `gossip.lua` so it decides first on a
+right-click. Choices:
+
+* It sells at its value times 1.25 and buys at 0.9 of it, from the emeralds in its
+  pouch; goods worth under an emerald come in lots that make one.
+* Reputation moves both by a quarter of a percent a point, at most 25%. At -40 or
+  below (two thefts seen) it will not trade. Every trade is "trading" gossip; filling a
+  need at urgency 2 or more is "minor_positive" too.
+* Every adult but the keeper and the Builder uses it, unemployed villagers and nitwits
+  included, who had no trades before. `_trades` is left alone, since vanilla and
+  `job_seek.lua` read it as the mark of a villager that keeps its job.
+* Trades are logged ("trade window: <player> bought|sold ...").
+
 ## Open questions
 
 - Pacing: hunger rate, craft time, starting stock and rent all need probe runs on

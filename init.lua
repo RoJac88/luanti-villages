@@ -648,6 +648,14 @@ core.register_on_mods_loaded(function()
 	dofile(core.get_modpath("living_villages") .. "/bell_hangout.lua").install(def, bell)
 	local gossip = dofile(core.get_modpath("living_villages") .. "/gossip.lua")
 	gossip.install(def, core.registered_entities["mobs_mc:iron_golem"], core.registered_entities["mobs_mc:villager_zombie"])
+	-- With the economy on, the mod's own trade window in place of vanilla's (ticket 14).
+	-- Installed after gossip so it decides first on a right-click.
+	dofile(core.get_modpath("living_villages") .. "/trade_window.lua").install(def, {
+		possessions = dofile(core.get_modpath("living_villages") .. "/possessions.lua"),
+		gossip = gossip,
+		news = dofile(core.get_modpath("living_villages") .. "/market_news.lua"),
+		clock = dofile(core.get_modpath("living_villages") .. "/economy_clock.lua"),
+	})
 	-- Taking from a stash in sight of a villager is gossip about the taker.
 	dofile(core.get_modpath("living_villages") .. "/theft.lua").install(gossip, def)
 	-- Donations and alms at the holiday service (alms.lua): good gossip about donors.
