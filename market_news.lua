@@ -29,6 +29,7 @@ local core = minetest
 local clock = dofile(core.get_modpath("living_villages") .. "/economy_clock.lua")
 local possessions = dofile(core.get_modpath("living_villages") .. "/possessions.lua")
 local ledger = dofile(core.get_modpath("living_villages") .. "/ledger.lua")
+local prices = dofile(core.get_modpath("living_villages") .. "/prices.lua")
 
 local NEWS_ENTRIES = 24
 local NEWS_SHARE = 6
@@ -198,11 +199,28 @@ function M.tell(known, listener, view, now)
 	return kept
 end
 
+-- Its prices' move for the day (prices.lua), once a day, before it talks.
+local function price_day(member, now)
+	local day = core.get_day_count and core.get_day_count()
+	if not day or member._villages_prices_day == day then return end
+	prices.daily(member, M.heard(member, now), possessions.assess(member), day)
+	core.log("action", string.format("[living_villages] prices: villager %s, day %d: %s",
+		short_id(member._id), day, prices.describe(member._villages_prices, 4)))
+end
+
 -- Everyone in a finished conversation tells everyone else, both ways. What each knows
--- is fixed before anyone speaks, so news crosses one hop per conversation.
+-- is fixed before anyone speaks, so news crosses one hop per conversation. First, each
+-- makes its prices' move for the day, and their prices move toward each other's
+-- (prices.share).
 function M.exchange(members)
 	if not clock.enabled() then return 0 end
 	local now = core.get_gametime()
+	local beliefs = {}
+	for i, member in ipairs(members) do
+		price_day(member, now)
+		beliefs[i] = member._villages_prices
+	end
+	for i, shared in ipairs(prices.share(beliefs, #members)) do members[i]._villages_prices = shared end
 	local views, known = {}, {}
 	for i, member in ipairs(members) do
 		views[i] = possessions.assess(member)

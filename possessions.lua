@@ -421,6 +421,8 @@ function M.assess(self)
 		extra = extra,
 		worth = worth,
 		least = least,
+		-- What it believes things are worth (prices.lua).
+		prices = self._villages_prices,
 	})
 end
 

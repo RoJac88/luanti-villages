@@ -887,7 +887,7 @@ branch, and each leaves the game playable with `living_villages_economy` on or o
 | 11h | Prices and the money supply times 64; player trades scaled; emeralds stack to 4096 | 11g |
 | 12 | Peddler; holiday market sells real surplus | 6, 11 |
 | 12b | Market fixes: stall walks after the bell walk, stalls that show wanted goods, empty stashes remembered, peddlers that get chosen | 12 |
-| 13 | Village prices that move with supply and demand | 12b |
+| 13 | Prices that move with supply and demand, each villager its own | 12b |
 | 14 | The mod's own trade window in place of vanilla's trades | 13 |
 
 ### 1. Clock, hunger and the tavern
@@ -1288,20 +1288,35 @@ The fixes:
 * A seller at its own stall browses its neighbours' stalls: the cartographer, keeping
   a stall, never met the shepherd's wool it needed.
 
-### 13. Village prices
+### 13. Prices that move
 
 A base price comes from vanilla's tables and never moves (`ledger.lua`); a villager's
 need moves its value from 0.5 to 3 times it. Needs nobody in the village can supply
 (apples, berries, iron) sit at the full urgency and change nothing, and surplus nobody
 wants (fish in the Markets world) never gets cheaper.
 
-Each village keeps a price for each item, starting at the base price. Once a day it
-moves: up with needs heard and not met, down with surplus heard and not sold, and toward
-the prices real trades settled at. It stays within an eighth and eight times the base
-price. A villager's value is the village price times its own urgency, so labour choice,
-peddling deals, stall stock and player prices all read the same signal. The dinner
-(`ledger.DINNER`) and the labour wages do not move and anchor the rest, so prices move
-against each other and an emerald keeps its worth.
+There is no village-wide price (Principle 3). Each villager keeps its own multiplier on
+the base price (`prices.lua`, `_villages_prices`) and values an item at base price times
+its multiplier times its urgency (`ledger.assess`'s `prices`):
+
+* Once a game day, at the first conversation it finishes (`market_news.exchange`), its
+  multipliers move with the news it has heard and its own needs and spare: times
+  1.5 ^ imbalance, imbalance = (demand - supply) / (demand + supply + 4), the counts
+  summed over the villagers it heard of and itself. A good nobody makes reaches 8 times
+  its base in about five days; surplus nobody wants falls to an eighth.
+* An item it heard nothing of drifts back toward the base (its multiplier to the 0.8).
+* In every finished conversation the members' multipliers move a quarter of the way
+  toward their geometric mean, so prices spread by gossip as news does and villagers
+  that rarely talk can still disagree.
+* Trades do not move them: a trade's price folds in both sides' urgency, and learning
+  from it would turn a buyer's need into a lasting belief.
+
+Everything that reads a value reads the new one: market news, trades, peddling deals,
+labour incomes, stall goods, and the player's prices through `demand.lua`'s urgency.
+The emerald amounts that do not move anchor the rest: the dinner (`ledger.DINNER`),
+rent, a porter's fee and a new adult's emeralds, so prices move against each other and
+an emerald keeps its worth. Each move is logged ("prices: villager ..., day ...") with
+the furthest-moved multipliers, also shown in the inspector.
 
 ### 14. The mod's own trade window
 
