@@ -197,6 +197,10 @@ supply.step(kate, now + supply.CHECK_SECONDS + 1)
 assert(not trip, "waits RETRY_SECONDS")
 now = now + supply.RETRY_SECONDS + 1
 supply.step(kate, now)
+assert(not trip, "the source it gave up on is passed over for a while")
+now = now + supply.SKIP_SECONDS
+kate._villages_supply_next = nil
+supply.step(kate, now)
 assert(trip, "tries again")
 trip, kate._villages_supply_target = nil, nil
 
@@ -230,6 +234,12 @@ metas[key(barrel)] = {villager = "finn"}
 assert(vector.equals(supply.source(jukebox, chests), barrel))
 inventories[key(barrel)] = {["mcl_fishing:salmon_raw"] = 5}
 assert(vector.equals(supply.source(jukebox, chests), farm_chest), "no cod, no trip there")
+-- One it could not reach is passed over: the next nearest gets a turn.
+inventories[key(barrel)] = {["mcl_fishing:fish_raw"] = 5}
+assert(vector.equals(supply.source(jukebox, chests, function(pos) return vector.equals(pos, barrel) end), farm_chest),
+	"a barrel it cannot reach gives way to the farm")
+assert(supply.source(jukebox, chests, function() return true end) == nil, "every source passed over: none")
+inventories[key(barrel)] = {["mcl_fishing:salmon_raw"] = 5}
 nodes[key(barrel)] = nil
 
 -- A farm with nothing to fetch: no trip, and it checks again later.
