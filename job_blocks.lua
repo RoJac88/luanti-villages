@@ -1,6 +1,6 @@
 -- The job blocks a villager can take, and how each is claimed: every workstation
 -- (common.lua's table, a composter at any fill level, a cauldron), the Builder's
--- bench, the tavern's jukebox and the church's pulpit. village_staffing.lua hands
+-- bench, the tavern's jukebox, the church's pulpit and the woodcutter's chopping block. village_staffing.lua hands
 -- them out when a village is placed; job_seek.lua sends a villager out of work to
 -- the free one nearest its bed.
 --
@@ -8,8 +8,8 @@
 -- one: the node's meta `villager`, `_jobsite` and `_profession`; init.lua's
 -- tick_visual puts on the skin. The others go through their own module's claim, so
 -- their saved state is what it would have been: `roles` is {builder = builder.lua,
--- keeper = keeper.lua, cleric = cleric.lua}, any of them missing, looked up at the
--- call (the Builder is installed later than the rest).
+-- keeper = keeper.lua, cleric = cleric.lua, woodcutter = woodcutter.lua}, any of them
+-- missing, looked up at the call (the Builder is installed later than the rest).
 local core = minetest
 local common = dofile(core.get_modpath("living_villages") .. "/common.lua")
 
@@ -35,12 +35,14 @@ function M.search_nodes(roles)
 	if roles and roles.cleric then table.insert(names, PULPIT) end
 	local bench = bench_name(roles)
 	if bench then table.insert(names, bench) end
+	if roles and roles.woodcutter then table.insert(names, roles.woodcutter.BLOCK) end
 	return names
 end
 
--- "workstation", "bench", "jukebox", "pulpit", or nil for a node that is no job.
+-- "workstation", "bench", "jukebox", "pulpit", "chopping", or nil for a node that is no job.
 function M.kind(name, roles)
 	if not name then return nil end
+	if roles and roles.woodcutter and name == roles.woodcutter.BLOCK then return "chopping" end
 	if name == JUKEBOX then return roles and roles.keeper and "jukebox" or nil end
 	if name == PULPIT then return roles and roles.cleric and "pulpit" or nil end
 	if name == bench_name(roles) then return "bench" end
@@ -97,6 +99,8 @@ function M.claim(self, pos, roles)
 		ok = roles.keeper.employ(self, pos)
 	elseif kind == "pulpit" then
 		ok = roles.cleric.employ(self, pos)
+	elseif kind == "chopping" then
+		ok = roles.woodcutter.employ(self, pos)
 	end
 	if not ok then self._villages_farm_seek = seeking end
 	return ok == true

@@ -17,12 +17,14 @@
 --   stages (left at the first, as a player's picking leaves them), sugar cane above its
 --   bottom block, and apples lying on the ground. Flowers and mushrooms do not come
 --   back once picked, so they are left.
--- * woodcutter: a grove of its own, at most GROVE_MAX saplings it planted
+-- * woodcutter: a grove of its own, at most GROVE_MAX saplings it planted (GROVE_MAX_JOB
+--   for a woodcutter by trade, woodcutter.lua, whose grove is around its chopping block)
 --   (`_villages_grove`), on open grass GROVE_MIN to GROVE_RADIUS from its bed with a
 --   clear GROVE_CLEAR box above and no path or building near, so a tree never blocks
 --   a road. A sapling grown into a tree is felled, its logs taken and a sapling of its
---   kind planted. Wild trees are never cut: with no sapling and no grove it takes one
---   sapling from under a wild tree, once a day. Any species that grows from a single
+--   kind planted, with a second sapling while the grove is short of trees, as a felled
+--   tree's leaves would drop. Wild trees are never cut: a grove short of trees, with no
+--   sapling to plant, takes one sapling from under a wild tree, once a day. Any species that grows from a single
 --   sapling (SPECIES: oak, birch, spruce, jungle, acacia), so a savanna village cuts
 --   acacia. Of the logs it carries past CHARCOAL_KEEP, every CHARCOAL_LOGS become
 --   CHARCOAL_MAKES charcoal after a felling, up to KEEP_GATHERED: eight logs smelted with
@@ -87,6 +89,8 @@ local YESTERDAY_BIAS = 1.25
 local KEEP_GATHERED = 32
 local FORAGE_RADIUS, FORAGE_HEIGHT = 32, 8
 local GROVE_MAX = 8
+-- A woodcutter with a chopping block (woodcutter.lua, ticket 16): woodcutting is its job.
+local GROVE_MAX_JOB = 12
 local GROVE_MIN, GROVE_RADIUS, GROVE_HEIGHT = 8, 20, 6
 -- Across (each way from the trunk) and up: the box a grown oak needs.
 local GROVE_CLEAR, GROVE_CLEAR_UP = 3, 7
@@ -164,8 +168,10 @@ end
 -- Targets each villager could not reach, by position, until when. Not saved.
 local skipped = setmetatable({}, {__mode = "k"})
 
--- Where its work is reckoned from: its bed, or its day's home (M.choose_home).
+-- Where its work is reckoned from: a woodcutter's chopping block (ticket 16), its bed,
+-- or its day's home (M.choose_home).
 local function home(self)
+	if self._villages_woodcutter and self._jobsite then return self._jobsite end
 	return self._bed or self._villages_labour_home
 end
 M.home = home
@@ -519,9 +525,14 @@ function M.fell(pos)
 	return species.log, logs
 end
 
+local function grove_max(self)
+	return self._villages_woodcutter and GROVE_MAX_JOB or GROVE_MAX
+end
+
 -- The woodcutter's next job: {pos, kind, index}, or nil.
 function M.wood_target(self)
 	local spots = grove(self)
+	local max = grove_max(self)
 	for i, pos in ipairs(spots) do
 		local node = core.get_node_or_nil(pos)
 		local species = node and BY_LOG[node.name]
@@ -530,11 +541,12 @@ function M.wood_target(self)
 		end
 		if node and not species and not BY_SAPLING[node.name] then return {pos = pos, kind = "replant", index = i} end
 	end
-	if carried_sapling(self) and #spots < GROVE_MAX then
+	if carried_sapling(self) and #spots < max then
 		local spot = M.grove_spot(self)
 		if spot then return {pos = spot, kind = "plant"} end
 	end
-	if #spots == 0 and not carried_sapling(self) and self._villages_sapling_day ~= core.get_day_count() then
+	-- A grove short of trees takes a sapling from under a wild tree, once a day.
+	if #spots < max and not carried_sapling(self) and self._villages_sapling_day ~= core.get_day_count() then
 		local tree, species = wild_tree(self)
 		if tree then return {pos = tree, kind = "sapling", sapling = species.sapling} end
 	end
@@ -621,7 +633,9 @@ function M.cut(self, target)
 		if not log then return nil end
 		local sapling = BY_LOG[log].sapling
 		possessions.add(self, log, logs)
-		possessions.add(self, sapling, 1)
+		-- One for its spot and, while the grove is short of trees, one more, as a felled
+		-- tree's leaves would drop: so a grove grows past its first tree.
+		possessions.add(self, sapling, #spots < grove_max(self) and 2 or 1)
 		if not plant(self, target.pos, sapling) then table.remove(spots, target.index) end
 		M.burn_charcoal(self)
 		return log, logs
@@ -690,6 +704,11 @@ function M.today(self)
 	local labour = self._villages_labour
 	if labour and labour.day == day then return labour.activity end
 	local yesterday = labour and labour.activity
+	-- A woodcutter's job is woodcutting: no choice to make (ticket 16).
+	if self._villages_woodcutter then
+		self._villages_labour = {day = day, activity = "woodcutter"}
+		return "woodcutter"
+	end
 	M.peddle_tick(self, day)
 	M.choose_home(self)
 	local heard = news.heard(self)
@@ -866,6 +885,7 @@ end
 
 -- One line for the inspector.
 function M.status(self)
+	if self._villages_woodcutter then return "woodcutter by trade, grove of " .. #(self._villages_grove or {}) end
 	if not M.eligible(self) then return "not looking for work" end
 	local labour = self._villages_labour
 	if not labour or labour.day ~= core.get_day_count() then return "not chosen today" end

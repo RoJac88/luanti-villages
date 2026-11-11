@@ -232,6 +232,8 @@ job = labour.wood_target(wade)
 assert(job and job.kind == "fell")
 labour.cut(wade, job)
 assert(count(wade, "mcl_core:tree") == 6 and nodes[key(spot)] == "mcl_core:sapling" and #wade._villages_grove == 1)
+-- A grove short of trees gets a spare sapling from the felling, to plant a new spot.
+assert(count(wade, "mcl_core:sapling") == 1, "the spare sapling")
 assert(not nodes[key({x = spot.x, y = spot.y + 2, z = spot.z})], "trunk gone")
 -- A sapling someone broke: replanted if it has one, else the spot is given up.
 nodes[key(spot)] = nil
@@ -453,6 +455,28 @@ do
 	assert(pedro._villages_peddle and not pedro._villages_peddle.buying)
 	labour.peddle_tick(pedro, day + labour.PEDDLE_DAYS)
 	assert(pedro._villages_peddle == nil, "its days are over")
+end
+
+-- A woodcutter by trade (woodcutter.lua, ticket 16): woodcutting every day, its grove
+-- around its chopping block rather than its bed, up to twelve trees.
+do
+	nodes = {}
+	for x = -24, 72 do for z = -24, 24 do nodes[key({x = x, y = 0, z = z})] = "mcl_core:dirt_with_grass" end end
+	local block = {x = 40, y = 1, z = 0}
+	local woody = villager({_id = "woody", _villages_woodcutter = true, _jobsite = block})
+	assert(labour.eligible(woody))
+	assert(labour.today(woody) == "woodcutter" and woody._villages_labour.activity == "woodcutter")
+	assert(labour.home(woody) == block)
+	possessions.add(woody, "mcl_core:sapling", 1)
+	local plant_job = labour.wood_target(woody)
+	assert(plant_job and plant_job.kind == "plant" and vector.distance(plant_job.pos, block) <= 20, "by the block")
+	-- Twelve trees, not eight: with eleven planted it still plants.
+	woody._villages_grove = {}
+	for i = 1, 11 do woody._villages_grove[i] = {x = 100 + i * 10, y = 1, z = 100} end
+	for i = 1, 11 do nodes[key(woody._villages_grove[i])] = "mcl_core:sapling" end
+	local more = labour.wood_target(woody)
+	assert(more and more.kind == "plant")
+	assert(labour.status(woody):find("woodcutter by trade"))
 end
 
 print("labour.lua: ok")

@@ -7,6 +7,10 @@
 -- in-memory copy per building, so the stock schematic is never touched, and
 -- removing the mod leaves nothing behind.
 --
+-- Of the loomless houses, CHOPPING_CHANCE (a second roll) have the woodcutter's
+-- chopping block (chopping_block.lua, ticket 16) where the loom stood, so a village
+-- starts with a woodcutter.
+--
 -- The choice is deterministic: a hash of the building's x and z (not y, which
 -- terraforming can nudge) and the world seed, so a regenerated village matches.
 -- The wrapper composes with ground_layer.lua in either order, since each takes the
@@ -17,8 +21,11 @@ local core = minetest
 local M = {}
 
 local LOOM, AIR = "mcl_loom:loom", "air"
+local CHOPPING = "living_villages:chopping_block"
 M.DEFAULT_CHANCE = 0.5
 M.SETTING = "living_villages_loomless_house_chance"
+M.DEFAULT_CHOPPING_CHANCE = 0.5
+M.CHOPPING_SETTING = "living_villages_chopping_block_house_chance"
 
 local MOD = 94906249 -- squares of values below this stay under 2^53
 
@@ -27,12 +34,21 @@ local function finite(n)
 end
 
 -- The configured chance, 0..1. Anything that isn't a finite number is the default.
-function M.chance(engine)
+local function setting_chance(engine, name, default)
 	engine = engine or core
-	local raw = engine.settings and engine.settings:get(M.SETTING)
+	local raw = engine.settings and engine.settings:get(name)
 	local value = tonumber(raw)
-	if not finite(value) then return M.DEFAULT_CHANCE end
+	if not finite(value) then return default end
 	return math.max(0, math.min(1, value))
+end
+
+function M.chance(engine)
+	return setting_chance(engine, M.SETTING, M.DEFAULT_CHANCE)
+end
+
+-- Of the loomless houses, the share with a chopping block.
+function M.chopping_chance(engine)
+	return setting_chance(engine, M.CHOPPING_SETTING, M.DEFAULT_CHOPPING_CHANCE)
 end
 
 local function fold(n)
@@ -68,22 +84,29 @@ function M.is_loomless(pos, seed, chance)
 	return M.roll(pos, seed) < chance
 end
 
--- Turns the loom cells of `schematic` into air, in place. Returns how many, or
--- false if there was none.
-function M.remove_loom(schematic)
+-- Whether a loomless house has a chopping block: a second roll, on another seed.
+function M.has_chopping_block(pos, seed, chance)
+	if not (pos and finite(pos.x) and finite(pos.z)) or not (chance > 0) then return false end
+	if chance >= 1 then return true end
+	return M.roll(pos, fold(seed or 0) + 7777) < chance
+end
+
+-- Turns the loom cells of `schematic` into air (or `replacement`), in place. Returns
+-- how many, or false if there was none.
+function M.remove_loom(schematic, replacement)
 	local removed = 0
 	for _, cell in ipairs(schematic.data or {}) do
 		if cell.name == LOOM then
-			cell.name, cell.param2 = AIR, 0
+			cell.name, cell.param2 = replacement or AIR, 0
 			removed = removed + 1
 		end
 	end
 	return removed > 0 and removed
 end
 
--- A copy of `mts` (a file name or schematic table) with no loom, or nil if it can't
--- be read or has none.
-function M.variant(mts, engine)
+-- A copy of `mts` (a file name or schematic table) with no loom, `replacement` (air by
+-- default) in its place, or nil if it can't be read or has none.
+function M.variant(mts, engine, replacement)
 	engine = engine or core
 	local serialized = engine.serialize_schematic(mts, "lua", {
 		lua_use_comments = false, lua_num_indent_spaces = 0,
@@ -91,7 +114,7 @@ function M.variant(mts, engine)
 	local loader = serialized and loadstring(serialized .. " return schematic")
 	local schematic = loader and loader()
 	if not (schematic and schematic.size and schematic.data) then return nil end
-	if not M.remove_loom(schematic) then return nil end
+	if not M.remove_loom(schematic, replacement) then return nil end
 	return schematic
 end
 
@@ -107,7 +130,8 @@ function M.install(settlements, engine)
 		return false
 	end
 	local original = settlements.place_schematics
-	local cache = {} -- the mts as found -> its loomless variant (or false)
+	-- The mts as found -> its loomless variants (or false), air and chopping block.
+	local cache = {[AIR] = {}, [CHOPPING] = {}}
 	local function entry_of(name)
 		for _, entry in ipairs(settlements.schematic_table) do
 			if entry.name == name then return entry end
@@ -117,6 +141,7 @@ function M.install(settlements, engine)
 	local wrapper
 	wrapper = function(info, ...)
 		local chance = M.chance(engine)
+		local chopping = engine.registered_nodes and engine.registered_nodes[CHOPPING] and M.chopping_chance(engine) or 0
 		local seed = M.world_seed(engine)
 		local function loomless(building)
 			return building.name == "small_house" and M.is_loomless(building.pos, seed, chance)
@@ -137,10 +162,11 @@ function M.install(settlements, engine)
 					.. "it keeps its loom")
 			end
 			local found = entry and entry.mts
-			local variant = found and cache[found]
+			local replacement = loomless(building) and M.has_chopping_block(building.pos, seed, chopping) and CHOPPING or AIR
+			local variant = found and cache[replacement][found]
 			if found and variant == nil then
-				variant = M.variant(found, engine) or false
-				cache[found] = variant
+				variant = M.variant(found, engine, replacement) or false
+				cache[replacement][found] = variant
 			end
 			if variant then entry.mts = variant end
 			local ok, err = pcall(function(...) result = original({building}, ...) end, ...)

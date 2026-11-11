@@ -73,11 +73,6 @@ do
 	assert(#window.rows(hungry, {}, 100, 0).buys == 3, "no filter without the player's inventory")
 end
 
--- News: needs heard, dearest first.
-local news = window.news({{kind = "has", item = FISH, price = 99}, {kind = "needs", item = IRON, price = 46, count = 30},
-	{kind = "needs", item = BREAD, price = 12, count = 3}}, 4)
-assert(#news == 2 and news[1].item == IRON)
-
 -- The engine: a right-click opens the window, the buttons trade real goods.
 local belongings = {[BREAD] = 6, [EMERALD] = 100}
 local possessions = {
@@ -100,7 +95,7 @@ local rep = 0
 local gossip = {reputation = function() return rep end, add = function(_, name, kind) gossiped[#gossiped + 1] = kind end}
 local enabled = true
 local def = {on_rightclick = function(self) self.vanilla = true end}
-window.install(def, {possessions = possessions, gossip = gossip, news = {heard = function() return {} end},
+window.install(def, {possessions = possessions, gossip = gossip,
 	clock = {enabled = function() return enabled end}})
 
 local function inventory(contents)
