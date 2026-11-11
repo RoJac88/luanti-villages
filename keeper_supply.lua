@@ -49,6 +49,9 @@ local CARRY = 24
 local TARGET_MEALS = 12
 local CHECK_SECONDS = 30
 local RETRY_SECONDS = 120
+-- A source it could not walk to is passed over this long, so the next nearest gets a
+-- turn rather than the keeper trying the nearest, and nothing else, for ever.
+local SKIP_SECONDS = 600
 local COOK_SECONDS = 10
 -- In emeralds at ledger.SCALE (ticket 11h).
 local PURSE = 8 * SCALE
@@ -83,7 +86,7 @@ for level = 1, 7 do COMPOSTERS[#COMPOSTERS + 1] = "mcl_composters:composter_" ..
 
 local M = {
 	SUPPLY_RADIUS = SUPPLY_RADIUS, CARRY = CARRY, TARGET_MEALS = TARGET_MEALS,
-	CHECK_SECONDS = CHECK_SECONDS, RETRY_SECONDS = RETRY_SECONDS, COOK_SECONDS = COOK_SECONDS,
+	CHECK_SECONDS = CHECK_SECONDS, RETRY_SECONDS = RETRY_SECONDS, SKIP_SECONDS = SKIP_SECONDS, COOK_SECONDS = COOK_SECONDS,
 	STARTING_STOCK = STARTING_STOCK, PURSE = PURSE, DINNER = DINNER, TAB_CAP = TAB_CAP, TAB = TAB, FLOAT = FLOAT,
 }
 
@@ -118,14 +121,14 @@ local function supplies_in(pos)
 end
 
 -- The nearest work chest with something to fetch, a farmer's or a fisherman's barrel,
--- never a pantry chest.
-function M.source(jukebox, chests)
+-- never a pantry chest, nor one `skip(pos)` passes over.
+function M.source(jukebox, chests, skip)
 	local r = SUPPLY_RADIUS
 	local minp = {x = jukebox.x - r, y = jukebox.y - COMPOSTER_HEIGHT, z = jukebox.z - r}
 	local maxp = {x = jukebox.x + r, y = jukebox.y + COMPOSTER_HEIGHT, z = jukebox.z + r}
 	local best, best_distance
 	local function consider(pos)
-		if pos and not is_pantry(chests, pos) and supplies_in(pos) then
+		if pos and not is_pantry(chests, pos) and not (skip and skip(pos)) and supplies_in(pos) then
 			local distance = vector.distance(pos, jukebox)
 			if not best or distance < best_distance then best, best_distance = pos, distance end
 		end
@@ -229,6 +232,26 @@ local function busy(self)
 	return self.state == "gowp" or self.following ~= nil or (walk ~= nil and walk.status == "planning")
 end
 
+-- Sources each keeper could not reach, by position, until when. Not saved.
+local unreachable = setmetatable({}, {__mode = "k"})
+
+local function spot(pos)
+	return string.format("%d,%d,%d", math.floor(pos.x + 0.5), math.floor(pos.y + 0.5), math.floor(pos.z + 0.5))
+end
+
+local function skipped(self, now)
+	return function(pos)
+		local list = unreachable[self]
+		return list ~= nil and (list[spot(pos)] or 0) > now
+	end
+end
+
+local function pass_over(self, target, now)
+	if not target then return end
+	unreachable[self] = unreachable[self] or {}
+	unreachable[self][spot(target)] = now + SKIP_SECONDS
+end
+
 local function go(self, target, now, arrive)
 	self._villages_supply_target = vector.new(target)
 	local started = self:gopath(target, function(entity)
@@ -237,6 +260,7 @@ local function go(self, target, now, arrive)
 		if pos and vector.distance(pos, target) <= REACH then
 			arrive(entity)
 		else
+			pass_over(entity, target, core.get_gametime())
 			core.log("action", string.format("[living_villages] keeper %s stopped %s short of %s",
 				tostring(entity._id):sub(1, 6), pos and string.format("%.1f", vector.distance(pos, target)) or "?",
 				core.pos_to_string(target)))
@@ -245,8 +269,9 @@ local function go(self, target, now, arrive)
 	if started == false then
 		self._villages_supply_target = nil
 		self._villages_supply_next = now + RETRY_SECONDS
-		core.log("action", string.format("[living_villages] keeper %s found no way to %s",
-			tostring(self._id):sub(1, 6), core.pos_to_string(target)))
+		pass_over(self, target, now)
+		core.log("action", string.format("[living_villages] keeper %s found no way to %s, passing it over for %d s",
+			tostring(self._id):sub(1, 6), core.pos_to_string(target), SKIP_SECONDS))
 	end
 end
 
@@ -258,6 +283,7 @@ local function supply(self, jukebox, now)
 			tostring(self._id):sub(1, 6), core.pos_to_string(self._villages_supply_target),
 			pos and string.format("%.1f", vector.distance(pos, self._villages_supply_target)) or "?", tostring(self.state),
 			route and (tostring(route.status) .. "/" .. tostring(route.reason)) or "none"))
+		pass_over(self, self._villages_supply_target, now)
 		self._villages_supply_target = nil
 		self._villages_supply_next = now + RETRY_SECONDS
 		return
@@ -272,7 +298,7 @@ local function supply(self, jukebox, now)
 		return go(self, jukebox, now, function(entity) deliver(entity, jukebox) end)
 	end
 	if M.meals(chests) >= TARGET_MEALS then return end
-	local source = M.source(jukebox, chests)
+	local source = M.source(jukebox, chests, skipped(self, now))
 	if not source then
 		self._villages_supply_next = now + RETRY_SECONDS
 		return

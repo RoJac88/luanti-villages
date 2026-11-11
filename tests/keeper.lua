@@ -161,6 +161,11 @@ minetest.get_item_group = function(name, group) return 0 end
 local common = dofile("common.lua")
 assert(common.is_workstation_node("mcl_smoker:smoker"))
 assert(def.gopath(alice, smoker) == false)
+-- But its own trip to buy food may end at one: a fisherman's barrel (keeper_supply.lua).
+alice._villages_supply_target = {x = smoker.x, y = smoker.y, z = smoker.z}
+local before = #gopaths
+assert(def.gopath(alice, smoker) ~= false and #gopaths == before + 1, "its supply trip goes ahead")
+alice._villages_supply_target = nil
 
 -- A traded keeper that loses its jukebox keeps the role and its trades, and
 -- any smoker vanilla hands it is released again.
