@@ -658,7 +658,6 @@ core.register_on_mods_loaded(function()
 	dofile(core.get_modpath("living_villages") .. "/trade_window.lua").install(def, {
 		possessions = dofile(core.get_modpath("living_villages") .. "/possessions.lua"),
 		gossip = gossip,
-		news = dofile(core.get_modpath("living_villages") .. "/market_news.lua"),
 		clock = dofile(core.get_modpath("living_villages") .. "/economy_clock.lua"),
 	})
 	-- Taking from a stash in sight of a villager is gossip about the taker.

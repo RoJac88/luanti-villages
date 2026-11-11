@@ -7,8 +7,6 @@
 -- * It buys what it needs, up to its need, at BID_SHARE of its value, and only with
 --   the emeralds it carries. A villager in need is a standing order: this is how the
 --   player takes part in the village's economy.
--- * News: the needs it heard from others (market news), as a pointer to who wants
---   what. It is not a contract.
 --
 -- A price is whole emeralds for a lot: one item, or as many as make up one emerald for
 -- goods worth less (M.lot).
@@ -40,7 +38,6 @@ local REP_MAX = 0.25
 local REFUSE = -40
 local URGENT = 2
 local ROWS = 6
-local NEWS_ROWS = 4
 local REACH = 6
 -- What a category's amount counts (goods.lua).
 local UNITS = {food = "points", fuel = "seconds", log = "logs", planks = "planks"}
@@ -116,21 +113,6 @@ function M.rows(view, held, emeralds, reputation, player_has)
 	return {sells = sells, buys = buys, short = short}
 end
 
--- The needs it heard from others, dearest first, at most n.
-function M.news(heard, n)
-	local list = {}
-	for _, entry in ipairs(heard or {}) do
-		if entry.kind == "needs" and entry.price then list[#list + 1] = entry end
-	end
-	table.sort(list, function(a, b)
-		if a.price ~= b.price then return a.price > b.price end
-		return a.item < b.item
-	end)
-	local out = {}
-	for i = 1, math.min(n or NEWS_ROWS, #list) do out[i] = list[i] end
-	return out
-end
-
 -- The engine.
 
 local function description(item)
@@ -152,7 +134,7 @@ local function reputation_word(r)
 end
 
 function M.install(def, deps)
-	local possessions, gossip, news, clock = deps.possessions, deps.gossip, deps.news, deps.clock
+	local possessions, gossip, clock = deps.possessions, deps.gossip, deps.clock
 	local sessions = {}
 
 	local function reputation(villager, name)
@@ -184,7 +166,7 @@ function M.install(def, deps)
 		sessions[name].rows = rows
 		local r = reputation(villager, name)
 		local parts = {
-			"formspec_version[4]", "size[13,15]",
+			"formspec_version[4]", "size[13,13.5]",
 			string.format("label[0.5,0.6;%s]", esc(string.format("%s, %s. Purse: %d emeralds. You are %s to it (%d).",
 				(villager.nametag and villager.nametag ~= "" and villager.nametag) or "Villager",
 				tostring(villager._profession or "villager"), possessions.emeralds(villager), reputation_word(r), r))),
@@ -217,19 +199,7 @@ function M.install(def, deps)
 			parts[#parts + 1] = string.format("label[6.8,%g;%s]", y - 0.25,
 				esc("Short of: " .. table.concat(list, ", ") .. " (any kind)"))
 		end
-		parts[#parts + 1] = string.format("label[0.5,%g;Heard at market:]", y)
-		local heard = M.news(news.heard(villager), NEWS_ROWS)
-		for i, entry in ipairs(heard) do
-			local home = entry.home and string.format(" (home %d,%d)", entry.home.x, entry.home.z) or ""
-			parts[#parts + 1] = string.format("label[0.5,%g;%s]", y + i * 0.45,
-				esc(entry.group
-					and string.format("someone needs %s, such as %d %s, worth %d each to them%s", entry.group,
-						entry.count or 0, description(entry.item), math.floor(entry.price + 0.5), home)
-					or string.format("someone needs %d %s, worth %d each to them%s", entry.count or 0,
-						description(entry.item), math.floor(entry.price + 0.5), home)))
-		end
-		if #heard == 0 then parts[#parts + 1] = string.format("label[0.5,%g;nothing]", y + 0.45) end
-		parts[#parts + 1] = "list[current_player;main;0.5,9.4;9,4;]"
+		parts[#parts + 1] = string.format("list[current_player;main;0.5,%g;9,4;]", y + 0.4)
 		return table.concat(parts)
 	end
 

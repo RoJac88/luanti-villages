@@ -1329,8 +1329,8 @@ villager opens a window of its own:
 * **It sells** its real spare goods, taken from its belongings, at its value.
 * **It buys** what it needs, at what it would pay, up to the emeralds it holds. This is
   how the player takes part: a villager in need is a standing order.
-* **News**: a few needs it heard from others (market news), as a pointer to who wants
-  what. It is not a contract.
+* ~~**News**: a few needs it heard from others (market news), as a pointer to who wants
+  what.~~ Dropped in ticket 16 at the user's request: it cluttered the window.
 
 Reputation (`gossip.lua`) moves both sides' prices, as it does now. Selling a villager
 something it needs is good gossip, more the more urgent the need. Below a threshold a
