@@ -69,15 +69,45 @@ assert(#list == 0 and #wild == 0)
 list = herd.gather(worker, jobsite, list, wild)
 assert(#list == herd.SEED_COWS and list[1]._villages_herder == "leather1" and logged("started a herd of 2"))
 assert(worker._villages_herd_seeded)
--- A wild cow near is taken on; one far off, or another's, is not.
+-- With two cows it takes on no wild one: the herd grows by breeding.
 local stray = cow_at({x = 5, y = 1, z = 0})
 local far = cow_at({x = 30, y = 1, z = 0})
 local others = cow_at({x = 3, y = 1, z = 3}, {_villages_herder = "someone"})
 list, wild = herd.scan(worker, jobsite)
 assert(#list == 2 and #wild == 1 and wild[1] == stray)
 list = herd.gather(worker, jobsite, list, wild)
-assert(#list == 3 and stray._villages_herder == "leather1" and not far._villages_herder)
-assert(others._villages_herder == "someone")
+assert(#list == 2 and not stray._villages_herder, "a herd of two takes on none")
+-- The whole herd dies: a wild cow that comes near is taken on, up to two, so a player
+-- can restart it. One far off, or another's, is not; nor is it seeded again.
+for _, cow in ipairs(list) do cow.object:remove() end
+local second = cow_at({x = -4, y = 1, z = 2})
+local third = cow_at({x = 2, y = 1, z = -4})
+list, wild = herd.scan(worker, jobsite)
+assert(#list == 0 and #wild == 3)
+list = herd.gather(worker, jobsite, list, wild)
+assert(#list == herd.SEED_COWS and not logged("started a herd of 0"))
+local adopted = 0
+for _, cow in ipairs({stray, second, third}) do
+	if cow._villages_herder == "leather1" then adopted = adopted + 1 end
+end
+assert(adopted == 2 and not far._villages_herder and others._villages_herder == "someone")
+-- A third is left wild; bring the herd back to three for what follows.
+for _, cow in ipairs({stray, second, third}) do cow._villages_herder = "leather1" end
+list = herd.scan(worker, jobsite)
+assert(#list == 3)
+
+-- Bound to the jobsite: a cow past BOUND walks back, one past LEASH is set down beside it.
+do
+	local wanderer = cow_at({x = 15, y = 1, z = 0}, {_villages_herder = "leather1"})
+	local runaway = cow_at({x = 25, y = 1, z = 0}, {_villages_herder = "leather1"})
+	local walked
+	wanderer.gopath = function(_, target) walked = target end
+	assert(herd.keep_near(jobsite, {wanderer, runaway, stray}) == 2)
+	assert(walked and vector.distance(walked, jobsite) <= 6, "walks home")
+	assert(vector.distance(runaway.object:get_pos(), jobsite) <= 6, "set down beside the jobsite")
+	wanderer.object:remove()
+	runaway.object:remove()
+end
 
 -- Breeding takes two wheat and makes a calf of the herd.
 assert(herd.tend(worker, jobsite, list) == nil, "no wheat, no calf")

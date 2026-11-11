@@ -19,6 +19,11 @@
 -- something it needs urgently (urgency at least URGENT, ledger.lua) is good gossip
 -- besides ("minor_positive").
 --
+-- A need by purpose (goods.lua, ticket 15: food, fuel, logs, planks) takes any member.
+-- The window says what it is short of ("food: 12 points") and lists as rows only the
+-- members the player has with them, each at its own units' worth. Player trades convert
+-- nothing.
+--
 -- Vanilla's tables, tiers and rare goods (enchanted books, diamond gear) are left out of
 -- player trade, to be brought back once the economy works. `_trades` is left alone:
 -- vanilla and this mod read it as the mark of a villager that keeps its job. The keeper
@@ -37,6 +42,8 @@ local URGENT = 2
 local ROWS = 6
 local NEWS_ROWS = 4
 local REACH = 6
+-- What a category's amount counts (goods.lua).
+local UNITS = {food = "points", fuel = "seconds", log = "logs", planks = "planks"}
 
 local M = {
 	FORMNAME = FORMNAME, MARKUP = MARKUP, BID_SHARE = BID_SHARE, REP_STEP = REP_STEP,
@@ -62,10 +69,12 @@ function M.lot(unit, up)
 end
 
 -- The rows of the window, from a villager's view (ledger.assess), what it holds
--- ({item = count}), its emeralds, and its reputation for the player:
--- {sells = {{item, lot, price, lots}}, buys = {{item, lot, price, lots, urgency}}}.
--- `lots` is how many lots it has to sell, or wants and can pay for.
-function M.rows(view, held, emeralds, reputation)
+-- ({item = count}), its emeralds, its reputation for the player, and what the player
+-- has ({item = count}, nil for no filter):
+-- {sells = {{item, lot, price, lots}}, buys = {{item, lot, price, lots, urgency}},
+-- short = {{category, amount}}}. `lots` is how many lots it has to sell, or wants and
+-- can pay for. A category's members are bought only as the player has them.
+function M.rows(view, held, emeralds, reputation, player_has)
 	local share = M.rep_share(reputation)
 	local sells, buys = {}, {}
 	for item, spare in pairs(view.surplus or {}) do
@@ -78,9 +87,11 @@ function M.rows(view, held, emeralds, reputation)
 			end
 		end
 	end
+	local group = view.group or {}
 	for item, need in pairs(view.needs or {}) do
 		local value = view.value(item)
-		if item ~= EMERALD and value then
+		local shown = not group[item] or not player_has or (player_has[item] or 0) > 0
+		if item ~= EMERALD and value and shown then
 			local lot, price = M.lot(value * BID_SHARE * (1 + share), false)
 			if lot and need >= lot then
 				local lots = math.min(math.floor(need / lot), math.floor((emeralds or 0) / price))
@@ -97,7 +108,12 @@ function M.rows(view, held, emeralds, reputation)
 	end
 	table.sort(sells, order)
 	table.sort(buys, order)
-	return {sells = sells, buys = buys}
+	local short = {}
+	for category, state in pairs(view.categories or {}) do
+		if (state.short or 0) > 0 then short[#short + 1] = {category = category, amount = state.short} end
+	end
+	table.sort(short, function(a, b) return a.category < b.category end)
+	return {sells = sells, buys = buys, short = short}
 end
 
 -- The needs it heard from others, dearest first, at most n.
@@ -143,9 +159,24 @@ function M.install(def, deps)
 		return gossip and gossip.reputation(villager, name) or 0
 	end
 
+	-- What the player carries: {item = count}.
+	local function player_has(name)
+		local player = core.get_player_by_name and core.get_player_by_name(name)
+		local inv = player and player:get_inventory()
+		if not inv then return nil end
+		local has = {}
+		for _, stack in ipairs(inv:get_list("main") or {}) do
+			if not stack:is_empty() then
+				has[stack:get_name()] = (has[stack:get_name()] or 0) + stack:get_count()
+			end
+		end
+		return has
+	end
+
 	local function current_rows(villager, name)
 		local view = possessions.assess(villager)
-		return M.rows(view, possessions.held(villager), possessions.emeralds(villager), reputation(villager, name)), view
+		return M.rows(view, possessions.held(villager), possessions.emeralds(villager), reputation(villager, name),
+			player_has(name)), view
 	end
 
 	local function form(villager, name)
@@ -178,13 +209,24 @@ function M.install(def, deps)
 		if #rows.sells == 0 then parts[#parts + 1] = "label[0.5,2;Nothing to spare.]" end
 		if #rows.buys == 0 then parts[#parts + 1] = "label[6.8,2;Needs nothing.]" end
 		local y = 1.6 + ROWS * 0.95 + 0.2
+		if #rows.short > 0 then
+			local list = {}
+			for i, entry in ipairs(rows.short) do
+				list[i] = string.format("%s %d %s", entry.category, math.ceil(entry.amount), UNITS[entry.category] or "")
+			end
+			parts[#parts + 1] = string.format("label[6.8,%g;%s]", y - 0.25,
+				esc("Short of: " .. table.concat(list, ", ") .. " (any kind)"))
+		end
 		parts[#parts + 1] = string.format("label[0.5,%g;Heard at market:]", y)
 		local heard = M.news(news.heard(villager), NEWS_ROWS)
 		for i, entry in ipairs(heard) do
 			local home = entry.home and string.format(" (home %d,%d)", entry.home.x, entry.home.z) or ""
 			parts[#parts + 1] = string.format("label[0.5,%g;%s]", y + i * 0.45,
-				esc(string.format("someone needs %d %s, worth %d each to them%s", entry.count or 0,
-					description(entry.item), math.floor(entry.price + 0.5), home)))
+				esc(entry.group
+					and string.format("someone needs %s, such as %d %s, worth %d each to them%s", entry.group,
+						entry.count or 0, description(entry.item), math.floor(entry.price + 0.5), home)
+					or string.format("someone needs %d %s, worth %d each to them%s", entry.count or 0,
+						description(entry.item), math.floor(entry.price + 0.5), home)))
 		end
 		if #heard == 0 then parts[#parts + 1] = string.format("label[0.5,%g;nothing]", y + 0.45) end
 		parts[#parts + 1] = "list[current_player;main;0.5,9.4;9,4;]"

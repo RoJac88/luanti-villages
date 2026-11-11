@@ -55,6 +55,24 @@ assert(foe.sells[1].price > 13 and foe.buys[1].price < 36)
 -- With no emeralds it still shows the need, with no lots.
 assert(window.rows(view, {}, 0, 0).buys[1].lots == 0)
 
+-- A category's need (ticket 15): a member is a row only if the player has some, and
+-- what it is short of is listed once.
+do
+	local APPLE, CARROT = "mcl_core:apple", "mcl_farming:carrot_item"
+	local hungry = {
+		surplus = {}, needs = {[APPLE] = 3, [CARROT] = 4, [IRON] = 1},
+		group = {[APPLE] = "food", [CARROT] = "food"},
+		categories = {food = {target = 12, held = 0, short = 12}},
+		value = function(item) return ({[APPLE] = 4, [CARROT] = 3, [IRON] = 40})[item] end,
+	}
+	local r = window.rows(hungry, {}, 100, 0, {[CARROT] = 5})
+	local items = {}
+	for _, entry in ipairs(r.buys) do items[entry.item] = true end
+	assert(items[CARROT] and items[IRON] and not items[APPLE], "only the member the player has")
+	assert(#r.short == 1 and r.short[1].category == "food" and r.short[1].amount == 12)
+	assert(#window.rows(hungry, {}, 100, 0).buys == 3, "no filter without the player's inventory")
+end
+
 -- News: needs heard, dearest first.
 local news = window.news({{kind = "has", item = FISH, price = 99}, {kind = "needs", item = IRON, price = 46, count = 30},
 	{kind = "needs", item = BREAD, price = 12, count = 3}}, 4)

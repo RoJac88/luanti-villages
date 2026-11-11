@@ -21,6 +21,11 @@
 -- STANDING_SHIFT of the midpoint at FULL_STANDING, but never past either value: a seller
 -- that likes the buyer charges less, a buyer that likes the seller pays more.
 --
+-- Conversions (ticket 15, goods.lua): a seller whose job turns a good into another
+-- (a shepherd's wool into string) can sell what the buyer needs from its spare stock of
+-- the other, on the spot and for free. It values each made item at the source's value
+-- over the ratio, and hands over whole sources' worth: one wool gives four string.
+--
 -- Goods pass from belongings to belongings (possessions.lua) with food.show_handover's
 -- item across. With the economy off nothing is traded.
 local core = minetest
@@ -28,6 +33,7 @@ local clock = dofile(core.get_modpath("living_villages") .. "/economy_clock.lua"
 local possessions = dofile(core.get_modpath("living_villages") .. "/possessions.lua")
 local food = dofile(core.get_modpath("living_villages") .. "/food.lua")
 local gossip = dofile(core.get_modpath("living_villages") .. "/gossip.lua")
+local goods_mod = dofile(core.get_modpath("living_villages") .. "/goods.lua")
 
 local EMERALD = "mcl_core:emerald"
 -- A sale must come to at least this many emeralds before rounding, or it grows: less,
@@ -88,36 +94,64 @@ end
 -- alone (a trade trip, trade_trips.lua).
 function M.offer(seller, seller_view, buyer, buyer_view, only)
 	local best
+	local conversions = goods_mod.conversions(seller)
 	for item, wanted in pairs(buyer_view.needs) do
-		local available = item ~= EMERALD and (not only or item == only) and spare(seller, seller_view, item) or 0
-		local to_buyer, to_seller = buyer_view.value(item), seller_view.value(item)
-		if available > 0 and to_buyer and to_seller and to_buyer > to_seller then
-			local unit = M.unit_price(seller, buyer, to_seller, to_buyer)
-			local count = math.min(wanted, available)
-			-- No more than its emeralds pay for (unless it barters, below, for the whole lot).
-			local affordable = math.floor(possessions.emeralds(buyer) / unit)
-			if affordable >= 1 and count * unit > possessions.emeralds(buyer) then count = affordable end
-			if count * unit < MIN_SALE then count = math.min(math.ceil(MIN_SALE / unit), available) end
-			local value = count * unit
-			local worth_to_buyer, worth_to_seller = count * to_buyer, count * to_seller
-			local trade
-			local pay = math.max(math.floor(value + 0.5), 1)
-			if pay <= worth_to_buyer and pay >= worth_to_seller and possessions.emeralds(buyer) >= pay then
-				trade = {pay = pay}
-			else
-				local goods, goods_count = barter(buyer, buyer_view, seller_view, value, worth_to_buyer)
-				if goods and goods_count * seller_view.value(goods) >= worth_to_seller then
-					trade = {goods = goods, goods_count = goods_count}
+		if item ~= EMERALD then
+			-- What it can sell the item from: its own stock, or a good its job converts.
+			-- With `only` (a stall's shown good, or a trip's item), that good or what is made
+			-- from it alone.
+			local sources = {}
+			if not only or item == only then sources[1] = {from = item, ratio = 1} end
+			for _, conversion in ipairs(conversions) do
+				if conversion.to == item and (not only or item == only or conversion.from == only) then
+					sources[#sources + 1] = conversion
 				end
 			end
-			if trade then
-				trade.seller, trade.buyer, trade.item, trade.count = seller, buyer, item, count
-				trade.gain = worth_to_buyer - worth_to_seller
-				if not best or trade.gain > best.gain or (trade.gain == best.gain and item < best.item) then best = trade end
+			for _, source in ipairs(sources) do
+				local trade = M.quote(seller, seller_view, buyer, buyer_view, item, wanted, source.from, source.ratio)
+				if trade and (not best or trade.gain > best.gain or (trade.gain == best.gain and item < best.item)) then
+					best = trade
+				end
 			end
 		end
 	end
 	return best
+end
+
+-- One candidate sale of `item` made from `from` (itself when ratio is 1), or nil.
+function M.quote(seller, seller_view, buyer, buyer_view, item, wanted, from, ratio)
+	local stock = spare(seller, seller_view, from)
+	local to_buyer = buyer_view.value(item)
+	local source_value = seller_view.value(from)
+	local to_seller = source_value and source_value / ratio
+	if stock <= 0 or not to_buyer or not to_seller or to_buyer <= to_seller then return nil end
+	local available = stock * ratio
+	local unit = M.unit_price(seller, buyer, to_seller, to_buyer)
+	local count = math.min(wanted, available)
+	-- No more than its emeralds pay for (unless it barters, below, for the whole lot).
+	local affordable = math.floor(possessions.emeralds(buyer) / unit)
+	if affordable >= 1 and count * unit > possessions.emeralds(buyer) then count = affordable end
+	if count * unit < MIN_SALE then count = math.min(math.ceil(MIN_SALE / unit), available) end
+	-- A converted sale hands over whole sources.
+	local from_count = math.ceil(count / ratio)
+	count = from_count * ratio
+	local value = count * unit
+	local worth_to_buyer, worth_to_seller = count * to_buyer, count * to_seller
+	local trade
+	local pay = math.max(math.floor(value + 0.5), 1)
+	if pay <= worth_to_buyer and pay >= worth_to_seller and possessions.emeralds(buyer) >= pay then
+		trade = {pay = pay}
+	else
+		local goods, goods_count = barter(buyer, buyer_view, seller_view, value, worth_to_buyer)
+		if goods and goods_count * seller_view.value(goods) >= worth_to_seller then
+			trade = {goods = goods, goods_count = goods_count}
+		end
+	end
+	if not trade then return nil end
+	trade.seller, trade.buyer, trade.item, trade.count = seller, buyer, item, count
+	if from ~= item then trade.from, trade.from_count = from, from_count end
+	trade.gain = worth_to_buyer - worth_to_seller
+	return trade
 end
 
 local function show(from, to, item)
@@ -129,10 +163,11 @@ end
 -- Carries out a trade from offer(). Returns whether it went through.
 function M.settle(trade)
 	local seller, buyer = trade.seller, trade.buyer
-	if possessions.count(seller, trade.item) < trade.count then return false end
+	local from, from_count = trade.from or trade.item, trade.from_count or trade.count
+	if possessions.count(seller, from) < from_count then return false end
 	if trade.pay and possessions.emeralds(buyer) < trade.pay then return false end
 	if trade.goods and possessions.count(buyer, trade.goods) < trade.goods_count then return false end
-	possessions.take(seller, trade.item, trade.count)
+	possessions.take(seller, from, from_count)
 	possessions.add(buyer, trade.item, trade.count)
 	show(seller, buyer, trade.item)
 	local price
@@ -147,8 +182,9 @@ function M.settle(trade)
 		show(buyer, seller, trade.goods)
 		price = trade.goods_count .. " " .. trade.goods
 	end
-	core.log("action", string.format("[living_villages] trade: villager %s sold %d %s to %s for %s",
-		short_id(seller), trade.count, trade.item, short_id(buyer), price))
+	local made = trade.from and string.format(" (from %d %s)", from_count, from) or ""
+	core.log("action", string.format("[living_villages] trade: villager %s sold %d %s%s to %s for %s",
+		short_id(seller), trade.count, trade.item, made, short_id(buyer), price))
 	return true
 end
 

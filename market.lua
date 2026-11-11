@@ -9,7 +9,7 @@ local cells = dofile(core.get_modpath("living_villages") .. "/cells.lua")
 
 local goods = {
 	farmer = {"mcl_farming:bread", "mcl_core:apple"},
-	fisherman = {"mcl_fishing:fish_cooked", "mcl_fishing:salmon_cooked"},
+	fisherman = {"mcl_fishing:fish_raw", "mcl_fishing:salmon_raw"},
 	fletcher = {"mcl_bows:arrow", "mcl_bows:bow"},
 	shepherd = {"mcl_wool:white", "mcl_tools:shears"},
 	librarian = {"mcl_books:book", "mcl_books:bookshelf"},

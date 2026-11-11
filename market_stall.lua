@@ -27,6 +27,7 @@ local possessions = dofile(core.get_modpath("living_villages") .. "/possessions.
 local ledger = dofile(core.get_modpath("living_villages") .. "/ledger.lua")
 local exchange = dofile(core.get_modpath("living_villages") .. "/exchange.lua")
 local news = dofile(core.get_modpath("living_villages") .. "/market_news.lua")
+local goods = dofile(core.get_modpath("living_villages") .. "/goods.lua")
 
 local STALL_ITEMS = 2
 local BANNER = "mcl_banners:banner_item_white"
@@ -46,10 +47,18 @@ local function short_id(id)
 end
 
 -- Its top spare goods that it carries, at most STALL_ITEMS, or nil: those it heard
--- needed first, by the asking price, then the rest by value.
+-- needed first (or whose product is, ticket 15), by the asking price, then the rest by
+-- value.
 function M.goods(villager)
 	local view = possessions.assess(villager)
 	local asking = news.asking(news.heard(villager))
+	-- A good its job converts (goods.lua) is asked for at what its product is.
+	for _, conversion in ipairs(goods.conversions(villager)) do
+		local price = asking[conversion.to]
+		if price and price * conversion.ratio > (asking[conversion.from] or 0) then
+			asking[conversion.from] = price * conversion.ratio
+		end
+	end
 	local wanted, rest = {}, {}
 	for item, count in pairs(view.surplus) do
 		local spare = math.min(count, possessions.count(villager, item))

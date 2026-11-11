@@ -30,6 +30,7 @@ local clock = dofile(core.get_modpath("living_villages") .. "/economy_clock.lua"
 local possessions = dofile(core.get_modpath("living_villages") .. "/possessions.lua")
 local ledger = dofile(core.get_modpath("living_villages") .. "/ledger.lua")
 local prices = dofile(core.get_modpath("living_villages") .. "/prices.lua")
+local goods = dofile(core.get_modpath("living_villages") .. "/goods.lua")
 
 local NEWS_ENTRIES = 24
 local NEWS_SHARE = 6
@@ -56,14 +57,26 @@ local function lifetime()
 end
 M.lifetime = lifetime
 
+-- One villager's need for a category (ticket 15) is one entry, whichever member it names.
 local function same(a, b)
-	return a.item == b.item and a.who == b.who and a.kind == b.kind
+	if a.who ~= b.who or a.kind ~= b.kind then return false end
+	if a.group or b.group then return a.group == b.group end
+	return a.item == b.item
 end
+
+-- The items an entry is about: its own, or every member of its category.
+local function items_of(entry)
+	if entry.group and goods.CATEGORIES[entry.group] then return goods.CATEGORIES[entry.group] end
+	return {[entry.item] = true}
+end
+M.items_of = items_of
 
 -- What a list of entries says is needed and had: {needs = {item = true}, has = {...}}.
 function M.wanted_and_had(list)
 	local known = {needs = {}, has = {}}
-	for _, entry in ipairs(list or {}) do known[entry.kind][entry.item] = true end
+	for _, entry in ipairs(list or {}) do
+		for item in pairs(items_of(entry)) do known[entry.kind][item] = true end
+	end
 	return known
 end
 
@@ -73,11 +86,19 @@ function M.interest(view, entry, now, known)
 	local weight = 1
 	if view then
 		if entry.kind == "has" and view.needs[entry.item] then weight = INTEREST_MATCH end
-		if entry.kind == "needs" and view.surplus[entry.item] then weight = INTEREST_MATCH end
+		if entry.kind == "needs" then
+			for item in pairs(items_of(entry)) do
+				if view.surplus[item] then weight = INTEREST_MATCH break end
+			end
+		end
 	end
 	if known then
 		if entry.kind == "has" and known.needs[entry.item] then weight = INTEREST_MATCH end
-		if entry.kind == "needs" and known.has[entry.item] then weight = INTEREST_MATCH end
+		if entry.kind == "needs" then
+			for item in pairs(items_of(entry)) do
+				if known.has[item] then weight = INTEREST_MATCH break end
+			end
+		end
 	end
 	local freshness = math.max(1 - (now - entry.heard) / lifetime(), MIN_FRESHNESS)
 	return weight * freshness / (1 + entry.hops)
@@ -87,8 +108,16 @@ end
 function M.asking(heard)
 	local best = {}
 	for _, entry in ipairs(heard) do
-		if entry.kind == "needs" and entry.price and entry.price > (best[entry.item] or 0) then
-			best[entry.item] = entry.price
+		if entry.kind == "needs" and entry.price then
+			if entry.group and goods.units(entry.group, entry.item) then
+				-- A category's need, priced per unit, asks every member at its units' worth.
+				local per = entry.price / goods.units(entry.group, entry.item)
+				for item, units in pairs(goods.CATEGORIES[entry.group]) do
+					if per * units > (best[item] or 0) then best[item] = per * units end
+				end
+			elseif entry.price > (best[entry.item] or 0) then
+				best[entry.item] = entry.price
+			end
 		end
 	end
 	return best
@@ -114,19 +143,43 @@ function M.own(self, view, now)
 	local entries = {}
 	local home = self._bed and vector.new(self._bed) or nil
 	local asked = M.wanted_and_had(M.heard(self, now)).needs
-	for kind, list in pairs({needs = view.needs, has = view.surplus}) do
+	-- A category's need (ticket 15) is told once, under the member cheapest per unit.
+	local needs, cheapest = {}, {}
+	for item, count in pairs(view.needs) do
+		local group = view.group and view.group[item]
+		if group then
+			local per = (view.value(item) or math.huge) / goods.units(group, item)
+			local best = cheapest[group]
+			if not best or per < best.per or (per == best.per and item < best.item) then
+				cheapest[group] = {item = item, per = per}
+			end
+		else
+			needs[item] = count
+		end
+	end
+	for _, best in pairs(cheapest) do needs[best.item] = view.needs[best.item] end
+	for kind, list in pairs({needs = needs, has = view.surplus}) do
 		local told = {}
-		local function add(item, count)
+		local function add(item, count, price)
 			told[item] = true
 			entries[#entries + 1] = {
 				item = item, who = self._id, kind = kind, count = count,
-				price = view.value(item), home = home, heard = now, hops = 0,
+				price = price or view.value(item), home = home, heard = now, hops = 0,
+				group = kind == "needs" and view.group and view.group[item] or nil,
 			}
 		end
 		for _, top in ipairs(ledger.top(list, view.value, OWN_ITEMS)) do add(top.item, top.count) end
 		if kind == "has" then
 			for item, count in pairs(list) do
 				if asked[item] and not told[item] then add(item, count) end
+			end
+			-- What its job turns its spare into when it sells (goods.lua), where asked.
+			for _, conversion in ipairs(goods.conversions(self)) do
+				local spare = list[conversion.from]
+				local value = view.value(conversion.from)
+				if spare and value and asked[conversion.to] and not told[conversion.to] then
+					add(conversion.to, spare * conversion.ratio, value / conversion.ratio)
+				end
 			end
 		end
 	end

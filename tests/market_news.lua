@@ -162,6 +162,41 @@ do
 end
 
 -- With the economy off nothing passes.
+-- Categories (ticket 15): a food need is told once, under the cheapest food per point,
+-- and asks every food at its points' worth. A shepherd asked for string offers it.
+do
+	local APPLE, BREAD, STRING = "mcl_core:apple", "mcl_farming:bread", "mcl_mobitems:string"
+	local values = {[APPLE] = 8, [BREAD] = 5, ["mcl_wool:grey"] = 2}
+	local view = {
+		needs = {[APPLE] = 3, [BREAD] = 2}, surplus = {["mcl_wool:grey"] = 5},
+		group = {[APPLE] = "food", [BREAD] = "food"},
+		value = function(item) return values[item] end,
+	}
+	local shepherd = villager("shep", {}, {_profession = "shepherd"})
+	local entries = news.own(shepherd, view, now)
+	local food_needs, need = 0, nil
+	for _, entry in ipairs(entries) do
+		if entry.kind == "needs" then
+			food_needs, need = food_needs + 1, entry
+			assert(entry.group == "food" and entry.item == BREAD, entry.item)
+		end
+		assert(entry.item ~= STRING, "no string unasked")
+	end
+	assert(food_needs == 1)
+	local asking = news.asking({need})
+	local per = 5 / dofile("food.lua").POINTS[BREAD]
+	assert(math.abs(asking[APPLE] - per * dofile("food.lua").POINTS[APPLE]) < 1e-9)
+	-- Someone asked for string: it offers 4 a wool, at a quarter of the wool's value.
+	shepherd._villages_market_news = {{item = STRING, who = "weaver", kind = "needs", count = 8, price = 1,
+		heard = now, hops = 1}}
+	local offered
+	for _, entry in ipairs(news.own(shepherd, view, now)) do
+		if entry.kind == "has" and entry.item == STRING then offered = entry end
+	end
+	assert(offered and offered.count == 20 and offered.price == 0.5)
+	shepherd._villages_market_news = nil
+end
+
 settings.living_villages_economy = false
 local hal, ivy = villager("hal", {["mcl_core:coal_lump"] = 40}), villager("ivy", {})
 assert(news.exchange({hal, ivy}) == 0 and ivy._villages_market_news == nil)

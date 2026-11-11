@@ -64,7 +64,10 @@ local STEP_SECONDS = 5
 local STOCK = 16
 local UNASKED_STOCK = 1
 local SMELTS_PER_LUMP = 8
+-- Burn seconds per smelt: a lump of coal's 80 make 8 (goods.lua's fuel).
+local SMELT_SECONDS = 10
 local COAL, CHARCOAL = ledger.COAL, "mcl_core:charcoal_lump"
+local goods = dofile(core.get_modpath("living_villages") .. "/goods.lua")
 -- Most crafts in one step, should a long gap have banked many.
 local MAX_PER_STEP = 4
 local DEFAULT_TIER_SUPPLY_DAYS = 3
@@ -89,14 +92,65 @@ function M.recipes(self)
 	return recipes[self._profession]
 end
 
+-- An input any species of which will do (ticket 15): a recipe written with oak logs or
+-- planks takes any log or planks, and planks made from a log are of its species. The
+-- members, or nil for an input wanted as itself.
+local function kinds(item)
+	local category = goods.target_category(item)
+	if category == "log" or category == "planks" then return goods.CATEGORIES[category] end
+	return nil
+end
+
+-- How many of an input there are by `count(item)`, any species counted.
+local function have(item, count)
+	local members = kinds(item)
+	if not members then return count(item) or 0 end
+	local total = 0
+	for member in pairs(members) do total = total + (count(member) or 0) end
+	return total
+end
+M.have = have
+
+-- What it burns, best first: charcoal, coal, then any other fuel (goods.lua) that none
+-- of its recipes takes as an input (ticket 15), as {item, smelts}.
+local fuel_lists = {}
+local function fuels(self)
+	local profession = self._profession or ""
+	if fuel_lists[profession] then return fuel_lists[profession] end
+	local inputs = {}
+	for _, recipe in ipairs(recipes[profession] or {}) do
+		for _, input in ipairs(recipe.from) do
+			inputs[input[1]] = true
+			for member in pairs(kinds(input[1]) or {}) do inputs[member] = true end
+		end
+	end
+	local others = {}
+	for item, seconds in pairs(goods.CATEGORIES.fuel) do
+		if item ~= COAL and item ~= CHARCOAL and not inputs[item] then
+			others[#others + 1] = {item = item, smelts = seconds / SMELT_SECONDS}
+		end
+	end
+	table.sort(others, function(a, b) return a.item < b.item end)
+	local list = {{item = CHARCOAL, smelts = SMELTS_PER_LUMP}, {item = COAL, smelts = SMELTS_PER_LUMP}}
+	for _, entry in ipairs(others) do list[#list + 1] = entry end
+	fuel_lists[profession] = list
+	return list
+end
+
+local function fuel_in(self, counts)
+	local total = 0
+	for _, fuel in ipairs(fuels(self)) do total = total + fuel.smelts * (counts(fuel.item) or 0) end
+	return total
+end
+
 local function fuel_available(self, held)
-	return (self._villages_fuel or 0) + SMELTS_PER_LUMP * ((held[COAL] or 0) + (held[CHARCOAL] or 0))
+	return (self._villages_fuel or 0) + fuel_in(self, function(item) return held[item] end)
 end
 
 -- Whether `held` (possessions.held) covers one craft.
 function M.can_make(self, recipe, held)
 	for _, input in ipairs(recipe.from) do
-		if (held[input[1]] or 0) < input[2] then return false end
+		if have(input[1], function(item) return held[item] end) < input[2] then return false end
 	end
 	return not recipe.fuel or fuel_available(self, held) >= recipe.fuel
 end
@@ -125,8 +179,10 @@ function M.choose(self, held, view, asks)
 	local best, best_gain
 	for _, recipe in ipairs(list) do
 		local target = view.targets[recipe.makes] or 0
-		local wanted = target > 0 or (asks[recipe.makes] or 0) > 0
-		local stocked = (held[recipe.makes] or 0) >= (wanted and target + STOCK or UNASKED_STOCK)
+		-- Its own need counts, a category's (food, ticket 15) included.
+		local wanted = target > 0 or (asks[recipe.makes] or 0) > 0 or (view.needs[recipe.makes] or 0) > 0
+		local stock_held = have(recipe.makes, function(item) return held[item] end)
+		local stocked = stock_held >= (wanted and target + STOCK or UNASKED_STOCK)
 		if not stocked and M.can_make(self, recipe, held) then
 			local gain = M.gain(recipe, view, asks)
 			if not best or gain > best_gain or (gain == best_gain and recipe.makes < best.makes) then
@@ -140,11 +196,13 @@ end
 -- Burns lumps for `smelts`, noting each in `used`. Returns whether there was enough.
 local function burn(self, smelts, used)
 	while (self._villages_fuel or 0) < smelts do
-		local lump = (possessions.take_held(self, CHARCOAL, 1) == 1 and CHARCOAL)
-			or (possessions.take_held(self, COAL, 1) == 1 and COAL)
-		if not lump then return false end
-		used[lump] = (used[lump] or 0) + 1
-		self._villages_fuel = (self._villages_fuel or 0) + SMELTS_PER_LUMP
+		local burned
+		for _, fuel in ipairs(fuels(self)) do
+			if possessions.take_held(self, fuel.item, 1) == 1 then burned = fuel break end
+		end
+		if not burned then return false end
+		used[burned.item] = (used[burned.item] or 0) + 1
+		self._villages_fuel = (self._villages_fuel or 0) + burned.smelts
 	end
 	self._villages_fuel = self._villages_fuel - smelts
 	if self._villages_fuel <= 0 then self._villages_fuel = nil end
@@ -154,11 +212,11 @@ end
 -- Whether its belongings alone cover one craft, fuel included.
 function M.supplied(self, recipe)
 	for _, input in ipairs(recipe.from) do
-		if possessions.count(self, input[1]) < input[2] then return false end
+		if have(input[1], function(item) return possessions.count(self, item) end) < input[2] then return false end
 	end
 	if not recipe.fuel then return true end
-	local lumps = math.ceil(math.max(recipe.fuel - (self._villages_fuel or 0), 0) / SMELTS_PER_LUMP)
-	return possessions.count(self, COAL) + possessions.count(self, CHARCOAL) >= lumps
+	return (self._villages_fuel or 0) + fuel_in(self, function(item) return possessions.count(self, item) end)
+		>= recipe.fuel
 end
 
 function M.tier_supply_days()
@@ -213,15 +271,43 @@ function M.make(self, recipe)
 	if not M.can_make(self, recipe, possessions.held(self)) then return false end
 	local supplied = M.supplied(self, recipe)
 	local used = {}
+	local held = possessions.held(self)
+	local log_used
 	for _, input in ipairs(recipe.from) do
-		possessions.take_held(self, input[1], input[2])
-		used[input[1]] = (used[input[1]] or 0) + input[2]
+		local members = kinds(input[1])
+		if not members then
+			possessions.take_held(self, input[1], input[2])
+			used[input[1]] = (used[input[1]] or 0) + input[2]
+		else
+			-- Any species, the one it holds most of first.
+			local list = {}
+			for member in pairs(members) do
+				if (held[member] or 0) > 0 then list[#list + 1] = member end
+			end
+			table.sort(list, function(a, b)
+				if held[a] ~= held[b] then return held[a] > held[b] end
+				return a < b
+			end)
+			local left = input[2]
+			for _, member in ipairs(list) do
+				if left <= 0 then break end
+				local took = possessions.take_held(self, member, math.min(left, held[member]))
+				if took > 0 then
+					used[member] = (used[member] or 0) + took
+					left = left - took
+					if goods.SPECIES[member] and not log_used then log_used = member end
+				end
+			end
+		end
 	end
 	if recipe.fuel and not burn(self, recipe.fuel, used) then return false end
-	possessions.add(self, recipe.makes, recipe.count)
-	tally.note(self, {[recipe.makes] = recipe.count}, used)
+	-- Planks from a log are of its species.
+	local makes = recipe.makes
+	if log_used and goods.CATEGORIES.planks[makes] then makes = goods.SPECIES[log_used] end
+	possessions.add(self, makes, recipe.count)
+	tally.note(self, {[makes] = recipe.count}, used)
 	core.log("action", string.format("[living_villages] production: villager %s (%s) made %d %s",
-		short_id(self), tostring(self._profession), recipe.count, recipe.makes))
+		short_id(self), tostring(self._profession), recipe.count, makes))
 	if supplied then M.count_supply(self) end
 	return true
 end

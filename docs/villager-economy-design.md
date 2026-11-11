@@ -889,6 +889,7 @@ branch, and each leaves the game playable with `living_villages_economy` on or o
 | 12b | Market fixes: stall walks after the bell walk, stalls that show wanted goods, empty stashes remembered, peddlers that get chosen | 12 |
 | 13 | Prices that move with supply and demand, each villager its own | 12b |
 | 14 | The mod's own trade window in place of vanilla's trades | 13 |
+| 15 | Needs by purpose (food, fuel, logs, planks), a few conversions at sale, the butcher cooks fish | 14 |
 
 ### 1. Clock, hunger and the tavern
 
@@ -1346,6 +1347,80 @@ right-click. Choices:
   included, who had no trades before. `_trades` is left alone, since vanilla and
   `job_seek.lua` read it as the mark of a villager that keeps its job.
 * Trades are logged ("trade window: <player> bought|sold ...").
+
+### 15. Needs by purpose and conversions
+
+The Markets world on day 56: not one villager's spare good matched another's need.
+Apples were at 8 times their base for every villager, while four fishermen sat on raw
+fish nobody wanted and the mason on birch logs the librarian, wanting oak, could not
+use. Three causes: needs name one item where any of several would do; nobody turns one
+good into the one that is needed; and nobody cooks fish.
+
+**Needs by purpose.** Some needs are for an amount of something, and any item that gives
+it counts:
+
+| Category | Measured in | Members | Comes from |
+|---|---|---|---|
+| Food | food points | `food.POINTS` | hunger, FOOD_DAYS of points |
+| Fuel | burn seconds | coal 80, charcoal 80, any log 15, any planks 15, stick 5 | recipes that smelt (`fuel`) |
+| Logs | logs | any species | recipes, the Builder |
+| Planks | planks | any species | recipes, the Builder |
+| Wool | wool | any colour | anything but the cartographer's banner, which takes white |
+
+What a need is for decides its category: every coal need today is a smelting recipe's
+fuel, so any fuel does. A recipe that uses coal itself (torches) asks for coal. Each item
+keeps its own price (ticket 13): a category sets how much is needed, how urgent it is
+and which items count. A buyer takes the member that gives the most of the need for its
+price, so cheap fish feeds a village and apples stop being needed by everyone at once.
+Needs and surplus are reckoned on the category, then put on the items: the members held
+most of are the spare ones.
+
+**Conversions at sale.** A few goods become another when a villager sells them to a
+villager: instantly and for free, from the seller's spare source goods, in conversation
+trades, at stalls and on trade trips. Used sparingly: each job has a short list, and
+none is for food.
+
+| Job | From | To | Ratio |
+|---|---|---|---|
+| Shepherd | wool (any colour) | string | 1 to 4 |
+| Woodcutter (labour) | any log | planks | 1 to 4 |
+| Mason | stone | carved stone brick | 1 to 1 |
+
+Market news tells what a villager can supply after its conversions, so a fisherman in
+need of string hears of the shepherd. This also starts the Builder's missing materials
+(Open questions, 2026-11-09 directions).
+
+**The butcher cooks fish.** Food is not converted: the butcher buys raw meat and fish and
+cooks it in its smoker (`production.lua`, `recipes.lua`), using fuel, and sells it cooked.
+Raw cod and salmon become its inputs and cooked cod and salmon its outputs. Pufferfish
+and clownfish are not food and nobody buys them; the fisherman values them low.
+
+**One cook for each food.** Only the butcher cooks meat and fish, and only the farmer
+bakes bread. The keeper stops turning wheat into loaves and raw cod into cooked cod: it
+fetches bread and potatoes from the farmers' chests, buys bread, cooked cod and cooked
+beef as ledger inputs, and cooks only baked potatoes itself (`keeper_supply.lua`). A new
+tavern's pantry starts with nine loaves in place of six loaves and nine wheat.
+
+**Any species in recipes.** The categories decide what fills a need (ledger, news,
+trades); production must take the same goods. A recipe written with oak logs or planks
+takes any log or planks, the species held most first, and planks split from a log are of
+its species (`production.lua`). Markets showed why: the cartographer bought 14 white wool
+for banners, but the only woodcutter cut birch, and the stick recipe wanted oak.
+
+**Wheat for the herd.** A farmer's crops stay in its pouch and work chest, which are not
+goods it trades, so no villager could buy wheat and the leatherworker's herd never bred.
+With the economy on, a farmer keeps up to 8 wheat over its keep in its belongings when it
+deposits, for sale (`farmer.lua`).
+
+**The herd stays home.** A herd cow past 10 blocks from the leatherworker's jobsite walks
+back; past 20, unseen, it is set down beside it. Only a herd down to fewer than two takes
+on wild cows that come within 16, until it has two: a player can lead cows in to restart
+one (`herd.lua`).
+
+**Players.** No conversions in player trades. The categories still apply: a villager
+that needs food buys any food the player brings, at its price for that item, and the
+window shows such a need as a category ("food, 24 points") with the player's matching
+items to sell.
 
 ## Open questions
 
