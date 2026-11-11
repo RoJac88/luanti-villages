@@ -43,6 +43,11 @@
 --   (`_villages_porter_record`, {days, hires}: days counted here, hires by
 --   trade_trips.lua), so a porter nobody hires turns to other work. A flat two fees a day
 --   had every unemployed villager portering, unhired, over any small peddling deal.
+--   Gathering is learnt the same way (ticket 12b): an activity's rate is scaled by what
+--   it has gathered over the days it was chosen, counted from one day at its full rate
+--   (`_villages_gather_record`, {[activity] = {days, made}}). A woodcutter with no grove
+--   was reckoned at ten logs a day and chose it over every peddling deal while it felled
+--   four logs in eleven days (the Markets world, 2026-11-11).
 -- * peddler (ticket 12): buys surplus below the going price and sells where it has heard
 --   of need, keeping the margin. Its site is the market too: a deal is an item it has
 --   heard one villager has spare at one price and another needs at PEDDLE_MARGIN times
@@ -273,7 +278,16 @@ end
 
 -- Expected income of each activity from what it has heard, with `emeralds` to buy with
 -- and its portering `record`.
-function M.incomes(heard, emeralds, record)
+-- The share of an activity's full rate it has found it gathers, from its `yields`
+-- record, counted from one day at the full rate.
+function M.yield_share(activity, yields)
+	local rate = ACTIVITIES[activity] and ACTIVITIES[activity].rate or 0
+	local record = yields and yields[activity]
+	if rate <= 0 or not record then return 1 end
+	return math.min(1, ((record.made or 0) + rate) / (((record.days or 0) + 1) * rate))
+end
+
+function M.incomes(heard, emeralds, record, yields)
 	local prices = news.asking(heard)
 	local incomes = {}
 	for name, activity in pairs(ACTIVITIES) do
@@ -291,14 +305,14 @@ function M.incomes(heard, emeralds, record)
 		else
 			for item, share in pairs(activity.goods) do income = income + activity.rate * share * (prices[item] or 0) end
 		end
-		incomes[name] = income
+		incomes[name] = income * M.yield_share(name, yields)
 	end
 	return incomes
 end
 
 -- The day's activity among `available` (a set of names), or nil if none. roll is in [0, 1).
-function M.choose(heard, available, yesterday, roll, emeralds, record)
-	local incomes = M.incomes(heard, emeralds, record)
+function M.choose(heard, available, yesterday, roll, emeralds, record, yields)
+	local incomes = M.incomes(heard, emeralds, record, yields)
 	local best, best_score
 	local open = {}
 	for _, name in ipairs(NAMES) do
@@ -665,7 +679,7 @@ function M.today(self)
 	M.choose_home(self)
 	local heard = news.heard(self)
 	local activity = M.choose(heard, available(self), yesterday, math.random(), possessions.emeralds(self),
-		self._villages_porter_record)
+		self._villages_porter_record, self._villages_gather_record)
 	-- A peddle under way goes on: what it bought is still to sell.
 	if self._villages_peddle and activity ~= "peddler" then activity = "peddler" end
 	if activity == "peddler" and not self._villages_peddle and not M.start_peddle(self, heard, day) then
@@ -676,6 +690,12 @@ function M.today(self)
 		local record = self._villages_porter_record or {days = 0, hires = 0}
 		record.days = record.days + 1
 		self._villages_porter_record = record
+	elseif activity and (ACTIVITIES[activity].rate or 0) > 0 then
+		local yields = self._villages_gather_record or {}
+		local record = yields[activity] or {days = 0, made = 0}
+		record.days = record.days + 1
+		yields[activity] = record
+		self._villages_gather_record = yields
 	end
 	if activity then
 		core.log("action", string.format("[living_villages] villager %s (%s) works as a %s today",
@@ -730,6 +750,10 @@ local function work(self, activity, target)
 			self._villages_labour_next = now + TICK_SECONDS / wants.use(self, use, possessions.take_held, now)
 		end
 		tally.note(self, {[item] = count})
+		-- Saplings and charcoal are not what the rate counts.
+		local labour = self._villages_labour
+		local record = labour and self._villages_gather_record and self._villages_gather_record[labour.activity]
+		if record and not item:find("sapling") then record.made = record.made + count end
 		core.log("action", string.format("[living_villages] villager %s gathered %d %s", short_id(self), count, item))
 	elseif target.kind == "plant" or target.kind == "replant" then
 		core.log("action", string.format("[living_villages] villager %s tended its grove at %s (%d trees)",

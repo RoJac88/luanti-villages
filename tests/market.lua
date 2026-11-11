@@ -564,6 +564,35 @@ do
 		"a queued plan deferred during a short trade is replanned even if trade ends before a tick")
 end
 
+-- Ticket 12b: a seller still walking to the bell, or waiting out a failed path, gets no
+-- answer from gopath. It waits for one instead of giving its stall up, up to START_WAIT.
+do
+	local controller, _, _, seller, bell = controller_fixture()
+	local ready = false
+	seller.ready_to_path = function() return ready end
+	seller.state = "gowp"
+	assert(controller.tick(seller, bell, 0) == "holding", "search pending")
+	assert(controller.tick(seller, bell, 1) == "walking" and seller._villages_goto_route == nil,
+		"a seller that cannot path yet waits without asking gopath")
+	seller.state = "stand"
+	assert(controller.tick(seller, bell, 20) == "walking" and seller._villages_goto_route == nil,
+		"it waits out an earlier failure too")
+	ready = true
+	assert(controller.tick(seller, bell, 1) == "walking" and seller._villages_goto_route
+		and seller._villages_goto_route.market_token == seller._villages_market_session.id,
+		"once it can path it starts its stall walk")
+	assert(controller.tick(seller, bell, 0) == "walking", "and the walk goes on as usual")
+end
+
+do
+	local controller, site, _, seller, bell = controller_fixture()
+	seller.ready_to_path = function() return false end
+	controller.tick(seller, bell, 0)
+	assert(controller.tick(seller, bell, 40) == "walking", "still waiting within the limit")
+	assert(controller.tick(seller, bell, 10) == "browse" and seller._villages_market_session == nil
+		and site.releases == 1, "a seller that never gets to path gives its stall up and frees the site")
+end
+
 -- With the economy on (ticket 12): a stall shows the seller's own spare goods, kept for
 -- the session, falls back to the fixed pair with none, flies a banner on opening and
 -- serves browsers while open.

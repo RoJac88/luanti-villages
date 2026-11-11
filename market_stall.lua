@@ -4,7 +4,10 @@
 -- stall shows market.lua's fixed goods and nothing is sold.
 --
 -- Goods. A seller's stall shows its top STALL_ITEMS spare goods (its ledger's surplus,
--- possessions.assess), by value, of those it carries: what it really has to sell. A
+-- possessions.assess) of those it carries: what it really has to sell. Those it has heard
+-- someone needs (market news) come first, by the price heard asked, then the rest by
+-- value (ticket 12b: in the Markets world stalls showed seeds, bottles, saplings and iron
+-- armour by value, and in 17 stalls no browser bought anything). A
 -- villager with nothing spare falls back to market.lua's fixed pair for its profession,
 -- or, with none (a nitwit), stays a browser. A peddler (labour.lua) sells its stock here.
 --
@@ -21,6 +24,7 @@ local core = minetest
 local possessions = dofile(core.get_modpath("living_villages") .. "/possessions.lua")
 local ledger = dofile(core.get_modpath("living_villages") .. "/ledger.lua")
 local exchange = dofile(core.get_modpath("living_villages") .. "/exchange.lua")
+local news = dofile(core.get_modpath("living_villages") .. "/market_news.lua")
 
 local STALL_ITEMS = 2
 local BANNER = "mcl_banners:banner_item_white"
@@ -39,16 +43,23 @@ local function short_id(id)
 	return tostring(id):sub(1, 6)
 end
 
--- Its top spare goods that it carries, by value, at most STALL_ITEMS, or nil.
+-- Its top spare goods that it carries, at most STALL_ITEMS, or nil: those it heard
+-- needed first, by the asking price, then the rest by value.
 function M.goods(villager)
 	local view = possessions.assess(villager)
-	local carried = {}
+	local asking = news.asking(news.heard(villager))
+	local wanted, rest = {}, {}
 	for item, count in pairs(view.surplus) do
 		local spare = math.min(count, possessions.count(villager, item))
-		if spare > 0 then carried[item] = spare end
+		if spare > 0 then
+			if asking[item] then wanted[item] = spare else rest[item] = spare end
+		end
 	end
 	local list = {}
-	for _, top in ipairs(ledger.top(carried, view.value, STALL_ITEMS)) do list[#list + 1] = top.item end
+	for _, top in ipairs(ledger.top(wanted, function(item) return asking[item] end, STALL_ITEMS)) do
+		list[#list + 1] = top.item
+	end
+	for _, top in ipairs(ledger.top(rest, view.value, STALL_ITEMS - #list)) do list[#list + 1] = top.item end
 	return #list > 0 and list or nil
 end
 

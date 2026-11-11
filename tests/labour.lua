@@ -412,6 +412,20 @@ do
 		"not from and to the same villager")
 	assert(labour.incomes({offers, wants}, 100000).peddler > 0 and labour.incomes({offers, wants}, 0).peddler == 0)
 
+	-- Gathering is reckoned at what it has yielded (ticket 12b): a woodcutter that felled
+	-- 4 logs in 10 days peddles instead, where its full rate would have kept it cutting.
+	local logs = {item = "mcl_core:tree", kind = "needs", price = 48, count = 4, who = "lib", heard = now, hops = 1}
+	local open3 = {woodcutter = true, peddler = true}
+	assert(labour.yield_share("woodcutter", nil) == 1 and labour.yield_share("porter", {}) == 1)
+	assert(labour.yield_share("woodcutter", {woodcutter = {days = 10, made = 4}}) == 14 / 110)
+	assert(labour.yield_share("woodcutter", {woodcutter = {days = 2, made = 40}}) == 1, "never above the full rate")
+	local WOOL = "mcl_wool:white"
+	local wool = {{item = WOOL, kind = "has", price = 14, count = 16, who = "shep", heard = now, hops = 1},
+		{item = WOOL, kind = "needs", price = 28, count = 10, who = "carto", heard = now, hops = 1}, logs}
+	assert(labour.choose(wool, open3, "woodcutter", 0, 100000) == "woodcutter")
+	assert(labour.choose(wool, open3, "woodcutter", 0, 100000, nil,
+		{woodcutter = {days = 10, made = 4}}) == "peddler")
+
 	local pedro = villager({_id = "pedro", _villages_belongings = {["mcl_core:emerald"] = 100000},
 		_villages_market_news = {offers, wants}})
 	day = day + 1

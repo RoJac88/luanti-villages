@@ -105,6 +105,9 @@ local PACK_EARLIEST = 14750
 local PACK_LATEST = 14916
 local MARKET_END = 15000
 local PACK_DELAY = 1
+-- Seconds a seller waits for gopath to take its stall walk: VoxeLibre waits 30 after a
+-- failed path before it paths again.
+local START_WAIT = 45
 
 -- Entity serialization saves ordinary fields automatically. Integration must
 -- retain this daily guard and discard the live session machinery on reload.
@@ -201,8 +204,16 @@ function M.new(options)
 		return node.name == "mcl_bells:bell"
 	end
 
+	-- True once the walk is under way, "wait" while gopath cannot answer yet, false on
+	-- failure. VoxeLibre's gopath answers nothing while it waits out an earlier failure
+	-- (ready_to_path, mcl_mobs/pathfinding.lua) and navigation's while a walk is in
+	-- progress: on a holiday the sellers are still walking to the bell, and taking that
+	-- as no route failed every seller of a market at once (ticket 12b).
 	local function start_market_walk(self, session)
 		local target = standing_position(session.layout.seller)
+		if (self.ready_to_path and not self:ready_to_path(true)) or self.state == "gowp" then
+			return "wait"
+		end
 		local started = self:gopath(target, function(entity)
 			local route = entity._villages_goto_route
 			if entity._villages_market_session == session and route
@@ -432,9 +443,20 @@ function M.new(options)
 			end
 			session.reservation = reservation
 			session.layout = reservation.layout
-			if not start_market_walk(self, session) then
-				return fallback(self, session, "no route to stall")
+			session.start_pending = true
+		end
+
+		if session.start_pending then
+			local started = start_market_walk(self, session)
+			if started == "wait" then
+				session.start_wait = (session.start_wait or 0) + (dtime or 0)
+				if session.start_wait > START_WAIT then
+					return fallback(self, session, "no route to stall: still waiting to walk")
+				end
+				return "walking"
 			end
+			session.start_pending = nil
+			if not started then return fallback(self, session, "no route to stall") end
 			return "walking"
 		end
 
@@ -449,7 +471,9 @@ function M.new(options)
 				if unrelated_route(self) then
 					return fallback(self, session, "another route took movement ownership")
 				end
-				if not start_market_walk(self, session) then
+				local started = start_market_walk(self, session)
+				if started == "wait" then return "walking" end
+				if not started then
 					return fallback(self, session, "no route to stall after trade")
 				end
 				return "walking"

@@ -53,6 +53,12 @@ assert(goods and #goods == stall.STALL_ITEMS, "two goods")
 local shown = {[goods[1]] = true, [goods[2]] = true}
 assert(shown[BREAD] and shown[APPLE], "the spare goods worth most")
 assert(stall.goods(villager("empty", {})) == nil, "nothing spare, nothing shown")
+-- Spare goods it heard someone needs come first, whatever their value (ticket 12b).
+seller._villages_market_news = {{item = COBBLE, kind = "needs", price = 3, count = 10, who = "mason",
+	heard = now, hops = 1}}
+goods = stall.goods(seller)
+assert(goods[1] == COBBLE and (goods[2] == BREAD or goods[2] == APPLE), "the needed cobble, then by value")
+seller._villages_market_news = nil
 
 -- A banner: taken from belongings on opening, lasting BANNER_MARKETS markets.
 assert(stall.open(seller, day) == false and seller._villages_stall_day == day, "no banner to fly")
