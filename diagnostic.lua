@@ -16,6 +16,7 @@ local food = dofile(core.get_modpath("living_villages") .. "/food.lua")
 local economy_clock = dofile(core.get_modpath("living_villages") .. "/economy_clock.lua")
 local possessions = dofile(core.get_modpath("living_villages") .. "/possessions.lua")
 local market_news = dofile(core.get_modpath("living_villages") .. "/market_news.lua")
+local prices = dofile(core.get_modpath("living_villages") .. "/prices.lua")
 local labour = dofile(core.get_modpath("living_villages") .. "/labour.lua")
 local wants = dofile(core.get_modpath("living_villages") .. "/wants.lua")
 local production = dofile(core.get_modpath("living_villages") .. "/production.lua")
@@ -534,6 +535,7 @@ local function show(player, villager)
 		"Surplus: " .. (select(2, possessions.ledger_status(villager))),
 		"Gossip: " .. (gossip and gossip.status(villager) or "off"),
 		"Market news: " .. market_news.status(villager),
+		"Prices: " .. prices.describe(villager._villages_prices, 4),
 		"Labour: " .. labour.status(villager),
 		"Tools: " .. wants.status(villager),
 		"Crafting: " .. production.status(villager),

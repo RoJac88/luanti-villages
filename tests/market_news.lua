@@ -138,6 +138,29 @@ for _, entry in ipairs(fay._villages_market_news) do assert(entry.hops <= 4) end
 assert(news.status(villager("gus", {})) == "nothing heard")
 assert(news.status(fay):find("^%d+ heard; "))
 
+-- Ticket 13: the first conversation of a day moves each member's prices from what it
+-- heard and its own state, once a day, and the members' prices move toward each other's.
+do
+	local day = 30
+	minetest.get_day_count = function() return day end
+	local COAL = "mcl_core:coal_lump"
+	local joe = villager("joe", {[COAL] = 64})
+	local kim = villager("kim", {}, {_profession = "armorer"})
+	news.exchange({joe, kim})
+	local spare = joe._villages_prices and joe._villages_prices[COAL]
+	assert(spare and spare < 1, "joe's spare coal is worth less to it")
+	assert(kim._villages_prices and kim._villages_prices[COAL], "kim hears of it in passing")
+	assert(joe._villages_prices_day == day and kim._villages_prices_day == day)
+	local logged = false
+	for _, line in ipairs(logs) do if line:find("prices: villager joe, day 30", 1, true) then logged = true end end
+	assert(logged)
+	-- Later the same day only the sharing moves it, toward kim's.
+	local before = joe._villages_prices[COAL]
+	news.exchange({joe, kim})
+	assert(joe._villages_prices[COAL] > before and joe._villages_prices[COAL] < 1)
+	minetest.get_day_count = nil
+end
+
 -- With the economy off nothing passes.
 settings.living_villages_economy = false
 local hal, ivy = villager("hal", {["mcl_core:coal_lump"] = 40}), villager("ivy", {})

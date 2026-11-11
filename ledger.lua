@@ -278,7 +278,8 @@ end
 -- materials, goods that wear out), worth = {item = emeralds} (the most an item is worth
 -- to it whatever its need: what a good that wears out brings over its life, wants.lua),
 -- least = {item = emeralds} (the least it will take for an item: a peddler's stock is
--- worth what it paid, labour.lua, ticket 12)}.
+-- worth what it paid, labour.lua, ticket 12), prices = {item = factor} (its own
+-- multiplier on the base price, prices.lua, ticket 13)}.
 -- Returns {targets, needs, surplus, value = function(item), urgency = function(item)}:
 -- urgency is the need's own (M.urgency), before `worth` caps the value, so a good that
 -- wears out, wanted whole, is still as urgent as any other need (trade_trips.lua).
@@ -325,7 +326,8 @@ function M.assess(input)
 		local price = M.price(item)
 		if not price then return nil end
 		if item == EMERALD then return 1 end
-		local value = price * M.urgency(held[item] or 0, targets[item] or 0)
+		local factor = input.prices and input.prices[item] or 1
+		local value = price * factor * M.urgency(held[item] or 0, targets[item] or 0)
 		local most = input.worth and input.worth[item]
 		if most then value = math.min(value, most) end
 		local least = input.least and input.least[item]
