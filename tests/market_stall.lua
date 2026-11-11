@@ -94,6 +94,10 @@ assert(#stall.serve(seller, {BREAD, APPLE}, now + 2 * stall.SERVE_SECONDS, day +
 local other = villager("other", {[EMERALD] = 5 * ledger.SCALE}, {x = 1, y = 0, z = 1}, {_villages_food = 0, _villages_market_session = {}})
 assert(#stall.serve(seller, {BREAD}, now + 3 * stall.SERVE_SECONDS, day + 2) == 1)
 assert(possessions.count(other, BREAD) == 0)
+-- One at its own stall browses its neighbours' (ticket 12b).
+other._villages_market_session = {arrived = true}
+assert(#stall.serve(seller, {BREAD}, now + 4 * stall.SERVE_SECONDS, day + 3) >= 1)
+assert(possessions.count(other, BREAD) > 0, "a neighbouring seller buys")
 
 -- A peddler buying wants its lot at its bid, and no more; holding it, it takes no less.
 local peddler = villager("peddler", {[EMERALD] = 10 * ledger.SCALE}, nil,

@@ -1211,7 +1211,8 @@ peddle wants in `possessions.assess`, and the cartographer's recipes. Merged on 
 an engine load check, without a probe run. Choices the design left open:
 
 * A stall shows its seller's top two spare goods that it carries, by value. One with
-  nothing spare shows the old fixed pair for its profession and sells nothing; a nitwit
+  nothing spare shows the old fixed pair for its profession and sells nothing (12b:
+  it now keeps no stall); a nitwit
   with nothing spare stays a browser, and one with spare goods, a peddler among them,
   now keeps a stall.
 * Browsers buy by exchange.lua's rules, for the stall's goods alone: every 5 s the
@@ -1282,6 +1283,10 @@ The fixes:
   gave the bell up for the stage.
 * A bell is looked for within 80 of the bed, not 64: the Markets world's eastern
   houses are 66 from its hilltop bell.
+* A villager with nothing spare keeps no stall and browses. The fixed pair for its
+  profession sold nothing and took a place on a square that held about 8 stalls.
+* A seller at its own stall browses its neighbours' stalls: the cartographer, keeping
+  a stall, never met the shepherd's wool it needed.
 
 ### 13. Village prices
 

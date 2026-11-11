@@ -70,6 +70,9 @@ function M.goods_for(villager, attempt)
 			if attempt then attempt.goods = list end
 			return list
 		end
+		-- Nothing spare: it browses. A stall of the fixed pair sold nothing and took
+		-- a place on a full square from a seller with goods (ticket 12b).
+		return nil, "no_goods"
 	end
 	local profession = M.profession(villager)
 	local pair = goods[profession]

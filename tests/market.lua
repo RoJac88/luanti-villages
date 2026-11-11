@@ -641,7 +641,8 @@ do
 	assert(got[1] == "mcl_core:cobble" and got[2] == "mcl_core:apple" and attempt.goods == got)
 	own.seller = nil
 	assert(market.goods_for({_id = "seller", _profession = "farmer"}, attempt) == got, "kept for the session")
-	assert(market.goods_for({_id = "seller", _profession = "farmer"}, {})[1] == "mcl_farming:bread", "nothing spare: the fixed pair")
+	assert(market.goods_for({_id = "seller", _profession = "farmer"}, {}) == nil, "nothing spare: no stall (ticket 12b)")
+	assert(not market.eligible({_id = "seller", _profession = "farmer"}), "so it browses")
 	own.nina = {"mcl_core:cobble"}
 	local nitwit = market.goods_for({_id = "nina", _profession = "nitwit"}, {})
 	assert(nitwit[1] == "mcl_core:cobble" and nitwit[2] == "mcl_core:cobble", "a nitwit with spare goods sells them")
