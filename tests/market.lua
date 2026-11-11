@@ -609,6 +609,21 @@ do
 		"the stall walk replaces a stale retry")
 end
 
+-- The stall walk goes to the seller's cell, not its feet: on a grass path the feet are
+-- 0.55 below the cell and gopath's rounding put the goal in the path (ticket 12b).
+do
+	local controller, _, _, seller, bell = controller_fixture()
+	local asked
+	local original = seller.gopath
+	seller.gopath = function(entity, target, ...)
+		asked = target
+		return original(entity, target, ...)
+	end
+	controller.tick(seller, bell, 0)
+	controller.tick(seller, bell, 0)
+	assert(asked and asked.x == 4 and asked.y == 1 and asked.z == 5, "the seller's own cell")
+end
+
 -- With the economy on (ticket 12): a stall shows the seller's own spare goods, kept for
 -- the session, falls back to the fixed pair with none, flies a banner on opening and
 -- serves browsers while open.

@@ -210,7 +210,12 @@ function M.new(options)
 	-- progress: on a holiday the sellers are still walking to the bell, and taking that
 	-- as no route failed every seller of a market at once (ticket 12b).
 	local function start_market_walk(self, session)
-		local target = standing_position(session.layout.seller)
+		-- The seller's cell, not where its feet go: gopath rounds its target to a cell,
+		-- and on a grass path (15/16 high) the feet are 0.55 below the cell, which
+		-- rounds into the path itself, where nothing stands (ticket 12b: every seller
+		-- of the Markets world's paved square, "no safe standing space").
+		local cell = session.layout.seller
+		local target = {x = cell.x, y = cell.y, z = cell.z}
 		if (self.ready_to_path and not self:ready_to_path(true)) or self.state == "gowp" then
 			return "wait"
 		end
