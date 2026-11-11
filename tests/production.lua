@@ -33,8 +33,9 @@ local tables = dofile("trade_tables.lua")
 local recipes = dofile("recipes.lua")
 
 -- Every output is sold by its profession, goes into another of its own recipes, or is
--- what the keeper buys for the tavern (the butcher's cooked beef, ticket 11e).
+-- what the keeper buys for the tavern (the butcher's cooked beef, ticket 11e), or is food.
 local keeper_buys = dofile("ledger.lua").inputs("keeper", 1)
+local foods = dofile("food.lua").POINTS
 for profession, list in pairs(recipes) do
 	local entry = tables.professions[profession]
 	assert(entry, profession .. " has a trade table")
@@ -44,7 +45,8 @@ for profession, list in pairs(recipes) do
 		for _, input in ipairs(recipe.from) do used[input[1]] = true end
 	end
 	for _, recipe in ipairs(list) do
-		assert(sold[recipe.makes] or used[recipe.makes] or keeper_buys[recipe.makes],
+		-- Food sells to any hungry villager (goods.lua's food category, ticket 15).
+		assert(sold[recipe.makes] or used[recipe.makes] or keeper_buys[recipe.makes] or foods[recipe.makes],
 			profession .. " neither sells nor uses " .. recipe.makes)
 		assert(recipe.count >= 1 and #recipe.from >= 1 and recipe.tier >= 1)
 	end
@@ -103,13 +105,21 @@ assert(production.work(starving, 500) == 0)
 assert(production.restock_held(starving) == "starving")
 
 -- Fuel: a lump is 8 smelts, charcoal burned first, the rest kept for the next item.
-local bram = smith({_id = "bram", _profession = "butcher"})
+-- (Short 8 food points: one porkchop's 6 leave it wanting a second, ticket 15.)
+local bram = smith({_id = "bram", _profession = "butcher", _villages_food = 4})
 possessions.add(bram, "mcl_mobitems:porkchop", 2)
 possessions.add(bram, "mcl_core:coal_lump", 1)
 possessions.add(bram, "mcl_core:charcoal_lump", 1)
 assert(production.work(bram, 240) == 2)
 assert(count(bram, "mcl_mobitems:cooked_porkchop") == 2 and count(bram, "mcl_core:coal_lump") == 1)
 assert(count(bram, "mcl_core:charcoal_lump") == 0 and bram._villages_fuel == 6)
+-- Any fuel will do (ticket 15): planks burn 1.5 smelts each, and the butcher cooks fish.
+local planker = smith({_id = "planker", _profession = "butcher", _villages_food = 4})
+possessions.add(planker, "mcl_fishing:fish_raw", 2)
+possessions.add(planker, "mcl_core:wood", 3)
+assert(production.work(planker, 240) == 2, "cooks both fish")
+assert(count(planker, "mcl_fishing:fish_cooked") == 2 and count(planker, "mcl_core:wood") == 1)
+assert(math.abs((planker._villages_fuel or 0) - 1) < 1e-9, planker._villages_fuel)
 -- No fuel and no lump: raw meat stays raw.
 local cold = smith({_id = "cold", _profession = "butcher"})
 possessions.add(cold, "mcl_mobitems:chicken", 3)

@@ -49,6 +49,9 @@ return {
 		{makes = "mcl_mobitems:cooked_chicken", count = 1, tier = 2, from = {{"mcl_mobitems:chicken", 1}}, fuel = 1},
 		-- The leatherworker's herd's beef (herd.lua, ticket 11e), for the tavern.
 		{makes = "mcl_mobitems:cooked_beef", count = 1, tier = 1, from = {{"mcl_mobitems:beef", 1}}, fuel = 1},
+		-- The fishermen's catch (ticket 15): raw fish is no food, and nobody else cooks it.
+		{makes = "mcl_fishing:fish_cooked", count = 1, tier = 1, from = {{"mcl_fishing:fish_raw", 1}}, fuel = 1},
+		{makes = "mcl_fishing:salmon_cooked", count = 1, tier = 1, from = {{"mcl_fishing:salmon_raw", 1}}, fuel = 1},
 	},
 	-- White wool from the shepherd, sticks of its own (mcl_banners' recipe: six wool, a stick).
 	cartographer = {

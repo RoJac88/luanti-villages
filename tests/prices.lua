@@ -14,14 +14,17 @@ local heard = {
 }
 local view = {needs = {[APPLE] = 1}, surplus = {[FISH] = 8, [WOOL] = 2}}
 local balance = prices.balance(heard, view)
-assert(balance[APPLE].demand == 8 and balance[APPLE].supply == 0)
+-- Apples are food (ticket 15): counted in points, 3 an apple, and shared by every food.
+assert(balance[APPLE].demand == 24 and balance[APPLE].supply == 0)
+assert(balance["mcl_farming:bread"] == balance[APPLE], "one entry for every food")
 assert(balance[FISH].supply == 16 and balance[FISH].demand == 0)
 assert(balance["mcl_core:emerald"] == nil)
 
 -- A day: wanted and unmet rises, offered and unwanted falls, toward the full rate as
 -- the counts outgrow DAMP.
 local day1 = prices.drift(nil, balance)
-assert(near(day1[APPLE], prices.RATE_DAY ^ (8 / 12)), day1[APPLE])
+assert(near(day1[APPLE], prices.RATE_DAY ^ (24 / 28)), day1[APPLE])
+assert(near(day1["mcl_farming:bread"], day1[APPLE]), "bread dears with apples")
 assert(near(day1[FISH], prices.RATE_DAY ^ (-16 / 20)), day1[FISH])
 assert(day1[WOOL] < 1 and day1[WOOL] > day1[FISH], "two spare move it less than sixteen")
 -- Day after day it reaches the bounds and stays there.

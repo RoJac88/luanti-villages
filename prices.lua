@@ -12,7 +12,9 @@
 --
 -- * an item it heard needed more than offered rises, one offered more than needed
 --   falls: times exp(RATE * imbalance), imbalance = (demand - supply) / (demand +
---   supply + DAMP), the counts summed over the villagers it heard of and itself. At
+--   supply + DAMP), the counts summed over the villagers it heard of and itself. A
+--   category's members (goods.lua, ticket 15: food, fuel, logs, planks) are summed in its
+--   units and all move with its imbalance, so food in short supply dears every food. At
 --   full imbalance that is RATE_DAY times a day, so a good nobody makes reaches MAX in
 --   about five days;
 -- * an item it heard nothing of drifts back toward 1 (its multiplier to the power
@@ -28,6 +30,8 @@
 -- The emerald amounts that do not move anchor the rest: the dinner (ledger.DINNER),
 -- rent, a porter's fee and a new adult's emeralds. Prices move against each other and
 -- an emerald keeps its worth.
+local core = minetest
+local goods = dofile(core.get_modpath("living_villages") .. "/goods.lua")
 local EMERALD = "mcl_core:emerald"
 
 local MIN, MAX = 1 / 8, 8
@@ -60,22 +64,51 @@ function M.factor(beliefs, item)
 	return beliefs and beliefs[item] or 1
 end
 
--- Demand and supply per item from what it heard ({kind, item, count}) and its own view's
--- needs and surplus: {[item] = {demand = n, supply = n}}.
+-- Demand and supply per item from what it heard ({kind, item, count, group}) and its own
+-- view's needs and surplus: {[item] = {demand = n, supply = n}}. The members of a
+-- category share one entry, counted in its units.
+local function category_of(item)
+	for _, category in ipairs(goods.ORDER) do
+		if goods.CATEGORIES[category][item] then return category end
+	end
+	return nil
+end
+
 function M.balance(heard, view)
-	local out = {}
-	local function add(item, side, count)
-		if item == EMERALD or not count or count <= 0 then return end
-		local entry = out[item] or {demand = 0, supply = 0}
-		entry[side] = entry[side] + count
-		out[item] = entry
+	local buckets = {}
+	local function add(key, side, amount)
+		if not amount or amount <= 0 then return end
+		local entry = buckets[key] or {demand = 0, supply = 0}
+		entry[side] = entry[side] + amount
+		buckets[key] = entry
+	end
+	local function add_item(item, side, count, group)
+		if item == EMERALD or not count then return end
+		local category = group or category_of(item)
+		local units = category and goods.units(category, item)
+		if units then add("group:" .. category, side, count * units) else add(item, side, count) end
 	end
 	for _, entry in ipairs(heard or {}) do
-		if entry.kind == "needs" then add(entry.item, "demand", entry.count)
-		elseif entry.kind == "has" then add(entry.item, "supply", entry.count) end
+		if entry.kind == "needs" then add_item(entry.item, "demand", entry.count, entry.group)
+		elseif entry.kind == "has" then add_item(entry.item, "supply", entry.count) end
 	end
-	for item, count in pairs(view and view.needs or {}) do add(item, "demand", count) end
-	for item, count in pairs(view and view.surplus or {}) do add(item, "supply", count) end
+	local group = view and view.group or {}
+	for item, count in pairs(view and view.needs or {}) do
+		if not group[item] then add_item(item, "demand", count) end
+	end
+	for category, state in pairs(view and view.categories or {}) do
+		add("group:" .. category, "demand", state.short)
+	end
+	for item, count in pairs(view and view.surplus or {}) do add_item(item, "supply", count) end
+	local out = {}
+	for key, entry in pairs(buckets) do
+		local category = key:match("^group:(.+)$")
+		if category then
+			for item in pairs(goods.CATEGORIES[category]) do out[item] = entry end
+		else
+			out[key] = entry
+		end
+	end
 	return out
 end
 

@@ -17,8 +17,11 @@
 --
 -- A crafting profession (recipes.lua) also wants what its recipes take, CRAFT_BATCH
 -- crafts' worth, and coal for those that smelt; what it makes counts among its outputs.
--- Charcoal stands in for coal (SUBSTITUTES): a villager holding either counts both
--- toward the one target, so it needs neither once it has enough of the two together.
+-- Some needs are for a purpose rather than an item (goods.lua, ticket 15): food by its
+-- points, fuel by burn seconds (coal, charcoal, and logs, planks and sticks it does not
+-- need as such), logs and planks of any species. Such a need and its spare are reckoned
+-- on the category, and the need is listed under every member it could take, in that
+-- member's count (`group` names the category), so any of them fills it.
 --
 -- assess() turns one villager's state into targets (what it wants to hold), needs,
 -- surplus and a value for any item: base price times urgency, which rises from 1 toward
@@ -26,6 +29,7 @@
 -- past its target and reserve.
 local core = minetest
 local tables = dofile(core.get_modpath("living_villages") .. "/trade_tables.lua")
+local goods = dofile(core.get_modpath("living_villages") .. "/goods.lua")
 local recipes = dofile(core.get_modpath("living_villages") .. "/recipes.lua")
 
 local EMERALD = "mcl_core:emerald"
@@ -47,8 +51,6 @@ local MAX_URGENCY, MIN_URGENCY = 3, 0.5
 local CRAFT_BATCH = 4
 local FUEL_BATCH = 4
 local COAL = "mcl_core:coal_lump"
--- Item to the item it stands in for.
-local SUBSTITUTES = {["mcl_core:charcoal_lump"] = COAL}
 
 local HAND_PRICES = {
 	-- A log is four planks, a plank two sticks (the fletcher buys 32 sticks for one).
@@ -125,7 +127,7 @@ local PREFERENCES = {
 
 local M = {
 	EMERALD = EMERALD, SCALE = SCALE, DINNER = DINNER, FOOD_DAYS = FOOD_DAYS, MAX_URGENCY = MAX_URGENCY, MIN_URGENCY = MIN_URGENCY,
-	PREFERENCES = PREFERENCES, SUBSTITUTES = SUBSTITUTES, COAL = COAL, version = tables.version,
+	PREFERENCES = PREFERENCES, COAL = COAL, version = tables.version,
 }
 
 local function mean(spec) return (spec.min + spec.max) / 2 end
@@ -177,6 +179,12 @@ local function derive()
 				(mean(trade.wanted[1]) + mean(extra) * extra_price) / mean(trade.offered[1]))
 			result[trade.offered[1].item] = combine(trade.offered[1].item)
 		end
+	end
+	-- Every species' logs and planks, at oak's where nothing else prices them (ticket 15:
+	-- a need for logs takes any species).
+	for log, planks in pairs(goods.SPECIES) do
+		result[log] = result[log] or result["mcl_core:tree"]
+		result[planks] = result[planks] or result["mcl_core:wood"]
 	end
 	for item, price in pairs(result) do result[item] = price * SCALE end
 	result[EMERALD] = 1
@@ -284,59 +292,104 @@ end
 -- urgency is the need's own (M.urgency), before `worth` caps the value, so a good that
 -- wears out, wanted whole, is still as urgent as any other need (trade_trips.lua).
 function M.assess(input)
-	local targets = {}
+	local targets, wanted = {}, {}
 	local function want(item, count)
 		if count > (targets[item] or 0) then targets[item] = count end
 	end
-	-- Food: enough points for FOOD_DAYS, in each food it might eat.
-	local food_need = math.max((input.hunger_per_day or 0) * FOOD_DAYS - (input.food_points or 0), 0)
-	if food_need > 0 then
-		for item, points in pairs(input.foods or {}) do want(item, math.ceil(food_need / points)) end
+	-- A category's amount, in its units: alternatives, so the largest ask stands.
+	local function want_category(category, amount)
+		if amount > (wanted[category] or 0) then wanted[category] = amount end
 	end
-	for item, batch in pairs(M.inputs(input.profession, input.max_tier)) do want(item, batch) end
+	-- Food: enough points for FOOD_DAYS, from any food.
+	local food_need = math.max((input.hunger_per_day or 0) * FOOD_DAYS - (input.food_points or 0), 0)
+	if food_need > 0 then want_category("food", food_need) end
+	for item, batch in pairs(M.inputs(input.profession, input.max_tier)) do
+		local category = goods.target_category(item)
+		if category then want_category(category, batch * goods.units(category, item)) else want(item, batch) end
+	end
 	for item, count in pairs(M.preferences(input.id)) do want(item, count) end
 	for item, count in pairs(input.extra or {}) do targets[item] = (targets[item] or 0) + count end
 
-	for item, base in pairs(SUBSTITUTES) do
-		if targets[base] then targets[item] = targets[base] end
+	local raw = input.held or {}
+	-- The category an item counts toward: none when it is wanted for itself.
+	local function category_of(item)
+		if targets[item] then return nil end
+		return goods.active(item, wanted)
+	end
+	local held_units = {}
+	for item, count in pairs(raw) do
+		local category = category_of(item)
+		if category then held_units[category] = (held_units[category] or 0) + count * goods.units(category, item) end
 	end
 
-	local raw = input.held or {}
-	-- An item and its substitutes count together.
-	local held = {}
-	for item, count in pairs(raw) do held[item] = count end
-	for item, base in pairs(SUBSTITUTES) do
-		local together = (raw[item] or 0) + (raw[base] or 0)
-		if together > 0 then held[item], held[base] = together, together end
-	end
-	local needs, surplus = {}, {}
+	local needs, surplus, group = {}, {}, {}
 	for item, target in pairs(targets) do
-		local short = target - (held[item] or 0)
+		local short = target - (raw[item] or 0)
 		if short > 0 then needs[item] = short end
 	end
+	local categories = {}
+	for category, amount in pairs(wanted) do
+		local have = held_units[category] or 0
+		categories[category] = {target = amount, held = have, short = math.max(amount - have, 0)}
+		if amount > have then
+			for item, units in pairs(goods.CATEGORIES[category]) do
+				if M.price(item) and category_of(item) == category then
+					needs[item] = math.ceil((amount - have) / units)
+					group[item] = category
+				end
+			end
+		end
+	end
+	-- Spare: past the target and its reserve; for a category, the members held most of.
+	local members = {}
 	for item, count in pairs(raw) do
 		if item ~= EMERALD then
-			local target = targets[item] or 0
-			-- A substitute's spare is what the pair holds past the target, up to its own count.
-			local spare = math.min(held[item] - target - math.ceil(target * RESERVE_SHARE), count)
-			if spare > 0 then surplus[item] = spare end
+			local category = category_of(item)
+			if category then
+				members[category] = members[category] or {}
+				table.insert(members[category], item)
+			else
+				local target = targets[item] or 0
+				local spare = count - target - math.ceil(target * RESERVE_SHARE)
+				if spare > 0 then surplus[item] = spare end
+			end
 		end
+	end
+	for category, list in pairs(members) do
+		local amount = wanted[category] or 0
+		local spare_units = (held_units[category] or 0) - amount - math.ceil(amount * RESERVE_SHARE)
+		table.sort(list, function(a, b)
+			if raw[a] ~= raw[b] then return raw[a] > raw[b] end
+			return a < b
+		end)
+		for _, item in ipairs(list) do
+			local units = goods.units(category, item)
+			local spare = math.min(raw[item], math.floor(spare_units / units))
+			if spare > 0 then
+				surplus[item] = spare
+				spare_units = spare_units - spare * units
+			end
+		end
+	end
+
+	local function urgency(item)
+		local category = category_of(item)
+		if category then return M.urgency(held_units[category] or 0, wanted[category] or 0) end
+		return M.urgency(raw[item] or 0, targets[item] or 0)
 	end
 	local function value(item)
 		local price = M.price(item)
 		if not price then return nil end
 		if item == EMERALD then return 1 end
 		local factor = input.prices and input.prices[item] or 1
-		local value = price * factor * M.urgency(held[item] or 0, targets[item] or 0)
+		local value = price * factor * urgency(item)
 		local most = input.worth and input.worth[item]
 		if most then value = math.min(value, most) end
 		local least = input.least and input.least[item]
 		return least and math.max(value, least) or value
 	end
-	local function urgency(item)
-		return M.urgency(held[item] or 0, targets[item] or 0)
-	end
-	return {targets = targets, needs = needs, surplus = surplus, value = value, urgency = urgency}
+	return {targets = targets, needs = needs, surplus = surplus, value = value, urgency = urgency,
+		categories = categories, group = group}
 end
 
 -- The items with the largest need or surplus first, by value, for news and the inspector.

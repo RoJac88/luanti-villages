@@ -26,6 +26,8 @@ local POINTS = {
 	-- they give a player, as bread's 4 is of its 5.
 	["mcl_farming:potato_item_baked"] = 4,
 	["mcl_fishing:fish_cooked"] = 4,
+	-- What the butcher cooks of the fishermen's catch (ticket 15).
+	["mcl_fishing:salmon_cooked"] = 5,
 	["mcl_mushrooms:mushroom_stew"] = 5,
 	["mcl_farming:pumpkin_pie"] = 6,
 	-- What the butcher cooks (production.lua), on the same scale.

@@ -132,4 +132,25 @@ do
 	assert(offer and offer.pay and offer.count <= 4, offer and offer.count)
 end
 
+-- Conversions (ticket 15): a shepherd sells string from its spare wool, four to a wool,
+-- whole wools only, valued at the wool's value over four. A stall showing wool sells it.
+do
+	local shepherd = villager("sh", {["mcl_wool:grey"] = 10}, {_profession = "shepherd"})
+	local weaver = villager("we", {["mcl_core:emerald"] = 64})
+	local seller_view = view({}, {["mcl_wool:grey"] = 10}, {["mcl_wool:grey"] = 0.4})
+	local buyer_view = view({["mcl_mobitems:string"] = 6}, {}, {["mcl_mobitems:string"] = 0.5})
+	local offer = exchange.offer(shepherd, seller_view, weaver, buyer_view)
+	assert(offer and offer.item == "mcl_mobitems:string" and offer.from == "mcl_wool:grey")
+	assert(offer.from_count == 2 and offer.count == 8 and offer.pay, offer.count)
+	assert(exchange.offer(shepherd, seller_view, weaver, buyer_view, "mcl_wool:grey"), "stall of wool")
+	assert(exchange.offer(shepherd, seller_view, weaver, buyer_view, "mcl_mobitems:string"), "trip for string")
+	assert(not exchange.offer(shepherd, seller_view, weaver, buyer_view, "mcl_core:dirt"))
+	assert(exchange.settle(offer))
+	assert(count(shepherd, "mcl_wool:grey") == 8 and count(weaver, "mcl_mobitems:string") == 8)
+	assert(count(shepherd, "mcl_mobitems:string") == 0 and logs[#logs]:find("from 2 mcl_wool:grey"))
+	-- A nitwit converts nothing.
+	local nitwit = villager("nw", {["mcl_wool:grey"] = 10})
+	assert(not exchange.offer(nitwit, seller_view, weaver, buyer_view))
+end
+
 print("exchange.lua: ok")

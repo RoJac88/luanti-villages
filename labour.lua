@@ -76,6 +76,7 @@ local possessions = dofile(core.get_modpath("living_villages") .. "/possessions.
 local news = dofile(core.get_modpath("living_villages") .. "/market_news.lua")
 local tally = dofile(core.get_modpath("living_villages") .. "/economy_tally.lua")
 local wants = dofile(core.get_modpath("living_villages") .. "/wants.lua")
+local goods = dofile(core.get_modpath("living_villages") .. "/goods.lua")
 
 local TICK_SECONDS = 2
 local RETRY_SECONDS = 60
@@ -232,7 +233,13 @@ end
 function M.trade_waiting(heard)
 	local needed, offered = {}, {}
 	for _, entry in ipairs(heard) do
-		if entry.kind == "needs" then needed[entry.item] = needed[entry.item] or {} needed[entry.item][entry.who] = true end
+		if entry.kind == "needs" then
+			-- A category's need (ticket 15) is a need for any of its members.
+			for item in pairs(news.items_of(entry)) do
+				needed[item] = needed[item] or {}
+				needed[item][entry.who] = true
+			end
+		end
 		if entry.kind == "has" then offered[entry.item] = offered[entry.item] or {} offered[entry.item][entry.who] = true end
 	end
 	for item, buyers in pairs(needed) do
@@ -253,14 +260,22 @@ function M.deal(heard, emeralds)
 	for _, has in ipairs(heard) do
 		if has.kind == "has" and has.price and has.price > 0 then
 			for _, need in ipairs(heard) do
-				if need.kind == "needs" and need.item == has.item and need.who ~= has.who and need.price
-					and need.price >= has.price * PEDDLE_MARGIN then
-					local bid = has.price + (need.price - has.price) * BID_SHARE
-					local count = math.min(has.count or 0, need.count or 0, PEDDLE_MAX, math.floor((emeralds or 0) / bid))
-					local income = count * (need.price - bid)
+				-- A category's need (ticket 15) takes any member, at its price per unit.
+				local sell_at, want = need.price, need.count or 0
+				if need.kind == "needs" and need.group and need.item ~= has.item and goods.fills(need, has.item) then
+					local per = need.price / goods.units(need.group, need.item)
+					local units = goods.units(need.group, has.item)
+					sell_at = per * units
+					want = math.floor(want * goods.units(need.group, need.item) / units)
+				end
+				if need.kind == "needs" and goods.fills(need, has.item) and need.who ~= has.who and sell_at
+					and sell_at >= has.price * PEDDLE_MARGIN then
+					local bid = has.price + (sell_at - has.price) * BID_SHARE
+					local count = math.min(has.count or 0, want, PEDDLE_MAX, math.floor((emeralds or 0) / bid))
+					local income = count * (sell_at - bid)
 					if count >= 1 and (not best or income > best.income
 						or (income == best.income and has.item < best.item)) then
-						best = {item = has.item, count = count, bid = bid, sell_at = need.price, income = income}
+						best = {item = has.item, count = count, bid = bid, sell_at = sell_at, income = income}
 					end
 				end
 			end
