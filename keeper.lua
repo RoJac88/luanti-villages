@@ -266,9 +266,13 @@ local function install(def)
 	end
 
 	-- A keeper works only at a jukebox; refuse vanilla's trips to any other
-	-- workstation rather than walk there and release it on arrival.
+	-- workstation rather than walk there and release it on arrival. Its own trip
+	-- to buy food (keeper_supply.lua) may end at one: a fisherman's barrel is its
+	-- workstation (refused, the Markets world's keeper never fetched any food).
 	def.gopath = function(self, target, callback_arrived, prioritised, market_token)
-		if self._villages_keeper and target then
+		local supply = self._villages_supply_target
+		if self._villages_keeper and target
+			and not (supply and supply.x == target.x and supply.y == target.y and supply.z == target.z) then
 			local node = core.get_node_or_nil(target)
 			if node and common.is_workstation_node(node.name) then return false end
 		end

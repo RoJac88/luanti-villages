@@ -50,8 +50,7 @@ local TARGET_MEALS = 12
 local CHECK_SECONDS = 30
 local RETRY_SECONDS = 120
 -- A source it could not walk to is passed over this long, so the next nearest gets a
--- turn (the Markets world: 57 tries at one walled-in barrel, the farms never tried, and
--- no dinner served for twenty days).
+-- turn rather than the keeper trying the nearest, and nothing else, for ever.
 local SKIP_SECONDS = 600
 local COOK_SECONDS = 10
 -- In emeralds at ledger.SCALE (ticket 11h).
