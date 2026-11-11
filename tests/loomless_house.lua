@@ -185,4 +185,44 @@ assert(loomless.install(m, noisy))
 for _ = 1, 2 do m.place_schematics({{name = "small_house", pos = {x = 1, y = 1, z = 1}}}) end
 assert(seen == 2 and logs == 1, "missing entry: placed, logged once")
 assert(not loomless.install(nil) and not loomless.install({}), "nothing to wrap")
+
+-- The chopping block (ticket 16): in a loomless house where the second roll says so, it
+-- stands where the loom stood. Only once the block is registered.
+do
+	local v2 = loomless.variant(stock_schematic(), engine, "living_villages:chopping_block")
+	assert(count(v2, "mcl_loom:loom") == 0 and count(v2, "living_villages:chopping_block") == 1)
+	local values = {[loomless.SETTING] = "1", [loomless.CHOPPING_SETTING] = "1"}
+	local chop_engine = {
+		settings = {get = function(_, name) return values[name] end},
+		get_mapgen_setting = minetest.get_mapgen_setting, log = function() end,
+		serialize_schematic = engine.serialize_schematic,
+		registered_nodes = {["living_villages:chopping_block"] = {}},
+	}
+	local t = new_settlements()
+	local blocks = 0
+	local real = t.place_schematics
+	t.place_schematics = function(info, pr)
+		for _, b in ipairs(info) do
+			for _, e in ipairs(t.schematic_table) do
+				if e.name == b.name then blocks = blocks + count(e.mts, "living_villages:chopping_block") end
+			end
+		end
+		return real(info, pr)
+	end
+	assert(loomless.install(t, chop_engine))
+	place(t, "mcl_core:dirt_with_grass")
+	assert(blocks == 1 and t.schematic_table[1].mts == stock, "a chopping block, the stock entry restored")
+	-- Unregistered: a plain loomless house.
+	chop_engine.registered_nodes = {}
+	blocks = 0
+	place(t, "mcl_core:dirt_with_grass")
+	assert(blocks == 0)
+	-- About half the loomless houses at the default.
+	local yes = 0
+	for x = 0, 400 do
+		if loomless.has_chopping_block({x = x * 13, y = 0, z = x * 7 % 301}, 5, 0.5) then yes = yes + 1 end
+	end
+	assert(yes > 160 and yes < 240, yes)
+	assert(not loomless.has_chopping_block({x = 1, y = 0, z = 1}, 5, 0))
+end
 print("loomless house tests passed")

@@ -19,7 +19,8 @@ local install_fisherman, fisherman_override = dofile(core.get_modpath("living_vi
 local keeper = dofile(core.get_modpath("living_villages") .. "/keeper.lua")
 local cleric = dofile(core.get_modpath("living_villages") .. "/cleric.lua")
 -- The roles job_blocks.lua claims through; the Builder joins once it is installed.
-local job_roles = {keeper = keeper, cleric = cleric}
+local woodcutter = dofile(core.get_modpath("living_villages") .. "/woodcutter.lua")
+local job_roles = {keeper = keeper, cleric = cleric, woodcutter = woodcutter}
 -- One copy: it holds back the villagers of a village still being placed.
 local village_staffing = dofile(core.get_modpath("living_villages") .. "/village_staffing.lua")
 -- Registers living_villages:meal, so it loads here for the same reason.
@@ -36,6 +37,8 @@ local market = dofile(core.get_modpath("living_villages") .. "/market.lua")
 dofile(core.get_modpath("living_villages") .. "/farm_compost.lua")
 -- Registers living_villages:pulpit, likewise.
 dofile(core.get_modpath("living_villages") .. "/pulpit.lua")
+-- Registers living_villages:chopping_block, the woodcutter's (ticket 16), likewise.
+dofile(core.get_modpath("living_villages") .. "/chopping_block.lua")
 dofile(core.get_modpath("living_villages") .. "/builder_block.lua")
 local MODEL = "living_villages_villager.b3d"
 local BASE = "living_villages_villager_base.png^living_villages_villager_plains.png"
@@ -602,6 +605,7 @@ core.register_on_mods_loaded(function()
 	-- The leatherworker's cow herd (herd.lua, ticket 11e): leather and beef.
 	dofile(core.get_modpath("living_villages") .. "/herd.lua").install(def)
 	cleric.install(def)
+	woodcutter.install(def)
 	-- Outside every job above, which it keeps from an unemployed villager with a block to go to.
 	dofile(core.get_modpath("living_villages") .. "/job_seek.lua").install(def, navigation_api, job_roles)
 	-- Outside job_seek, so that a Builder's house keeps its own villager.
@@ -642,6 +646,7 @@ core.register_on_mods_loaded(function()
 		return trade_trips.activity_override(villager, stage)
 			or flock.activity_override(villager, stage) or farmer.activity_override(villager, stage)
 			or fisherman_override(villager, stage) or (builder and builder.activity_override(villager, stage))
+			or woodcutter.activity_override(villager, stage)
 	end
 	dofile(core.get_modpath("living_villages") .. "/well.lua").install(def)
 	-- The morning at the bell (#329), the well's visit at the bell; one of the two a morning.

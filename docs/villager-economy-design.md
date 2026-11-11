@@ -890,6 +890,7 @@ branch, and each leaves the game playable with `living_villages_economy` on or o
 | 13 | Prices that move with supply and demand, each villager its own | 12b |
 | 14 | The mod's own trade window in place of vanilla's trades | 13 |
 | 15 | Needs by purpose (food, fuel, logs, planks), a few conversions at sale, the butcher cooks fish | 14 |
+| 16 | The woodcutter: a chopping block, generated and craftable, and a grove that grows | 15 |
 
 ### 1. Clock, hunger and the tavern
 
@@ -1421,6 +1422,44 @@ one (`herd.lua`).
 that needs food buys any food the player brings, at its price for that item, and the
 window shows such a need as a category ("food, 24 points") with the player's matching
 items to sell.
+
+### 16. The woodcutter
+
+Only a villager with no job cut wood (`labour.lua`), so a village's wood fell as its job
+blocks rose. The Markets world had one labourer among 16 adults, and the cartographer,
+librarian, tool smith, Builder and the smiths' fuel all wait on logs. A woodcutter by
+trade cuts wood whatever else the village does.
+
+**The chopping block** (`chopping_block.lua`). An oak stump, tinted, that is no log: out
+of the `tree` group, so it makes no planks, is never felled and is no wild tree, and an
+axe does not strip it. A player crafts it from any log and a stone axe and places it
+like any job block. Village generation puts one where the loom stood in some loomless
+small houses (`loomless_house.lua`): half of them by default
+(`living_villages_chopping_block_house_chance`), a quarter of all small houses.
+
+**The role** (`woodcutter.lua`). VoxeLibre takes no new profession, so the woodcutter is a
+role on the nitwit, which has no trades or workstation of its own, as the keeper is one
+on the butcher. It claims the block through the node meta `villager`, which is all
+vanilla's validate_jobsite checks, so vanilla keeps the jobsite and never hands a nitwit
+another job. `_villages_woodcutter` marks it, recovered on activation for a nitwit whose
+jobsite is a chopping block naming it. Without its block it is unemployed again and
+looks for work. `job_blocks.lua` hands blocks out like any other: `village_staffing.lua`
+when a village is placed, `job_seek.lua` to a villager out of work.
+
+**The work** is `labour.lua`'s woodcutter activity every day, with no choice: its grove
+is around the block (not its bed), up to GROVE_MAX_JOB (12) trees, felled and replanted,
+logs past what it keeps burned to charcoal, logs sold as planks when a villager asks
+(ticket 15). Through the work stage get_activity answers "chop" for it, so vanilla does
+not call it back to the block between trees.
+
+**A grove that grows.** A felled tree gave back one sapling, which was replanted, so a
+grove never grew past its first tree; Markets' labourer felled four logs in eleven days.
+Now a felled tree gives a second sapling while the grove is short of trees, as its leaves
+would drop, and a grove short of trees with no sapling to plant takes one from under a
+wild tree, once a day. This holds for labourers too.
+
+Left for later: a woodcutter in a treeless biome waits for a player to bring saplings,
+which it does not yet ask for; and the nitwit's skin, which it keeps.
 
 ## Open questions
 
