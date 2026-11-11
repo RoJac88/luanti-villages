@@ -1274,6 +1274,14 @@ The fixes:
   from one day at the full rate (`labour.lua`, `_villages_gather_record`). A woodcutter
   was reckoned at ten logs a day, about 430 emeralds, against about 90 for the wool
   deal, while it felled four logs in eleven days.
+* The stall walk goes to the seller's cell, not its feet: on a grass path (15/16 high)
+  the feet are 0.55 below the cell and gopath rounded the goal into the path, "no safe
+  standing space", for every seller of the Markets world's paved square.
+* A refused walk waits out its retry only for the same goal (`navigation.lua`): the
+  failed stall walks' retry also refused the bell walk 30 s later, and those villagers
+  gave the bell up for the stage.
+* A bell is looked for within 80 of the bed, not 64: the Markets world's eastern
+  houses are 66 from its hilltop bell.
 
 ### 13. Village prices
 

@@ -1433,6 +1433,11 @@ do
 	support_available = true
 	assert(trapped._villages_goto_route.status == "retry" and trapped._pf_last_failed, "a failed request sets the cooldown")
 	assert(trapped.state == "stand")
+	-- The retry holds back that walk only: a trip somewhere else is planned (the
+	-- Markets world's bell walk, refused after a failed stall walk).
+	assert(planner_def.gopath(trapped, {x = 8, y = 0, z = 0}, nil, true) == false, "the same walk waits")
+	assert(planner_def.gopath(trapped, {x = 4, y = 0, z = 0}, nil, true), "another is planned")
+	settle()
 
 	-- A repeated managed request keeps the walk it has (review of #163).
 	local commuter = new_entity(true)
