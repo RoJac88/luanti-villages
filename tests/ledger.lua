@@ -39,7 +39,10 @@ assert(ledger.inputs("tool_smith", 1)["mcl_core:iron_ingot"] == nil, "only up to
 assert(next(ledger.inputs("farmer")) == nil, "a farmer grows what its table buys")
 assert(ledger.inputs("shepherd")["mcl_wool:white"] == nil and ledger.inputs("shepherd")["mcl_dye:black"] == 12)
 assert(ledger.outputs("farmer")["mcl_farming:bread"] and ledger.outputs("farmer")["mcl_farming:wheat_item"])
-assert(ledger.inputs("keeper")["mcl_farming:wheat_item"] and ledger.outputs("keeper")["mcl_farming:bread"])
+-- The keeper buys bread and cooked fish ready made; only farmers bake, only butchers cook.
+assert(ledger.inputs("keeper")["mcl_farming:bread"] and ledger.inputs("keeper")["mcl_fishing:fish_cooked"])
+assert(not ledger.inputs("keeper")["mcl_farming:wheat_item"] and not ledger.inputs("keeper")["mcl_fishing:fish_raw"])
+assert(ledger.outputs("keeper")["mcl_farming:bread"])
 assert(next(ledger.inputs("nitwit")) == nil and next(ledger.inputs("unemployed")) == nil)
 local flint = ledger.producers("mcl_core:flint")
 assert(#flint == 1 and flint[1] == "fletcher")

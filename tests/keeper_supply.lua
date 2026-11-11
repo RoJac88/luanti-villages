@@ -128,17 +128,16 @@ assert(trip and vector.equals(trip.target, farm_chest), "walks to the farmer's c
 assert(kate._villages_farm_pouch["mcl_core:emerald"] == 1 and not inventories[key(pantry_chest)]["mcl_core:emerald"],
 	"takes the pantry's emeralds to pay with")
 assert(kate._villages_supply_target, "an errand for far_trips.lua")
--- Takes up to 24, bread first, then potatoes, then wheat.
+-- Takes up to 24, bread first, then potatoes. Wheat it leaves: only the farmer bakes.
 arrive_at(farm_chest)
 assert(kate._villages_farm_pouch["mcl_farming:bread"] == 4)
 assert(kate._villages_farm_pouch["mcl_farming:potato_item"] == 10)
-assert(kate._villages_farm_pouch["mcl_farming:wheat_item"] == 10)
-assert(inventories[key(farm_chest)]["mcl_farming:wheat_item"] == 20 and not kate._villages_supply_target)
+assert(not kate._villages_farm_pouch["mcl_farming:wheat_item"])
+assert(inventories[key(farm_chest)]["mcl_farming:wheat_item"] == 30 and not kate._villages_supply_target)
 -- It owes more than the one emerald it has: it pays that, and takes the food anyway.
--- A dinner's price (18, ledger.DINNER) per meal the food makes: a loaf or a potato is
--- one, wheat a third.
-local owed = supply.worth({["mcl_farming:bread"] = 4, ["mcl_farming:potato_item"] = 10, ["mcl_farming:wheat_item"] = 10})
-assert(math.abs(owed - 18 * (4 + 10 + 10 / 3)) < 1e-9, "worth " .. owed)
+-- A dinner's price (18, ledger.DINNER) per meal the food makes: a loaf or a potato is one.
+local owed = supply.worth({["mcl_farming:bread"] = 4, ["mcl_farming:potato_item"] = 10})
+assert(math.abs(owed - 18 * 14) < 1e-9, "worth " .. owed)
 assert(inventories[key(farm_chest)]["mcl_core:emerald"] == 1 and not kate._villages_farm_pouch["mcl_core:emerald"])
 -- The rest it owes in the chest, up to the cap; past that it is forgiven.
 assert(math.abs(supply.tab(farm_chest) - (owed - 1)) < 1e-3, "owes " .. supply.tab(farm_chest))
@@ -151,15 +150,15 @@ do
 	local chest = {x = 30, y = 0, z = 0}
 	inventories[key(chest)] = {}
 	nodes[key(chest)] = nodes[key(farm_chest)]
-	-- 4 wheat: 4/3 of a dinner, 24. With 20 in the purse it pays 20 and owes 4.
+	-- 2 loaves: two dinners, 36. With 20 in the purse it pays 20 and owes 16.
 	local buyer = {_id = "kim", _villages_farm_pouch = {["mcl_core:emerald"] = 20}}
-	local paid, left = supply.pay(buyer, chest, {["mcl_farming:wheat_item"] = 4})
-	assert(paid == 20 and math.abs(left - 4) < 1e-3 and math.abs(supply.tab(chest) - 4) < 1e-3, paid .. " " .. left)
-	-- Next time, with a full purse, the 4 owed comes first: 2 wheat (12) and 4 make 16.
+	local paid, left = supply.pay(buyer, chest, {["mcl_farming:bread"] = 2})
+	assert(paid == 20 and math.abs(left - 16) < 1e-3 and math.abs(supply.tab(chest) - 16) < 1e-3, paid .. " " .. left)
+	-- Next time, with a full purse, the 16 owed comes first: a loaf (18) and 16 make 34.
 	buyer._villages_farm_pouch["mcl_core:emerald"] = 100
-	paid, left = supply.pay(buyer, chest, {["mcl_farming:wheat_item"] = 2})
-	assert(paid == 16 and left < 1e-3 and supply.tab(chest) == 0, "the tab is paid first")
-	assert(inventories[key(chest)]["mcl_core:emerald"] == 36 and buyer._villages_farm_pouch["mcl_core:emerald"] == 84)
+	paid, left = supply.pay(buyer, chest, {["mcl_farming:bread"] = 1})
+	assert(paid == 34 and left < 1e-3 and supply.tab(chest) == 0, "the tab is paid first")
+	assert(inventories[key(chest)]["mcl_core:emerald"] == 54 and buyer._villages_farm_pouch["mcl_core:emerald"] == 66)
 end
 
 -- At the next check it carries the food back to the pantry.
@@ -170,7 +169,7 @@ supply.step(kate, now)
 assert(trip and vector.equals(trip.target, jukebox), "carries it back to the jukebox, beside the pantry")
 arrive_at(jukebox)
 assert(inventories[key(pantry_chest)]["mcl_farming:bread"] == 4)
-assert(inventories[key(pantry_chest)]["mcl_farming:wheat_item"] == 10)
+assert(inventories[key(pantry_chest)]["mcl_farming:potato_item"] == 10)
 assert(next(kate._villages_farm_pouch) == nil, "pouch emptied")
 -- What it did not spend goes back.
 kate._villages_farm_pouch = {["mcl_core:emerald"] = 2, ["mcl_farming:bread"] = 1}
@@ -179,14 +178,16 @@ arrive_at(jukebox)
 assert(inventories[key(pantry_chest)]["mcl_core:emerald"] == 2 and inventories[key(pantry_chest)]["mcl_farming:bread"] == 5)
 inventories[key(pantry_chest)]["mcl_core:emerald"], inventories[key(pantry_chest)]["mcl_farming:bread"] = nil, 4
 kate._villages_supply_next = nil
--- 4 loaves, 10 potatoes and three loaves' worth of wheat: enough, so no trip.
-assert(supply.meals(chests) == 17)
+-- 4 loaves and 10 potatoes to bake: enough, so no trip.
+assert(supply.meals(chests) == 14)
 now = now + supply.CHECK_SECONDS
 supply.step(kate, now)
 assert(not trip, "pantry stocked: stays")
 
--- A walk that ends without arriving: tried again later, not at once.
+-- A walk that ends without arriving: tried again later, not at once. (The farm has
+-- only wheat left, which it does not fetch: some bread to go for.)
 inventories[key(pantry_chest)] = {}
+inventories[key(farm_chest)]["mcl_farming:bread"] = 6
 now = now + supply.CHECK_SECONDS
 supply.step(kate, now)
 assert(trip)
@@ -225,21 +226,15 @@ metas[key(near_composter)] = {villager = "gus"}
 assert(vector.equals(supply.source(jukebox, chests), farm_chest), "skips the pantry nearest gus's composter")
 nodes[key(near_composter)] = nil
 
--- A fisherman's claimed barrel with cod is a source too, nearer than the farm.
+-- A fisherman's barrel is no source: only the butcher cooks fish (ticket 15).
 local barrel = {x = 10, y = 0, z = 0}
 nodes[key(barrel)] = "mcl_barrels:barrel_closed"
 inventories[key(barrel)] = {["mcl_fishing:fish_raw"] = 5}
-assert(vector.equals(supply.source(jukebox, chests), farm_chest), "an unclaimed barrel is no source")
 metas[key(barrel)] = {villager = "finn"}
-assert(vector.equals(supply.source(jukebox, chests), barrel))
-inventories[key(barrel)] = {["mcl_fishing:salmon_raw"] = 5}
-assert(vector.equals(supply.source(jukebox, chests), farm_chest), "no cod, no trip there")
--- One it could not reach is passed over: the next nearest gets a turn.
-inventories[key(barrel)] = {["mcl_fishing:fish_raw"] = 5}
-assert(vector.equals(supply.source(jukebox, chests, function(pos) return vector.equals(pos, barrel) end), farm_chest),
-	"a barrel it cannot reach gives way to the farm")
-assert(supply.source(jukebox, chests, function() return true end) == nil, "every source passed over: none")
-inventories[key(barrel)] = {["mcl_fishing:salmon_raw"] = 5}
+assert(vector.equals(supply.source(jukebox, chests), farm_chest), "the farm, not the barrel")
+-- One it could not reach is passed over.
+assert(supply.source(jukebox, chests, function(pos) return vector.equals(pos, farm_chest) end) == nil,
+	"the farm passed over: none")
 nodes[key(barrel)] = nil
 
 -- A farm with nothing to fetch: no trip, and it checks again later.
@@ -248,27 +243,30 @@ kate._villages_supply_next = nil
 supply.step(kate, now)
 assert(not trip and kate._villages_supply_next == now + supply.RETRY_SECONDS)
 
--- Its shift: one dish every COOK_SECONDS at the jukebox, three wheat to the loaf first.
-inventories[key(pantry_chest)] = {["mcl_farming:wheat_item"] = 4, ["mcl_farming:potato_item"] = 1}
+-- Its shift: one dish every COOK_SECONDS at the jukebox, a potato baked. Wheat and raw
+-- fish it leaves: only the farmer bakes bread, only the butcher cooks fish.
+inventories[key(pantry_chest)] = {["mcl_farming:wheat_item"] = 4, ["mcl_farming:potato_item"] = 2,
+	["mcl_fishing:fish_raw"] = 2}
 time = 15000 / 24000
 kate.order = "work"
 supply.step(kate, now)
-assert(inventories[key(pantry_chest)]["mcl_farming:bread"] == 1)
-assert(inventories[key(pantry_chest)]["mcl_farming:wheat_item"] == 1)
+assert(inventories[key(pantry_chest)]["mcl_farming:potato_item_baked"] == 1)
+assert(inventories[key(pantry_chest)]["mcl_farming:potato_item"] == 1)
 supply.step(kate, now + 1)
 assert(inventories[key(pantry_chest)]["mcl_farming:potato_item"] == 1, "one dish per COOK_SECONDS")
 now = now + supply.COOK_SECONDS
 supply.step(kate, now)
-assert(inventories[key(pantry_chest)]["mcl_farming:potato_item_baked"] == 1)
+assert(inventories[key(pantry_chest)]["mcl_farming:potato_item_baked"] == 2)
 now = now + supply.COOK_SECONDS
 supply.step(kate, now)
-assert(inventories[key(pantry_chest)]["mcl_farming:wheat_item"] == 1, "one wheat makes nothing")
+assert(inventories[key(pantry_chest)]["mcl_farming:wheat_item"] == 4 and not inventories[key(pantry_chest)]["mcl_farming:bread"])
+assert(inventories[key(pantry_chest)]["mcl_fishing:fish_raw"] == 2 and not inventories[key(pantry_chest)]["mcl_fishing:fish_cooked"])
 -- Not cooking until it is at the jukebox working.
-inventories[key(pantry_chest)]["mcl_farming:wheat_item"] = 3
+inventories[key(pantry_chest)]["mcl_farming:potato_item"] = 3
 kate.order = nil
 now = now + supply.COOK_SECONDS
 supply.step(kate, now)
-assert(inventories[key(pantry_chest)]["mcl_farming:wheat_item"] == 3)
+assert(inventories[key(pantry_chest)]["mcl_farming:potato_item"] == 3)
 assert(not trip, "no fetching on shift")
 
 -- Another stage: no errand left behind.
@@ -294,14 +292,16 @@ supply.install(def)
 local another = {x = 0, y = 0, z = -4}
 inventories[key(another)] = {}
 settlements.fill_chest(another)
-assert(#filled == 1 and inventories[key(another)]["mcl_farming:bread"] == 6)
+assert(#filled == 1 and inventories[key(another)]["mcl_farming:bread"] == 9)
 
 
--- Cooked beef it bought from the butcher (ticket 11e) goes from its belongings to the pantry.
+-- Cooked beef and fish it bought from the butcher (ticket 11e, 15) go from its belongings
+-- to the pantry.
 do
-	local buyer = {_id = "kate2", _villages_keeper = true, _villages_belongings = {["mcl_mobitems:cooked_beef"] = 2}}
+	local buyer = {_id = "kate2", _villages_keeper = true,
+		_villages_belongings = {["mcl_mobitems:cooked_beef"] = 2, ["mcl_fishing:fish_cooked"] = 1}}
 	local before = pantry.count(chests, "mcl_mobitems:cooked_beef")
-	assert(supply.shelve(buyer, chests) == 2)
+	assert(supply.shelve(buyer, chests) == 3)
 	assert(pantry.count(chests, "mcl_mobitems:cooked_beef") == before + 2)
 	assert(dofile("possessions.lua").count(buyer, "mcl_mobitems:cooked_beef") == 0)
 	-- It pays for them from the pantry: topped up to FLOAT, no further, as far as the pantry goes.

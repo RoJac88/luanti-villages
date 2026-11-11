@@ -4,15 +4,16 @@
 -- keeper supplies it:
 --
 -- * In its free hours, while the pantry holds fewer than TARGET_MEALS, it walks to the
---   nearest work chest with food within SUPPLY_RADIUS of the jukebox: a farmer's (the
---   chest nearest a claimed composter, the one farmer.lua stores its surplus in) or a
---   fisherman's claimed barrel, where fisherman.lua puts its cod. It takes up to CARRY of
---   bread, potatoes, cod and wheat and carries them back to its jukebox, from where it fills
---   the pantry (a pantry chest behind the bar may have nowhere to stand by it).
+--   nearest farmer's work chest with food within SUPPLY_RADIUS of the jukebox (the chest
+--   nearest a claimed composter, the one farmer.lua stores its surplus in). It takes up
+--   to CARRY of bread and potatoes and carries them back to its jukebox, from where it
+--   fills the pantry (a pantry chest behind the bar may have nowhere to stand by it).
+--   Only the farmer bakes bread, and only the butcher cooks meat and fish (recipes.lua):
+--   the keeper buys those ready made.
 -- * It buys what it takes (ticket 4): setting out, it takes up to PURSE emeralds from
 --   the pantry, and leaves in the work chest what the food will sell for as dinners, for
 --   its farmer or fisherman to collect: DINNER (meal.lua's VILLAGER_PRICE) for each meal
---   the food makes (MEALS: a loaf, a potato or a cod is one, wheat a third). The tavern
+--   the food makes (MEALS: a loaf or a potato is one). The tavern
 --   keeps no margin, so dinner money, a player's too, passes through the pantry to the
 --   food producers (ticket 11b; at vanilla's prices, rounded, 8 wheat paid nothing while
 --   its dinners took 1 emerald each, and money piled up in the pantry). What it cannot
@@ -22,9 +23,10 @@
 --   the food anyway, so the tavern keeps feeding the village. What it did not spend goes
 --   back in the pantry.
 -- * Over its shift at the jukebox it cooks the pantry's raw food into its menu, one dish
---   every COOK_SECONDS: three wheat to a loaf, a potato baked, a raw cod cooked.
--- * Dishes it bought in conversation or on a trade trip (ticket 11e: cooked beef from
---   the butcher, a keeper input in ledger.lua) go from its belongings into the pantry on
+--   every COOK_SECONDS: a potato baked.
+-- * Dishes it bought in conversation or on a trade trip (ticket 11e: cooked beef and
+--   cooked fish from the butcher, bread from a farmer, keeper inputs in ledger.lua) go
+--   from its belongings into the pantry on
 --   its shift, before it cooks. It pays for them with the tavern's money: on shift it
 --   tops its own emeralds up to FLOAT from the pantry, where dinner money goes, so it
 --   does not run out of its starting money.
@@ -67,19 +69,15 @@ local EMERALD = "mcl_core:emerald"
 local REACH = 3
 
 local BREAD = "mcl_farming:bread"
-local WHEAT = "mcl_farming:wheat_item"
 local POTATO = "mcl_farming:potato_item"
-local COD = "mcl_fishing:fish_raw"
 -- What it fetches, most wanted first.
-local SUPPLIES = {BREAD, POTATO, COD, WHEAT}
+local SUPPLIES = {BREAD, POTATO}
 local RECIPES = {
-	{from = WHEAT, count = 3, to = BREAD},
 	{from = POTATO, count = 1, to = "mcl_farming:potato_item_baked"},
-	{from = COD, count = 1, to = "mcl_fishing:fish_cooked"},
 }
-local STARTING_STOCK = {{BREAD, 6}, {WHEAT, 9}, {POTATO, 6}}
+local STARTING_STOCK = {{BREAD, 9}, {POTATO, 6}}
 -- Dinners each supply makes.
-local MEALS = {[BREAD] = 1, [POTATO] = 1, [COD] = 1, [WHEAT] = 1 / 3}
+local MEALS = {[BREAD] = 1, [POTATO] = 1}
 
 local COMPOSTERS = {"mcl_composters:composter", "mcl_composters:composter_ready"}
 for level = 1, 7 do COMPOSTERS[#COMPOSTERS + 1] = "mcl_composters:composter_" .. level end
@@ -120,8 +118,8 @@ local function supplies_in(pos)
 	return false
 end
 
--- The nearest work chest with something to fetch, a farmer's or a fisherman's barrel,
--- never a pantry chest, nor one `skip(pos)` passes over.
+-- The nearest farmer's work chest with something to fetch, never a pantry chest, nor
+-- one `skip(pos)` passes over.
 function M.source(jukebox, chests, skip)
 	local r = SUPPLY_RADIUS
 	local minp = {x = jukebox.x - r, y = jukebox.y - COMPOSTER_HEIGHT, z = jukebox.z - r}
@@ -135,9 +133,6 @@ function M.source(jukebox, chests, skip)
 	end
 	for _, composter in ipairs(core.find_nodes_in_area(minp, maxp, COMPOSTERS)) do
 		if core.get_meta(composter):get_string("villager") ~= "" then consider(stock.find_chests(composter)[1]) end
-	end
-	for _, barrel in ipairs(core.find_nodes_in_area(minp, maxp, stock.BARREL_NODES)) do
-		if core.get_meta(barrel):get_string("villager") ~= "" then consider(barrel) end
 	end
 	return best
 end

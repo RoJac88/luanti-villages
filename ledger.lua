@@ -109,8 +109,9 @@ for name in pairs({white = 1, brown = 1, black = 1, grey = 1}) do MAKES.shepherd
 -- Roles this mod adds, which have no vanilla table of their own.
 local ROLES = {
 	keeper = {
-		-- Cooked beef, from the butcher, is its second dish (ticket 11e).
-		inputs = {["mcl_farming:wheat_item"] = 9, ["mcl_farming:potato_item"] = 6, ["mcl_fishing:fish_raw"] = 6,
+		-- Only the butcher cooks meat and fish, and only the farmer bakes bread: it buys
+		-- those ready made (cooked beef since ticket 11e), and bakes potatoes itself.
+		inputs = {["mcl_farming:bread"] = 9, ["mcl_farming:potato_item"] = 6, ["mcl_fishing:fish_cooked"] = 6,
 			["mcl_mobitems:cooked_beef"] = 6},
 		outputs = {
 			["mcl_farming:bread"] = true, ["mcl_farming:potato_item_baked"] = true, ["mcl_fishing:fish_cooked"] = true,

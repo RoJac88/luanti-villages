@@ -1395,6 +1395,12 @@ cooks it in its smoker (`production.lua`, `recipes.lua`), using fuel, and sells 
 Raw cod and salmon become its inputs and cooked cod and salmon its outputs. Pufferfish
 and clownfish are not food and nobody buys them; the fisherman values them low.
 
+**One cook for each food.** Only the butcher cooks meat and fish, and only the farmer
+bakes bread. The keeper stops turning wheat into loaves and raw cod into cooked cod: it
+fetches bread and potatoes from the farmers' chests, buys bread, cooked cod and cooked
+beef as ledger inputs, and cooks only baked potatoes itself (`keeper_supply.lua`). A new
+tavern's pantry starts with nine loaves in place of six loaves and nine wheat.
+
 **Players.** No conversions in player trades. The categories still apply: a villager
 that needs food buys any food the player brings, at its price for that item, and the
 window shows such a need as a category ("food, 24 points") with the player's matching
