@@ -16,7 +16,7 @@ local BUILDINGS = {
 	"medium_house", "small_house", "tavern", "well",
 	-- This mod's own (village_buildings.lua), prepared as it prepares them.
 	"village_blacksmith", "village_butcher", "village_duplex", "village_fisherman_hut", "village_greenhouse",
-	"village_library", "village_tavern", "village_woodcutter_shed",
+	"village_library", "village_tavern", "village_tower_house", "village_woodcutter_shed",
 }
 local ROTATIONS = {"0", "90", "180", "270"}
 local FLOOR = 10

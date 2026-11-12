@@ -33,7 +33,7 @@ local BUILDINGS = {
 	"library", "medium_house", "small_house", "small_house_loomless", "tavern", "well", "builder_house",
 	-- This mod's own (village_buildings.lua).
 	"village_blacksmith", "village_butcher", "village_duplex", "village_fisherman_hut", "village_greenhouse",
-	"village_library", "village_tavern", "village_woodcutter_shed",
+	"village_library", "village_tavern", "village_tower_house", "village_woodcutter_shed",
 }
 local DIRECTIONS, ORIGIN, MARGIN = scene.DIRECTIONS, scene.ORIGIN, scene.MARGIN
 -- The time of day each kind of trip is scheduled for (common.lua's SCHEDULE).

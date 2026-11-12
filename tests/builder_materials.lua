@@ -130,7 +130,7 @@ local BUILDINGS = {
 	"medium_house", "small_house", "tavern", "well",
 	-- This mod's own (village_buildings.lua).
 	"village_blacksmith", "village_butcher", "village_duplex", "village_fisherman_hut", "village_greenhouse",
-	"village_library", "village_tavern", "village_woodcutter_shed",
+	"village_library", "village_tavern", "village_tower_house", "village_woodcutter_shed",
 }
 local SURFACES = {
 	"mcl_core:dirt_with_grass", "mcl_core:dirt_with_grass_snow", "mcl_core:podzol",

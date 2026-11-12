@@ -12,6 +12,7 @@
 --   duplex      a new two-storey house of four beds
 --   fisherman_hut  a small hut with the fisherman's barrel, a chest and a bed
 --   woodcutter_shed  a shed with the woodcutter's chopping block, a chest and a bed
+--   tower_house  a stone house with a bed and two chests
 --
 -- They are exported with schemedit as built, so each is fitted to the generator's
 -- conventions as it is read (`prepare`):
@@ -49,6 +50,7 @@ M.BUILDINGS = {
 	{name = "duplex", max_num = 0.08, hsize = 13},
 	{name = "fisherman_hut", max_num = 0.05, hsize = 12},
 	{name = "woodcutter_shed", max_num = 0.05, hsize = 12},
+	{name = "tower_house", max_num = 0.08, hsize = 12},
 }
 
 local DIRT = "mcl_core:dirt"

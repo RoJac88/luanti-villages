@@ -23,7 +23,7 @@ end
 
 -- Each building gets a dirt slice under it, keeps every cell one up, and has only plain chests.
 local CHESTS = {blacksmith = 2, butcher = 2, duplex = 4, fisherman_hut = 1, greenhouse = 4, library = 2, tavern = 2,
-	woodcutter_shed = 1}
+	woodcutter_shed = 1, tower_house = 2}
 for _, entry in ipairs(buildings.BUILDINGS) do
 	local name = entry.name
 	local original = schematic_of(name)
@@ -92,7 +92,9 @@ do
 	assert(hut and hut_at > stock_count and hut.max_num == 0.05 and hut.hsize == 12, "the fisherman's hut is added")
 	local shed, shed_at = find(list, "woodcutter_shed")
 	assert(shed and shed_at > stock_count and shed.max_num == 0.05, "the woodcutter's shed is added")
-	assert(#list == stock_count + 4, "the greenhouse replaces the farm; the duplex, hut and shed are new")
+	local tower, tower_at = find(list, "tower_house")
+	assert(tower and tower_at > stock_count and tower.max_num == 0.08, "the tower house is added")
+	assert(#list == stock_count + 5, "the greenhouse replaces the farm; the duplex, hut, shed and tower house are new")
 	assert(find(list, "lamp").mts == "lamp.mts" and find(list, "small_house").mts == "small_house.mts")
 	for _, entry in ipairs(buildings.BUILDINGS) do
 		assert(find(list, entry.name).living_villages, entry.name)
