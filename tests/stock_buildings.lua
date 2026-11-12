@@ -31,6 +31,9 @@ local cell_string, check_route = check.cell_string, check.check_route
 local BUILDINGS = {
 	"belltower", "blacksmith", "butcher", "church", "farm", "lamp", "large_house",
 	"library", "medium_house", "small_house", "small_house_loomless", "tavern", "well", "builder_house",
+	-- This mod's own (village_buildings.lua).
+	"village_blacksmith", "village_butcher", "village_duplex", "village_fisherman_hut", "village_greenhouse",
+	"village_library", "village_tavern", "village_woodcutter_shed",
 }
 local DIRECTIONS, ORIGIN, MARGIN = scene.DIRECTIONS, scene.ORIGIN, scene.MARGIN
 -- The time of day each kind of trip is scheduled for (common.lua's SCHEDULE).
@@ -39,6 +42,8 @@ local HOME, WORK, TAVERN = 0.8, 0.3, 0.7
 local farm_crops = {
 	["mcl_farming:wheat"] = true, ["mcl_farming:potato"] = true, ["mcl_farming:carrot"] = true,
 }
+-- The greenhouse's wheat is planted at every stage.
+for stage = 1, 7 do farm_crops["mcl_farming:wheat_" .. stage] = true end
 
 -- Sends a villager standing at `start` (a position, as an entity's is) to
 -- `target`, which it claims as `field` says. Returns the cells of its route, or
@@ -111,6 +116,13 @@ local function test_building(name, rotation, doors_open, roads, slope)
 						kind = "jukebox", pos = pos, field = "_villages_tavern_target",
 						route_field = "_villages_tavern_route", timeofday = TAVERN,
 					})
+				elseif node_name == "living_villages:chopping_block" then
+					-- No jobsite route goes to it (common.has_claimed_jobsite): a villager out of
+					-- work walks there as to anywhere and claims it within job_seek.lua's REACH.
+					table.insert(targets, {
+						kind = "chopping block", pos = pos, route_field = "_villages_goto_route", timeofday = WORK,
+						reach = 2.5,
+					})
 				elseif common.is_workstation_node(node_name) or node_name == "living_villages:pulpit"
 					or node_name == "living_villages:builder_block" then
 					table.insert(targets, {
@@ -136,7 +148,7 @@ local function test_building(name, rotation, doors_open, roads, slope)
 			local cells, reason = route(world, def, outdoors(direction), target.pos, target.field, target.route_field,
 				target.timeofday)
 			if cells then
-				record(id, check_route(world, cells, target.pos))
+				record(id, check_route(world, cells, target.pos, target.reach))
 			else
 				record(id, false, reason)
 			end

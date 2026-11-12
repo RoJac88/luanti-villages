@@ -21,12 +21,30 @@ local function counted(name)
 	return name ~= M.BUILDER_HOUSE
 end
 
--- How many of each type a record lists as generated, and the total.
-function M.generated(record)
+-- Buildings the generator's list now holds under another name, so a village recorded with
+-- the old one wants the new in its place (village_buildings.lua's greenhouse for the farm).
+M.RENAMED = {farm = "greenhouse"}
+
+-- The name a recorded building goes by in `schematic_table`, or nil if the list no longer
+-- has it, so it is never picked. Without a list, the name as recorded.
+local function listed(name, schematic_table)
+	if not schematic_table then return name end
+	local renamed
+	for _, entry in ipairs(schematic_table) do
+		if entry.name == name then return name end
+		if entry.name == M.RENAMED[name] then renamed = entry.name end
+	end
+	return renamed
+end
+
+-- How many of each type a record lists as generated, and the total. `schematic_table`
+-- (optional) renames and drops as `listed` does.
+function M.generated(record, schematic_table)
 	local counts, total = {}, 0
 	for _, building in ipairs(record and record.buildings or {}) do
-		if counted(building.name) then
-			counts[building.name] = (counts[building.name] or 0) + 1
+		local name = listed(building.name, schematic_table)
+		if name and counted(name) then
+			counts[name] = (counts[name] or 0) + 1
 			total = total + 1
 		end
 	end
@@ -36,7 +54,7 @@ end
 -- Each type's share of the village, summing to 1, or nil if there is nothing to go by.
 function M.shares(record, schematic_table)
 	local shares = {}
-	local counts, total = M.generated(record)
+	local counts, total = M.generated(record, schematic_table)
 	if total > 0 then
 		for name, count in pairs(counts) do shares[name] = count / total end
 		return shares
@@ -52,11 +70,13 @@ function M.shares(record, schematic_table)
 	return shares
 end
 
--- The village as it stands: what generated and what Builders added.
-function M.current(record)
-	local counts, total = M.generated(record)
-	for name, count in pairs(record and record.built or {}) do
-		if counted(name) then
+-- The village as it stands: what generated and what Builders added. `schematic_table`: see
+-- M.generated.
+function M.current(record, schematic_table)
+	local counts, total = M.generated(record, schematic_table)
+	for recorded, count in pairs(record and record.built or {}) do
+		local name = listed(recorded, schematic_table)
+		if name and counted(name) then
 			counts[name] = (counts[name] or 0) + count
 			total = total + count
 		end
@@ -95,7 +115,7 @@ end
 function M.pick(record, schematic_table, block_totals, favoured)
 	local shares = M.shares(record, schematic_table)
 	if not shares then return nil end
-	local counts, total = M.current(record)
+	local counts, total = M.current(record, schematic_table)
 	return largest_deficit(shares, counts, total, block_totals, favoured)
 end
 

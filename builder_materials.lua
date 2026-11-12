@@ -41,10 +41,11 @@ function M.is_ground(name)
 end
 
 -- Jobsites vanilla's table does not know: the keeper's (keeper.lua), the cleric's
--- (cleric.lua) and the Builder's own.
+-- (cleric.lua), the woodcutter's (woodcutter.lua) and the Builder's own.
 local EXCLUDED = {
 	["mcl_jukebox:jukebox"] = true,
 	["living_villages:pulpit"] = true,
+	["living_villages:chopping_block"] = true,
 	["living_villages:builder_block"] = true,
 }
 
@@ -117,6 +118,15 @@ local function base_item(name)
 	if name == "mcl_torches:torch_wall" then return "mcl_torches:torch" end
 	if name == "mesecons_walllever:wall_lever_on" then return "mesecons_walllever:wall_lever_off" end
 	if name == "mcl_furnaces:furnace_active" then return "mcl_furnaces:furnace" end
+	-- No one holds an unlit campfire: the item is the lit one. A banner's look is in its
+	-- metadata, which a schematic does not keep, so any banner will do; a white one.
+	if name == "mcl_campfires:campfire" then return "mcl_campfires:campfire_lit" end
+	-- A hanging lantern is the standing one, placed under a block.
+	local lantern = name:match("^(mcl_lanterns:.*lantern)_ceiling$")
+	if lantern then return lantern .. "_floor" end
+	if name == "mcl_banners:hanging_banner" or name == "mcl_banners:standing_banner" then
+		return "mcl_banners:banner_item_white"
+	end
 	if name:match("^mcl_chests:chest_") then return "mcl_chests:chest" end
 	-- A pane's item is its flat form, whatever shape it has connected into.
 	if name:match("^xpanes:") and not name:match("_flat$") then return name .. "_flat" end

@@ -8,6 +8,26 @@ world.
 
 ## Features
 
+### Village buildings
+
+New villages are larger and hold more villagers. They use the mod's own versions of several
+buildings (`schematics/`), each with a bed:
+
+- **Blacksmith, library and tavern:** the stock layouts with a small bedroom added. The library
+  also has a room for the leatherworker's cauldron. The tavern's pantry has a chest the keeper
+  can reach, and the tavern has no fisherman's barrel.
+- **Butcher:** a kitchen with a smoker and a bedroom upstairs.
+- **Greenhouse:** takes the place of the farm. It is a walled field around two composters, with
+  a seeded chest beside each and two beds.
+- **Duplex:** a new two-storey house with four beds.
+- **Fisherman's hut:** a small hut with a barrel, a chest and a bed. It is built only where its
+  fisherman has water to fish in reach, and is preferred on such sites.
+- **Woodcutter's shed:** a shed with a chopping block, a chest and a bed.
+
+Every village reserves a site for a greenhouse and a tavern, and no two buildings are placed
+within two blocks of each other. `living_villages_village_buildings` turns the mod's buildings
+off and brings back VoxeLibre's. Existing villages are unchanged.
+
 ### Sleep and births
 
 - Villagers lie visibly in their claimed beds at night.
@@ -80,9 +100,10 @@ ordinary stairs and wooden doors. Iron doors still block them.
 
 ### Taverns and dinner
 
-- **Furniture:** newly generated taverns get two tables with plates and chairs. The furniture
-  is added to the installed VoxeLibre version's own tavern layout when the tavern generates.
-  Taverns that already exist aren't refurnished.
+- **Furniture:** newly generated taverns have tables with plates and chairs, a pantry chest
+  and a bedroom (see Village buildings). With `living_villages_village_buildings` off, the
+  furniture is added to VoxeLibre's own tavern layout instead. Taverns that already exist
+  aren't refurnished.
 - **Builders:** an unemployed adult that claims a free Builder's bench adds buildings to its
   village, keeping the mix it generated with. New villages have a Builder's house with a bench and a
   double chest, and the bench can be crafted for an older village. Right-click a Builder to see what

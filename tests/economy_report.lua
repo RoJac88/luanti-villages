@@ -52,7 +52,8 @@ do
 	-- The worst gap's buildings are favoured; a profession no stock building houses, none.
 	assert(report.favoured(gaps).library and not report.favoured(gaps).farm)
 	assert(report.favoured({}) == nil)
-	assert(report.buildings_for("fisherman").tavern and report.buildings_for("fisherman").medium_house)
+	assert(report.buildings_for("fisherman").medium_house and not report.buildings_for("fisherman").tavern)
+	assert(report.buildings_for("farmer").farm and report.buildings_for("farmer").greenhouse)
 	assert(report.buildings_for("tool_smith") == nil)
 	-- The keeper's bread is no building's work.
 	for _, gap in ipairs(report.gaps({{item = "mcl_farming:bread", count = 9, worth = 9}}, {})) do

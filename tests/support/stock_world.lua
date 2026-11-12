@@ -106,14 +106,14 @@ function stock_world.new()
 		return {x = w, y = size.y, z = d}
 	end
 
-	-- Opens every closed wooden door the way mcl_doors does (api_doors.lua
+	-- Opens every closed door a villager can open the way mcl_doors does (api_doors.lua
 	-- on_open_close): the _1 variants become _2 and a closed door turns a quarter
-	-- forward as it opens. Villagers leave doors open behind them.
+	-- forward as it opens. Villagers leave doors open behind them. Iron doors stay shut.
 	function world.open_doors()
 		for id, node in pairs(world.cells) do
-			local half = node.name:match("^mcl_doors:wooden_door_([bt])_1$")
-			if half then
-				world.cells[id] = {name = "mcl_doors:wooden_door_" .. half .. "_2", param2 = (node.param2 + 1) % 4}
+			local door, half = node.name:match("^mcl_doors:(.+_door)_([bt])_1$")
+			if half and door ~= "iron_door" then
+				world.cells[id] = {name = "mcl_doors:" .. door .. "_" .. half .. "_2", param2 = (node.param2 + 1) % 4}
 			end
 		end
 	end

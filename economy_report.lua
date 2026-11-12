@@ -14,8 +14,8 @@
 -- that item's producers (ledger.producers) present. Its score is the shortages' worth
 -- it would answer, and the worst gap scores most. Only vanilla professions count: a
 -- labour activity or the keeper needs no building. BUILDINGS lists the stock buildings
--- holding each profession's jobsite (VoxeLibre 0.92.3's mcl_villages schematics, and the
--- lectern library_schematic.lua adds); no stock building holds a weapon smith's, tool
+-- holding each profession's jobsite (VoxeLibre 0.92.3's mcl_villages schematics, the
+-- lectern library_schematic.lua adds, and village_buildings.lua's own); no stock building holds a weapon smith's, tool
 -- smith's or mason's. The census counts a building holding the worst gap's jobsite
 -- double.
 local core = minetest
@@ -28,7 +28,11 @@ local NOT_PROFESSIONS = {keeper = true, builder = true, nitwit = true, unemploye
 
 local BUILDINGS = {
 	farm = {"farmer"},
-	tavern = {"fisherman"},
+	-- village_buildings.lua's greenhouse takes the farm's place. Its tavern has no
+	-- fisherman's barrel; with it off, the stock tavern's barrel is behind a fence no
+	-- villager gets past (tests/support/stock_buildings_known.lua), so neither counts.
+	greenhouse = {"farmer"},
+	fisherman_hut = {"fisherman"},
 	medium_house = {"fisherman", "fletcher"},
 	small_house = {"shepherd"},
 	large_house = {"cartographer"},

@@ -6,9 +6,14 @@
 -- blocks of the height of the sites already approved beside it. It returns the
 -- same settlement_info, so terraform, paths and place_schematics are unchanged.
 --
--- It also reserves the church (#132), then the Builder's house, before the random
--- pick, which replaces church_site.lua's wrapper of create_site_plan, so install this
--- after it.
+-- It also reserves the church (#132), then the Builder's house, then the greenhouse
+-- and the tavern, before the random pick, which replaces church_site.lua's wrapper of
+-- create_site_plan, so install this after it.
+--
+-- settlements.check_distance measures from corner to corner, which let a building
+-- wider than its neighbour's hsize reach over it; a site whose footprint comes within
+-- `footprint_gap` of an approved one is rejected too. A building in `near_water` (the
+-- fisherman's hut) is tried first at each site, and only where water is in reach.
 --
 -- A site whose footprint plus a margin overlaps a structure (a ruined portal, a
 -- pillager outpost; found by village_fragments.scan_structures, #141) is
@@ -33,6 +38,17 @@ M.config = {
 	min_buildings = 8, -- including the belltower
 	church_give_up = 60, -- candidates the church may miss before it is no longer reserved
 	builder_give_up = 60, -- and the Builder's house, counted apart
+	-- Then these, each counted apart, if the building list has them (village_buildings.lua):
+	-- the farmers' greenhouse and the tavern are large, so a random pick seldom fits them.
+	also_reserved = {"greenhouse", "tavern"},
+	reserved_give_up = 60,
+	-- Buildings that are no use without water in reach, which are tried first at a site
+	-- that has it and never placed at one that does not. The fisherman fishes surface
+	-- water within 32 of its barrel, from 6 below it to 2 above (fisherman.lua), in a pond
+	-- of at least 2x3: water within `reach` of the hut's footprint (its barrel is inside
+	-- it, so within 32), its surface `below` to `above` of the floor (the barrel stands 2
+	-- over it), in at least `columns` of the columns sampled every `step`.
+	near_water = {fisherman_hut = {reach = 22, below = 4, above = 4, columns = 3, step = 3}},
 	relocate_step = 8, relocate_rings = 4, relocate_points = 12, -- where the belltower may move to if the center fails
 	ring_points = 24,
 	angle_jitter = 5, -- degrees
@@ -40,6 +56,7 @@ M.config = {
 	height_above = 50, -- samples start this far above the belltower's ground
 	water_scan = 150, -- how far down a column is searched for its top node
 	structure_margin = 4, -- a site stays this far from a structure
+	footprint_gap = 2, -- open ground kept between two buildings' footprints
 	structure_tile = 16, -- structures are scanned in tiles this wide, as candidates reach them
 	structure_below = 20, structure_above = 40, -- each this far under and over the center's ground
 }
@@ -204,6 +221,35 @@ function M.plan(maxp, minp, pr, env, config)
 		return s
 	end
 
+	-- Surface water near a footprint, for config.near_water. Columns are read once each, on
+	-- a grid shared by every candidate.
+	local tops = {}
+	local function top_of(x, z)
+		local key = x .. "," .. z
+		local top = tops[key]
+		if not top then
+			local y, name, liquid = column_top(x, z)
+			top = {y = y, water = liquid and name:find("water", 1, true) ~= nil}
+			tops[key] = top
+		end
+		return top
+	end
+	local function water_near(box, floor, rule)
+		local step, found = rule.step or 3, 0
+		local x0, x1 = box.minp.x - rule.reach, box.maxp.x + rule.reach
+		local z0, z1 = box.minp.z - rule.reach, box.maxp.z + rule.reach
+		for gz = math.ceil(z0 / step) * step, z1, step do
+			for gx = math.ceil(x0 / step) * step, x1, step do
+				local top = top_of(gx, gz)
+				if top.water and top.y >= floor - rule.below and top.y <= floor + rule.above then
+					found = found + 1
+					if found >= rule.columns then return true end
+				end
+			end
+		end
+		return false
+	end
+
 	local plan, approved = {}, {}
 	local neighbor_range = config.neighbor_cells * config.cell
 
@@ -217,6 +263,17 @@ function M.plan(maxp, minp, pr, env, config)
 				report.structures[name] = (report.structures[name] or 0) + 1
 				return nil, "structure", schem.name .. " at " .. x .. "," .. z .. " is within " .. m
 					.. " of " .. name .. " at " .. hx .. "," .. hy .. "," .. hz
+			end
+		end
+		-- settlements.check_distance measures corner to corner, so a building wider than
+		-- the other's hsize could reach over it.
+		local gap = config.footprint_gap or 0
+		for _, other in ipairs(approved) do
+			local o = other.box
+			if box.minp.x <= o.maxp.x + gap and o.minp.x <= box.maxp.x + gap
+					and box.minp.z <= o.maxp.z + gap and o.minp.z <= box.maxp.z + gap then
+				return nil, "overlap", schem.name .. " at " .. x .. "," .. z .. " is within " .. gap
+					.. " of another building"
 			end
 		end
 		local xs = {box.minp.x, math.floor((box.minp.x + box.maxp.x) / 2), box.maxp.x}
@@ -244,11 +301,15 @@ function M.plan(maxp, minp, pr, env, config)
 					.. " against " .. other.floor
 			end
 		end
-		return floor, material, cx, cz
+		local rule = config.near_water and config.near_water[schem.name]
+		if rule and not water_near(box, floor, rule) then
+			return nil, "no_water", schem.name .. " at " .. x .. "," .. z .. " has no water in reach"
+		end
+		return floor, material, cx, cz, box
 	end
 
 	local function accept(schem, x, z, rotation)
-		local floor, material, cx, cz = evaluate(schem, x, z, rotation)
+		local floor, material, cx, cz, box = evaluate(schem, x, z, rotation)
 		if not floor then return false, material, cx end
 		plan[#plan + 1] = {
 			pos = {x = x, y = floor, z = z},
@@ -257,7 +318,7 @@ function M.plan(maxp, minp, pr, env, config)
 			rotat = rotation,
 			surface_mat = material,
 		}
-		approved[#approved + 1] = {x = cx, z = cz, floor = floor}
+		approved[#approved + 1] = {x = cx, z = cz, floor = floor, box = box}
 		return true
 	end
 
@@ -303,8 +364,12 @@ function M.plan(maxp, minp, pr, env, config)
 	-- Built before anything is left to chance, in this order, each until it misses
 	-- too many candidates. The church's first because it is the bigger.
 	local reserved = {}
-	for _, wanted in ipairs({{name = "church", give_up = config.church_give_up},
-			{name = "builder_house", give_up = config.builder_give_up or config.church_give_up}}) do
+	local wanted_list = {{name = "church", give_up = config.church_give_up},
+		{name = "builder_house", give_up = config.builder_give_up or config.church_give_up}}
+	for _, name in ipairs(config.also_reserved or {}) do
+		wanted_list[#wanted_list + 1] = {name = name, give_up = config.reserved_give_up or config.church_give_up}
+	end
+	for _, wanted in ipairs(wanted_list) do
 		for _, schem in ipairs(schematics) do
 			if schem.name == wanted.name then
 				reserved[#reserved + 1] = {schem = schem, give_up = wanted.give_up, misses = 0}
@@ -334,6 +399,16 @@ function M.plan(maxp, minp, pr, env, config)
 
 			local reserving = next_reserved()
 			local order = reserving and {reserving.schem} or shuffle(schematics, pr)
+			-- A building that needs water goes first (the list is tried from its end): it
+			-- takes a site with water in reach, and the others get it when there is none.
+			if not reserving and config.near_water then
+				for i = #order - 1, 1, -1 do
+					if config.near_water[order[i].name] then
+						table.insert(order, table.remove(order, i))
+						break
+					end
+				end
+			end
 			local placed = false
 			for i = #order, 1, -1 do
 				local schem = order[i]

@@ -401,10 +401,10 @@ assert(dry_run.scan_strict == false, "a dry run can't wait for chunks, so it is 
 
 -- A structure far from the center, beyond where the planner first scanned, still
 -- blocks a site after the belltower relocates: flat ground only at x >= 30 puts
--- the hall at (32,0) and a house at x=94..102 (seed 66).
+-- the hall at (32,2), and seed 33 tries sites over the structure twice.
 local far = with_structures(world(function(x) return x >= 30 and 10 or nil end),
 	{["102,-3"] = {name = "mcl_core:cobble", y = 11}})
-local far_plan = plan(far, 66)
+local far_plan = plan(far, 33)
 assert(far_plan, "a village still forms")
 for _, entry in ipairs(far_plan) do
 	local x0, z0, x1, z1 = box(entry, far)
@@ -438,6 +438,90 @@ minetest.get_voxel_manip = function() -- an empty map: nothing to avoid
 	return {read_from_map = function(_, a, b) return a, b end, get_data = function() return setmetatable({}, {__index = function() return 1 end}) end}
 end
 minetest.get_name_from_content_id = function() return "air" end
+-- Wide buildings (village_buildings.lua): corner-to-corner distance let a 20-wide
+-- greenhouse reach over its neighbours. No two footprints come within footprint_gap,
+-- and the greenhouse and the tavern are reserved.
+do
+	local function with_wide()
+		local list = schematics()
+		for i, entry in ipairs(list) do
+			if entry.name == "farm" then
+				list[i] = {name = "greenhouse", hwidth = 20, hdepth = 11, hheight = 9, hsize = 16, max_num = 0.08}
+			elseif entry.name == "tavern" then
+				entry.hwidth, entry.hsize = 16, 15
+			end
+		end
+		list[#list + 1] = {name = "duplex", hwidth = 6, hdepth = 11, hheight = 12, hsize = 13, max_num = 0.08}
+		return list
+	end
+	local gap = planner.config.footprint_gap
+	assert(gap and gap >= 1)
+	local with_greenhouse, with_tavern = 0, 0
+	for seed = 1, 40 do
+		local env = world(function() return 10 end)
+		env.settlements.schematic_table = with_wide()
+		local wide = assert(plan(env, seed))
+		local names = {}
+		for i = 1, #wide do
+			names[wide[i].name] = true
+			local ax0, az0, ax1, az1 = box(wide[i], env)
+			for j = i + 1, #wide do
+				local bx0, bz0, bx1, bz1 = box(wide[j], env)
+				assert(not (ax0 <= bx1 + gap and bx0 <= ax1 + gap and az0 <= bz1 + gap and bz0 <= az1 + gap),
+					"seed " .. seed .. ": " .. wide[i].name .. " and " .. wide[j].name .. " are within " .. gap)
+			end
+		end
+		with_greenhouse = with_greenhouse + (names.greenhouse and 1 or 0)
+		with_tavern = with_tavern + (names.tavern and 1 or 0)
+	end
+	assert(with_greenhouse == 40 and with_tavern == 40, "reserved: " .. with_greenhouse .. " greenhouses, "
+		.. with_tavern .. " taverns in 40 villages")
+end
+
+-- The fisherman's hut needs water in reach (config.near_water): it goes where there is
+-- some, and never where there is none, another building taking its place.
+do
+	local function with_hut()
+		local list = schematics()
+		list[#list + 1] = {name = "fisherman_hut", hwidth = 7, hdepth = 9, hheight = 7, hsize = 12, max_num = 0.05}
+		return list
+	end
+	local rule = planner.config.near_water.fisherman_hut
+	local lake = function(x) return x >= 50 end -- a lake east of x 50, its surface 2 over the ground
+	local huts, dry_huts, wet_total, dry_total = 0, 0, 0, 0
+	for seed = 1, 30 do
+		local wet = world(function() return 10 end, lake)
+		wet.settlements.schematic_table = with_hut()
+		local wet_plan = assert(plan(wet, seed))
+		wet_total = wet_total + #wet_plan
+		for _, entry in ipairs(wet_plan) do
+			if entry.name == "fisherman_hut" then
+				huts = huts + 1
+				local _, _, x1 = box(entry, wet)
+				assert(x1 + rule.reach >= 50, "seed " .. seed .. ": a hut at x " .. entry.pos.x .. " has no water in reach")
+				assert(x1 + rule.reach - 9 <= 50 + 32, "the barrel is within the fisherman's 32")
+			end
+		end
+		local dry = world(function() return 10 end)
+		dry.settlements.schematic_table = with_hut()
+		local dry_plan = assert(plan(dry, seed))
+		dry_total = dry_total + #dry_plan
+		for _, entry in ipairs(dry_plan) do
+			if entry.name == "fisherman_hut" then dry_huts = dry_huts + 1 end
+		end
+	end
+	assert(dry_huts == 0, dry_huts .. " huts with no water anywhere")
+	assert(huts >= 25, "a village by a lake nearly always gets its hut: " .. huts .. " in 30")
+	-- Another building takes each site the hut is refused.
+	local flat_total = 0
+	for seed = 1, 30 do
+		local env = world(function() return 10 end)
+		env.settlements.schematic_table = schematics()
+		flat_total = flat_total + #assert(plan(env, seed))
+	end
+	assert(dry_total == flat_total, "no village is smaller for the hut it cannot have")
+end
+
 VoxelArea = {new = function() return {index = function() return 1 end} end}
 local g, original = globals(world(function() return 10 end))
 assert(planner.install(g, minetest) == true)

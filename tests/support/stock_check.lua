@@ -51,7 +51,9 @@ end
 -- departure head free, since the jump swings the head through it (#56); a door
 -- is crossed by an entry and exit its leaf lets through in one state or the other;
 -- and the route ends beside the target.
-local function check_route(world, cells, target)
+-- `reach` (optional): the route may end this far from the target, in a straight line,
+-- instead of beside it on its level, as for a block claimed within reach (job_seek.lua).
+local function check_route(world, cells, target, reach)
 	local defs = stock_world.defs
 	local function group(pos, name)
 		local found = defs[world.get(pos).name].groups[name]
@@ -102,6 +104,14 @@ local function check_route(world, cells, target)
 		end
 	end
 	local last = cells[#cells]
+	if not last then return false, "an empty route" end
+	if reach then
+		local dx, dy, dz = last.x - target.x, last.y - target.y, last.z - target.z
+		if math.sqrt(dx * dx + dy * dy + dz * dz) > reach then
+			return false, "ends at " .. cell_string(last) .. ", out of reach of the target"
+		end
+		return true
+	end
 	if math.abs(last.x - target.x) > 1 or math.abs(last.z - target.z) > 1 or last.y ~= target.y then
 		return false, "ends at " .. cell_string(last) .. ", away from the target"
 	end

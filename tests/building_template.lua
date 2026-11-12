@@ -14,6 +14,9 @@ local FURNISHERS = {
 local BUILDINGS = {
 	"belltower", "blacksmith", "butcher", "church", "farm", "lamp", "large_house", "library",
 	"medium_house", "small_house", "tavern", "well",
+	-- This mod's own (village_buildings.lua), prepared as it prepares them.
+	"village_blacksmith", "village_butcher", "village_duplex", "village_fisherman_hut", "village_greenhouse",
+	"village_library", "village_tavern", "village_woodcutter_shed",
 }
 local ROTATIONS = {"0", "90", "180", "270"}
 local FLOOR = 10
@@ -26,6 +29,7 @@ local function schematic_of(name, surface)
 	end
 	local schematic = {size = fixture.size, data = data}
 	if FURNISHERS[name] then assert(dofile(FURNISHERS[name])(schematic), name .. " was not furnished") end
+	if name:find("^village_") then dofile("village_buildings.lua").prepare(schematic) end
 	for _, cell in ipairs(schematic.data) do
 		cell.name = template.swap_name(cell.name, surface, true)
 	end
