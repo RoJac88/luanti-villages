@@ -130,12 +130,13 @@ local function villager(id, at, fields)
 		_bed = vector.new(at), walks = {}}
 	for k, value in pairs(fields or {}) do v[k] = value end
 	v.object = {get_pos = function() return pos end, get_luaentity = function() return v end}
-	v.gopath = function(self, target, arrived)
+	v.gopath = function(self, target, callbacks)
 		self.walks[#self.walks + 1] = vector.new(target)
 		self.arrive = function()
 			pos = vector.new(target)
-			arrived(self)
+			callbacks.arrived(self)
 		end
+		self.lose = function(reason) callbacks.lost(self, reason) end
 		return true
 	end
 	v.teleport = function(p) pos = vector.new(p) end
@@ -222,6 +223,10 @@ assert(bob._villages_trade_trip and #bob.walks == 1 and bob.walks[1].x == 20, "w
 assert(logs[#logs - 0] and table.concat(logs, "\n"):find("sets off for 200 mcl_core:cobble from quinn%-"))
 trips.step(bob, now + 2)
 assert(#bob.walks == 1, "waits for the walk")
+-- A lost walk is walked again on the next step; if no walk can start, the reason says why.
+bob.lose("taken over by another mover")
+trips.step(bob, now + 3)
+assert(#bob.walks == 2 and bob._villages_trade_trip.tries == 2, "walks again after a lost walk")
 bob.arrive()
 trips.step(bob, now + 4)
 local bought = count(bob, COBBLE)

@@ -1462,9 +1462,13 @@ do
 	unreachable.object = far.object
 	-- The cap is five times the setting; a small one keeps this search quick.
 	setting_values.living_villages_route_max_nodes = "1024"
-	assert(planner_def.gopath(unreachable, {x = -2663 + 300, y = 0, z = 266}, nil, true) ~= nil)
+	local unreachable_lost
+	assert(planner_def.gopath(unreachable, {x = -2663 + 300, y = 0, z = 266},
+		{lost = function(_, reason) unreachable_lost = reason end}, true) ~= nil)
+	assert(not unreachable_lost)
 	settle()
 	assert(unreachable._villages_goto_route.status == "retry", "the widened box is still capped")
+	assert(unreachable_lost, "a search that finds nothing reports the walk lost")
 
 	-- Far searches that find nothing are not repeated every 30 s (#252): the wait
 	-- doubles with each failure to a cap, and starts over after the villager has
@@ -1523,13 +1527,51 @@ do
 	assert(switcher._villages_goto_route == nil, "the superseded search is dropped")
 	assert(switcher._villages_bed_route.status == "travelling" and switcher._target.x ~= 8)
 
-	-- A trip another module's mover took over is dropped without a word.
+	-- A trip another module's mover took over tells its caller it was lost, once.
+	local losses, reached = {}, 0
+	local function walk_callbacks()
+		return {arrived = function() reached = reached + 1 end,
+			lost = function(_, reason) table.insert(losses, reason) end}
+	end
 	local taken = new_entity()
-	assert(planner_def.gopath(taken, {x = 8, y = 0, z = 0}, nil, true))
+	assert(planner_def.gopath(taken, {x = 8, y = 0, z = 0}, walk_callbacks(), true))
 	settle()
 	taken.state = "stand"
 	planner_def.do_custom(taken, 0.1)
 	assert(taken._villages_goto_route == nil)
+	assert(#losses == 1 and losses[1] == "taken over by another mover" and reached == 0)
+	planner_def.do_custom(taken, 0.1)
+	assert(#losses == 1, "reported once")
+	-- A plain callback is still accepted, and a lost walk without a handler is quiet.
+	local quiet = new_entity()
+	assert(planner_def.gopath(quiet, {x = 8, y = 0, z = 0}, function() reached = reached + 1 end, true))
+	settle()
+	quiet.state = "stand"
+	planner_def.do_custom(quiet, 0.1)
+	assert(quiet._villages_goto_route == nil and reached == 0)
+
+	-- Taken over where it was going, it arrived: the callback fires (the rent errand
+	-- and trade trips once checked where they stood instead).
+	local finished = new_entity()
+	assert(planner_def.gopath(finished, {x = 5, y = 0, z = 1}, walk_callbacks(), true))
+	settle()
+	assert(finished._villages_goto_route.status == "travelling")
+	finished.state = "stand"
+	planner_def.do_custom(finished, 0.1)
+	assert(reached == 1 and #losses == 1 and finished._villages_goto_route.status == "arrived")
+
+	-- Canceled by its owner, or superseded while planned, it is lost too.
+	local canceled = new_entity()
+	assert(planner_def.gopath(canceled, {x = 8, y = 0, z = 0}, walk_callbacks(), true, "token"))
+	settle()
+	assert(navigation_api.cancel_goto(canceled, "token"))
+	assert(#losses == 2 and losses[2] == "canceled")
+	local replaced = new_entity()
+	assert(planner_def.gopath(replaced, {x = 8, y = 0, z = 0}, walk_callbacks(), true))
+	assert(planner_def.gopath(replaced, {x = 9, y = 0, z = 0}, nil, true))
+	assert(#losses == 3 and losses[3] == "superseded by another trip")
+	settle()
+	assert(#losses == 3 and reached == 1)
 
 	-- The workstation search plans its routes too.
 	search_sites = {{x = 20, y = 0, z = 0}, {x = 30, y = 0, z = 0}}

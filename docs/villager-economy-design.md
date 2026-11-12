@@ -1021,8 +1021,12 @@ dinner pricing and tab in `keeper_supply.lua`, dinner logging in `meal.lua`,
 `possessions.is_food_chest` keeping farm and pantry emeralds out of rent and the
 Builder's purse, the keeper delivering at its jukebox, and the probe census's daily
 emerald line (`farms` for chests beside a composter). Rent errands and trade trips go on
-once they stand where their walk was headed, since `navigation.lua` can drop a walk's
-arrival callback when another mover takes the villager over. Run 32 (seed 2007, chunk
+once they stand where their walk was headed, since `navigation.lua` could drop a walk's
+arrival callback when another mover took the villager over. It no longer does: a walk
+taken over where it was going counts as arrived, and any other walk that ends short
+(taken over, canceled, superseded, or with no route found) calls the `lost` handler of a
+gopath callback given as `{arrived = fn, lost = fn}`. Both errands walk again at once on
+a lost walk, rather than waiting out their timeout. Run 32 (seed 2007, chunk
 208,768) showed farmers paying rent on days 5, 6 and 7, the Builder taking it from the
 bench chest each time and buying 28 and then 15 cobble from the nitwit with it.
 
@@ -1486,9 +1490,6 @@ which it does not yet ask for; and the nitwit's skin, which it keeps.
   starting money are still set against vanilla's prices.
 - Emerald ore and emerald blocks still yield vanilla's 1 and 9 after ticket 11h, so
   mining becomes a small income next to trading. Whether ore drops should scale too.
-- `navigation.lua` drops a walk's arrival callback when another mover takes over the
-  villager; errands work around it by checking where they stand, but the callback should
-  either fire or report the walk lost.
 - Whether a peddler walks to another village is the start of the next phase, and
   needs its own design (routes between villages, news carried across them).
 - Whether stashes should be protected from players beyond the gossip cost, for

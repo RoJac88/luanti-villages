@@ -241,8 +241,20 @@ local function set_route(self, route_field, route)
 	return route
 end
 
+-- A walk that ends any way but arriving tells its caller, once, if the caller asked
+-- (gopath's callback given as {arrived = fn, lost = fn}): lost(entity, reason). Only a
+-- trip still on its way (planning or travelling) is lost; its handler must not start a
+-- walk of its own, since the route it belonged to is still being taken down.
+local function report_lost(self, route, reason)
+	local lost = route and (route.status == "planning" or route.status == "travelling") and route.lost
+	if not lost then return end
+	route.lost = nil
+	lost(self, reason)
+end
+
 local function cancel_route(self, route_field)
 	local route = self[route_field]
+	report_lost(self, route, "canceled")
 	if route_field == "_villages_job_search_route" and route then
 		local search = self._villages_job_search_diagnostics
 		if search and search.route_id == route.id
@@ -271,6 +283,7 @@ end
 local function fail(self, route_field, reason, target, retry_seconds, planner_report)
 	local now = core.get_gametime()
 	local previous = self[route_field]
+	report_lost(self, previous, reason)
 	set_route(self, route_field, {
 		status = "retry", reason = reason, retry_at = now + (retry_seconds or RETRY_SECONDS),
 		target = target and vector.new(target) or nil,
@@ -292,17 +305,30 @@ local function owns_route(entity, route_field, route_id)
 	return route and route.status == "travelling" and route.id == route_id
 end
 
+local function complete_route(entity, route_field, route_id, target, callback_arrived, sleep)
+	local route = entity[route_field]
+	entity[route_field] = {
+		status = "arrived", id = route_id, target = vector.new(target),
+		market_token = route.market_token,
+	}
+	if sleep then entity.order = "sleep" end
+	if callback_arrived then return callback_arrived(entity, target) end
+end
+
 local function arrival_callback(route_field, route_id, target, callback_arrived, sleep)
 	return function(entity)
 		if not owns_route(entity, route_field, route_id) then return end
-		local route = entity[route_field]
-		entity[route_field] = {
-			status = "arrived", id = route_id, target = vector.new(target),
-			market_token = route.market_token,
-		}
-		if sleep then entity.order = "sleep" end
-		if callback_arrived then return callback_arrived(entity, target) end
+		return complete_route(entity, route_field, route_id, target, callback_arrived, sleep)
 	end
+end
+
+-- Whether the villager stands on a route's last cell: within a node of it across and
+-- not a storey off.
+local function at_route_end(self, target)
+	local pos = self.object:get_pos()
+	if not pos then return false end
+	local dx, dz = pos.x - target.x, pos.z - target.z
+	return dx * dx + dz * dz <= 1 and math.abs(pos.y - target.y) < 1
 end
 
 local function path_cost(path)
@@ -661,6 +687,7 @@ local function supersede_planning(self, route_field)
 					search.state = "superseded"
 				end
 			end
+			report_lost(self, route, "superseded by another trip")
 			self[field] = nil
 		end
 	end
@@ -669,7 +696,9 @@ end
 -- Starts the trip to `destination` (see gopath), planning its route from the
 -- route queue (#162) while the villager stands still, unless the workstation
 -- search already planned one. Returns what gopath returns.
-local function plan_trip(self, destination, candidates, callback_arrived)
+local function plan_trip(self, destination, candidates, callback)
+	local callback_arrived, lost = callback, nil
+	if type(callback) == "table" then callback_arrived, lost = callback.arrived, callback.lost end
 	local field = destination.route_field
 	local first = destination.target or candidates[1]
 	if not first then
@@ -684,7 +713,7 @@ local function plan_trip(self, destination, candidates, callback_arrived)
 	local route = set_route(self, field, {
 		status = destination.planner_path and "travelling" or "planning",
 		target = vector.new(first), goal = destination.goal and vector.new(destination.goal) or nil,
-		started_at = core.get_gametime(), wall_started_at = os.time(), callback = callback_arrived,
+		started_at = core.get_gametime(), wall_started_at = os.time(), callback = callback_arrived, lost = lost,
 		site = destination.site and vector.new(destination.site) or nil,
 		market_token = destination.market_token,
 	})
@@ -722,6 +751,7 @@ local function recover_route(self, destination)
 			status = "planning", target = route.target and vector.new(route.target) or nil,
 			goal = route.goal and vector.new(route.goal) or nil,
 			started_at = core.get_gametime(), wall_started_at = os.time(), callback = route.callback,
+			lost = route.lost,
 			site = route.site and vector.new(route.site) or nil,
 			market_token = route.market_token,
 		})
@@ -987,6 +1017,7 @@ local function install(def)
 					return true
 				end
 				-- A newer request for somewhere else supersedes the search.
+				report_lost(self, walk, "superseded by another trip")
 				self._villages_goto_route = nil
 			end
 			if self.ready_to_path and not self:ready_to_path(prioritised) then return end
@@ -1085,7 +1116,14 @@ local function install(def)
 					return result
 				end
 			end
-			self._villages_goto_route = nil
+			-- Standing where it was going, it arrived whoever ended the walk; anywhere
+			-- else, its caller hears the walk was lost.
+			if walk.target and at_route_end(self, walk.target) then
+				complete_route(self, "_villages_goto_route", walk.id, walk.target, walk.callback)
+			else
+				self._villages_goto_route = nil
+				report_lost(self, walk, "taken over by another mover")
+			end
 		end
 		if not is_home_time(self) then
 			cancel_route(self, "_villages_bed_route")
