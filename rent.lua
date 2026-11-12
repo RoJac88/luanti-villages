@@ -257,8 +257,19 @@ function M.step(self, now)
 		errand.tries = errand.tries + 1
 		if errand.tries > MAX_TRIES then return drop_errand(self, "could not get there") end
 		walking[self] = now
-		local started = self:gopath(errand.chest, function(entity) walking[entity] = nil end, true)
-		if started == false then return drop_errand(self, "no way there") end
+		-- A lost walk is walked again on the next step, as long as the tries last.
+		local started = self:gopath(errand.chest, {
+			arrived = function(entity)
+				walking[entity], errand.lost = nil, nil
+			end,
+			lost = function(entity, reason)
+				walking[entity] = nil
+				errand.lost = reason
+			end,
+		}, true)
+		if started == false then
+			return drop_errand(self, errand.lost and ("no way there; the last walk was " .. errand.lost) or "no way there")
+		end
 		return
 	end
 	local count = M.payable(self)

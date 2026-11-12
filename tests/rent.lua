@@ -117,12 +117,13 @@ local function villager(id, at, fields)
 		_villages_econ_clock = 0, state = "stand"}
 	for k, value in pairs(fields or {}) do v[k] = value end
 	v.object = {get_pos = function() return pos end, get_luaentity = function() return v end}
-	v.gopath = function(self, target, arrived)
+	v.gopath = function(self, target, callbacks)
 		self.walks[#self.walks + 1] = vector.new(target)
 		self.arrive = function()
 			pos = vector.new(target)
-			arrived(self)
+			callbacks.arrived(self)
 		end
+		self.lose = function(reason) callbacks.lost(self, reason) end
 		return true
 	end
 	v.teleport = function(p) pos = vector.new(p) end
@@ -214,6 +215,10 @@ assert(fay._villages_rent_errand and #fay.walks == 1 and fay.walks[1].x == 2, "w
 assert(logs[#logs]:find("sets off to pay 192 emerald%(s%) rent at %(2,1,0%)"), logs[#logs])
 rent.step(fay, now + 5)
 assert(#fay.walks == 1, "waits for the walk")
+-- A walk another mover took over is walked again at once, not waited out.
+fay.lose("taken over by another mover")
+rent.step(fay, now + 6)
+assert(#fay.walks == 2 and fay._villages_rent_errand.tries == 2, "walks again after a lost walk")
 fay.arrive()
 rent.step(fay, now + 10)
 assert(not fay._villages_rent_errand and count_in(bench_chest, EMERALD) == 3 * S and emeralds(fay) == 2 * S)

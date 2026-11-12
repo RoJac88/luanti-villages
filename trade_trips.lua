@@ -384,10 +384,19 @@ local function walk(self, trip, target, now)
 	trip.tries = (trip.tries or 0) + 1
 	if trip.tries > MAX_TRIES then return fail(self, trip, "could not get there", now) end
 	walking[self], trip.target = now, target
-	local started = self:gopath(target, function(entity) walking[entity] = nil end, true)
+	-- A lost walk is walked again on the next step, as long as the tries last.
+	local started = self:gopath(target, {
+		arrived = function(entity)
+			walking[entity], trip.lost = nil, nil
+		end,
+		lost = function(entity, reason)
+			walking[entity] = nil
+			trip.lost = reason
+		end,
+	}, true)
 	if started == false then
 		walking[self] = nil
-		fail(self, trip, "no way there", now)
+		fail(self, trip, trip.lost and ("no way there; the last walk was " .. trip.lost) or "no way there", now)
 	end
 end
 
