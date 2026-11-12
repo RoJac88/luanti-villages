@@ -142,4 +142,24 @@ do
 	assert(total == 1 and record.built == nil)
 end
 
+-- A village recorded with a farm, from before village_buildings.lua swapped it for the
+-- greenhouse, wants a greenhouse; a recorded building the list no longer has is never picked.
+do
+	local list = {
+		{name = "belltower", max_num = 0}, {name = "small_house", max_num = 0.7},
+		{name = "greenhouse", max_num = 0.08},
+	}
+	local record = {buildings = {
+		{name = "belltower"}, {name = "farm"}, {name = "farm"}, {name = "small_house"}, {name = "lighthouse"},
+	}, built = {farm = 1}}
+	local shares = census.shares(record, list)
+	assert(shares.farm == nil and shares.lighthouse == nil and math.abs(shares.greenhouse - 0.5) < 1e-9)
+	local counts, total = census.current(record, list)
+	assert(counts.greenhouse == 3 and counts.farm == nil and total == 5)
+	assert(census.pick(record, list) ~= "farm" and census.pick(record, list) ~= "lighthouse")
+	-- Nothing renamed where the list still has the old name.
+	local old_list = {{name = "belltower", max_num = 0}, {name = "farm", max_num = 0.1}}
+	assert(census.shares({buildings = {{name = "farm"}}}, old_list).farm == 1)
+end
+
 print("village_census: ok")

@@ -701,6 +701,9 @@ dofile(core.get_modpath("living_villages") .. "/church_site.lua")
 dofile(core.get_modpath("living_villages") .. "/library_schematic.lua")
 dofile(core.get_modpath("living_villages") .. "/farm_schematic.lua")
 dofile(core.get_modpath("living_villages") .. "/house_schematic.lua")
+-- After the furnishers, which edit the stock buildings this swaps for its own.
+dofile(core.get_modpath("living_villages") .. "/village_buildings.lua").install(rawget(_G, "settlements"),
+	rawget(_G, "mcl_structures"))
 dofile(core.get_modpath("living_villages") .. "/builder_house.lua").install(rawget(_G, "settlements"))
 -- Load order: after every module that edits a building's schematic (the ones above
 -- and belltower_schematic.lua, once it exists): ground_layer builds its variants

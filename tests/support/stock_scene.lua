@@ -51,6 +51,8 @@ function M.build(name, rotation, doors_open, roads, slope)
 		end
 	end
 	if name:find("_loomless$") then furnish.loomless = dofile("loomless_house.lua").remove_loom end
+	-- This mod's own buildings (village_buildings.lua) take only their own preparation.
+	if name:find("^village_") then furnish = {village = dofile("village_buildings.lua").prepare} end
 	local size = world.place(fixture, ORIGIN, ORIGIN, furnish, rotation)
 	if doors_open then world.open_doors() end
 	if roads then

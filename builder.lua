@@ -461,7 +461,7 @@ function M.options(bench, source)
 	local settlements = rawget(_G, "settlements")
 	local schematic_table = settlements and settlements.schematic_table
 	local shares = census.shares(record, schematic_table) or {}
-	local counts = census.current(record)
+	local counts = census.current(record, schematic_table)
 	local next_name = census.pick(record, schematic_table, totals_of_buildings(), favoured(bench))
 	for name, share in pairs(shares) do
 		local measured = measure({building = name}) or {}

@@ -34,6 +34,14 @@ costs("mcl_villages:stonebrickcarved", "mcl_core:stonebrickcarved")
 costs("xpanes:pane_natural_flat", "xpanes:pane_natural_flat")
 costs("mcl_core:cobble", "mcl_core:cobble")
 costs("mcl_chests:chest", "mcl_chests:chest")
+-- Nodes no one can hold cost the item that places them (village_buildings.lua's greenhouse
+-- and tavern have them).
+costs("mcl_campfires:campfire", "mcl_campfires:campfire_lit")
+costs("mcl_banners:hanging_banner", "mcl_banners:banner_item_white")
+costs("mcl_lanterns:lantern_ceiling", "mcl_lanterns:lantern_floor")
+-- The woodcutter's block is a job block, left for the player like the others.
+assert(materials.cost("living_villages:chopping_block") == nil and materials.excluded("living_villages:chopping_block"))
+assert(materials.identity("mcl_campfires:campfire_lit") == materials.identity("mcl_campfires:campfire"))
 
 -- Ground costs dirt, which grows the rest on its own.
 costs("mcl_core:dirt_with_grass", "mcl_core:dirt")
@@ -120,6 +128,9 @@ assert(materials.SALES["mcl_bells:bell"] < 36)
 local BUILDINGS = {
 	"belltower", "blacksmith", "butcher", "church", "farm", "lamp", "large_house", "library",
 	"medium_house", "small_house", "tavern", "well",
+	-- This mod's own (village_buildings.lua).
+	"village_blacksmith", "village_butcher", "village_duplex", "village_fisherman_hut", "village_greenhouse",
+	"village_library", "village_tavern", "village_woodcutter_shed",
 }
 local SURFACES = {
 	"mcl_core:dirt_with_grass", "mcl_core:dirt_with_grass_snow", "mcl_core:podzol",
@@ -127,9 +138,17 @@ local SURFACES = {
 }
 for _, building in ipairs(BUILDINGS) do
 	local fixture = dofile("tests/fixtures/buildings/" .. building .. ".lua")
+	local names = {}
+	for _, id in ipairs(fixture.ids) do names[#names + 1] = fixture.names[id + 1] end
+	-- What village_buildings.prepare makes of its own buildings' chests.
+	if building:find("^village_") then
+		for i, name in ipairs(names) do
+			if name:match("^mcl_chests:.*chest_small$") then names[i] = "mcl_chests:chest" end
+		end
+	end
 	for _, surface in ipairs(SURFACES) do
-		for _, id in ipairs(fixture.ids) do
-			local name = template.swap_name(fixture.names[id + 1], surface, true)
+		for _, original in ipairs(names) do
+			local name = template.swap_name(original, surface, true)
 			if name ~= "air" and not materials.excluded(name) and not materials.is_top_half(name) then
 				local cost = materials.cost(name)
 				assert(cost and next(cost), building .. ": no cost for " .. name)
