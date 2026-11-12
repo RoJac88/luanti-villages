@@ -324,15 +324,23 @@ local function by_distance(minx, maxx, minz, maxz, center, checkpoint)
 end
 
 -- The best site for a building: least earthwork, then nearest to request.center, whose
--- range from request.bench is request.range. `request`, besides evaluate()'s fields: size
+-- range from request.bench is request.range, and no further than request.within (optional)
+-- from request.center. `request`, besides evaluate()'s fields: size
 -- {x, z}. `checkpoint`, if given, lets the search pause (route_queue.lua). Returns the site
 -- with its rotation, or nil, and a report of why candidates failed {reason = count}.
 function M.search(survey, request, checkpoint)
 	local width, depth = request.size.x, request.size.z
 	local largest = math.max(width, depth)
 	local bench, range = request.bench, request.range
+	-- A building that must serve a part of the village (builder_needs.lua) goes no further
+	-- than `within` from request.center, measured to the building's middle.
+	local center, within = request.center, request.within
+	if within then
+		center = {x = center.x - math.floor(width / 2), z = center.z - math.floor(depth / 2)}
+	end
 	local rings, furthest = by_distance(bench.x - range, bench.x + range - largest + 1,
-		bench.z - range, bench.z + range - largest + 1, request.center, checkpoint)
+		bench.z - range, bench.z + range - largest + 1, center, checkpoint)
+	if within then furthest = math.min(furthest, within) end
 	-- Its far corner counts: vanilla gives up a jobsite it has walked too far from.
 	local function in_range(x, z, w, l)
 		local far_x = math.max(math.abs(x - bench.x), math.abs(x + w - 1 - bench.x))

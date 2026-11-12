@@ -275,6 +275,11 @@ do
 	assert(site.blocks == 0, "level beats near")
 	assert(math.abs(site.x + 3) > 12 or math.abs(site.z + 3) > 12)
 
+	-- Held within a distance of the centre (a building to serve some beds), near beats level.
+	site = assert(site_finder.search(survey, request({range = 30, within = 10, center = {x = 2, y = 0, z = 2}})))
+	assert(site.blocks > 0, "nothing level is that near")
+	assert(math.sqrt((site.x + 3 - 2) ^ 2 + (site.z + 3 - 2) ^ 2) <= 11, "its middle within reach of the centre")
+
 	-- With nothing level, the least earthwork is what it takes.
 	world = new_world()
 	world.set(0, 1, 0, WOOD)

@@ -5,10 +5,12 @@
 -- (builder_status.lua) in place of vanilla's handler. So it counts as untraded, and
 -- vanilla's validate_jobsite makes it unemployed the moment its bench goes.
 --
--- What it builds next is the stock mix (village_census.lua), with the building that holds
--- the jobsite of the village's worst gap counting double (economy_report.lua): the gap is
--- read from this Builder's market news and the villagers loaded near the bench. M.economy
--- gives the same report to the bench's Economy tab (builder_bench_menu.lua).
+-- What it builds next is what the village needs most (builder_needs.lua): houses when no bed
+-- is free, a greenhouse when it goes hungry, a tavern, bell or church near beds out of reach
+-- of one, the building of the worst economic gap, a workplace for the unemployed, and with
+-- nothing pressing the stock mix (village_census.lua). The gap is read from this Builder's
+-- market news and the villagers loaded near the bench (economy_report.lua). M.economy gives
+-- the same report to the bench's Economy tab (builder_bench_menu.lua).
 --
 -- Waiting for materials, it posts what it lacks and buys it from villagers on trade trips
 -- (builder_market.lua, trade_trips.lua), with its own emeralds and any left in its chests.
@@ -34,6 +36,8 @@ local common = dofile(core.get_modpath("living_villages") .. "/common.lua")
 local census = dofile(core.get_modpath("living_villages") .. "/village_census.lua")
 local economy_clock = dofile(core.get_modpath("living_villages") .. "/economy_clock.lua")
 local economy_report = dofile(core.get_modpath("living_villages") .. "/economy_report.lua")
+local needs = dofile(core.get_modpath("living_villages") .. "/builder_needs.lua")
+local food = dofile(core.get_modpath("living_villages") .. "/food.lua")
 local market = dofile(core.get_modpath("living_villages") .. "/builder_market.lua")
 local rent = dofile(core.get_modpath("living_villages") .. "/rent.lua")
 local materials = dofile(core.get_modpath("living_villages") .. "/builder_materials.lua")
@@ -53,6 +57,9 @@ local PROJECT = "villages_project"
 -- Which schematics this bench builds from: catalog.SCHEMEDIT, catalog.FOLDER, or nothing
 -- for the stock buildings, so that a bench from before this existed goes on as it did.
 local SOURCE = "villages_source"
+-- Needs (builder_needs.lua) given up on for a while, need -> game time: a tavern, bell or
+-- church with no site near the beds it should serve.
+local SKIP_NEEDS = "villages_skip_needs"
 
 -- A villager whose bed is this near a free bench takes it at once, ahead of any other
 -- job, since job_seek.lua might otherwise send it to another block nearer its bed.
@@ -308,7 +315,8 @@ local function site_request(bench, project)
 		ring_step = config.ring_step,
 		range = config.range,
 		bench = bench,
-		center = center,
+		center = project.near or center,
+		within = project.within,
 		reserved = with_avoided(live_reservations(record, pos_key(bench)), bench),
 	}
 end
@@ -421,10 +429,59 @@ function M.economy(bench)
 	return economy_report.build(heard, villagers, core.get_day_count())
 end
 
--- The stock buildings the census counts double at this bench, or nil.
-local function favoured(bench)
-	local report = M.economy(bench)
-	return report and report.gaps and economy_report.favoured(report.gaps) or nil
+-- The worst gap a stock building answers: {profession, items, buildings = set}, or nil.
+local function worst_gap(report)
+	for _, gap in ipairs(report and report.gaps or {}) do
+		local buildings = economy_report.buildings_for(gap.profession)
+		if buildings then return {profession = gap.profession, items = gap.items, buildings = buildings} end
+	end
+	return nil
+end
+
+local function skipped_needs(bench, now)
+	local skip = {}
+	for need, until_time in pairs(core.deserialize(core.get_meta(bench):get_string(SKIP_NEEDS)) or {}) do
+		if until_time > now then skip[need] = true end
+	end
+	return skip
+end
+
+local function skip_need(bench, need, now)
+	local meta = core.get_meta(bench)
+	local skip = core.deserialize(meta:get_string(SKIP_NEEDS)) or {}
+	for name, until_time in pairs(skip) do
+		if until_time <= now then skip[name] = nil end
+	end
+	skip[need] = now + AVOID_SECONDS
+	meta:set_string(SKIP_NEEDS, core.serialize(skip))
+end
+
+-- What the village around a bench needs built next (builder_needs.lua), or nil. The survey
+-- reads a wide box of nodes, so one is kept a while per bench: a Builder with nothing to
+-- build asks every tick.
+local SURVEY_SECONDS = 60
+local SURVEY_HEIGHT = 32
+local surveys = {}
+local function next_need(bench)
+	local now = core.get_gametime()
+	local key = pos_key(bench)
+	local cached = surveys[key]
+	local survey
+	if cached and now < cached.at + SURVEY_SECONDS then
+		survey = cached.survey
+	else
+		local report = M.economy(bench)
+		survey = needs.survey(core, bench, {
+			radius = VILLAGE_RADIUS, height = SURVEY_HEIGHT, range = site_finder.config.range,
+			villagers = economy_report.around(bench, VILLAGE_RADIUS), common = common,
+			food = economy_clock.enabled() and food or nil, gap = worst_gap(report),
+		})
+		surveys[key] = {at = now, survey = survey}
+	end
+	survey.skip = skipped_needs(bench, now)
+	local record = village_index and village_index.read_village(bench, VILLAGE_RADIUS)
+	local settlements = rawget(_G, "settlements")
+	return needs.decide(survey, record, settlements and settlements.schematic_table, totals_of_buildings(), census)
 end
 
 local function pick_from(scan, record, source)
@@ -462,7 +519,10 @@ function M.options(bench, source)
 	local schematic_table = settlements and settlements.schematic_table
 	local shares = census.shares(record, schematic_table) or {}
 	local counts = census.current(record, schematic_table)
-	local next_name = census.pick(record, schematic_table, totals_of_buildings(), favoured(bench))
+	local need = next_need(bench)
+	local next_name = need and need.building
+	-- What a need picks may be no part of the village's mix (a duplex in an old village).
+	if next_name and not shares[next_name] then shares[next_name] = 0 end
 	for name, share in pairs(shares) do
 		local measured = measure({building = name}) or {}
 		rows[#rows + 1] = {
@@ -471,7 +531,7 @@ function M.options(bench, source)
 		}
 	end
 	table.sort(rows, function(a, b) return a.name < b.name end)
-	return {rows = rows}
+	return {rows = rows, reason = need and need.reason}
 end
 
 -- The next schematic of a source. Nothing to build is said in the status window, and never
@@ -498,15 +558,14 @@ local function choose(self, session, bench)
 	local source = M.source_of(bench)
 	if source then return choose_custom(self, session, bench, source, record) end
 	session.no_projects = nil
-	local settlements = rawget(_G, "settlements")
-	local report = M.economy(bench)
-	local gap = report and report.gaps and report.gaps[1]
-	local building = census.pick(record, settlements and settlements.schematic_table, totals_of_buildings(),
-		gap and economy_report.favoured(report.gaps))
-	if not building then return end
-	save_project(bench, {state = "finding_site", building = building})
-	core.log("action", string.format("[living_villages] builder %s will put up a %s%s", tostring(self._id), building,
-		gap and (" (no " .. gap.profession .. " in the village)") or ""))
+	local need = next_need(bench)
+	if not need then return end
+	save_project(bench, {
+		state = "finding_site", building = need.building, need = need.need, reason = need.reason,
+		near = need.near, within = need.within,
+	})
+	core.log("action", string.format("[living_villages] builder %s will put up a %s (%s: %s)", tostring(self._id),
+		need.building, need.need, need.reason))
 end
 
 local function start_search(self, session, bench, project)
@@ -530,6 +589,13 @@ local function start_search(self, session, bench, project)
 			table.sort(reasons)
 			core.log("action", string.format("[living_villages] builder %s found no site for a %s: %s",
 				tostring(self._id), project.building, table.concat(reasons, ", ")))
+			-- One that must stand near some beds is let go, and that need left a while, so
+			-- the Builder gets on with the next.
+			if current.within then
+				if current.need then skip_need(bench, current.need, core.get_gametime()) end
+				save_project(bench, nil)
+				return
+			end
 			current.state = "no_site"
 			save_project(bench, current)
 			return
@@ -982,6 +1048,7 @@ end
 
 local function finish_building(self, session, bench, project)
 	local key = pos_key(bench)
+	surveys[key] = nil
 	if village_index then
 		village_index.update_village(bench, VILLAGE_RADIUS, function(record)
 			if project.schem then
@@ -1497,7 +1564,7 @@ function M.report(self)
 		}
 	end
 	local report = {
-		state = project.state, building = project.building, site = project.pos, bench = bench,
+		state = project.state, building = project.building, reason = project.reason, site = project.pos, bench = bench,
 		at_work = common.is_work_time(self), currency = materials.EMERALD,
 	}
 	if project.blocked_at and project.state == "blocked" then report.blocked = project.blocked_at end

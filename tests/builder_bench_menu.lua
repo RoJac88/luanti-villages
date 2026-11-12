@@ -446,7 +446,7 @@ do
 	assert(has(form, "Heard by the Builder") and has(form, "Seen around the bench"))
 	assert(has(form, "item_image[") and has(form, "12 Cobblestone\\, 2 villagers"), form)
 	assert(has(form, "No glut heard of."))
-	assert(has(form, "Mason (Cobblestone)") and has(form, "The next building favours the first."))
+	assert(has(form, "Mason (Cobblestone)") and has(form, "A building for the first comes when nothing is more pressing."))
 	assert(has(form, "Builder 1\\, Farmer 2\\, Weapon smith 1"))
 	assert(has(form, "Nitwit nit123: forager\\, Unemployed une: nothing to do"))
 	assert(has(form, "Made: 4 Cobblestone") and has(form, "Used: nothing"))

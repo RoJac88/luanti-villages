@@ -119,6 +119,29 @@ function M.pick(record, schematic_table, block_totals, favoured)
 	return largest_deficit(shares, counts, total, block_totals, favoured)
 end
 
+-- The one of `names` (a set) furthest short of its share, the shares being the generator's
+-- own ratios (max_num) among just those names, so a kind the village never generated with
+-- (a duplex in an old village) still gets its turn. Counts are the village as it stands.
+-- nil when none of them is listed with a share. `favoured`: see largest_deficit.
+function M.pick_among(record, schematic_table, names, block_totals, favoured)
+	local shares, sum = {}, 0
+	for _, entry in ipairs(schematic_table or {}) do
+		if names[entry.name] and counted(entry.name) and (entry.max_num or 0) > 0 then
+			shares[entry.name] = entry.max_num
+			sum = sum + entry.max_num
+		end
+	end
+	if sum <= 0 then return nil end
+	for name, share in pairs(shares) do shares[name] = share / sum end
+	local all = M.current(record, schematic_table)
+	local counts, total = {}, 0
+	for name in pairs(shares) do
+		counts[name] = all[name] or 0
+		total = total + counts[name]
+	end
+	return largest_deficit(shares, counts, total, block_totals, favoured)
+end
+
 -- What a village has built from a source of schematics, name -> count.
 function M.custom_counts(record, source)
 	return record and record.built_custom and record.built_custom[source] or {}
