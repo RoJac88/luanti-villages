@@ -15,10 +15,4 @@ return {
 		match = "^tavern r%d+.- leave from %(10,2,[4-6]%)",
 		reason = "The same kitchen.",
 	},
-	{
-		match = "^village_woodcutter_shed r%d+.- chopping block %(1,1,5%)",
-		reason = "The shed's chopping block is set into the floor (schematic (1,0,5)), so no cell beside it "
-			.. "is at its level and a villager out of work cannot walk to it to claim it. Generation "
-			.. "staffs it directly. Stood on the floor, at (1,1,5), every route passes.",
-	},
 }
