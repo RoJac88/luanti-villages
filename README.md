@@ -23,6 +23,7 @@ buildings (`schematics/`), each with a bed:
 - **Fisherman's hut:** a small hut with a barrel, a chest and a bed. It is built only where its
   fisherman has water to fish in reach, and is preferred on such sites.
 - **Woodcutter's shed:** a shed with a chopping block, a chest and a bed.
+- **Tower house:** a stone house with a bed and two chests.
 
 Every village reserves a site for a greenhouse and a tavern, and no two buildings are placed
 within two blocks of each other. `living_villages_village_buildings` turns the mod's buildings

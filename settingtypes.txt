@@ -59,7 +59,7 @@ living_villages_loomless_house_chance (Share of small houses without a loom) flo
 
 # New villages use this mod's own blacksmith, butcher's kitchen, library and tavern, each
 # with a bedroom, a greenhouse with two beds in place of the farm, a four-bed
-# duplex, a fisherman's hut and a woodcutter's shed. Off, they use VoxeLibre's buildings. Existing villages are unchanged.
+# duplex, a fisherman's hut, a woodcutter's shed and a tower house. Off, they use VoxeLibre's buildings. Existing villages are unchanged.
 living_villages_village_buildings (Living Villages buildings in new villages) bool true
 
 # A new village is staffed as it is placed: each job block (workstation, the Builder's

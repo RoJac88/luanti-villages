@@ -14,7 +14,7 @@ texture is a recolored VoxeLibre texture.
 | `textures/living_villages_villager_*.png` | `mobs_mc` villager base, plains, profession, and tier-badge textures | Mineclonia contributors | MIT |
 | `textures/living_villages_pulpit.png` | `mcl_lectern/textures/mcl_lectern_lectern.png` from [VoxeLibre](https://git.minetest.land/VoxeLibre/VoxeLibre) 0.92.3, recolored purple (grayscale, then tinted) | Michieal | [CC-BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/) |
 | `schematics/blacksmith.mts`, `schematics/library.mts`, `schematics/tavern.mts` | VoxeLibre 0.92.3 `mcl_villages/schematics/` blacksmith, library and tavern, with rooms and furniture added | MysticTempest; adapted by RoJac88 | CC-BY-SA 4.0 |
-| `schematics/butcher.mts`, `schematics/greenhouse.mts`, `schematics/duplex.mts`, `schematics/fisherman_hut.mts`, `schematics/woodcutter_shed.mts` | New for this mod | RoJac88 | GPL-3.0 |
+| `schematics/butcher.mts`, `schematics/greenhouse.mts`, `schematics/duplex.mts`, `schematics/fisherman_hut.mts`, `schematics/woodcutter_shed.mts`, `schematics/tower_house.mts` | New for this mod | RoJac88 | GPL-3.0 |
 
 The pulpit node uses VoxeLibre's `mcl_lectern_lectern.obj` mesh, which this mod does not copy. Its
 `mcl_lectern/README.txt` credits Michieal for the texture and states CC-BY-SA 4 for the media. The

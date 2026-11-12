@@ -14,7 +14,7 @@ local BUILDINGS = {
 }
 -- This mod's own buildings (living_villages/schematics, village_buildings.lua), written as
 -- village_<name>.lua so they sit beside the stock ones they replace.
-local OWN_BUILDINGS = {"blacksmith", "butcher", "duplex", "fisherman_hut", "greenhouse", "library", "tavern", "woodcutter_shed"}
+local OWN_BUILDINGS = {"blacksmith", "butcher", "duplex", "fisherman_hut", "greenhouse", "library", "tavern", "tower_house", "woodcutter_shed"}
 -- Nodes the tests meet that are not in a stock schematic: what the furnishing
 -- modules add, what the village generator swaps in (mcl_villages/buildings.lua),
 -- and the stand-ins for terrain and for the outdoor targets the tests build.
