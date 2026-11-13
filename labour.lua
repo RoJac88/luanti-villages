@@ -510,19 +510,54 @@ local function carried_sapling(self)
 	return nil
 end
 
+-- How far a trunk keeps leaves alive in VoxeLibre (mcl_core.update_leaves).
+local LEAF_REACH = 6
+
+-- The distance VoxeLibre's find_node_near measures: the largest of the three.
+local function reach(a, b)
+	return math.max(math.abs(a.x - b.x), math.abs(a.y - b.y), math.abs(a.z - b.z))
+end
+
+-- Leaves decay in VoxeLibre only once no trunk is within LEAF_REACH, and grove trees
+-- stand GROVE_SPACING apart, so a felled tree's crown would be kept by its
+-- neighbours for ever. Its own leaves (those nearer one of its logs than any standing
+-- trunk) are turned to their orphan kind, which the game's leaf decay removes.
+local function orphan_leaves(species, felled)
+	local orphan = species.leaves .. "_orphan"
+	if not core.registered_nodes[orphan] then return end
+	local minp, maxp = vector.new(felled[1]), vector.new(felled[1])
+	for _, log in ipairs(felled) do
+		for _, axis in ipairs({"x", "y", "z"}) do
+			minp[axis] = math.min(minp[axis], log[axis] - LEAF_REACH)
+			maxp[axis] = math.max(maxp[axis], log[axis] + LEAF_REACH)
+		end
+	end
+	local far = LEAF_REACH * 2
+	local standing = core.find_nodes_in_area(
+		{x = minp.x - LEAF_REACH, y = minp.y - LEAF_REACH, z = minp.z - LEAF_REACH},
+		{x = maxp.x + LEAF_REACH, y = maxp.y + LEAF_REACH, z = maxp.z + LEAF_REACH}, {"group:tree"})
+	for _, leaf in ipairs(core.find_nodes_in_area(minp, maxp, {species.leaves})) do
+		local own = far
+		for _, log in ipairs(felled) do own = math.min(own, reach(leaf, log)) end
+		local kept = far
+		for _, trunk in ipairs(standing) do kept = math.min(kept, reach(leaf, trunk)) end
+		if own <= LEAF_REACH and own < kept and core.get_meta(leaf):get_int("player_leaves") ~= 1 then
+			core.set_node(leaf, {name = orphan})
+		end
+	end
+end
+
 -- Fells the grove tree standing at pos: its trunk and branches, of its own species.
--- Returns the log and how many.
+-- Its leaves are left to decay. Returns the log and how many.
 function M.fell(pos)
 	local species = BY_LOG[core.get_node_or_nil(pos).name]
 	if not species then return nil, 0 end
-	local logs = 0
 	local minp = {x = pos.x - BRANCH_RADIUS, y = pos.y, z = pos.z - BRANCH_RADIUS}
 	local maxp = {x = pos.x + BRANCH_RADIUS, y = pos.y + TRUNK_MAX, z = pos.z + BRANCH_RADIUS}
-	for _, log in ipairs(core.find_nodes_in_area(minp, maxp, {species.log})) do
-		core.remove_node(log)
-		logs = logs + 1
-	end
-	return species.log, logs
+	local felled = core.find_nodes_in_area(minp, maxp, {species.log})
+	for _, log in ipairs(felled) do core.remove_node(log) end
+	if #felled > 0 then orphan_leaves(species, felled) end
+	return species.log, #felled
 end
 
 local function grove_max(self)
