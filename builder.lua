@@ -554,7 +554,7 @@ function M.catalog_options(bench, player_name)
 			price = not entry.problem and price_for(bench, player_name, measured.blocks) or nil,
 		}
 	end
-	return {rows = rows, directory = scan.directory}
+	return {rows = rows, directory = scan.directory, status = scan.status}
 end
 
 local function give_emeralds(player, count)

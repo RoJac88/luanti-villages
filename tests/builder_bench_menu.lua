@@ -94,7 +94,7 @@ local rows = {
 		{name = "alien, one", built = 0, problem = {code = "unknown_nodes", nodes = {"nope:gone", "nope:also"}}},
 	},
 }
-local economy_report, order, priced_for
+local economy_report, order, priced_for, folder_status
 local orders, refunds = {}, {}
 local builder = {
 	options = function()
@@ -104,7 +104,7 @@ local builder = {
 	catalog_options = function(_, name)
 		catalog_calls = catalog_calls + 1
 		priced_for = name
-		return {rows = rows.select, directory = WORLD .. "/schems"}
+		return {rows = rows.select, directory = WORLD .. "/schems", status = folder_status}
 	end,
 	order_of = function() return order end,
 	place_order = function(_, who, name)
@@ -280,9 +280,21 @@ end
 do
 	local kept = rows.select
 	rows.select = {}
+	folder_status = "empty"
 	send({refresh = "Refresh"})
 	assert(has(last(), "Nothing here yet."))
+	assert(has(last(), "No .mts files in <world>/schems yet\\, or it cannot be read."))
+	folder_status = "no_directory"
+	send({refresh = "Refresh"})
+	assert(has(last(), "<world>/schems is missing and could not be made."))
 	rows.select = kept
+	folder_status = "none_buildable"
+	send({refresh = "Refresh"})
+	assert(has(last(), "None of these can be built."))
+	-- A notice of what was just done goes first.
+	send({order = "Order"})
+	assert(not has(last(), "None of these can be built."))
+	order, folder_status = nil, nil
 	send({refresh = "Refresh"})
 end
 

@@ -119,10 +119,12 @@ ordinary stairs and wooden doors. Iron doors still block them.
     unemployed, and otherwise the mix the village generated with. Right-click its bench to see what is
     next and why.
   - Or order a building on the bench's **Select schematic** tab, from the schematics you exported with
-    [schemedit](https://codeberg.org/Wuzzy/minetest_schemedit) (`<world>/schems`). An order costs emeralds,
+    [schemedit](https://codeberg.org/Wuzzy/minetest_schemedit) (`<world>/schems`, made for you if it is
+    missing; the tab says when it is empty or none of its files can be built). An order costs emeralds,
     more for a bigger building, less if the Builder likes you (and more if it doesn't). The Builder takes it
     up in place of anything it has not started yet. If it finds no site, it goes back to what it was doing
     and you can take your emeralds back from the same tab. The materials still have to be supplied as usual.
+    Kelp and seagrass cost the block they grow from plus the plant, and go in after the water.
     A schematic's node and slice probabilities and voids are honoured, and job blocks in it are built, unlike
     in stock buildings. Put `<name>.png` or `.jpg` next to `<name>.mts` for a picture in the window, up to
     2 MiB; without one it lists the main materials.

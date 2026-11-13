@@ -262,10 +262,23 @@ do
 	files[DIR .. "/stray.png"], files[DIR .. "/shed.txt"] = nil, nil
 end
 
--- A directory with nothing in it, or none at all.
+-- A directory with nothing in it, or none at all: made, and said so.
 do
+	local made = {}
+	local mkdir_ok = true
+	minetest.mkdir = function(path) made[#made + 1] = path return mkdir_ok end
+	assert(catalog.scan().status == nil, "something to order")
+	assert(made[1] == DIR)
 	files = {}
-	assert(#catalog.scan().entries == 0)
+	local result = catalog.scan()
+	assert(#result.entries == 0 and result.status == "empty")
+	mkdir_ok = false
+	result = catalog.scan()
+	assert(#result.entries == 0 and result.status == "no_directory")
+	mkdir_ok = true
+	add(DIR, "broken", solid(2, 2, 2, "nope:gone"))
+	assert(catalog.scan().status == "none_buildable")
+	minetest.mkdir = nil
 end
 
 print("builder_catalog: ok")

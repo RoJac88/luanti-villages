@@ -182,18 +182,33 @@ end
 
 -- Everything the bench's window shows of the directory: {directory, entries}. An entry is
 -- {name, hash, measured, problem, image}, sorted by name.
+--
+-- `status` says why there is nothing to order, or nil when something can be: "no_directory"
+-- (it is missing and could not be made), "empty" (no .mts file, or the directory cannot be
+-- read, which looks the same from here), or "none_buildable" (each entry has a problem).
+-- The directory is made when missing, so a player knows where to put files.
 function M.scan(engine)
 	engine = engine or core
 	local directory = M.directory(engine)
+	if engine.mkdir and not engine.mkdir(directory) then
+		return {directory = directory, entries = {}, status = "no_directory"}
+	end
 	local reach = setting_number(engine, "living_villages_builder_reach", site.config.reach)
 	local images = images_in(directory, engine)
-	local entries = {}
+	local entries, buildable = {}, false
 	for _, name in ipairs(M.list(directory, engine)) do
 		local measured, problem, hash = examine(directory .. "/" .. name .. ".mts", engine)
 		problem = problem or M.problem_of(measured, reach)
 		entries[#entries + 1] = {name = name, hash = hash, measured = measured, problem = problem, image = images[name]}
+		buildable = buildable or problem == nil
 	end
-	return {directory = directory, entries = entries}
+	local status
+	if #entries == 0 then
+		status = "empty"
+	elseif not buildable then
+		status = "none_buildable"
+	end
+	return {directory = directory, entries = entries, status = status}
 end
 
 return M

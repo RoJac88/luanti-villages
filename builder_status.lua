@@ -89,6 +89,9 @@ local function summary_lines(report)
 	if report.state ~= "no_bench" and report.at_work == false then
 		lines[#lines + 1] = S("It is off work now.")
 	end
+	if report.state ~= "no_bench" then
+		lines[#lines + 1] = S("To order a building, right-click the Builder's bench.")
+	end
 	return lines
 end
 

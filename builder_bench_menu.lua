@@ -49,6 +49,15 @@ local function escape(text)
 	return core.formspec_escape(text)
 end
 
+-- Why the Select tab has nothing to order (builder_catalog.lua's scan status), by the folder.
+local FOLDER_TEXT = {
+	no_directory = function(place)
+		return S("@1 is missing and could not be made. Check the world folder's permissions.", place)
+	end,
+	empty = function(place) return S("No .mts files in @1 yet, or it cannot be read.", place) end,
+	none_buildable = function() return S("None of these can be built. Select one to see why.") end,
+}
+
 local function problem_text(problem)
 	local code = problem.code
 	if code == "unknown_nodes" then
@@ -297,6 +306,9 @@ function M.formspec(view)
 
 	if view.notice then
 		parts[#parts + 1] = ("label[0.4,%.2f;%s]"):format(HEIGHT - 0.75, escape(view.notice))
+	elseif selecting and FOLDER_TEXT[options.status] then
+		parts[#parts + 1] = ("label[0.4,%.2f;%s]"):format(HEIGHT - 0.75,
+			escape(core.colorize(PROBLEM_COLOR, FOLDER_TEXT[options.status](view.place or ""))))
 	elseif not selecting and options.reason then
 		parts[#parts + 1] = ("label[0.4,%.2f;%s]"):format(HEIGHT - 0.75, escape(S("Next, because @1.", options.reason)))
 	end
