@@ -177,6 +177,35 @@ assert(berries >= 2 and berries <= 3)
 assert(count(nina, "mcl_core:reeds") == 2 and nodes[key({x = 6, y = 1, z = 0})] == "mcl_core:reeds"
 	and not nodes[key({x = 6, y = 2, z = 0})], "the bottom block stays")
 assert(count(nina, "mcl_core:apple") == 2 and apple.removed)
+-- A cane top stands in the air: it is reached from the ground beside the column's foot
+-- (ColonyFood, 2026-11-13: a forager walked to the top itself and found no way).
+do
+	minetest.registered_nodes.air = {walkable = false}
+	minetest.registered_nodes["mcl_core:water_source"] = {walkable = false}
+	for y = 1, 3 do nodes[key({x = 300, y = y, z = 0})] = "mcl_core:reeds" end
+	nodes[key({x = 300, y = 0, z = 0})] = "mcl_core:dirt_with_grass"
+	nodes[key({x = 301, y = 0, z = 0})] = "mcl_core:water_source"
+	nodes[key({x = 299, y = 0, z = 0})] = "mcl_core:dirt_with_grass"
+	local spot = labour.beside_cane({x = 300, y = 3, z = 0})
+	assert(spot and spot.x == 299 and spot.y == 1 and spot.z == 0, "on the ground beside its foot, not over the water")
+	-- Another column beside it is no place to stand.
+	minetest.registered_nodes["mcl_core:reeds"] = {walkable = false}
+	for y = 1, 2 do nodes[key({x = 299, y = y, z = 0})] = "mcl_core:reeds" end
+	nodes[key({x = 300, y = 0, z = 1})] = "mcl_core:dirt_with_grass"
+	spot = labour.beside_cane({x = 300, y = 3, z = 0})
+	assert(spot and spot.x == 300 and spot.z == 1, "past the next column")
+	for y = 1, 2 do nodes[key({x = 299, y = y, z = 0})] = nil end
+	nodes[key({x = 300, y = 0, z = 1})] = nil
+	minetest.registered_nodes["mcl_core:reeds"] = nil
+	-- Ground only a step up: beside the block above the foot.
+	nodes[key({x = 299, y = 0, z = 0})] = nil
+	nodes[key({x = 299, y = 1, z = 0})] = "mcl_core:dirt_with_grass"
+	spot = labour.beside_cane({x = 300, y = 3, z = 0})
+	assert(spot and spot.x == 299 and spot.y == 2, "a step up")
+	for y = 0, 3 do nodes[key({x = 300, y = y, z = 0})] = nil end
+	nodes[key({x = 301, y = 0, z = 0})], nodes[key({x = 299, y = 1, z = 0})] = nil, nil
+	minetest.registered_nodes.air, minetest.registered_nodes["mcl_core:water_source"] = nil, nil
+end
 -- Enough of a good: it leaves the rest.
 nodes[key({x = 3, y = 1, z = 0})] = "mcl_farming:sweet_berry_bush_2"
 nina._villages_belongings["mcl_farming:sweet_berry"] = labour.KEEP_GATHERED
