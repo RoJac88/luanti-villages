@@ -660,6 +660,33 @@ assert(logs[#logs]:find("villager vera paid 18 emerald%(s%) for dinner at the ta
 now = now + 20
 meal.tick(vera, 0.1, jukebox)
 assert(not vera._villages_meal)
+-- No dish in the pantry, but carrots: a last-resort plate of four, at dinner's price.
+day = day + 1
+pantry_items["mcl_core:emerald"] = nil
+pantry_items["mcl_farming:carrot_item"] = 3
+vera._villages_food = 0
+now = now + 10
+meal.tick(vera, 0.1, jukebox)
+assert(not vera._villages_meal and meal.explain(vera, jukebox) == "the pantry is empty", "three carrots are no plate")
+pantry_items["mcl_farming:carrot_item"] = 5
+meal.tick(vera, 0.1, jukebox)
+assert(vera._villages_meal and vera._villages_meal.item == "mcl_farming:carrot_item", "a plate of carrots")
+assert(pantry_items["mcl_farming:carrot_item"] == 1 and vera._villages_food == 4, "four carrots, four points")
+assert(pantry_items["mcl_core:emerald"] == 18, "paid a dinner")
+now = now + 20
+meal.tick(vera, 0.1, jukebox)
+-- With a dish in the pantry, the carrots stay.
+day = day + 1
+pantry_items["mcl_farming:carrot_item"] = 8
+pantry_items["mcl_farming:bread"] = 1
+vera._villages_food = 0
+now = now + 10
+meal.tick(vera, 0.1, jukebox)
+assert(vera._villages_meal and vera._villages_meal.item == "mcl_farming:bread" and pantry_items["mcl_farming:carrot_item"] == 8)
+now = now + 20
+meal.tick(vera, 0.1, jukebox)
+pantry_items["mcl_farming:carrot_item"] = nil
+pantry_items["mcl_core:emerald"] = 18
 -- The keeper's household eats free: a bed in the keeper's house.
 day = day + 1
 local hal = {_id = "hal", _villages_seat = {table = tabletop}, _bed = {x = 1, y = 0, z = 3}}

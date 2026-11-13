@@ -297,6 +297,12 @@ table.sort(FOODS_BY_POINTS, function(a, b)
 	if food.POINTS[a] ~= food.POINTS[b] then return food.POINTS[a] > food.POINTS[b] end
 	return a < b
 end)
+-- The last resorts (food.LAST_RESORT) after every food: a starving villager eats them only
+-- once it has nothing else.
+local last_resorts = {}
+for item in pairs(food.LAST_RESORT) do last_resorts[#last_resorts + 1] = item end
+table.sort(last_resorts)
+for _, item in ipairs(last_resorts) do FOODS_BY_POINTS[#FOODS_BY_POINTS + 1] = item end
 M.FOODS_BY_POINTS = FOODS_BY_POINTS
 
 -- Food points in its belongings.
@@ -347,7 +353,8 @@ end
 function M.eat(self, meal)
 	meal = meal or M.meal_now(self)
 	if not meal or self.child or self._villages_sleeping then return {} end
-	local allowed = meal == "dinner" and food.is_prepared or function(item) return food.POINTS[item] ~= nil end
+	local allowed = meal == "dinner" and food.is_prepared
+		or function(item) return food.POINTS[item] ~= nil or food.LAST_RESORT[item] ~= nil end
 	local function more()
 		if meal == "dinner" then return food.points(self) <= EAT_AT end
 		return food.points(self) < food.HUNGRY
