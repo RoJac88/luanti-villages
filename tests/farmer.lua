@@ -419,6 +419,21 @@ assert(farmer._villages_belongings and farmer._villages_belongings["mcl_farming:
 assert(pouch("mcl_farming:wheat_item") == 3)
 assert(world.meta({x = 2, y = 2, z = 0}).inv:get_stack("main", 1):to_string() == "mcl_farming:wheat_item 19")
 
+-- Spare bread is worth a trip well short of the usual eight over the keep: its own
+-- dinners and the keeper's fetches both wait on it (run of 2026-11-13).
+setup({_villages_farm_pouch = {["mcl_farming:bread"] = 8}})
+local bread_chest = support.chest(world, {x = 20, y = 2, z = 0})
+step()
+assert(#farmer.walks == 1 and farmer.walks[1].x == 20, "six loaves over the keep send it to the chest")
+step()
+assert(pouch("mcl_farming:bread") == 2 and farmer._villages_belongings["mcl_farming:bread"] == 4)
+assert(bread_chest:get_stack("main", 1):to_string() == "mcl_farming:bread 2", "the rest for the keeper")
+-- One loaf over is not.
+setup({_villages_farm_pouch = {["mcl_farming:bread"] = 3}})
+support.chest(world, {x = 20, y = 2, z = 0})
+step(2)
+assert(#farmer.walks == 0 and pouch("mcl_farming:bread") == 3)
+
 -- With the economy on only children eat free: adults eat at the tavern, or alms when
 -- broke (food loop, 2026-11-13). A neighbour, its spouse even, gets nothing, and no
 -- emeralds change hands.

@@ -92,6 +92,10 @@ local OWN_BREAD = 4
 local SALE_WHEAT = 8
 -- A trip to a chest waits for this much over the keep, unless the pouch is full.
 local DEPOSIT_TRIGGER = 8
+-- Bread is worth a trip sooner: past the keep it is for its own dinners and the tavern's
+-- pantry, and both reach it only through the chest trip (run of 2026-11-13: a starving
+-- farmer carried 8 loaves, 6 over the keep, while the keeper found none to fetch).
+local BREAD_TRIGGER = 2
 local WITHDRAW_SEEDS = 8
 local SEEDS = {
 	"mcl_farming:wheat_seeds", "mcl_farming:beetroot_seeds", "mcl_farming:potato_item", "mcl_farming:carrot_item",
@@ -293,6 +297,7 @@ local function excess_item(self)
 end
 
 local function wants_to_deposit(self)
+	if stock.count(self, BREAD) - DEPOSIT_KEEP[BREAD] >= BREAD_TRIGGER then return true end
 	local item, extra = excess_item(self)
 	if not item then return false end
 	-- Something it never keeps is only ever on its way to a chest.
