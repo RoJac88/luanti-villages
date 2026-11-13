@@ -216,14 +216,16 @@ local function walkable(name)
 	return not def or def.walkable ~= false
 end
 
--- An open cell beside pos with a floor, to stand in and reach pos from, or nil.
-local function beside(pos)
+-- An open cell beside pos with a floor, to stand in and reach pos from, or nil. A cell
+-- holding `avoid` (cane, which is not walkable but no place to stand) is passed over.
+local function beside(pos, avoid)
 	for _, offset in ipairs({{1, 0}, {-1, 0}, {0, 1}, {0, -1}}) do
 		local cell = {x = pos.x + offset[1], y = pos.y, z = pos.z + offset[2]}
 		local here = core.get_node_or_nil(cell)
 		local head = core.get_node_or_nil({x = cell.x, y = cell.y + 1, z = cell.z})
 		local floor = core.get_node_or_nil({x = cell.x, y = cell.y - 1, z = cell.z})
-		if here and head and floor and not walkable(here.name) and not walkable(head.name) and walkable(floor.name) then
+		if here and head and floor and not walkable(here.name) and not walkable(head.name) and walkable(floor.name)
+			and here.name ~= avoid and head.name ~= avoid then
 			return cell
 		end
 	end
@@ -361,6 +363,19 @@ local function ripe_bushes(bed)
 	local minp, maxp = area(bed, FORAGE_RADIUS, FORAGE_HEIGHT)
 	return core.find_nodes_in_area(minp, maxp, names)
 end
+
+-- Where to stand to cut the cane whose top is at pos: beside its column's foot, or
+-- beside the block above it. Nil if neither has room and a floor.
+local function beside_cane(pos)
+	local foot = vector.new(pos)
+	while true do
+		local below = core.get_node_or_nil({x = foot.x, y = foot.y - 1, z = foot.z})
+		if not (below and below.name == CANE) then break end
+		foot.y = foot.y - 1
+	end
+	return beside(foot, CANE) or beside({x = foot.x, y = foot.y + 1, z = foot.z}, CANE)
+end
+M.beside_cane = beside_cane
 
 -- Cane tops: a cane block on a cane block, the highest of its column.
 local function cane_tops(bed)
@@ -877,6 +892,9 @@ function M.step(self, now)
 	if target.kind == "cobble" then
 		goal = beside(target.pos) or beside({x = target.pos.x, y = target.pos.y - 1, z = target.pos.z})
 	end
+	-- A cane top stands in the air above its column: beside the column's foot, where
+	-- there is ground, or a step up (it was walked to itself, and never reached).
+	if target.kind == "cane" then goal = beside_cane(target.pos) end
 	if not goal then
 		skip(self, target.pos)
 		return
