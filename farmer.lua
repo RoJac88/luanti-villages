@@ -24,6 +24,23 @@ local food = dofile(core.get_modpath("living_villages") .. "/food.lua")
 local clock = dofile(core.get_modpath("living_villages") .. "/economy_clock.lua")
 local possessions = dofile(core.get_modpath("living_villages") .. "/possessions.lua")
 local wants = dofile(core.get_modpath("living_villages") .. "/wants.lua")
+local news = dofile(core.get_modpath("living_villages") .. "/market_news.lua")
+local ledger = dofile(core.get_modpath("living_villages") .. "/ledger.lua")
+
+-- Farm output (ticket 18). VoxeLibre's crops take some 2800 s of loaded time to ripen
+-- beside their own kind, so a farmer mostly waits on its field. In the work stage, with
+-- nothing else to do, it tends growing crops: each tend grows a crop one stage with
+-- TEND_CHANCE times its hoe's rate (wants.lua; 1 by hand), at most 1; a plot is tended at
+-- most once in TEND_SECONDS, by any farmer. About 3.5 tends a plot a work day add to a
+-- plot's 3 stages a day some 1.2 by hand, 1.9 with a stone hoe, 2.5 with an iron one and
+-- 3.1 with gold or diamond: a tool is a bonus, not a need.
+local TEND_CHANCE = 0.35
+local TEND_SECONDS = 120
+-- How often it looks again at the other farmers' composters and what the village asks.
+local LOOK_SECONDS = 30
+local OTHERS_RANGE = 2 * field.RADIUS
+local COMPOSTERS = {"mcl_composters:composter", "mcl_composters:composter_ready"}
+for level = 1, 7 do COMPOSTERS[#COMPOSTERS + 1] = "mcl_composters:composter_" .. level end
 
 local TICK_SECONDS = 1
 local IDLE_SECONDS = 5
@@ -111,6 +128,56 @@ local function key(pos)
 	return pos.x .. "," .. pos.y .. "," .. pos.z
 end
 
+-- When each plot may next be tended, by whichever farmer (not saved).
+local tended = {}
+
+-- The claimed composters near its own, its own included, looked up every LOOK_SECONDS.
+local function other_farms(self, session, now)
+	if session.others and now < session.others_at then return session.others end
+	local job = self._jobsite
+	local r = OTHERS_RANGE
+	local found = {}
+	local minp = {x = job.x - r, y = job.y - field.HEIGHT, z = job.z - r}
+	local maxp = {x = job.x + r, y = job.y + field.HEIGHT, z = job.z + r}
+	for _, pos in ipairs(core.find_nodes_in_area(minp, maxp, COMPOSTERS)) do
+		if core.get_meta(pos):get_string("villager") ~= "" then found[#found + 1] = pos end
+	end
+	session.others, session.others_at = found, now + LOOK_SECONDS
+	return found
+end
+
+-- What a harvest of each crop is worth to the village (field.harvest_worth): at the best
+-- price it has heard asked for the crop or what it makes, or, with no crop asked for at
+-- all, at base prices. Looked up every LOOK_SECONDS.
+local function crop_worth(self, session, now)
+	if session.worth and now < session.worth_at then return session.worth end
+	local asked = clock.enabled() and news.asking(news.heard(self, now)) or {}
+	local any = false
+	for _, crop in ipairs(field.CROPS) do
+		if (asked[crop.product] or 0) > 0 or (crop.makes and (asked[crop.makes.item] or 0) > 0) then any = true end
+	end
+	local worth = field.harvest_worth(function(item)
+		if any then return asked[item] end
+		return ledger.price(item)
+	end)
+	session.worth, session.worth_at = worth, now + LOOK_SECONDS
+	return worth
+end
+
+-- How likely a tend is to grow a crop, by the hoe in use.
+local function tend_chance(self)
+	return math.min(TEND_CHANCE * wants.tool_rate(self, "harvest"), 1)
+end
+
+-- The growing crops not tended lately.
+local function tendable(growing, now)
+	local list = {}
+	for _, crop in ipairs(growing) do
+		if now >= (tended[key(crop.pos)] or 0) then list[#list + 1] = crop.pos end
+	end
+	return list
+end
+
 local function valid_farmer(self)
 	if self.child or self._profession ~= "farmer" or not self._jobsite or not self._id then return false end
 	local node = core.get_node_or_nil(self._jobsite)
@@ -196,10 +263,12 @@ end
 -- Something a farm yields that it has no use for, such as a poison potato. With no
 -- chest to put it in it stays where it fell, rather than filling the pouch for good.
 local function harvest(self, pos, session, now)
-	local drops = field.harvest(pos)
+	-- A hoe multiplies the harvest and wears (wants.lua, ticket 18); a book makes the next
+	-- job come sooner.
+	local yield = wants.tool_use(self, "harvest", possessions.take_held, now)
+	local drops = field.harvest(pos, yield)
 	if not drops then return end
-	-- A hoe makes the next job come sooner, and wears (wants.lua).
-	session.next_at = now + TICK_SECONDS / wants.use(self, "harvest", possessions.take_held, now)
+	session.next_at = now + TICK_SECONDS / wants.reading_rate(self, possessions.take_held, now)
 	local has_chest = #chests_of(self, session, now) > 0
 	for _, drop in ipairs(drops) do
 		local name = drop:match("^%S+")
@@ -284,8 +353,9 @@ local function withdraw_seeds(self, pos)
 	end
 end
 
-local function plant(self, pos)
-	local seed = field.choose_seed(pos, function(name) return stock.count(self, name) end)
+local function plant(self, pos, session, now)
+	local seed = field.choose_seed(pos, function(name) return stock.count(self, name) end,
+		session and crop_worth(self, session, now))
 	if seed and field.plant(pos, seed) then stock.take(self, seed, 1) end
 end
 
@@ -471,9 +541,9 @@ local function plot_jobs(self, session, farm, now)
 		{positions = farm.mature, wanted = stock.has_harvest_room(self), work = harvest},
 		{positions = farm.empty, wanted = seeds, work = plant},
 		{
-			positions = seeds and #farm.empty == 0 and field.tillable(self._jobsite, farm.soil) or {},
+			positions = seeds and #farm.empty == 0 and field.tillable(self._jobsite, farm.soil, farm.others, #farm.own_soil) or {},
 			wanted = seeds,
-			work = function(_, pos) field.till(pos, #farm.soil) end,
+			work = function(_, pos) field.till(pos, #farm.own_soil) end,
 		},
 		{
 			positions = field.least_grown(farm.growing),
@@ -491,14 +561,26 @@ local function plot_jobs(self, session, farm, now)
 			wanted = not has_food,
 			work = withdraw_food,
 		},
+		-- Tending fills its time, after every other job, in reach or not (ticket 18).
+		{
+			positions = tendable(farm.growing, now),
+			wanted = tend_chance(self) > 0,
+			last_resort = true,
+			work = function(_, pos)
+				tended[key(pos)] = now + TEND_SECONDS
+				field.tend(pos, tend_chance(self))
+			end,
+		},
 	}
 end
 
 -- One job within reach, or one walk to the most pressing job. Returns "worked",
 -- "walking", or nil for nothing to do.
 local function next_step(self, session, pos, now)
-	local farm = field.scan(self._jobsite)
-	session.sowing = #farm.empty > 0 or #field.tillable(self._jobsite, farm.soil) > 0
+	local others = other_farms(self, session, now)
+	local farm = field.scan(self._jobsite, others)
+	farm.others = others
+	session.sowing = #farm.empty > 0 or #field.tillable(self._jobsite, farm.soil, others, #farm.own_soil) > 0
 	-- With the economy off it looks after itself first (on, it eats its own bread at dinner).
 	if hand_over(self, self, session) then return "worked" end
 	local jobs = plot_jobs(self, session, farm, now)

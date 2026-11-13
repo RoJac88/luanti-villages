@@ -13,12 +13,21 @@ local SOIL_NODES = {"mcl_farming:soil", "mcl_farming:soil_wet"}
 local HYDRATION_RADIUS = 4
 local DEFAULT_MAX_PLOTS = 40
 
+-- `product` is the crop a harvest is for, which a hoe multiplies; `net` how many of it a
+-- harvest leaves on average once the seed is put back (VoxeLibre's drops: a potato 2.5,
+-- a carrot 2.8, less one replanted); `makes` what the product becomes and how many it
+-- takes, for what the village asks for that (three wheat a loaf, a potato baked).
 local CROPS = {
-	{id = "wheat", mature = "mcl_farming:wheat", seed = "mcl_farming:wheat_seeds", prefix = "mcl_farming:wheat_", first = 1, last = 7},
-	{id = "potato", mature = "mcl_farming:potato", seed = "mcl_farming:potato_item", prefix = "mcl_farming:potato_", first = 1, last = 7},
-	{id = "carrot", mature = "mcl_farming:carrot", seed = "mcl_farming:carrot_item", prefix = "mcl_farming:carrot_", first = 1, last = 7},
-	{id = "beetroot", mature = "mcl_farming:beetroot", seed = "mcl_farming:beetroot_seeds", prefix = "mcl_farming:beetroot_", first = 0, last = 2},
+	{id = "wheat", mature = "mcl_farming:wheat", seed = "mcl_farming:wheat_seeds", prefix = "mcl_farming:wheat_", first = 1, last = 7,
+		product = "mcl_farming:wheat_item", net = 1, makes = {item = "mcl_farming:bread", from = 3}},
+	{id = "potato", mature = "mcl_farming:potato", seed = "mcl_farming:potato_item", prefix = "mcl_farming:potato_", first = 1, last = 7,
+		product = "mcl_farming:potato_item", net = 1.5, makes = {item = "mcl_farming:potato_item_baked", from = 1}},
+	{id = "carrot", mature = "mcl_farming:carrot", seed = "mcl_farming:carrot_item", prefix = "mcl_farming:carrot_", first = 1, last = 7,
+		product = "mcl_farming:carrot_item", net = 1.8},
+	{id = "beetroot", mature = "mcl_farming:beetroot", seed = "mcl_farming:beetroot_seeds", prefix = "mcl_farming:beetroot_", first = 0, last = 2,
+		product = "mcl_farming:beetroot_item", net = 1},
 }
+
 
 local mature_crops, growing_crops, seed_crops = {}, {}, {}
 local mature_names, growing_names = {}, {}
@@ -34,7 +43,7 @@ for _, crop in ipairs(CROPS) do
 	end
 end
 
-local M = {RADIUS = FARM_RADIUS, HEIGHT = FARM_HEIGHT}
+local M = {RADIUS = FARM_RADIUS, HEIGHT = FARM_HEIGHT, CROPS = CROPS}
 
 local function crop_of(name)
 	if mature_crops[name] then return mature_crops[name] end
@@ -58,10 +67,10 @@ M.is_seed = function(name) return seed_crops[name] ~= nil end
 
 -- Everything around the composter a farmer can work on. Positions are always the
 -- cell the crop stands in, so a plot and the crop on it are one target.
-function M.scan(job)
+function M.scan(job, others)
 	local minp = {x = job.x - FARM_RADIUS, y = job.y - FARM_HEIGHT, z = job.z - FARM_RADIUS}
 	local maxp = {x = job.x + FARM_RADIUS, y = job.y + FARM_HEIGHT, z = job.z + FARM_RADIUS}
-	local result = {mature = {}, growing = {}, empty = {}, soil = {}}
+	local result = {mature = {}, growing = {}, empty = {}, soil = {}, own_soil = {}}
 	for _, pos in ipairs(core.find_nodes_in_area(minp, maxp, mature_names)) do
 		if not core.is_protected(pos, "") then table.insert(result.mature, pos) end
 	end
@@ -76,6 +85,7 @@ function M.scan(job)
 	local soil_max = {x = maxp.x, y = maxp.y - 1, z = maxp.z}
 	for _, pos in ipairs(core.find_nodes_in_area(soil_min, soil_max, SOIL_NODES)) do
 		table.insert(result.soil, pos)
+		if M.is_own(job, pos, others) then table.insert(result.own_soil, pos) end
 		local cell = above(pos)
 		local node = core.get_node_or_nil(cell)
 		if node and node.name == "air" and not core.is_protected(cell, "") then
@@ -83,6 +93,23 @@ function M.scan(job)
 		end
 	end
 	return result
+end
+
+-- Whether the cell is this composter's to count and till: nearer it than any of `others`
+-- (other claimed composters), ties going to the one first by position. Two farmers on
+-- one field each till their own side of it, so a second farmer adds land, not only hands
+-- (the Colony's two shared one field of 44, 2026-11-13).
+function M.is_own(job, pos, others)
+	local function d2(a) return (a.x - pos.x) ^ 2 + (a.z - pos.z) ^ 2 end
+	local mine = d2(job)
+	for _, other in ipairs(others or {}) do
+		if other.x ~= job.x or other.y ~= job.y or other.z ~= job.z then
+			local theirs = d2(other)
+			if theirs < mine then return false end
+			if theirs == mine and (other.x < job.x or (other.x == job.x and other.z < job.z)) then return false end
+		end
+	end
+	return true
 end
 
 local function max_plots()
@@ -114,8 +141,8 @@ end
 -- and a composter with no field yet starts one against its water. That also covers
 -- a plot that has reverted to dirt, and a kerb around a field, as on the stock farm,
 -- keeps it to its bed.
-function M.tillable(job, soil)
-	local room = max_plots() - #soil
+function M.tillable(job, soil, others, own_count)
+	local room = max_plots() - (own_count or #soil)
 	if room <= 0 then return {} end
 	local minp = {x = job.x - FARM_RADIUS, y = job.y - FARM_HEIGHT - 1, z = job.z - FARM_RADIUS}
 	local maxp = {x = job.x + FARM_RADIUS, y = job.y + FARM_HEIGHT - 1, z = job.z + FARM_RADIUS}
@@ -134,7 +161,9 @@ function M.tillable(job, soil)
 			end
 			if touches then break end
 		end
-		if touches and can_till(pos) and is_hydrated_at(pos) then table.insert(result, above(pos)) end
+		if touches and M.is_own(job, pos, others) and can_till(pos) and is_hydrated_at(pos) then
+			table.insert(result, above(pos))
+		end
 	end
 	return result
 end
@@ -153,13 +182,43 @@ end
 -- not there any more. The drops are the node's own, so this yields what a player
 -- gets. They are never left on the ground: VoxeLibre's villagers treat food they
 -- pick up as breeding input.
-function M.harvest(pos)
+--
+-- `yield` (a hoe's, wants.lua) multiplies the crop's product, never its seeds: of the
+-- extra, the whole part always and the rest by chance, so ×1.5 on one wheat gives two
+-- half the time.
+function M.harvest(pos, yield)
 	local node = core.get_node_or_nil(pos)
-	if not node or not mature_crops[node.name] or core.is_protected(pos, "") then return nil end
-	local drops = core.get_node_drops(node, "")
+	local crop = node and mature_crops[node.name]
+	if not crop or core.is_protected(pos, "") then return nil end
+	local drops = {}
+	for _, drop in ipairs(core.get_node_drops(node, "")) do drops[#drops + 1] = drop end
 	core.remove_node(pos)
 	node_sound(pos, node.name, "dug")
+	if yield and yield > 1 then
+		local count = 0
+		for _, drop in ipairs(drops) do
+			local name, n = drop:match("^(%S+)%s*(%d*)")
+			if name == crop.product then count = count + (tonumber(n) or 1) end
+		end
+		local extra = count * (yield - 1)
+		local whole = math.floor(extra)
+		if math.random() < extra - whole then whole = whole + 1 end
+		if whole > 0 then table.insert(drops, crop.product .. " " .. whole) end
+	end
 	return drops
+end
+
+-- Tends a growing crop (ticket 18): with `chance` it grows one stage, as a day's sun and
+-- care would. Returns whether it grew.
+function M.tend(pos, chance)
+	local node = core.get_node_or_nil(pos)
+	local growing = node and growing_crops[node.name]
+	if not growing or core.is_protected(pos, "") or math.random() >= chance then return false end
+	local crop = growing.crop
+	local stage = crop.first + growing.stage + 1
+	local name = stage <= crop.last and crop.prefix .. stage or crop.mature
+	core.swap_node(pos, {name = name, param2 = node.param2})
+	return true
 end
 
 -- Bone meal on a growing crop, through VoxeLibre's own function, which allows for
@@ -185,17 +244,32 @@ function M.least_grown(growing)
 	return positions
 end
 
--- Which seed to sow in the cell: the one the pouch has most of, passing over any
--- crop already next to it where another will do, since VoxeLibre halves the growth
+-- What one harvest of each crop is worth by `price(item)` (what the village asks for it,
+-- farmer.lua), {[seed] = worth}: its net yield at the best of its product's price and
+-- what it makes, per product it takes.
+function M.harvest_worth(price)
+	local worth = {}
+	for _, crop in ipairs(CROPS) do
+		local each = price(crop.product) or 0
+		if crop.makes then each = math.max(each, (price(crop.makes.item) or 0) / crop.makes.from) end
+		worth[crop.seed] = crop.net * each
+	end
+	return worth
+end
+
+-- Which seed to sow in the cell: the one whose harvest is worth most (`worth`, by
+-- M.harvest_worth; by how many it holds where none is given or worths tie), passing over
+-- any crop already next to it where another will do, since VoxeLibre halves the growth
 -- of a crop with the same crop on both axes. Nil if the pouch has no seeds.
-function M.choose_seed(pos, count_of)
+function M.choose_seed(pos, count_of, worth)
 	local seeds = {}
 	for _, crop in ipairs(CROPS) do
 		local count = count_of(crop.seed)
-		if count > 0 then table.insert(seeds, {crop = crop, count = count}) end
+		if count > 0 then table.insert(seeds, {crop = crop, count = count, worth = worth and worth[crop.seed] or 0}) end
 	end
 	if #seeds == 0 then return nil end
 	table.sort(seeds, function(a, b)
+		if a.worth ~= b.worth then return a.worth > b.worth end
 		if a.count ~= b.count then return a.count > b.count end
 		return a.crop.id < b.crop.id
 	end)

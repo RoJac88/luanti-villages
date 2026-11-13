@@ -8,7 +8,9 @@
 -- choose, it takes the inputs from its belongings, then its stash wherever it stands
 -- (possessions.take_held), and the made items go into its belongings. With nothing it
 -- can make, nothing is banked. A hungry villager banks at half the rate and a starving
--- one not at all (food.lua's states); one reading a book (wants.lua) a fifth faster.
+-- one at a quarter (food.lua's states; ticket 18: at none, a starving village could
+-- never cook its way out, ColonyFood 2026-11-13); one reading a book (wants.lua) a fifth
+-- faster.
 --
 -- Which recipe: of those it has the inputs and fuel for, and whose output it holds fewer
 -- than its target plus STOCK of (see below for one nobody wants), the one that adds most by its own values (ledger.lua):
@@ -321,12 +323,14 @@ function M.at_work(self)
 	return common.schedule_stage(nil, self) == "work"
 end
 
+local HUNGRY_RATE, STARVING_RATE = 0.5, 0.25
+
 local function rate(self)
 	local state = food.state(self)
-	if state == "starving" then return 0 end
 	-- A book being read (wants.lua, ticket 11e) speeds it up.
 	local reading = wants.reading_rate(self, possessions.take_held, core.get_gametime())
-	if state == "hungry" then return 0.5 * reading end
+	if state == "starving" then return STARVING_RATE * reading end
+	if state == "hungry" then return HUNGRY_RATE * reading end
 	return reading
 end
 

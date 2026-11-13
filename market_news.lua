@@ -5,7 +5,8 @@
 -- hears of trades sooner.
 --
 -- A villager's own news is its ledger's (possessions.assess, ledger.lua) top OWN_ITEMS
--- needs and surpluses, and any other surplus it has heard someone needs, worked out fresh
+-- needs and surpluses, the top OWN_ITEMS spare goods of its trade (ledger.outputs) by
+-- what they fetch at its ask, and any other surplus it has heard someone needs, worked out fresh
 -- when it talks, with hops 0. What it has heard is
 -- `_villages_market_news`, a list of at most NEWS_ENTRIES entries:
 --
@@ -174,6 +175,19 @@ function M.own(self, view, now)
 		end
 		for _, top in ipairs(ledger.top(list, view.value, OWN_ITEMS)) do add(top.item, top.count) end
 		if kind == "has" then
+			-- What its trade makes (ledger.outputs) is told too, the most a buyer would pay at
+			-- its ask first: a seller values its own spare at next to nothing, so by its value
+			-- a fisherman's 16 cod ranked under the iron armour it was born with, and the
+			-- butcher never heard of them (ColonyFood, 2026-11-13).
+			local outputs = self._profession and ledger.outputs(self._profession, self._max_trade_tier) or {}
+			local made = {}
+			for item, count in pairs(list) do
+				if outputs[item] and not told[item] then made[item] = count end
+			end
+			for _, top in ipairs(ledger.top(made, function(item) return asks.ask(self, item) or view.value(item) end,
+				OWN_ITEMS)) do
+				add(top.item, top.count)
+			end
 			for item, count in pairs(list) do
 				if asked[item] and not told[item] then add(item, count) end
 			end

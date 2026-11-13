@@ -130,4 +130,28 @@ do
 	assert(wants.reading_rate(villager({_id = "kid", child = true}), take_from({[BOOK] = 1}), clock) == 1)
 end
 
+-- Hoes come in tiers (ticket 18): the best held is taken up and works and wears by its own
+-- rate and uses; the ledger asks for a stone one and values every tier at its worth.
+do
+	logs = {}
+	local farmer = villager({_profession = "farmer"})
+	local held = {[HOE] = 1, ["mcl_farming:hoe_iron"] = 1, ["mcl_farming:hoe_wood"] = 1}
+	assert(wants.tool_rate(farmer, "harvest") == 1, "none in use")
+	assert(wants.tool_use(farmer, "harvest", take_from(held), 1) == 2, "iron first")
+	assert(held["mcl_farming:hoe_iron"] == 0 and farmer._villages_wants.hoe.left == 127)
+	assert(wants.tool_rate(farmer, "harvest") == 2 and farmer._villages_wants.hoe.left == 127, "the rate wears nothing")
+	assert(wants.status(farmer) == "mcl_farming:hoe_iron, 127 of 128 uses left", wants.status(farmer))
+	local targets, worth = wants.targets(farmer)
+	assert(not targets[HOE], "a fresh iron hoe")
+	farmer._villages_wants.hoe.left = 16
+	assert(wants.targets(farmer)[HOE] == 1, "nearly worn by its own uses: a stone one wanted")
+	local good = wants.GOODS[1]
+	assert(worth["mcl_farming:hoe_gold"] == wants.worth(good, wants.tier(good, "mcl_farming:hoe_gold")))
+	assert(worth["mcl_farming:hoe_iron"] > worth[HOE] and worth[HOE] > worth["mcl_farming:hoe_wood"])
+	assert(wants.tier(good, "mcl_farming:hoe_gold").rate == 2.5 and wants.tier(good, "mcl_farming:hoe_gold").uses == 16)
+	farmer._villages_wants.hoe.left = 1
+	assert(wants.tool_use(farmer, "harvest", take_from(held), 2) == 2 and logged("wore out its mcl_farming:hoe_iron"))
+	assert(wants.tool_use(farmer, "harvest", take_from(held), 3) == 1.5, "then the stone one")
+end
+
 print("wants.lua: ok")

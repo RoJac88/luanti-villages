@@ -1529,6 +1529,54 @@ paid for its lot.
 Left for later: farm output, which the run showed to be short of a village's hunger even
 with nothing given away.
 
+### 18. Farm output
+
+A survey of the ColonyFood world (2026-11-13) found two farmers sharing one field of 44
+wet plots: 16 wheat, 20 carrots and 6 potatoes. It gave some 15 dinner-fit food points a
+day against 88 eaten. Why:
+
+* **Growth.** A crop grows one stage when VoxeLibre's growth timer (every 5.8 s, one
+  chance in 35) picks it, and then with 3 in `floor(25 / (moisture × penalty)) + 1`.
+  Wet all round with no crop of its kind beside it, that is certain: some 200 s a stage.
+  Beside its own kind the penalty halves it: some 400 s, 2800 s for wheat's seven stages.
+  A skipped night grows nothing. The farmer mostly waits on its field, so the stone
+  hoe's speed bonus did nothing.
+* **One field for two.** Each composter farms 8 around it, the cap of 40 plots counts
+  every plot in range, and the two composters stood 6 apart: neither tilled more.
+* **The crop mix.** A farmer sowed what it held most seed of. Carrots replant themselves
+  generously, so they took almost half the field, though they are 1 point raw and no
+  dinner. A potato harvest nets 1.5 potatoes, 6 points once baked; wheat 1.3 points as
+  bread.
+
+**Hoes multiply the harvest** (`wants.lua` tiers, `farm_field.harvest`). A hoe's rate is
+now the yield of the crop's product, never its seeds: wood ×1.25 (30 uses), stone ×1.5
+(64), iron ×2 (128), gold ×2.5 (16), diamond ×2.5 (512): about half VoxeLibre's
+durability, gold yielding most for wearing out first. The best hoe held is taken up. The
+ledger asks for a stone one, which the tool smith makes, and values every tier at its
+worth (uses × a harvest's goods × the yield's gain), so a better hoe sells to a farmer.
+
+**Tending** (`farmer.lua`). In the work stage, after every other job, the farmer tends
+growing crops: each tend grows one a stage with 0.35 × the hoe's rate (by hand 0.35,
+stone 0.53, iron 0.7, gold and diamond 0.875), a plot at most once in 120 s by any farmer.
+Some 3.5 tends a plot a work day add to the 3 stages a plot grows by itself in a day 1.2 by
+hand, 1.9 with a stone hoe, 2.5 with iron and 3.1 with gold or diamond: a tool is a bonus,
+not a need. Like hunger it needs the village loaded.
+
+**Starving still works** (`production.lua`). A starving villager crafted nothing, so a
+village that ran out of food could not cook its way back: the ColonyFood world, starving
+when this landed, made nothing in four days. It now crafts at a quarter of the rate (a
+hungry one at half), on its shorter starving work day.
+
+**Sowing for the village** (`farm_field.choose_seed`, `harvest_worth`). A harvest of each
+crop is worth its net yield at the best price heard asked (market news `asking`) for the
+crop or what it makes: bread a third a wheat, a baked potato a potato. A food need asks
+for every food at its points. With nothing asked, base prices. The farmer sows the best,
+still passing over a crop beside its own kind where another will do.
+
+**A second farmer's land** (`farm_field.is_own`). Where claimed composters' fields
+overlap, each counts and tills only the cells nearer its own composter, so a second
+farmer tills outward and adds land. Harvesting, sowing and tending stay shared.
+
 ## Open questions
 
 - Pacing: hunger rate, craft time, starting stock and rent all need probe runs on

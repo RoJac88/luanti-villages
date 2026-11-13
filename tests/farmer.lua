@@ -456,6 +456,73 @@ local till = support.chest(world, {x = 2, y = 2, z = 0}, nil, {"mcl_core:emerald
 step(3)
 assert(belongings(farmer, "mcl_core:emerald") == 3 and till:get_stack("main", 1):get_name() ~= "mcl_core:emerald")
 
+-- Ticket 18. A hoe multiplies the harvest: with a stone one (×1.5), a lucky roll makes
+-- one wheat two.
+do
+	local real_random = math.random
+	math.random = function() return 0 end
+	setup({_villages_wants = {hoe = {item = "mcl_farming:hoe_stone", left = 64}}})
+	plot(1, 1, "mcl_farming:wheat")
+	step()
+	assert(pouch("mcl_farming:wheat_item") == 2 and farmer._villages_wants.hoe.left == 63)
+	-- With nothing else to do it tends a growing crop, which grows a stage; a plot tended
+	-- lately waits its turn.
+	setup({_villages_wants = {hoe = {item = "mcl_farming:hoe_iron", left = 128}}})
+	local young = plot(1, 1, "mcl_farming:wheat_2")
+	step()
+	assert(world.name(young) == "mcl_farming:wheat_3", world.name(young))
+	step(5)
+	assert(world.name(young) == "mcl_farming:wheat_3", "tended lately")
+	world.now = world.now + 121
+	step()
+	assert(world.name(young) == "mcl_farming:wheat_4")
+	-- By hand it tends too, at a lower chance: a hoe is a bonus.
+	setup()
+	young = plot(1, 1, "mcl_farming:wheat_2")
+	step()
+	assert(world.name(young) == "mcl_farming:wheat_3", "a roll of 0 grows it by hand")
+	setup()
+	young = plot(1, 1, "mcl_farming:wheat_2")
+	math.random = function() return 0.5 end
+	step()
+	assert(world.name(young) == "mcl_farming:wheat_2", "0.35 by hand: a roll of 0.5 does not")
+	setup({_villages_wants = {hoe = {item = "mcl_farming:hoe_iron", left = 128}}})
+	young = plot(1, 1, "mcl_farming:wheat_2")
+	step()
+	assert(world.name(young) == "mcl_farming:wheat_3", "0.7 with an iron hoe: it does")
+	math.random = real_random
+end
+
+-- It sows what the village asks for: wheat when bread is wanted, though it holds as many
+-- potatoes; potatoes when baked potatoes are asked for more.
+do
+	local function heard_need(item, price)
+		return {item = item, who = "keeper", kind = "needs", count = 9, price = price, heard = world.now, hops = 1}
+	end
+	setup({_villages_farm_pouch = {["mcl_farming:wheat_seeds"] = 8, ["mcl_farming:potato_item"] = 8}})
+	farmer._villages_market_news = {heard_need("mcl_farming:bread", 200)}
+	local open = plot(1, 1)
+	step()
+	assert(world.name(open) == "mcl_farming:wheat_1", world.name(open))
+	setup({_villages_farm_pouch = {["mcl_farming:wheat_seeds"] = 8, ["mcl_farming:potato_item"] = 8}})
+	farmer._villages_market_news = {heard_need("mcl_farming:bread", 200), heard_need("mcl_farming:potato_item_baked", 100)}
+	open = plot(1, 1)
+	step()
+	assert(world.name(open) == "mcl_farming:potato_1", world.name(open))
+end
+
+-- A second claimed composter nearby: it tills only its own side of the field.
+do
+	setup({_villages_farm_pouch = {["mcl_farming:wheat_seeds"] = 8}})
+	support.claim(world, {x = 6, y = 2, z = 0}, "farmer-2")
+	world.set({x = 0, y = 1, z = 2}, "mcl_core:water_source")
+	for x = 1, 5 do world.set({x = x, y = 1, z = 1}, "mcl_farming:soil_wet") world.set({x = x, y = 2, z = 1}, "mcl_farming:wheat_1") end
+	for x = 1, 5 do world.set({x = x, y = 1, z = 0}, "mcl_core:dirt") end
+	step(20)
+	assert(world.name({x = 1, y = 1, z = 0}) == "mcl_farming:soil" or world.name({x = 2, y = 1, z = 0}) == "mcl_farming:soil", "tills its side")
+	assert(world.name({x = 4, y = 1, z = 0}) == "mcl_core:dirt" and world.name({x = 5, y = 1, z = 0}) == "mcl_core:dirt", "not the other's")
+end
+
 -- Only in the work stage, and only a farmer holding its composter.
 local function untouched(label)
 	local here = plot(1, 1, "mcl_farming:wheat")
