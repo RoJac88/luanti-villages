@@ -771,4 +771,38 @@ do
 	assert(#blocked == 1)
 end
 
+-- Kelp on sand is one node, and drops off out of water: planted after the water is in, put
+-- back on the sand it left.
+do
+	local KELP, SAND, WATER = "mcl_ocean:kelp_sand", "mcl_core:sand", "mcl_core:water_source"
+	local engine = {
+		registered_nodes = {
+			[KELP] = {groups = {kelp = 1}, drop = ""}, [SAND] = {groups = {solid = 1}},
+			[WATER] = {liquidtype = "source", buildable_to = true, groups = {}},
+			["mcl_ocean:kelp"] = {groups = {}}, ["mcl_core:stone"] = {groups = {solid = 1}},
+			air = {buildable_to = true, groups = {}},
+		},
+		registered_items = {["mcl_ocean:kelp"] = {groups = {}}, [SAND] = {groups = {}}},
+		get_item_group = function() return 0 end,
+	}
+	local options = {floor_y = -1, surface_mat = SAND, custom = true}
+	local plan = template.plan({
+		{pos = {x = 0, y = 0, z = 0}, name = KELP, param2 = 32},
+		{pos = {x = 0, y = 1, z = 0}, name = WATER, param2 = 0},
+		{pos = {x = 1, y = 0, z = 0}, name = SAND, param2 = 0},
+	}, options, engine)
+	local steps = plan.steps
+	assert(steps[1].node.name == SAND and steps[2].node.name == WATER and steps[3].node.name == KELP)
+	assert(steps[3].node.param2 == 32, "its height kept")
+	assert(steps[3].cost[SAND] == 1 and steps[3].cost["mcl_ocean:kelp"] == 1)
+	local function look(found)
+		return template.compare({steps = {steps[3]}, cut_at = {}}, function() return found end, engine)
+	end
+	assert(#look(KELP) == 0)
+	-- Under water, or the sand it fell back to: to do. Stone: in the way.
+	assert(#look(WATER) == 1 and #look(SAND) == 1)
+	local missing, blocked = look("mcl_core:stone")
+	assert(#missing == 0 and #blocked == 1)
+end
+
 print("building_template: ok")

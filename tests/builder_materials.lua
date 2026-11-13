@@ -180,6 +180,12 @@ do
 			["hidden:lucky"] = {groups = {not_in_creative_inventory = 1},
 				drop = {items = {{items = {"mcl_core:cobble"}, rarity = 2}}}},
 			["hidden:to_hidden"] = {groups = {not_in_creative_inventory = 1}, drop = "hidden:lucky"},
+			["mcl_ocean:kelp_sand"] = {groups = {kelp = 1}, drop = ""},
+			["mcl_ocean:seagrass_gravel"] = {groups = {not_in_creative_inventory = 1}, drop = ""},
+			["mcl_core:sand"] = {groups = {}},
+			["mcl_core:gravel"] = {groups = {}},
+			["mcl_ocean:kelp"] = {groups = {}},
+			["mcl_ocean:seagrass"] = {groups = {}},
 		},
 	}
 	local function custom(name, item)
@@ -195,6 +201,12 @@ do
 	-- Hidden variants cost what they drop, a table of one sure thing included.
 	custom("mcl_signs:wall_sign", "mcl_signs:sign")
 	custom("mcl_composters:composter_3", "mcl_composters:composter")
+	-- Kelp or seagrass on a block: one node, paid as the block and the plant.
+	local kelp = assert(materials.custom_cost("mcl_ocean:kelp_sand", engine))
+	assert(kelp["mcl_core:sand"] == 1 and kelp["mcl_ocean:kelp"] == 1)
+	local grass = assert(materials.custom_cost("mcl_ocean:seagrass_gravel", engine))
+	assert(grass["mcl_core:gravel"] == 1 and grass["mcl_ocean:seagrass"] == 1)
+	assert(materials.cost("mcl_ocean:dried_kelp_block")["mcl_ocean:dried_kelp_block"] == 1)
 	-- Soil is the ground worked, for nothing.
 	assert(materials.is_soil("mcl_farming:soil_wet") and materials.is_soil("mcl_farming:soil"))
 	assert(not materials.is_soil("mcl_core:dirt"))
