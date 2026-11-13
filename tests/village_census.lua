@@ -162,4 +162,21 @@ do
 	assert(census.shares({buildings = {{name = "farm"}}}, old_list).farm == 1)
 end
 
+-- Within a set, the generator's ratios among just those names, counting what stands.
+do
+	local list = {
+		{name = "small_house", max_num = 0.6}, {name = "duplex", max_num = 0.2}, {name = "large_house", max_num = 0.2},
+		{name = "tavern", max_num = 0.05}, {name = "lamp", max_num = 0},
+	}
+	local houses = {small_house = true, duplex = true, large_house = true, lamp = true}
+	local record = {buildings = {{name = "small_house"}, {name = "small_house"}, {name = "tavern"}}}
+	-- With one more, 4 houses at 0.6/0.2/0.2: the duplex and large house are each 0.8 short.
+	local first = census.pick_among(record, list, houses)
+	assert(first == "duplex", first)
+	census.add_built(record, first)
+	assert(census.pick_among(record, list, houses) == "large_house")
+	assert(census.pick_among(record, list, {lamp = true}) == nil, "no share, no pick")
+	assert(census.pick_among(record, list, {church = true}) == nil)
+end
+
 print("village_census: ok")

@@ -89,33 +89,59 @@ end
 -- it, so the pick does not depend on table order and a reload picks the same. `favoured`
 -- (optional, a set of names) counts double.
 local FAVOURED_WEIGHT = M.FAVOURED_WEIGHT
-local function largest_deficit(shares, counts, total, block_totals, favoured)
+local function largest_deficit(shares, counts, total, block_totals, favoured, exclude)
 	local best, best_deficit
 	local EPSILON = 1e-9
 	for name, share in pairs(shares) do
-		if favoured and favoured[name] then share = share * FAVOURED_WEIGHT end
-		local deficit = share * (total + 1) - (counts[name] or 0)
-		local better
-		if not best or deficit > best_deficit + EPSILON then
-			better = true
-		elseif deficit > best_deficit - EPSILON then
-			local size, best_size = block_totals and block_totals[name], block_totals and block_totals[best]
-			if size and best_size and size ~= best_size then
-				better = size < best_size
-			else
-				better = name < best
+		if not (exclude and exclude[name]) then
+			if favoured and favoured[name] then share = share * FAVOURED_WEIGHT end
+			local deficit = share * (total + 1) - (counts[name] or 0)
+			local better
+			if not best or deficit > best_deficit + EPSILON then
+				better = true
+			elseif deficit > best_deficit - EPSILON then
+				local size, best_size = block_totals and block_totals[name], block_totals and block_totals[best]
+				if size and best_size and size ~= best_size then
+					better = size < best_size
+				else
+					better = name < best
+				end
 			end
+			if better then best, best_deficit = name, deficit end
 		end
-		if better then best, best_deficit = name, deficit end
 	end
 	return best
 end
 
--- The stock type to build next, or nil. `favoured`: see largest_deficit.
-function M.pick(record, schematic_table, block_totals, favoured)
+-- The stock type to build next, or nil. `favoured`: see largest_deficit. `exclude` (optional,
+-- a set of names) are passed over.
+function M.pick(record, schematic_table, block_totals, favoured, exclude)
 	local shares = M.shares(record, schematic_table)
 	if not shares then return nil end
 	local counts, total = M.current(record, schematic_table)
+	return largest_deficit(shares, counts, total, block_totals, favoured, exclude)
+end
+
+-- The one of `names` (a set) furthest short of its share, the shares being the generator's
+-- own ratios (max_num) among just those names, so a kind the village never generated with
+-- (a duplex in an old village) still gets its turn. Counts are the village as it stands.
+-- nil when none of them is listed with a share. `favoured`: see largest_deficit.
+function M.pick_among(record, schematic_table, names, block_totals, favoured)
+	local shares, sum = {}, 0
+	for _, entry in ipairs(schematic_table or {}) do
+		if names[entry.name] and counted(entry.name) and (entry.max_num or 0) > 0 then
+			shares[entry.name] = entry.max_num
+			sum = sum + entry.max_num
+		end
+	end
+	if sum <= 0 then return nil end
+	for name, share in pairs(shares) do shares[name] = share / sum end
+	local all = M.current(record, schematic_table)
+	local counts, total = {}, 0
+	for name in pairs(shares) do
+		counts[name] = all[name] or 0
+		total = total + counts[name]
+	end
 	return largest_deficit(shares, counts, total, block_totals, favoured)
 end
 

@@ -229,7 +229,7 @@ local function economy_parts(report)
 			text = list_text(report.gaps, 3, function(gap)
 				return S("@1 (@2)", pretty(gap.profession), list_text(gap.items, 2, item_label))
 			end)
-			text = text .. "\n" .. S("The next building favours the first.")
+			text = text .. "\n" .. S("A building for the first comes when nothing is more pressing.")
 		end
 		wrapped(x, y, 6.8, HEIGHT - y - 0.3, text)
 	end
@@ -296,6 +296,8 @@ function M.formspec(view)
 			S("@1 cannot be read. Using weight 1 for all until it is fixed.", catalog.MANIFEST))))
 	elseif view.notice then
 		parts[#parts + 1] = ("label[0.4,%.2f;%s]"):format(HEIGHT - 0.75, escape(view.notice))
+	elseif options.reason then
+		parts[#parts + 1] = ("label[0.4,%.2f;%s]"):format(HEIGHT - 0.75, escape(S("Next, because @1.", options.reason)))
 	end
 
 	-- A header in the table's own first row keeps it in line with its columns.
