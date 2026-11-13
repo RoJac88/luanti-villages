@@ -10,7 +10,7 @@
 -- The steps go in passes, so nothing is set before what it hangs on:
 -- 0 earthwork and clearing, 1 solid nodes bottom-up, 2 attached nodes and pairs,
 -- 3 liquids, which would run out of unfinished walls; in a player's schematic,
--- 4 soil, which dries out without its water, and 5 what grows in it; and last,
+-- 4 soil, which dries out without its water, and 5 what grows in it or under the water; and last,
 -- 6 job blocks and beds, which bring villagers in to claim them.
 local core = minetest
 local materials = dofile(core.get_modpath("living_villages") .. "/builder_materials.lua")
@@ -203,6 +203,9 @@ function M.plan(cells, options, engine)
 				pass = PASS_CLAIMED
 			elseif custom and materials.is_soil(name) then
 				pass = PASS_SOIL
+			elseif materials.planted_on(name) then
+				-- Kelp or seagrass out of water drops off its block within a second.
+				pass = PASS_ROOTED
 			elseif custom and pass == PASS_ATTACHED then
 				local below = by_pos[key({x = cell.pos.x, y = cell.pos.y - 1, z = cell.pos.z})]
 				if below and materials.is_soil(below.name) then pass = PASS_ROOTED end
@@ -274,6 +277,16 @@ end
 local function is_flowing(name, engine)
 	local def = engine.registered_nodes[name]
 	return def ~= nil and def.liquidtype == "flowing"
+end
+
+-- Ground the site search builds on (builder_site.lua counts any solid natural node a column's
+-- ground): what the floor layer may replace, sand or stone as much as grass. A placed node
+-- (is_ground_content false) is someone's work, and in the way.
+local function natural_ground(name, engine)
+	if materials.is_ground(name) then return true end
+	local def = engine.registered_nodes[name]
+	return def ~= nil and def.is_ground_content ~= false and def.walkable ~= false
+		and (def.liquidtype or "none") == "none"
 end
 
 local function matches(wanted, found)
@@ -348,8 +361,9 @@ function M.compare(plan, get_name, engine)
 			else
 				local top_found = step.top and get_name(step.top.pos)
 				if not stands(step, found, engine) then
-					local ground = materials.is_ground(found) or found == plan.surface_mat
+					local ground = found == plan.surface_mat or natural_ground(found, engine)
 					local replaceable = is_open(found, engine) or (step.on_floor and ground)
+						or found == materials.planted_on(step.node.name)
 						or (plan.cut_at[key(step.pos)] and materials.is_dirt(found))
 					if replaceable then
 						missing[#missing + 1] = step

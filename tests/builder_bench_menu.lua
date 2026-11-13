@@ -1,5 +1,6 @@
 -- Run with: lua tests/builder_bench_menu.lua
--- The bench's window, on a stand-in for builder.lua, whose options() tests/builder.lua covers.
+-- The bench's window, on a stand-in for builder.lua, whose options(), catalog_options() and
+-- orders tests/builder.lua covers.
 local WORLD = "/world"
 local BENCH_POS = {x = 0, y = 1, z = 0}
 local BENCH = "living_villages:builder_block"
@@ -75,38 +76,52 @@ io.open = function(path, mode)
 	}
 end
 
-local catalog = dofile("builder_catalog.lua")
 local menu = dofile("builder_bench_menu.lua")
 
-local source_in_use, project, options_calls = nil, nil, 0
-local directories = {[catalog.SCHEMEDIT] = WORLD .. "/schems", [catalog.FOLDER] = WORLD .. "/builder_schems"}
+local project, options_calls, catalog_calls = nil, 0, 0
 local rows = {
-	stock = {
+	default = {
 		{name = "small_house", share = 0.75, built = 3, is_next = true, size = {x = 9, y = 9, z = 8}, blocks = 204},
 		{name = "well", share = 0.25, built = 1, size = {x = 6, y = 7, z = 8}, blocks = 112},
 	},
-	schemedit = {
-		{name = "cottage", weight = 3, share = 0.75, built = 2, is_next = true, size = {x = 5, y = 4, z = 6}, blocks = 90,
+	select = {
+		{name = "cottage", built = 2, size = {x = 5, y = 4, z = 6}, blocks = 90, price = 448,
 			materials = {
 				{item = "mcl_core:cobble", count = 50}, {item = "b", count = 4}, {item = "c", count = 3},
 				{item = "d", count = 2}, {item = "e", count = 1},
 			}},
-		{name = "shed", weight = 1, share = 0.25, built = 0, size = {x = 3, y = 3, z = 3}, blocks = 20},
-		{name = "alien, one", weight = 5, share = 0, built = 0,
-			problem = {code = "unknown_nodes", nodes = {"nope:gone", "nope:also"}}},
+		{name = "shed", built = 0, size = {x = 3, y = 3, z = 3}, blocks = 20, price = 320},
+		{name = "alien, one", built = 0, problem = {code = "unknown_nodes", nodes = {"nope:gone", "nope:also"}}},
 	},
-	folder = {},
 }
-local manifest_problem
-local economy_report
+local economy_report, order, priced_for, folder_status
+local orders, refunds = {}, {}
 local builder = {
-	options = function(_, source)
+	options = function()
 		options_calls = options_calls + 1
-		return {rows = rows[source], directory = directories[source], manifest_problem = manifest_problem}
+		return {rows = rows.default, reason = "every bed is taken (4)"}
 	end,
-	source_of = function() return source_in_use end,
-	set_source = function(_, source)
-		source_in_use = source ~= "stock" and source or nil
+	catalog_options = function(_, name)
+		catalog_calls = catalog_calls + 1
+		priced_for = name
+		return {rows = rows.select, directory = WORLD .. "/schems", status = folder_status}
+	end,
+	order_of = function() return order end,
+	place_order = function(_, who, name)
+		orders[#orders + 1] = {who = who:get_player_name(), name = name}
+		if order then return false, "busy" end
+		if name == "shed" then return false, "no_emeralds" end
+		order = {name = name, player = who:get_player_name(), price = 448, state = "waiting"}
+		return true, 448
+	end,
+	refund = function(_, who)
+		refunds[#refunds + 1] = who:get_player_name()
+		if order and order.state == "failed" and order.player == who:get_player_name() then
+			local price = order.price
+			order = nil
+			return true, price
+		end
+		return false, "no_refund"
 	end,
 	load_project = function() return project end,
 	economy = function() return economy_report end,
@@ -143,177 +158,165 @@ end
 -- Other forms are not its business.
 assert(receive(player(), "other", {}) == false)
 
--- Default tab: in use, a row per building, first selected, no weights to edit.
+-- Default tab: a row per building of the mix, first selected, what is next and why; nothing to order.
 do
 	local form = last()
-	assert(has(form, "tabheader[0,0;tabs;Default,Schemedit,Project folder,Economy;1;false;false]"))
-	assert(has(form, "This bench builds from these."))
-	assert(not has(form, "button[0.4,0.15;4,0.65;use;"))
+	assert(has(form, "tabheader[0,0;tabs;Default,Select schematic,Economy;1;false;false]"))
+	assert(has(form, "The Builder builds what the village needs."))
 	assert(has(form, "Small house") and has(form, "75%") and has(form, "Well"))
 	assert(has(form, ";projects;") and form:find(";2]", 1, true), "first building selected, past the header")
 	assert(has(form, "Size: 9 by 8\\, 9 high") and has(form, "Blocks: 204") and has(form, "Next to be built"))
-	assert(not has(form, "field[") and not has(form, "Weight:"), "the stock mix has no weights")
+	assert(has(form, "Next\\, because every bed is taken (4)."))
+	assert(not has(form, "order;"))
+	-- An order button sent on this tab does nothing.
+	send({order = "x"})
+	assert(#orders == 0)
 end
 
--- A tab only looks: the source is not changed.
+-- Select schematic: the directory's schematics, priced for this player.
 do
 	send({tabs = "2"})
 	local form = last()
-	assert(source_in_use == nil)
-	assert(has(form, "tabs;Default,Schemedit,Project folder,Economy;2;"))
-	assert(has(form, "button[0.4,0.15;4,0.65;use;Build from these]"))
-	assert(has(form, "Cottage") and has(form, "Files from <world>/schems"))
-	assert(has(form, "schemedit mod is not on"), "says so, and still lists")
+	assert(has(form, ";2;false") and priced_for == "ann")
+	assert(has(form, "Cottage") and has(form, "Schematics from <world>/schems."))
+	assert(has(form, "448") and has(form, "Price"))
 	-- Only the first four materials, first lines of their descriptions.
 	assert(has(form, "50 Cobblestone") and not has(form, "Hard"))
 	assert(has(form, "0.6,0.6;mcl_core:cobble]") and has(form, "0.6,0.6;d]") and not has(form, "0.6,0.6;e]"))
-	assert(has(form, "field[") and has(form, ";weight;Weight;3]"))
+	assert(has(form, ";order;Order for 448 emeralds]"))
+	assert(not has(form, "Share:"))
 end
 
 -- Selecting reads nothing again. Row 1 is the header, and a stale row does nothing.
 do
-	local before = options_calls
+	local before = catalog_calls
 	send({projects = "CHG:3:2"})
-	assert(has(last(), ";weight;Weight;1]") and has(last(), "Shed"))
+	assert(has(last(), "Order for 320 emeralds") and has(last(), "Shed"))
 	send({projects = "CHG:1:2"})
-	assert(has(last(), ";weight;Weight;1]"), "the header is not a building")
+	assert(has(last(), "Order for 320 emeralds"), "the header is not a building")
 	send({projects = "CHG:99:1"})
-	assert(has(last(), ";weight;Weight;1]"))
 	send({projects = "INV"})
-	assert(has(last(), ";weight;Weight;1]"))
-	assert(options_calls == before)
+	assert(has(last(), "Order for 320 emeralds"))
+	assert(catalog_calls == before)
 end
 
--- A schematic that cannot be built says why, its name escaped.
+-- A schematic that cannot be built says why, its name escaped, and has no price.
 do
 	send({projects = "CHG:4:1"})
 	local form = last()
 	assert(has(form, "Alien\\, one"))
 	assert(has(form, "Uses blocks this world does not have: nope:gone\\, nope:also"))
+	assert(not has(form, "order;"))
 end
 
 -- Refresh reads again. Clicking a tab already showing does not.
 do
 	send({projects = "CHG:2:1"})
-	local before = options_calls
+	local before = catalog_calls
 	send({refresh = "Refresh"})
-	assert(options_calls == before + 1)
+	assert(catalog_calls == before + 1)
 	send({tabs = "2"})
-	assert(options_calls == before + 1)
+	assert(catalog_calls == before + 1)
 end
 
--- Setting a weight: by button or Enter, saved to the directory, and read back.
+-- Ordering: what the builder refuses is said; the order is the server's selection.
 do
-	local DIR = directories[catalog.SCHEMEDIT]
-	files[DIR .. "/cottage.mts"] = "x"
-	send({set_weight = "Set", weight = "7"})
-	assert(has(last(), "Weight saved."))
-	local manifest = minetest.parse_json(files[DIR .. "/" .. catalog.MANIFEST])
-	assert(manifest.projects.cottage.weight == 7)
-	send({key_enter_field = "weight", weight = "9"})
-	manifest = minetest.parse_json(files[DIR .. "/" .. catalog.MANIFEST])
-	assert(manifest.projects.cottage.weight == 9)
-
-	-- What it says no to.
-	send({set_weight = "Set", weight = "lots"})
-	assert(has(last(), "A weight is a number from 0 to 1000."))
-	assert(minetest.parse_json(files[DIR .. "/" .. catalog.MANIFEST]).projects.cottage.weight == 9)
-
-	-- The selected row is the server's, whatever the client says: a field cannot name a file.
-	send({set_weight = "Set", weight = "2", selected = "../../secrets", name = "shed"})
-	manifest = minetest.parse_json(files[DIR .. "/" .. catalog.MANIFEST])
-	assert(manifest.projects.cottage.weight == 2 and manifest.projects.shed == nil and manifest.projects["../../secrets"] == nil)
-
-	-- A file gone meanwhile.
-	files[DIR .. "/cottage.mts"] = nil
-	send({set_weight = "Set", weight = "4"})
-	assert(has(last(), "That schematic has gone."))
-	files[DIR .. "/cottage.mts"] = "x"
-end
-
--- Without the server privilege a weight is only shown, and a forged send changes nothing.
-do
-	local DIR = directories[catalog.SCHEMEDIT]
-	privileged = false
+	send({projects = "CHG:3:1"})
+	send({order = "Order", selected = "../../secrets", name = "cottage"})
+	assert(orders[#orders].name == "shed" and orders[#orders].who == "ann")
+	assert(has(last(), "You do not have the emeralds.") and order == nil)
+	send({projects = "CHG:2:1"})
+	send({order = "Order"})
+	assert(orders[#orders].name == "cottage")
+	local form = last()
+	assert(has(form, "Ordered for 448 emeralds."))
+	assert(has(form, "Ordered by ann: Cottage\\, to be started when the Builder is free."))
+	assert(not has(form, "order;"), "one order at a time")
+	order.state = "started"
 	send({refresh = "Refresh"})
-	assert(not has(last(), "field[") and has(last(), "Weight: 3"))
-	send({set_weight = "Set", weight = "100"})
-	assert(has(last(), "Changing a weight needs the server privilege."))
-	assert(minetest.parse_json(files[DIR .. "/" .. catalog.MANIFEST]).projects.cottage.weight == 2)
-	privileged = true
+	assert(has(last(), "The Builder is looking for a site."))
 end
 
--- Build from these: on an unprotected bench only, and the tab then reads as in use.
+-- A protected bench: only looking.
 do
+	local count = #orders
+	order = nil
 	protected = true
 	send({refresh = "Refresh"})
-	assert(not has(last(), "use;Build") and has(last(), "This bench is protected"))
-	send({use = "Build from these"})
-	assert(source_in_use == nil and has(last(), "This bench is protected"))
+	assert(not has(last(), "order;") and has(last(), "This bench is protected") and has(last(), "Price: 448 emeralds"))
+	send({order = "Order"})
+	assert(#orders == count and has(last(), "This bench is protected"))
 	protected = false
-	send({use = "Build from these"})
-	assert(source_in_use == catalog.SCHEMEDIT)
-	assert(has(last(), "This bench builds from these.") and has(last(), "A building already started"))
-	-- And back to the stock buildings.
-	send({tabs = "1"})
-	send({use = "Build from these"})
-	assert(source_in_use == nil)
-	source_in_use = catalog.SCHEMEDIT
 end
 
--- What it is doing now.
+-- No site: the player who paid sees the refund button and takes it; nobody else does.
 do
+	order = {name = "cottage", player = "ann", price = 448, state = "failed"}
+	overrides.fields.on_rightclick(BENCH_POS, nil, player("bob"), "stack")
+	send({tabs = "2"}, player("bob"))
+	assert(has(last(), "No site was found for ann's Cottage. 448 emeralds can be refunded to them."))
+	assert(not has(last(), ";refund;"))
+	send({refund = "x"}, player("bob"))
+	assert(has(last(), "There is nothing to refund to you.") and order ~= nil)
+	send({quit = "true"}, player("bob"))
+	send({refresh = "Refresh"})
+	assert(has(last(), ";refund;Take the refund]"))
+	send({refund = "x"})
+	assert(order == nil and has(last(), "448 emeralds refunded."))
+	assert(has(last(), "order;Order for"), "free to order again")
+end
+
+-- What it is doing now, on the Default tab.
+do
+	send({tabs = "1"})
 	project = {building = "small_house", state = "requires_materials"}
 	send({refresh = "Refresh"})
 	assert(has(last(), "Now: Small house\\, requires materials"))
 	project = nil
+	send({tabs = "2"})
 end
 
--- A manifest that cannot be read: the weight cannot be edited, and it says why.
+-- An empty directory says so.
 do
-	send({tabs = "2"})
-	manifest_problem = "malformed"
+	local kept = rows.select
+	rows.select = {}
+	folder_status = "empty"
 	send({refresh = "Refresh"})
-	assert(has(last(), "builder_projects.json cannot be read") and not has(last(), "field["))
-	manifest_problem = nil
-end
-
--- The project folder is made when looked at, and an empty one says so.
-do
-	dirs = {}
-	send({tabs = "3"})
-	assert(dirs[1] == WORLD .. "/builder_schems")
-	assert(has(last(), "Nothing here yet.") and has(last(), "Files from <world>/builder_schems"))
-	assert(not has(last(), "field["))
-end
-
--- schemedit on, no note about it.
-do
-	minetest.schemedit_on = true
-	send({tabs = "2"})
-	assert(not has(last(), "not on") and has(last(), "Put a .mts file there"))
-	minetest.schemedit_on = nil
+	assert(has(last(), "Nothing here yet."))
+	assert(has(last(), "No .mts files in <world>/schems yet\\, or it cannot be read."))
+	folder_status = "no_directory"
+	send({refresh = "Refresh"})
+	assert(has(last(), "<world>/schems is missing and could not be made."))
+	rows.select = kept
+	folder_status = "none_buildable"
+	send({refresh = "Refresh"})
+	assert(has(last(), "None of these can be built."))
+	-- A notice of what was just done goes first.
+	send({order = "Order"})
+	assert(not has(last(), "None of these can be built."))
+	order, folder_status = nil, nil
+	send({refresh = "Refresh"})
 end
 
 -- A selection that has left the directory falls to the first row.
 do
 	send({projects = "CHG:3:1"})
-	local kept = rows.schemedit
-	rows.schemedit = {kept[1]}
+	local kept = rows.select
+	rows.select = {kept[1]}
 	send({refresh = "Refresh"})
 	assert(has(last(), "Cottage") and not has(last(), "Shed"))
-	rows.schemedit = kept
+	rows.select = kept
 end
 
 -- A picture: sent on selection, shown on arrival, in place of the materials and in its shape.
 do
-	local DIR = directories[catalog.SCHEMEDIT]
+	local DIR = WORLD .. "/schems"
 	local PNG = "\137PNG\r\n\26\n\0\0\0\13IHDR\0\0\1\144\0\0\0\200"
 	files[DIR .. "/cottage.png"] = PNG
 	-- Off the cottage before it has a picture, so that nothing goes out yet.
 	send({refresh = "Refresh"})
 	send({projects = "CHG:3:1"})
-	local with_image = rows.schemedit[1]
+	local with_image = rows.select[1]
 	with_image.image = "cottage.png"
 	media = {}
 	send({projects = "CHG:3:1"})
@@ -385,18 +388,20 @@ end
 
 -- Too far, or the bench gone: the window closes and nothing is done.
 do
-	local before = closed
-	source_in_use = nil
-	send({use = "Build from these"}, player("ann", {x = 50, y = 1, z = 0}))
-	assert(closed == before + 1 and source_in_use == nil)
-	local count = #shown
-	send({use = "Build from these"})
-	assert(#shown == count and source_in_use == nil, "that window is forgotten")
+	click()
+	send({tabs = "2"})
+	local before, count = closed, #orders
+	send({order = "Order"}, player("ann", {x = 50, y = 1, z = 0}))
+	assert(closed == before + 1 and #orders == count)
+	local shown_count = #shown
+	send({order = "Order"})
+	assert(#shown == shown_count and #orders == count, "that window is forgotten")
 
 	click()
+	send({tabs = "2"})
 	bench_there = false
-	send({use = "Build from these"})
-	assert(closed == before + 2 and source_in_use == nil)
+	send({order = "Order"})
+	assert(closed == before + 2 and #orders == count)
 	bench_there = true
 end
 
@@ -440,9 +445,9 @@ do
 		today = {made = {{item = "mcl_core:cobble", count = 4}}, used = {}},
 		yesterday = {made = {}, used = {}},
 	}
-	send({tabs = "4"})
+	send({tabs = "3"})
 	local form = last()
-	assert(has(form, "Project folder,Economy;4;"))
+	assert(has(form, "Select schematic,Economy;3;"))
 	assert(has(form, "Heard by the Builder") and has(form, "Seen around the bench"))
 	assert(has(form, "item_image[") and has(form, "12 Cobblestone\\, 2 villagers"), form)
 	assert(has(form, "No glut heard of."))
@@ -450,7 +455,7 @@ do
 	assert(has(form, "Builder 1\\, Farmer 2\\, Weapon smith 1"))
 	assert(has(form, "Nitwit nit123: forager\\, Unemployed une: nothing to do"))
 	assert(has(form, "Made: 4 Cobblestone") and has(form, "Used: nothing"))
-	assert(not has(form, "Build from these") and options_calls == calls, "only looks")
+	assert(not has(form, "order;") and options_calls == calls, "only looks")
 	-- Refresh reads it again.
 	economy_report.gluts = {{item = "mcl_core:cobble", count = 40, villagers = 1, worth = 5}}
 	send({refresh = "Refresh"})
@@ -463,7 +468,7 @@ do
 	economy_report = nil
 	send({refresh = "Refresh"})
 	assert(has(last(), "economy is off"))
-	-- Back to the source it was on.
+	-- Back to the Default tab.
 	send({tabs = "1"})
 	assert(has(last(), ";1;false") and has(last(), "Small house"))
 end

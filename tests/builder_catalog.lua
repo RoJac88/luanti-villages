@@ -83,19 +83,8 @@ local function near(a, b)
 	return math.abs(a - b) < 1e-9
 end
 
--- Where each source reads from, and the setting cannot climb out of the world.
-assert(catalog.directory(catalog.SCHEMEDIT) == WORLD .. "/schems")
-assert(catalog.directory(catalog.FOLDER) == WORLD .. "/builder_schems")
-assert(catalog.directory("stock") == nil and catalog.directory(nil) == nil)
-settings.living_villages_builder_schem_dir = "packs/castles"
-assert(catalog.directory(catalog.FOLDER) == WORLD .. "/packs/castles")
-for _, bad in ipairs({"../other", "a/../..", "/etc", "a//b", "a/", "a\\b", ".", "..", "a b"}) do
-	settings.living_villages_builder_schem_dir = bad
-	assert(not catalog.valid_folder(bad), bad)
-	assert(catalog.directory(catalog.FOLDER) == WORLD .. "/builder_schems", bad)
-end
-assert(logged[#logged][1] == "warning")
-settings.living_villages_builder_schem_dir = nil
+-- Where the schematics come from: where schemedit exports.
+assert(catalog.directory() == WORLD .. "/schems")
 
 local DIR = WORLD .. "/schems"
 
@@ -202,34 +191,22 @@ end
 
 minetest.registered_items = nil
 
--- A scan: weights from the manifest, shares over what can be built.
+-- A scan: a row per file, with what can and cannot be built.
 add(DIR, "cottage", solid(3, 2, 3))
 add(DIR, "tower", solid(2, 3, 2))
 add(DIR, "shed", solid(2, 2, 2))
 add(DIR, "broken", solid(2, 2, 2, "nope:gone"))
-add(DIR, "banned", solid(1, 2, 1))
 files[DIR .. "/garbage.mts"] = "garbage"
 files[DIR .. "/throwing.mts"] = "throwing"
 schematics.throwing = "throws"
-files[DIR .. "/" .. catalog.MANIFEST] = minetest.write_json({version = 1, projects = {
-	cottage = {weight = 3}, tower = {weight = 2}, banned = {weight = 0},
-	broken = {weight = 50}, removed = {weight = 9},
-}})
 do
-	local result = catalog.scan(catalog.SCHEMEDIT)
-	assert(result.directory == DIR and result.manifest_problem == nil)
-	assert(#result.entries == 7)
-	assert(result.entries[1].name == "banned" and result.entries[7].name == "tower")
-	local cottage, tower, shed = entry_of(result, "cottage"), entry_of(result, "tower"), entry_of(result, "shed")
-	assert(cottage.weight == 3 and near(cottage.share, 0.5))
-	assert(tower.weight == 2 and near(tower.share, 2 / 6))
-	assert(shed.weight == catalog.DEFAULT_WEIGHT and near(shed.share, 1 / 6))
-	assert(cottage.measured.blocks == 18 and cottage.hash == "sha:" .. DIR .. "/cottage")
-	-- Weight 0 keeps its row with no share; what cannot be built keeps its weight, without a share.
-	local banned = entry_of(result, "banned")
-	assert(banned.weight == 0 and banned.share == 0 and banned.problem == nil)
-	local broken = entry_of(result, "broken")
-	assert(broken.weight == 50 and broken.share == 0 and broken.problem.code == "unknown_nodes")
+	local result = catalog.scan()
+	assert(result.directory == DIR)
+	assert(#result.entries == 6)
+	assert(result.entries[1].name == "broken" and result.entries[6].name == "tower")
+	local cottage = entry_of(result, "cottage")
+	assert(cottage.measured.blocks == 18 and cottage.hash == "sha:" .. DIR .. "/cottage" and cottage.problem == nil)
+	assert(entry_of(result, "broken").problem.code == "unknown_nodes")
 	-- Junk is a row saying so, not an error.
 	assert(entry_of(result, "garbage").problem.code == "unreadable")
 	assert(entry_of(result, "throwing").problem.code == "unreadable")
@@ -238,9 +215,9 @@ end
 -- The reach setting decides, on the same measurement.
 do
 	add(DIR, "wide", solid(31, 2, 31))
-	assert(entry_of(catalog.scan(catalog.SCHEMEDIT), "wide").problem.code == "out_of_reach")
+	assert(entry_of(catalog.scan(), "wide").problem.code == "out_of_reach")
 	settings.living_villages_builder_reach = "18"
-	assert(entry_of(catalog.scan(catalog.SCHEMEDIT), "wide").problem == nil)
+	assert(entry_of(catalog.scan(), "wide").problem == nil)
 	settings.living_villages_builder_reach = nil
 	files[DIR .. "/wide.mts"] = nil
 end
@@ -254,13 +231,13 @@ do
 		return real(path)
 	end
 	add(DIR, "edited", solid(2, 2, 2))
-	catalog.scan(catalog.SCHEMEDIT)
+	catalog.scan()
 	local after_first = reads
-	catalog.scan(catalog.SCHEMEDIT)
+	catalog.scan()
 	assert(reads == after_first, "nothing is parsed twice, the files that failed included")
 	files[DIR .. "/edited.mts"] = "edited, version two"
 	schematics["edited, version two"] = solid(3, 3, 3)
-	assert(entry_of(catalog.scan(catalog.SCHEMEDIT), "edited").measured.blocks == 27)
+	assert(entry_of(catalog.scan(), "edited").measured.blocks == 27)
 	minetest.read_schematic = real
 	files[DIR .. "/edited.mts"] = nil
 end
@@ -268,20 +245,8 @@ end
 -- A file over the limit is not read at all.
 do
 	files[DIR .. "/huge.mts"] = string.rep("x", catalog.MAX_FILE_BYTES + 1)
-	assert(entry_of(catalog.scan(catalog.SCHEMEDIT), "huge").problem.code == "file_too_big")
+	assert(entry_of(catalog.scan(), "huge").problem.code == "file_too_big")
 	files[DIR .. "/huge.mts"] = nil
-end
-
--- Bad weights in a manifest read as the default.
-do
-	local manifest = {projects = {
-		cottage = {weight = -1}, tower = {weight = "lots"}, shed = {weight = 1e9}, banned = "three",
-	}}
-	files[DIR .. "/" .. catalog.MANIFEST] = minetest.write_json(manifest)
-	local result = catalog.scan(catalog.SCHEMEDIT)
-	for _, name in ipairs({"cottage", "tower", "shed", "banned"}) do
-		assert(entry_of(result, name).weight == catalog.DEFAULT_WEIGHT, name)
-	end
 end
 
 -- A picture beside a schematic, whatever the case of its suffix. PNG beats JPEG.
@@ -289,7 +254,7 @@ do
 	files[DIR .. "/cottage.jpeg"], files[DIR .. "/cottage.PNG"] = "x", "x"
 	files[DIR .. "/tower.JPG"] = "x"
 	files[DIR .. "/stray.png"], files[DIR .. "/shed.txt"] = "x", "x"
-	local result = catalog.scan(catalog.SCHEMEDIT)
+	local result = catalog.scan()
 	assert(entry_of(result, "cottage").image == "cottage.PNG")
 	assert(entry_of(result, "tower").image == "tower.JPG")
 	assert(entry_of(result, "shed").image == nil and entry_of(result, "stray") == nil)
@@ -297,71 +262,23 @@ do
 	files[DIR .. "/stray.png"], files[DIR .. "/shed.txt"] = nil, nil
 end
 
--- All weights 0: nothing to pick, and nothing divided by zero.
+-- A directory with nothing in it, or none at all: made, and said so.
 do
-	local projects = {}
-	for _, name in ipairs(catalog.list(DIR)) do projects[name] = {weight = 0} end
-	files[DIR .. "/" .. catalog.MANIFEST] = minetest.write_json({projects = projects})
-	for _, entry in ipairs(catalog.scan(catalog.SCHEMEDIT).entries) do assert(entry.share == 0) end
-end
-
--- No manifest at all, and a directory with nothing in it.
-do
-	files[DIR .. "/" .. catalog.MANIFEST] = nil
-	assert(near(entry_of(catalog.scan(catalog.SCHEMEDIT), "cottage").share, 1 / 4))
-	local empty = catalog.scan(catalog.FOLDER)
-	assert(#empty.entries == 0 and empty.manifest_problem == nil)
-	assert(catalog.scan("stock") == nil)
-end
-
--- Clean weights.
-assert(catalog.clean_weight("3") == 3 and catalog.clean_weight(0) == 0 and catalog.clean_weight(0.5) == 0.5)
-for _, bad in ipairs({-1, 1001, "many", 0 / 0, 1 / 0}) do assert(catalog.clean_weight(bad) == nil) end
-assert(catalog.clean_weight(nil) == nil)
-
--- Setting a weight creates the manifest, then keeps what else is in it.
-do
-	assert(catalog.set_weight(DIR, "cottage", "4"))
-	local path = DIR .. "/" .. catalog.MANIFEST
-	assert(entry_of(catalog.scan(catalog.SCHEMEDIT), "cottage").weight == 4)
-	local manifest = minetest.parse_json(files[path])
-	manifest.note = "mine"
-	manifest.projects.cottage.replace_materials = true
-	files[path] = minetest.write_json(manifest)
-	assert(catalog.set_weight(DIR, "cottage", 7))
-	assert(catalog.set_weight(DIR, "tower", 0))
-	manifest = minetest.parse_json(files[path])
-	assert(manifest.note == "mine" and manifest.projects.cottage.replace_materials == true)
-	assert(manifest.projects.cottage.weight == 7 and manifest.projects.tower.weight == 0)
-end
-
--- What it refuses, leaving the file alone.
-do
-	local path = DIR .. "/" .. catalog.MANIFEST
-	local before = files[path]
-	local ok, why = catalog.set_weight(DIR, "cottage", "lots")
-	assert(ok == false and why == "bad_weight")
-	ok, why = catalog.set_weight(DIR, "../../secrets", 1)
-	assert(ok == false and why == "no_file")
-	assert(files[path] == before)
-	write_ok = false
-	ok, why = catalog.set_weight(DIR, "cottage", 2)
-	assert(ok == false and why == "write_failed")
-	write_ok = true
-end
-
--- A manifest that cannot be read is reported, read as defaults and never written over.
-for _, broken in ipairs({"{ not json", "number", "projects_not_table"}) do
-	local path = DIR .. "/" .. catalog.MANIFEST
-	stored.number = 5
-	stored.projects_not_table = {projects = "nope"}
-	files[path] = broken
-	local result = catalog.scan(catalog.SCHEMEDIT)
-	assert(result.manifest_problem == "malformed", broken)
-	assert(entry_of(result, "cottage").weight == catalog.DEFAULT_WEIGHT)
-	local ok, why = catalog.set_weight(DIR, "cottage", 5)
-	assert(ok == false and why == "malformed", broken)
-	assert(files[path] == broken)
+	local made = {}
+	local mkdir_ok = true
+	minetest.mkdir = function(path) made[#made + 1] = path return mkdir_ok end
+	assert(catalog.scan().status == nil, "something to order")
+	assert(made[1] == DIR)
+	files = {}
+	local result = catalog.scan()
+	assert(#result.entries == 0 and result.status == "empty")
+	mkdir_ok = false
+	result = catalog.scan()
+	assert(#result.entries == 0 and result.status == "no_directory")
+	mkdir_ok = true
+	add(DIR, "broken", solid(2, 2, 2, "nope:gone"))
+	assert(catalog.scan().status == "none_buildable")
+	minetest.mkdir = nil
 end
 
 print("builder_catalog: ok")

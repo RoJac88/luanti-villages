@@ -402,8 +402,14 @@ local function watch(area, record, emit, done, blocks)
 	for _, bench in ipairs(benches) do
 		if core.settings:get_bool("lv_probe_builder_platform", false) then make_platform(bench) end
 		if custom then
+			-- As if a player had ordered it at the bench (builder.lua's orders), unpaid.
+			local name = (given_schematic() or CABIN .. ".mts"):gsub("%.mts$", "")
+			local hash = assert(catalog.take_snapshot(catalog.directory(), name))
 			core.get_meta(bench):set_string("villages_project", "")
-			roles.set_source(bench, catalog.SCHEMEDIT)
+			core.get_meta(bench):set_string("villages_order", core.serialize({
+				name = name, schem = hash, seed = math.random(0, 2147483647), player = "lv_probe", price = 0,
+				state = "waiting",
+			}))
 		else
 			core.get_meta(bench):set_string("villages_project",
 				core.serialize({state = "finding_site", building = core.settings:get("lv_probe_builder_building") or DEFAULT_BUILDING}))
@@ -432,7 +438,7 @@ local function watch(area, record, emit, done, blocks)
 			record.benches[#record.benches + 1] = outcome
 		end
 		-- The bench's window, as far as a server can tell: it took the right-click, and each
-		-- source reads and renders. Whether the form looks right takes a client.
+		-- tab reads and renders. Whether the form looks right takes a client.
 		local menu = dofile(path .. "/builder_bench_menu.lua")
 		local bench_def = core.registered_nodes[BENCH]
 		record.bench_menu = {rightclick = bench_def and bench_def.on_rightclick ~= nil, sources = {}}
@@ -443,17 +449,18 @@ local function watch(area, record, emit, done, blocks)
 			picture:close()
 			record.bench_menu.picture = {kind = kind, width = width, height = height}
 		end
-		for _, source in ipairs({menu.STOCK, catalog.SCHEMEDIT, catalog.FOLDER}) do
+		for _, view in ipairs({menu.DEFAULT, menu.SELECT}) do
 			if benches[1] then
-				local options = roles.options(benches[1], source)
-				local shown = {name = source, rows = #options.rows}
+				local options = view == menu.SELECT and roles.catalog_options(benches[1], "lv_probe")
+					or roles.options(benches[1])
+				local shown = {name = view, rows = #options.rows}
 				if options.rows[1] then
 					shown.image = options.rows[1].image
 					shown.materials = options.rows[1].materials and #options.rows[1].materials
 				end
 				shown.form_bytes = #menu.formspec({
-					source = source, in_use = source, options = options,
-					selected = options.rows[1] and options.rows[1].name, place = "<world>", can_use = true, can_edit = true,
+					view = view, options = options,
+					selected = options.rows[1] and options.rows[1].name, place = "<world>", can_use = true,
 				})
 				record.bench_menu.sources[#record.bench_menu.sources + 1] = shown
 			end

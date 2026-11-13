@@ -285,8 +285,8 @@ the template once it is done, and `after` is the project it moved on to.
 Settings change the run, through `LV_PROBE_CONF_EXTRA`: `lv_probe_builder_building = church` picks the building,
 `lv_probe_builder_platform = true` first flattens ground beside the bench, for a building too big for what is there (seed 2001 has no
 site for a church), `lv_probe_builder_earthwork = true` makes a dirt bump and a dip on the chosen site, for the Builder to level first,
-with `filled` then what stands in the dip, `lv_probe_builder_schematic = true` sets each bench to `<world>/schems` holding a test
-schematic with job blocks, a bamboo door, a void, cells of chance and flowing water, with `void_holds` then the marker put in the void
+with `filled` then what stands in the dip, `lv_probe_builder_schematic = true` gives each bench an order (as a player's, unpaid) for a test
+schematic in `<world>/schems` with job blocks, a bamboo door, a void, cells of chance and flowing water, with `void_holds` then the marker put in the void
 once building began (`mcl_core:goldblock` if it was left alone), and `lv_probe_builder_build_seconds` shortens the wait.
 `LV_PROBE_SCHEMATIC=<file.mts>`, with `lv_probe_builder_schematic = true`, puts that file (and its `.png`, if beside it) in
 `<world>/schems` in place of the test schematic. `scaffold` gives the columns the Builder climbed, its highest level, the seconds

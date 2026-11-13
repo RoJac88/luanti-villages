@@ -131,18 +131,18 @@ loaded again. Watch `debug.txt` for `was away` and `while away`.
 - Chests are empty and open, and a double chest is a double chest.
 - Profession blocks are left out. Put a stonecutter or a lectern where one belongs, and an unemployed villager
   takes it. The church has no pulpit until you place one.
-- Its next building keeps the village's mix: `village_census.lua` counts what it built.
+- Its next building answers what the village needs (`builder_needs.lua`), or with nothing pressing keeps the village's mix (`village_census.lua` counts what it built).
 
 ## The bench's menu
 
 Right-click a bench. What the tests cannot show is how the window looks in a real client.
 
 1. **Layout:** the three tabs, the table's columns lining up with its header row, nothing overlapping the panel on the right, and a long schematic name or problem text staying inside its area.
-2. **Default tab:** one row per stock building, with shares, no weights and `>` on the next. **Build from these** is replaced by a green line while the tab is in use.
-3. **Schemedit tab:** export something with a Schematic Creator, press **Refresh** and it is listed. Select it: size, blocks and most-used materials show.
-4. **A schematic it cannot use:** one holding a portal node is marked `x` in red, and says which node.
-5. **Weights:** set one and press **Set**, or Enter in the field. The window stays open, the shares change and `<world>/schems/builder_projects.json` has it. Try `lots`: it says what a weight is and changes nothing.
-6. **Project folder tab:** opening it creates `<world>/builder_schems`.
-7. **Build from these:** with a project waiting for materials, it drops that project and picks from the new source. With one being built, that one is finished first.
+2. **Default tab:** one row per stock building, with shares and `>` on the next, and at the bottom why it is next.
+3. **Select schematic tab:** export something with a Schematic Creator, press **Refresh** and it is listed with its price. Select it: size, blocks, most-used materials and an **Order for N emeralds** button show.
+4. **A schematic it cannot use:** one holding a portal node is marked `x` in red, says which node, and has no price or button.
+5. **Price:** trade with the Builder until it likes you (or hit it): the price goes down (or up). A bigger schematic costs more.
+6. **Ordering:** without the emeralds it says so and takes nothing. With them, the emeralds go, the top line says who ordered what, and the button is gone until the order is done. With a project waiting for materials, the Builder drops it for the order; with one being built, it finishes that first.
+7. **No site:** order something too big for the ground about the village. The Builder goes back to what it was doing, the tab says no site was found, and only the player who paid sees **Take the refund**, which gives the emeralds back.
 8. **Pictures:** put `cottage.png` next to `cottage.mts`, press **Refresh** and select it. The picture appears in the side panel in place of the materials, in its own shape, with nothing overlapping. Replace the file and press **Refresh**: the new one shows. A text file renamed `cottage.png` leaves the materials showing.
-9. **Permissions:** without `server` the weight is a label. On a bench protected against you, tabs still work, but there is no button.
+9. **Permissions:** on a bench protected against you, tabs still work and prices show, but there is no Order button.

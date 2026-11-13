@@ -141,8 +141,36 @@ function M.identity(name)
 	return base_item(name)
 end
 
+-- Kelp and seagrass are no blocks of their own: placed under water, either turns the block it
+-- is placed on into one node of both (mcl_ocean:kelp_sand), which no one holds and digging does
+-- not drop. It costs the block and the plant. A kelp taller than one costs the one kelp still.
+local PLANTED_ON = {dirt = "mcl_core:dirt", sand = "mcl_core:sand", redsand = "mcl_core:redsand",
+	gravel = "mcl_core:gravel"}
+
+-- The plant and the block it grows from, or nil for any other node.
+local function planted_parts(name)
+	local plant, surface = name:match("^mcl_ocean:(%a+)_(%a+)$")
+	if (plant == "kelp" or plant == "seagrass") and PLANTED_ON[surface] then
+		return "mcl_ocean:" .. plant, PLANTED_ON[surface]
+	end
+end
+
+-- The block a water plant grows from, or nil. Out of water the plant drops off and leaves
+-- that block, so a Builder plants after the water is in, and puts the plant back on the block.
+function M.planted_on(name)
+	local _, surface = planted_parts(name)
+	return surface
+end
+
+local function planted(name)
+	local plant, surface = planted_parts(name)
+	if plant then return {[surface] = 1, [plant] = 1} end
+end
+
 local function items_for(name)
 	if LIQUIDS[name] then return {[LIQUIDS[name]] = 1} end
+	local plant = planted(name)
+	if plant then return plant end
 	local crop = crop_of(name)
 	if crop then return {[CROPS[crop]] = 1} end
 	local flower = name:match("^mcl_flowerpots:flower_pot_(.+)$")

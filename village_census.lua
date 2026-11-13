@@ -11,8 +11,7 @@
 -- building that holds the jobsite of the village's worst gap (economy_report.lua,
 -- `favoured`) counts double, its share doubled in the deficit, so a village short of what
 -- a missing profession makes gets that profession's building sooner without losing its
--- mix. The bench menu's choice of a schematic source overrides this as it overrides the
--- stock mix: pick_custom has no weight.
+-- mix. A player's order (builder.lua) is built instead, and is no part of the mix.
 local M = {FAVOURED_WEIGHT = 2}
 
 M.BUILDER_HOUSE = "builder_house"
@@ -145,23 +144,14 @@ function M.pick_among(record, schematic_table, names, block_totals, favoured)
 	return largest_deficit(shares, counts, total, block_totals, favoured)
 end
 
--- What a village has built from a source of schematics, name -> count.
-function M.custom_counts(record, source)
-	return record and record.built_custom and record.built_custom[source] or {}
-end
-
--- The schematic to build next from `weights` (name -> weight above 0), or nil. Only what was
--- built from these counts: against a whole village, with its stock buildings, the mix would
--- come out right only after dozens of the heaviest in a row.
-function M.pick_custom(weights, counts, block_totals)
-	local sum, total, shares = 0, 0, {}
-	for _, weight in pairs(weights) do sum = sum + weight end
-	if sum <= 0 then return nil end
-	for name, weight in pairs(weights) do
-		shares[name] = weight / sum
-		total = total + (counts[name] or 0)
+-- What a village has built from players' schematics, name -> count, over every source it was
+-- recorded under (orders now; the weighted directories before them).
+function M.custom_counts(record)
+	local counts = {}
+	for _, built in pairs(record and record.built_custom or {}) do
+		for name, count in pairs(built) do counts[name] = (counts[name] or 0) + count end
 	end
-	return largest_deficit(shares, counts, total, block_totals)
+	return counts
 end
 
 -- Kept apart from `built`, so that the stock mix is the same whatever a bench has done, and a

@@ -106,7 +106,7 @@ ordinary stairs and wooden doors. Iron doors still block them.
   furniture is added to VoxeLibre's own tavern layout instead. Taverns that already exist
   aren't refurnished.
 - **Builders:** an unemployed adult that claims a free Builder's bench adds buildings to its
-  village, keeping the mix it generated with. New villages have a Builder's house with a bench and a
+  village. New villages have a Builder's house with a bench and a
   double chest, and the bench can be crafted for an older village. Right-click a Builder to see what
   it is doing and exactly which materials it lacks. Put them in a chest within 32 nodes of the bench,
   or buy the awkward ones (buckets of water or lava, flowers, sea lanterns, a bell) from the window for
@@ -114,13 +114,20 @@ ordinary stairs and wooden doors. Iron doors still block them.
   broken and 12 placed, and waits if there is none until you clear one. Blocks more than 5 above the floor
   (`living_villages_builder_scaffold_height`) it lays from scaffolding: its own, free, put up next to the
   work and taken down after.
-  - Right-click its bench to choose what it builds from: the stock buildings, the schematics you exported
-    with [schemedit](https://codeberg.org/Wuzzy/minetest_schemedit) (`<world>/schems`), or a project folder
-    (`<world>/builder_schems`, or the `living_villages_builder_schem_dir` setting; it must be inside the world).
-    Each directory's `builder_projects.json` holds a weight per building, editable in the window with the
-    `server` privilege: the village is built towards those shares. A schematic's node and slice probabilities
-    and voids are honoured, and job blocks in it are built, unlike in stock buildings. Put `<name>.png` or
-    `.jpg` next to `<name>.mts` for a picture in the window, up to 2 MiB; without one it lists the main materials.
+  - By itself it builds what the village needs: houses when every bed is taken, a greenhouse when the
+    village goes hungry, a tavern, bell or church near houses too far from one, a workplace for the
+    unemployed, and otherwise the mix the village generated with. Right-click its bench to see what is
+    next and why.
+  - Or order a building on the bench's **Select schematic** tab, from the schematics you exported with
+    [schemedit](https://codeberg.org/Wuzzy/minetest_schemedit) (`<world>/schems`, made for you if it is
+    missing; the tab says when it is empty or none of its files can be built). An order costs emeralds,
+    more for a bigger building, less if the Builder likes you (and more if it doesn't). The Builder takes it
+    up in place of anything it has not started yet. If it finds no site, it goes back to what it was doing
+    and you can take your emeralds back from the same tab. The materials still have to be supplied as usual.
+    Kelp and seagrass cost the block they grow from plus the plant, and go in after the water.
+    A schematic's node and slice probabilities and voids are honoured, and job blocks in it are built, unlike
+    in stock buildings. Put `<name>.png` or `.jpg` next to `<name>.mts` for a picture in the window, up to
+    2 MiB; without one it lists the main materials.
     The window says why a schematic cannot be used, such as blocks this world lacks. A schematic can be up to 32
     layers high, ground layer included. Its width is what limits it: the Builder works from the outside, so the
     middle of each layer must be within its reach (`living_villages_builder_reach`, 15: about 25 across).
