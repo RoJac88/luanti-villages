@@ -36,7 +36,7 @@ local function villager(id, held, fields)
 end
 local function count(v, item) return possessions.count(v, item) end
 
--- A hungry villager with emeralds buys bread a fed one has spare, at the midpoint, in
+-- A hungry villager with emeralds buys bread a fed one has spare, at the baker's ask, in
 -- whole emeralds; the goods pass belongings to belongings.
 local baker = villager("baker", {["mcl_farming:bread"] = 20})
 -- Five vanilla emeralds, at the economy's scale (ticket 11h).
@@ -67,37 +67,51 @@ assert(made[1].seller == collier and made[1].item == "mcl_core:coal_lump" and ma
 assert(count(smith, "mcl_core:coal_lump") == made[1].count and count(collier, "mcl_farming:bread") == made[1].goods_count)
 assert(made[1].goods_count >= 1 and logs[#logs]:find("for %d+ mcl_farming:bread"))
 
--- Synthetic views pin the rule down.
+-- Synthetic views pin the rule down: the seller asks paper's base price (asks.lua), and a
+-- buyer valuing paper at least that pays it, whatever the seller's own value.
 local function view(needs, surplus, values)
 	return {needs = needs, surplus = surplus, value = function(item) return values[item] end}
 end
+local ledger = dofile("ledger.lua")
+local asks = dofile("asks.lua")
+local PAPER = ledger.price("mcl_core:paper")
 local s = villager("s", {["mcl_core:paper"] = 30})
-local b = villager("b", {["mcl_core:emerald"] = 3})
--- The buyer values it above the seller: a sale at the midpoint, 10 x 0.1 = 1 emerald.
-local offer = exchange.offer(s, view({}, {["mcl_core:paper"] = 30}, {["mcl_core:paper"] = 0.05}),
-	b, view({["mcl_core:paper"] = 10}, {}, {["mcl_core:paper"] = 0.15}))
-assert(offer and offer.count == 10 and offer.pay == 1)
--- The buyer values it no higher than the seller: nothing.
-assert(not exchange.offer(s, view({}, {["mcl_core:paper"] = 30}, {["mcl_core:paper"] = 0.15}),
-	b, view({["mcl_core:paper"] = 10}, {}, {["mcl_core:paper"] = 0.15})))
--- A small need grows to the fewest that make an emerald, if the seller has them spare.
-offer = exchange.offer(s, view({}, {["mcl_core:paper"] = 30}, {["mcl_core:paper"] = 0.05}),
-	b, view({["mcl_core:paper"] = 1}, {}, {["mcl_core:paper"] = 0.15}))
-assert(offer and offer.count == 10 and offer.pay == 1, "10 x 0.1 makes an emerald")
--- But not when paying a whole emerald for it would lose the buyer value.
-assert(not exchange.offer(s, view({}, {["mcl_core:paper"] = 3}, {["mcl_core:paper"] = 0.05}),
-	b, view({["mcl_core:paper"] = 1}, {}, {["mcl_core:paper"] = 0.15})))
+local b = villager("b", {["mcl_core:emerald"] = 30})
+local function seller_view(value) return view({}, {["mcl_core:paper"] = 30}, {["mcl_core:paper"] = value}) end
+local offer = exchange.offer(s, seller_view(0.05), b, view({["mcl_core:paper"] = 10}, {}, {["mcl_core:paper"] = PAPER + 1}))
+assert(offer and offer.count == 10 and offer.pay == math.floor(10 * PAPER + 0.5), offer and offer.pay)
+-- The seller's own value does not move the price.
+local dear = exchange.offer(s, seller_view(PAPER * 5), b, view({["mcl_core:paper"] = 10}, {}, {["mcl_core:paper"] = PAPER + 1}))
+assert(dear and dear.pay == offer.pay)
+-- A buyer valuing it under the ask: nothing.
+assert(not exchange.offer(s, seller_view(0.05), b, view({["mcl_core:paper"] = 10}, {}, {["mcl_core:paper"] = PAPER - 0.1})))
+-- One short of emeralds buys as many as it can pay for.
+local short = villager("short", {["mcl_core:emerald"] = 8})
+offer = exchange.offer(s, seller_view(0.05), short, view({["mcl_core:paper"] = 10}, {}, {["mcl_core:paper"] = PAPER + 1}))
+assert(offer and offer.count == math.floor(8 / PAPER), offer and offer.count)
+-- But not when the whole emeralds paid would cost the buyer more than it values the goods.
+assert(not exchange.offer(s, seller_view(0.05), b, view({["mcl_core:paper"] = 1}, {}, {["mcl_core:paper"] = PAPER + 0.01})))
+-- A higher ask, after sales, is what the buyer pays.
+asks.sold(s, "mcl_core:paper", 1)
+offer = exchange.offer(s, seller_view(0.05), b, view({["mcl_core:paper"] = 10}, {}, {["mcl_core:paper"] = PAPER * 2}))
+assert(offer.pay == math.floor(10 * PAPER * asks.MARKUP + 0.5))
+s._villages_asks, s._villages_ask_sold = nil, nil
 -- Surplus it does not carry (in its stash) is not at hand.
 local stash_only = villager("t", {})
-assert(not exchange.offer(stash_only, view({}, {["mcl_core:paper"] = 30}, {["mcl_core:paper"] = 0.05}),
-	b, view({["mcl_core:paper"] = 10}, {}, {["mcl_core:paper"] = 0.15})))
+assert(not exchange.offer(stash_only, seller_view(0.05), b, view({["mcl_core:paper"] = 10}, {}, {["mcl_core:paper"] = PAPER + 1})))
 -- Emeralds are never goods.
 assert(not exchange.offer(villager("u", {["mcl_core:emerald"] = 9}), view({}, {["mcl_core:emerald"] = 9}, {["mcl_core:emerald"] = 1}),
 	b, view({["mcl_core:emerald"] = 1}, {}, {["mcl_core:emerald"] = 1})))
 -- Too few emeralds and nothing the seller needs: nothing.
 local poor = villager("p", {})
-assert(not exchange.offer(s, view({}, {["mcl_core:paper"] = 30}, {["mcl_core:paper"] = 0.05}),
-	poor, view({["mcl_core:paper"] = 10}, {}, {["mcl_core:paper"] = 0.15})))
+assert(not exchange.offer(s, seller_view(0.05), poor, view({["mcl_core:paper"] = 10}, {}, {["mcl_core:paper"] = PAPER + 1})))
+-- An item with no base price settles at the midpoint, the buyer valuing it above the seller.
+local odd = villager("odd", {["no:price"] = 4})
+offer = exchange.offer(odd, view({}, {["no:price"] = 4}, {["no:price"] = 2}), b, view({["no:price"] = 2}, {}, {["no:price"] = 6}))
+assert(offer and offer.pay == 8, offer and offer.pay)
+assert(not exchange.offer(odd, view({}, {["no:price"] = 4}, {["no:price"] = 6}), b, view({["no:price"] = 2}, {}, {["no:price"] = 6})))
+-- A sale raises the seller's ask.
+assert(exchange.settle(offer) and asks.factor(odd, "no:price") == asks.MARKUP)
 
 -- settle checks the goods are still there.
 local gone = {seller = villager("v", {}), buyer = b, item = "mcl_core:paper", count = 1, pay = 1}
@@ -133,12 +147,12 @@ do
 end
 
 -- Conversions (ticket 15): a shepherd sells string from its spare wool, four to a wool,
--- whole wools only, valued at the wool's value over four. A stall showing wool sells it.
+-- whole wools only, at string's ask. A stall showing wool sells it.
 do
 	local shepherd = villager("sh", {["mcl_wool:grey"] = 10}, {_profession = "shepherd"})
 	local weaver = villager("we", {["mcl_core:emerald"] = 64})
 	local seller_view = view({}, {["mcl_wool:grey"] = 10}, {["mcl_wool:grey"] = 0.4})
-	local buyer_view = view({["mcl_mobitems:string"] = 6}, {}, {["mcl_mobitems:string"] = 0.5})
+	local buyer_view = view({["mcl_mobitems:string"] = 6}, {}, {["mcl_mobitems:string"] = ledger.price("mcl_mobitems:string") * 1.5})
 	local offer = exchange.offer(shepherd, seller_view, weaver, buyer_view)
 	assert(offer and offer.item == "mcl_mobitems:string" and offer.from == "mcl_wool:grey")
 	assert(offer.from_count == 2 and offer.count == 8 and offer.pay, offer.count)

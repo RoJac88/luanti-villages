@@ -355,9 +355,11 @@ wanted neither.
 
 ## Exchange between villagers
 
-`exchange.lua`. A trade happens only when the buyer's value for the goods is above
-the seller's. It settles at the midpoint, in emeralds, or in goods when the buyer is
-out of emeralds and the seller needs something it has. Goods pass pouch to pouch
+`exchange.lua`. A trade happens when the buyer's value for the goods is at least the
+seller's ask (`asks.lua`, see [17. The food loop](#17-the-food-loop)). It settles at the
+ask, in emeralds, or in goods when the buyer is out of emeralds and the seller needs
+something it has. An item with no base price has no ask and settles at the midpoint of
+the two values, as all trades did before ticket 17. Goods pass pouch to pouch
 with `food.show_handover`'s animation. Three channels, in order:
 
 1. **End of conversation.** After news is exchanged, each member checks the others
@@ -386,8 +388,8 @@ a value under its own and live within 64 of its bed, the need worth most, then t
 nearest. It walks to the seller's bed: a seller within 8 sells in person, from its
 belongings, as at the end of a conversation. A seller away from home carries its goods,
 so a loaded one within 64 of its bed is followed, up to 3 walks; failing that the buyer
-walks on to the seller's claimed stash and buys from the chest at the midpoint of its
-value and the value it heard, whole emeralds into the chest. Either way it buys no more
+walks on to the seller's claimed stash and buys from the chest at the price it heard
+(the seller's ask, ticket 17), whole emeralds into the chest. Either way it buys no more
 than its emeralds pay for, and with none it plans no trip. Own trips run in the putter
 stage, and the Builder's in its work stage too while short. A trip is dropped when the
 day turns; a seller that came to nothing is passed over for 10 minutes.
@@ -407,16 +409,19 @@ emeralds left in its bench chests.
 
 ## The farmer's food
 
-`farmer.lua`'s `hand_over` gives food only to:
+From ticket 17 `farmer.lua`'s `hand_over` gives food only to children, free (a child's
+growth waits on it). Adults eat at the tavern, or their own food at dinner, or alms
+when broke. The farmer's surplus goes:
 
-- itself, its household (villagers whose beds are within 5 across and 4 up or down of
-  its own, which is as near as beds tell to the same house) and every child, free;
-- anyone else who has an emerald and carries no food: a bundle, as many as vanilla's
-  trades sell for one emerald (6 loaves, 26 potatoes), of which it eats what it wants
-  and keeps the rest;
-- a villager at 0 points that cannot buy, one item free (a farmer's handout);
-- the tavern: the keeper buys from its chest (see [The tavern](#the-tavern)); the
+- wheat to its belongings up to 8 and bread up to 4, for its own dinner and to sell to
+  villagers at its ask;
+- the rest to its chest, where the keeper buys it (see [The tavern](#the-tavern)); the
   farmer collects the emeralds left there when it next stores its surplus.
+
+Before ticket 17 it also fed its household free, sold a bundle (as many as vanilla
+sells for one emerald) to anyone with an emerald and no food, and gave a starving
+villager one item. That left the keeper's chest bare: the Colony run of 2026-11-13 saw
+the farmers give away what the tavern should have bought.
 
 With the economy off it feeds everyone free, as before.
 
@@ -1366,7 +1371,7 @@ it counts:
 
 | Category | Measured in | Members | Comes from |
 |---|---|---|---|
-| Food | food points | `food.POINTS` | hunger, FOOD_DAYS of points |
+| Food | food points | `food.POINTS` | hunger: a day's when starving, two days' when it holds over 5 dinners' emeralds (ticket 17) |
 | Fuel | burn seconds | coal 80, charcoal 80, any log 15, any planks 15, stick 5 | recipes that smelt (`fuel`) |
 | Logs | logs | any species | recipes, the Builder |
 | Planks | planks | any species | recipes, the Builder |
@@ -1464,6 +1469,56 @@ wild tree, once a day. This holds for labourers too.
 
 Left for later: a woodcutter in a treeless biome waits for a player to bring saplings,
 which it does not yet ask for; and the nitwit's skin, which it keeps.
+
+### 17. The food loop
+
+The Colony run (2026-11-13: two farmers, a fisherman, a butcher and a keeper) ran out of
+food though food was made every day. Supply came to about a quarter of what villagers
+ate. The causes:
+
+* villagers ate whenever they fell to 8 points, at any hour, whatever they held;
+* the fisherman's cod went to its barrel, which the keeper no longer fetched, and was
+  lost past 16;
+* the farmers gave bread away (household, bundles, handouts), so the keeper found its
+  chests empty;
+* trades settled at the midpoint of the two values, and a buyer's value carries its
+  urgency and price beliefs. A hungry village valued a cooked salmon at four times what
+  the butcher did, the butcher was paid half of that, and a keeper holding 144 emeralds
+  bought nothing from a butcher who would have taken a third of the midpoint.
+
+**One dinner a day** (`possessions.lua`). An adult at or below 8 points eats once a day,
+at dinner: at the tavern when it can reach one and pay (`meal.lua` marks
+`_villages_dined_day`), or else from its own prepared food at home (`food.is_prepared`:
+not raw crops or apples), until above 8. Outside dinner, and raw food, only when
+starving (0 points), and then only up to 4. Hunger falls 4 points a day, so one dinner
+covers it.
+
+**Starving hurts.** A starving adult walks at 0.7 times its speed and stops work at
+12500 instead of 15500 (`common.lua`, `STARVING_WORK_END`).
+
+**Buying food** (`ledger.lua`). A villager needs a food stock only when it holds more
+than 5 dinners' emeralds (90): then two days' hunger (`STOCK_DAYS`). One starving needs
+a day's. Others rely on the tavern; the broke on alms.
+
+**Births** need both parents to own 8 food points or more (`possessions.can_parent`,
+with `living_villages_births_need_food`), a sign the village eats well. A birth spends
+neither the food nor the parents' hunger. The bed rule stays.
+
+**Supply.** Cod goes to the fisherman's belongings (up to 16, and what its barrel still
+holds comes back), to sell to the butcher. The farmer keeps 4 loaves for itself and
+stocks its chest with the rest. The keeper carries a purse of 512, as much as it may
+spend in one supply trip.
+
+**Asks** (`asks.lua`). A seller posts one price per item, the same to every buyer: the
+base price times its factor (1 at first). Each sale raises the factor by 5%; each game day
+it held spare and sold none of it, the factor falls by 10%; it stays between 0.5 and 2. A
+buyer that values the item at least at the ask pays the ask (less the standing discount,
+`exchange.STANDING_SHIFT`), as many as it can afford. The ask is the price its market
+news gives, and what trade trips and the stash pay. A peddler never asks under what it
+paid for its lot.
+
+Left for later: farm output, which the run showed to be short of a village's hunger even
+with nothing given away.
 
 ## Open questions
 

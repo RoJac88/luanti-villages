@@ -20,11 +20,24 @@
 -- (by its bench). farm_stock.find_chests leaves stashes out, so farmers, Builders and
 -- keepers never take from one.
 --
--- It eats what it owns (ticket 4): at or below EAT_AT points, the best food in its
--- belongings, then in its stash if it stands within STASH_REACH of it. An adult never
--- fed (`_villages_food` unset, never 0 once set) starts at EAT_AT points: fed, not full.
+-- It eats what it owns (ticket 4), once a day: dinner is at the tavern (meal.lua, which
+-- marks the day in `_villages_dined_day`), and one that did not dine there (no tavern in
+-- reach, nothing in its pantry, no money) eats its own prepared food (food.is_prepared)
+-- in the home stage that follows, at or below EAT_AT points, until above it. Between
+-- dinners it eats only when starving: anything it has, raw food too, until hungry
+-- (food.HUNGRY) instead of starving. It takes the best food in its belongings, then in
+-- its stash if it stands within STASH_REACH of it. An adult never fed
+-- (`_villages_food` unset, never 0 once set) starts at EAT_AT points: fed, not full.
 -- Otherwise a new village starts out starving, crafting nothing and restocking nothing
--- (production.lua), and births still wait on the farm.
+-- (production.lua).
+--
+-- A starving villager walks slower (STARVING_SPEED of its speed, kept in
+-- `_villages_slowed` until it eats) and stops work early (`_villages_starving`, which
+-- common.lua's schedule reads).
+--
+-- Food it owns, in points (belongings and stash), is what makes a villager a parent
+-- (births.lua): at least PARENT_FOOD each, a sign of a village that eats well. A birth
+-- takes none of it.
 local core = minetest
 local clock = dofile(core.get_modpath("living_villages") .. "/economy_clock.lua")
 local stock = dofile(core.get_modpath("living_villages") .. "/farm_stock.lua")
@@ -32,6 +45,7 @@ local ledger = dofile(core.get_modpath("living_villages") .. "/ledger.lua")
 local food = dofile(core.get_modpath("living_villages") .. "/food.lua")
 local wants = dofile(core.get_modpath("living_villages") .. "/wants.lua")
 local tally = dofile(core.get_modpath("living_villages") .. "/economy_tally.lua")
+local asks = dofile(core.get_modpath("living_villages") .. "/asks.lua")
 
 local DEFAULT_STASH_RADIUS = 8
 local STASH_HEIGHT = 3
@@ -53,6 +67,11 @@ for level = 1, 7 do COMPOSTERS[#COMPOSTERS + 1] = "mcl_composters:composter_" ..
 -- It eats at or below this many points, one item at a time, best first.
 local EAT_AT = food.FULL - food.HUNGRY
 local STASH_REACH = 4
+-- How often it looks at its food: the home stage after dinner is a game hour, 50 s.
+local EAT_CHECK_SECONDS = 10
+local STARVING_SPEED = 0.7
+-- Food points each parent must own: two days of food.
+local PARENT_FOOD = 8
 local DOUBLE_HALVES = {["mcl_chests:chest_left"] = true, ["mcl_chests:chest_right"] = true}
 
 -- What a profession starts with: a little of what it works with, from its trade table's
@@ -76,6 +95,7 @@ local KITS = {
 
 local M = {
 	KITS = KITS, EMERALD = EMERALD, OWNER = OWNER, OWNER_BED = OWNER_BED, CLAIM_SECONDS = CLAIM_SECONDS, EAT_AT = EAT_AT,
+	STARVING_SPEED = STARVING_SPEED, PARENT_FOOD = PARENT_FOOD,
 }
 
 -- Belongings.
@@ -286,49 +306,118 @@ function M.food_carried(self)
 	return total
 end
 
-local function stash_food(self)
+local function stash_food(self, allowed)
 	local stash = self._villages_stash
 	local pos = self.object and self.object:get_pos()
 	if not stash or not pos or vector.distance(pos, stash) > STASH_REACH or not owned_by(stash, self) then return nil end
 	for _, item in ipairs(FOODS_BY_POINTS) do
-		for _, half in ipairs(halves(stash)) do
-			local inv = core.get_meta(half):get_inventory()
-			if inv:remove_item("main", item .. " 1"):get_count() == 1 then return item end
+		if allowed(item) then
+			for _, half in ipairs(halves(stash)) do
+				local inv = core.get_meta(half):get_inventory()
+				if inv:remove_item("main", item .. " 1"):get_count() == 1 then return item end
+			end
 		end
 	end
 	return nil
 end
 
--- Eats from its belongings, then its stash, while at or below EAT_AT. Returns what it ate.
-function M.eat(self)
-	if self.child or self._villages_sleeping then return {} end
+-- The villager's stage of the day; common.lua's, loaded when first asked (a test may set it).
+function M.stage_of(self)
+	M.common = M.common or dofile(core.get_modpath("living_villages") .. "/common.lua")
+	return M.common.schedule_stage(nil, self)
+end
+
+local function today()
+	return core.get_day_count and core.get_day_count() or 0
+end
+
+-- Whether it may eat now: "starving" (anything, up to food.HUNGRY), "dinner" (its own
+-- prepared food in the home stage after a dinner it did not have at the tavern, up to
+-- above EAT_AT), or nil.
+function M.meal_now(self)
+	if self.child or self._villages_sleeping then return nil end
+	local points = food.points(self)
+	if points <= 0 then return "starving" end
+	if points <= EAT_AT and self._villages_dined_day ~= today() and M.stage_of(self) == "home" then return "dinner" end
+	return nil
+end
+
+-- Eats from its belongings, then its stash, as meal_now allows (or `meal`, the same
+-- kinds). Returns what it ate.
+function M.eat(self, meal)
+	meal = meal or M.meal_now(self)
+	if not meal or self.child or self._villages_sleeping then return {} end
+	local allowed = meal == "dinner" and food.is_prepared or function(item) return food.POINTS[item] ~= nil end
+	local function more()
+		if meal == "dinner" then return food.points(self) <= EAT_AT end
+		return food.points(self) < food.HUNGRY
+	end
 	local eaten = {}
-	while food.points(self) <= EAT_AT do
+	while more() do
 		local item
 		for _, candidate in ipairs(FOODS_BY_POINTS) do
-			if M.take(self, candidate, 1) == 1 then item = candidate break end
+			if allowed(candidate) and M.take(self, candidate, 1) == 1 then item = candidate break end
 		end
-		item = item or stash_food(self)
+		item = item or stash_food(self, allowed)
 		if not item then break end
 		food.receive(self, item)
 		eaten[#eaten + 1] = item
 		tally.note(self, nil, {[item] = 1})
 	end
+	if meal == "dinner" and #eaten > 0 then self._villages_dined_day = today() end
 	if #eaten > 0 and self.object and core.sound_play then
 		core.sound_play("mcl_hunger_bite", {max_hear_distance = 12, gain = 0.33, object = self.object}, true)
 	end
 	return eaten
 end
 
+-- Food points it owns: belongings and stash.
+function M.food_owned(self)
+	local total = 0
+	for item, count in pairs(M.held(self)) do total = total + (food.POINTS[item] or 0) * count end
+	return total
+end
+
+-- Whether it owns food enough to become a parent (births.lua).
+function M.can_parent(self)
+	return not food.births_need_food() or M.food_owned(self) >= PARENT_FOOD
+end
+
+-- Slows a starving villager and marks it for common.lua's shorter working day; puts it
+-- back once it is not.
+function M.apply_hunger(self)
+	local starving = not self.child and food.state(self) == "starving"
+	self._villages_starving = starving or nil
+	local slowed = self._villages_slowed
+	if starving and not slowed then
+		self._villages_slowed = {walk = self.walk_velocity, run = self.run_velocity}
+		if self.walk_velocity then self.walk_velocity = self.walk_velocity * STARVING_SPEED end
+		if self.run_velocity then self.run_velocity = self.run_velocity * STARVING_SPEED end
+	elseif not starving and slowed then
+		self.walk_velocity, self.run_velocity = slowed.walk, slowed.run
+		self._villages_slowed = nil
+	end
+	return starving
+end
+
 local next_check = setmetatable({}, {__mode = "k"})
+local next_meal = setmetatable({}, {__mode = "k"})
 
 function M.step(self, now)
-	if self.child or not self._id or now < (next_check[self] or 0) then return end
+	if self.child or not self._id then return end
+	if now >= (next_meal[self] or 0) then
+		next_meal[self] = now + EAT_CHECK_SECONDS
+		if self._villages_food == nil then self._villages_food = EAT_AT end
+		M.eat(self)
+		M.apply_hunger(self)
+	end
+	if now < (next_check[self] or 0) then return end
 	next_check[self] = now + CLAIM_SECONDS
-	if self._villages_food == nil then self._villages_food = EAT_AT end
 	M.endow(self)
 	M.claim_stash(self)
-	M.eat(self)
+	-- Its asks for what it did not sell yesterday come down (asks.lua).
+	local day = today()
+	if self._villages_asks_day ~= day then asks.daily(self, M.assess(self).surplus, day) end
 end
 
 function M.install(def)

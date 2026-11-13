@@ -35,9 +35,9 @@ off and brings back VoxeLibre's. Existing villages are unchanged.
 - A village can have a child when a valid bed is unclaimed, as long as two nearby adults own
   beds and no nearby adult is without one. Automatic births are limited to about one every two
   game days in a local area.
-- Both parents must also have been fed 12 points of food by a farmer, which they spend. **A
-  village with no working farm stops growing by itself.** `living_villages_births_need_food`
-  turns this off.
+- Both parents must also own food: two loaves' worth (8 points) each, as a sign the village
+  eats well. A birth doesn't use it up. **A village short of food stops growing by itself.**
+  `living_villages_births_need_food` turns this off.
 - Breeding with food also needs a free bed, but doesn't wait for the birth timer.
 - Beds owned by players don't count. Spawn eggs and curing zombie villagers work as before.
 
@@ -49,7 +49,7 @@ A villager with a composter works its farm through the work stage:
 - **Tills.** With seeds and nothing left to sow, it tills beside its field, onto dirt or grass that water will keep wet, up to `living_villages_farm_max_plots` plots. A composter beside water with no field starts one. It never tills a path. The stock farm's kerb keeps its field to its bed.
 - **Composts and bakes.** It adds surplus crops and seeds to its composter, takes the bone meal and spends it on the crops furthest from ripe. It bakes wheat into bread.
 - **Stores.** It takes large surpluses to the chest nearest its composter within `living_villages_farmer_chest_radius` nodes, generated or yours, and to no other, so placing a chest nearer moves its storage there. When that chest is full it waits. It takes back seeds and food from any chest in range when short. It never places a chest. With none in range it only composts and hands food out, and a full farmer leaves crops standing. `living_villages_farmer_chest_withdraw` makes chests deposit-only. Trapped, ender and protected chests are left alone.
-- **Feeds the village.** It hands food directly to villagers near its farm. Bread is worth 4 points and a crop 1, and a villager wants 12. Food heals, and a fed child grows faster.
+- **Feeds the village.** It hands food directly to children near its farm, and with the economy off to every villager. With the economy on, adults buy their food: the farmer keeps a few loaves to sell and stocks its chest with the rest for the tavern keeper. Bread is worth 4 points and a crop 1, and a villager wants 12. Food heals, and a fed child grows faster.
 
 A farmer that dies drops what it carries.
 
@@ -156,6 +156,9 @@ ordinary stairs and wooden doors. Iron doors still block them.
   menu each evening. The meal appears on the plate at the guest's table, and the plate empties
   as the guest eats. The meal is only for show and can't be taken. A keeper never serves on a
   plate that holds a player's item, and a tavern with no keeper on duty serves no meals.
+- **Eating:** with the economy on, a villager eats once a day, at dinner: at the tavern if it can
+  pay, or else its own cooked food or bread at home. Only a starving villager eats at other hours
+  or eats raw crops, and a starving villager walks slower and stops work early.
 
 ## Requirements
 

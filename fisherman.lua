@@ -9,18 +9,19 @@
 -- as for a farmer in its field.
 --
 -- With the economy on (ticket 4) a completed cycle lands a fish one time in
--- CATCH_ONE_IN, of a kind by vanilla's fishing odds (mcl_fishing). Cod goes in its
--- barrel, up to BARREL_COD, for the keeper to buy for the tavern (keeper_supply.lua);
--- anything else goes in its belongings, up to KEEP_OTHER of a kind (possessions.lua).
--- Emeralds the keeper left in the barrel go in its belongings as it puts the next fish in.
+-- CATCH_ONE_IN, of a kind by vanilla's fishing odds (mcl_fishing), into its belongings
+-- (possessions.lua): cod up to KEEP_COD, anything else up to KEEP_OTHER of a kind. It
+-- sells them to the butcher, who cooks fish (recipes.lua). Cod an older barrel holds (it
+-- went there for the keeper, who no longer fetches it) comes back into its belongings as
+-- there is room, and emeralds left in the barrel go in its belongings too.
 local core = minetest
 local common = dofile(core.get_modpath("living_villages") .. "/common.lua")
 local cells = dofile(core.get_modpath("living_villages") .. "/cells.lua")
 local clock = dofile(core.get_modpath("living_villages") .. "/economy_clock.lua")
 local possessions = dofile(core.get_modpath("living_villages") .. "/possessions.lua")
 local CATCH_ONE_IN = 4
-local BARREL_COD = 16
 local KEEP_OTHER = 8
+local KEEP_COD = 16
 local COD = "mcl_fishing:fish_raw"
 local EMERALD = "mcl_core:emerald"
 -- mcl_fishing's weights for the fish it catches.
@@ -426,14 +427,13 @@ local function land_catch(self)
 		local pay = count_in(inv, EMERALD)
 		if pay > 0 then possessions.add(self, EMERALD, inv:remove_item("main", EMERALD .. " " .. pay):get_count()) end
 	end
-	if fish == COD then
-		if inv and count_in(inv, COD) < BARREL_COD and inv:room_for_item("main", COD) then
-			inv:add_item("main", COD)
-			return fish, "barrel"
-		end
-		return nil
+	-- Cod a barrel still holds from before (the keeper no longer fetches it) comes back
+	-- into its belongings as there is room.
+	if inv then
+		local back = math.min(count_in(inv, COD), KEEP_COD - possessions.count(self, COD))
+		if back > 0 then possessions.add(self, COD, inv:remove_item("main", COD .. " " .. back):get_count()) end
 	end
-	if possessions.count(self, fish) >= KEEP_OTHER then return nil end
+	if possessions.count(self, fish) >= (fish == COD and KEEP_COD or KEEP_OTHER) then return nil end
 	possessions.add(self, fish, 1)
 	return fish, "belongings"
 end
@@ -589,4 +589,4 @@ local function activity_override(villager, stage)
 end
 
 -- The third value is for tests.
-return install, activity_override, {land_catch = land_catch, pick_catch = pick_catch, BARREL_COD = BARREL_COD}
+return install, activity_override, {land_catch = land_catch, pick_catch = pick_catch, KEEP_COD = KEEP_COD}

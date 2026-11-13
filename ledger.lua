@@ -40,8 +40,12 @@ local SCALE = 64
 -- a little more for the keeper's cooking; at a vanilla emerald (64) it took six loaves'
 -- worth for one loaf, and money piled up in the pantry.
 local DINNER = 18
--- Days of food a villager wants to have by it.
-local FOOD_DAYS = 3
+-- Food a villager wants by it, beyond the tavern's dinners: STOCK_DAYS of it once it has
+-- more than STOCK_MONEY emeralds, five dinners; with less, it relies on the tavern and
+-- wants food by it only when starving, a day's worth.
+local STOCK_DAYS = 2
+local STOCK_MONEY = 5 * DINNER
+local STARVING_DAYS = 1
 -- The most of one input a villager wants at once.
 local INPUT_CAP = 32
 -- Of a target, this share is never sold.
@@ -127,7 +131,8 @@ local PREFERENCES = {
 }
 
 local M = {
-	EMERALD = EMERALD, SCALE = SCALE, DINNER = DINNER, FOOD_DAYS = FOOD_DAYS, MAX_URGENCY = MAX_URGENCY, MIN_URGENCY = MIN_URGENCY,
+	EMERALD = EMERALD, SCALE = SCALE, DINNER = DINNER, STOCK_DAYS = STOCK_DAYS, STOCK_MONEY = STOCK_MONEY,
+	STARVING_DAYS = STARVING_DAYS, MAX_URGENCY = MAX_URGENCY, MIN_URGENCY = MIN_URGENCY,
 	PREFERENCES = PREFERENCES, COAL = COAL, version = tables.version,
 }
 
@@ -301,8 +306,14 @@ function M.assess(input)
 	local function want_category(category, amount)
 		if amount > (wanted[category] or 0) then wanted[category] = amount end
 	end
-	-- Food: enough points for FOOD_DAYS, from any food.
-	local food_need = math.max((input.hunger_per_day or 0) * FOOD_DAYS - (input.food_points or 0), 0)
+	-- Food by it, from any food: STOCK_DAYS with money to spare, a day's when starving.
+	local food_days = 0
+	if ((input.held or {})[EMERALD] or 0) > STOCK_MONEY then
+		food_days = STOCK_DAYS
+	elseif input.food_points and input.food_points <= 0 then
+		food_days = STARVING_DAYS
+	end
+	local food_need = (input.hunger_per_day or 0) * food_days
 	if food_need > 0 then want_category("food", food_need) end
 	for item, batch in pairs(M.inputs(input.profession, input.max_tier)) do
 		local category = goods.target_category(item)

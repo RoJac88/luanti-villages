@@ -156,6 +156,10 @@ local function schedule_of(villager, holiday)
 	return SCHEDULE
 end
 
+-- A starving villager (possessions.lua's `_villages_starving`) stops work here, about a
+-- third of its working day early, and putters about until tavern time.
+local STARVING_WORK_END = 12500
+
 local function stage_at(tod, villager)
 	if is_thunder() then return "sleep" end
 	local schedule = schedule_of(villager, is_holiday())
@@ -164,6 +168,9 @@ local function stage_at(tod, villager)
 	for _, entry in ipairs(schedule) do
 		if ticks < entry.start then break end
 		stage = entry.stage
+	end
+	if stage == "work" and villager and villager._villages_starving and ticks >= STARVING_WORK_END then
+		return "putter"
 	end
 	-- A villager with no tavern tonight, or too late to reach it, goes
 	-- straight Home instead (#22); tavern.lua marks the day.

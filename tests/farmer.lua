@@ -200,10 +200,10 @@ step()
 assert(pouch("mcl_farming:carrot_item") == 16)
 assert(store:get_stack("main", 1):to_string() == "mcl_farming:carrot_item 24")
 
--- A hungry villager out of reach comes before the composter too.
+-- A hungry child out of reach comes before the composter too.
 setup({_villages_farm_pouch = {["mcl_farming:carrot_item"] = 40}})
 local customer = support.farmer(world, {x = 20, y = 2, z = 0})
-customer._id, customer._profession = "customer", "mason"
+customer._id, customer._profession, customer.child = "customer", "mason", true
 step()
 assert(#world.composted == 0 and #farmer.walks == 1)
 
@@ -419,41 +419,36 @@ assert(farmer._villages_belongings and farmer._villages_belongings["mcl_farming:
 assert(pouch("mcl_farming:wheat_item") == 3)
 assert(world.meta({x = 2, y = 2, z = 0}).inv:get_stack("main", 1):to_string() == "mcl_farming:wheat_item 19")
 
--- With the economy on. Its household, any child and itself still eat free.
+-- With the economy on only children eat free: adults eat at the tavern, or alms when
+-- broke (food loop, 2026-11-13). A neighbour, its spouse even, gets nothing, and no
+-- emeralds change hands.
 local function belongings(v, name) return (v._villages_belongings or {})[name] or 0 end
 setup({_bed = {x = 0, y = 2, z = 10}, _villages_farm_pouch = {["mcl_farming:bread"] = 8}})
-local spouse = neighbour(2, 1, {_bed = {x = 3, y = 2, z = 12}, _villages_food = 4})
+local spouse = neighbour(2, 1, {_bed = {x = 3, y = 2, z = 12}, _villages_food = 4,
+	_villages_belongings = {["mcl_core:emerald"] = 128}})
 local child = neighbour(1, 1, {child = true})
 child._id = "child"
 step(3)
-assert(spouse._villages_food == 12 and child._villages_fed_day == world.day, "household and children free")
+assert(child._villages_fed_day == world.day, "children free")
+assert(spouse._villages_food == 4 and belongings(spouse, "mcl_core:emerald") == 128, "no adult fed or sold to")
 assert(belongings(farmer, "mcl_core:emerald") == 0)
 
--- A neighbour with a bundle's price and no food buys a bundle: six loaves for one
--- vanilla emerald, 64 at the economy's scale (ticket 11h); eats what it wants and keeps
--- the rest.
-setup({_bed = {x = 0, y = 2, z = 10}, _villages_farm_pouch = {["mcl_farming:bread"] = 12}})
-local buyer = neighbour(2, 1, {_bed = {x = 30, y = 2, z = 0}, _villages_food = 4,
-	_villages_belongings = {["mcl_core:emerald"] = 128}})
-step()
-assert(belongings(buyer, "mcl_core:emerald") == 64 and belongings(farmer, "mcl_core:emerald") == 64)
-assert(buyer._villages_food == 12 and belongings(buyer, "mcl_farming:bread") == 4)
-assert(pouch("mcl_farming:bread") == 6)
-step(3)
-assert(belongings(buyer, "mcl_core:emerald") == 64, "carrying food, it does not buy more")
-
--- Short of a bundle's price: nothing, unless it is starving, when it gets one item free.
+-- Nor a starving one, and it walks to no adult.
 setup({_villages_farm_pouch = {["mcl_farming:bread"] = 12}})
-local broke = neighbour(2, 1, {_villages_food = 4, _villages_belongings = {["mcl_core:emerald"] = 63}})
 local starving = neighbour(1, 1, {_villages_food = 0})
-step(3)
-assert(broke._villages_food == 4 and starving._villages_food == 4 and pouch("mcl_farming:bread") == 11)
-
--- Less than a bundle to spare: no sale, and no walk to a buyer.
-setup({_villages_farm_pouch = {["mcl_farming:bread"] = 5}})
 local waiting = neighbour(20, 0, {_villages_food = 4, _villages_belongings = {["mcl_core:emerald"] = 64}})
 step(3)
+assert(starving._villages_food == 0 and pouch("mcl_farming:bread") == 12)
 assert(#farmer.walks == 0 and belongings(waiting, "mcl_core:emerald") == 64)
+
+-- Bread over the keep goes to its belongings first, up to four, for its dinner and to
+-- sell; the rest goes in the chest, where the keeper fetches it.
+setup({_villages_farm_pouch = {["mcl_bone_meal:bone_meal"] = 4, ["mcl_farming:bread"] = 20}})
+support.chest(world, {x = 2, y = 2, z = 0})
+step()
+assert(belongings(farmer, "mcl_farming:bread") == 4, belongings(farmer, "mcl_farming:bread"))
+assert(pouch("mcl_farming:bread") == 2)
+assert(world.meta({x = 2, y = 2, z = 0}).inv:get_stack("main", 1):to_string() == "mcl_farming:bread 14")
 
 -- Emeralds the keeper left in its chest go in its belongings when it next stores.
 setup({_villages_farm_pouch = {["mcl_bone_meal:bone_meal"] = 4, ["mcl_farming:carrot_item"] = 30}})

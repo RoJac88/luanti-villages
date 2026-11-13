@@ -2,24 +2,27 @@
 -- conversation that ran its time (conversation.lua), after market news has passed
 -- (market_news.lua). They stand together and are loaded, so nothing walks anywhere.
 --
--- Each pair in the conversation makes at most one trade: the one that gains the two of
--- them most. A buyer buys an item it needs (its ledger's needs, ledger.lua) that the
--- seller has spare (the seller's surplus) and carries in its belongings, since a stash
--- is not at hand. It happens only when the buyer values the item above the seller, and
--- settles at the midpoint of the two values, per item:
+-- Each pair in the conversation makes at most one trade: the one that gains the buyer
+-- most. A buyer buys an item it needs (its ledger's needs, ledger.lua) that the seller
+-- has spare (the seller's surplus) and carries in its belongings, since a stash is not
+-- at hand. It pays the seller's asking price (asks.lua), when it values the item at
+-- least that much, per item:
 --
 -- * in emeralds, rounded to a whole one. A sale worth more than the buyer's emeralds
 --   shrinks to what they pay for; one worth under one emerald grows to the fewest items
---   that make one, if the seller has them spare. Both must still gain:
---   the buyer values what it gets at no less than it pays, the seller at no more.
+--   that make one, if the seller has them spare. The buyer must still value what it gets
+--   at no less than it pays.
 -- * in goods, when the buyer has too few emeralds: something the seller needs and the
---   buyer has spare and carries, as many as make up the midpoint value, again only if
---   both gain by their own values.
+--   buyer has spare and carries, as many as make up the price, only if both gain by
+--   their own values.
 --
--- Standing (ticket 11c): a trader that thinks well of the other (gossip.lua, a villager
--- subject, such as a donor at the holiday service) moves the price toward it, by up to
--- STANDING_SHIFT of the midpoint at FULL_STANDING, but never past either value: a seller
--- that likes the buyer charges less, a buyer that likes the seller pays more.
+-- An item with no base price has no ask, and settles as before at the midpoint of the
+-- two values, the buyer valuing it above the seller.
+--
+-- Standing (ticket 11c): a seller that thinks well of the buyer (gossip.lua, a villager
+-- subject, such as a donor at the holiday service) asks it less, by up to
+-- STANDING_SHIFT at FULL_STANDING. At the midpoint, a buyer that likes the seller pays
+-- more too, never past either value.
 --
 -- Conversions (ticket 15, goods.lua): a seller whose job turns a good into another
 -- (a shepherd's wool into string) can sell what the buyer needs from its spare stock of
@@ -34,6 +37,7 @@ local possessions = dofile(core.get_modpath("living_villages") .. "/possessions.
 local food = dofile(core.get_modpath("living_villages") .. "/food.lua")
 local gossip = dofile(core.get_modpath("living_villages") .. "/gossip.lua")
 local goods_mod = dofile(core.get_modpath("living_villages") .. "/goods.lua")
+local asks = dofile(core.get_modpath("living_villages") .. "/asks.lua")
 
 local EMERALD = "mcl_core:emerald"
 -- A sale must come to at least this many emeralds before rounding, or it grows: less,
@@ -61,6 +65,14 @@ function M.unit_price(seller, buyer, to_seller, to_buyer)
 	local unit = (to_buyer + to_seller) / 2
 	local shift = STANDING_SHIFT * (standing(buyer, seller) - standing(seller, buyer))
 	return math.min(math.max(unit * (1 + shift), to_seller), to_buyer)
+end
+
+-- What the seller asks this buyer for one of the item: its ask, less for a buyer it
+-- thinks well of; nil for an item with no ask.
+function M.asking(seller, buyer, item)
+	local ask = asks.ask(seller, item)
+	if not ask then return nil end
+	return ask * (1 - STANDING_SHIFT * standing(seller, buyer))
 end
 
 -- How many of the item the villager can hand over now: spare, and carried.
@@ -124,9 +136,17 @@ function M.quote(seller, seller_view, buyer, buyer_view, item, wanted, from, rat
 	local to_buyer = buyer_view.value(item)
 	local source_value = seller_view.value(from)
 	local to_seller = source_value and source_value / ratio
-	if stock <= 0 or not to_buyer or not to_seller or to_buyer <= to_seller then return nil end
+	if stock <= 0 or not to_buyer then return nil end
+	local unit = M.asking(seller, buyer, item)
+	local asked = unit ~= nil
+	if asked then
+		if to_buyer < unit then return nil end
+	elseif not to_seller or to_buyer <= to_seller then
+		return nil
+	else
+		unit = M.unit_price(seller, buyer, to_seller, to_buyer)
+	end
 	local available = stock * ratio
-	local unit = M.unit_price(seller, buyer, to_seller, to_buyer)
 	local count = math.min(wanted, available)
 	-- No more than its emeralds pay for (unless it barters, below, for the whole lot).
 	local affordable = math.floor(possessions.emeralds(buyer) / unit)
@@ -136,21 +156,23 @@ function M.quote(seller, seller_view, buyer, buyer_view, item, wanted, from, rat
 	local from_count = math.ceil(count / ratio)
 	count = from_count * ratio
 	local value = count * unit
-	local worth_to_buyer, worth_to_seller = count * to_buyer, count * to_seller
+	local worth_to_buyer = count * to_buyer
+	-- At an ask the seller takes what it asked; at the midpoint, no less than its value.
+	local floor = asked and 0 or count * to_seller
 	local trade
 	local pay = math.max(math.floor(value + 0.5), 1)
-	if pay <= worth_to_buyer and pay >= worth_to_seller and possessions.emeralds(buyer) >= pay then
+	if pay <= worth_to_buyer and pay >= floor and possessions.emeralds(buyer) >= pay then
 		trade = {pay = pay}
 	else
 		local goods, goods_count = barter(buyer, buyer_view, seller_view, value, worth_to_buyer)
-		if goods and goods_count * seller_view.value(goods) >= worth_to_seller then
+		if goods and goods_count * seller_view.value(goods) >= math.max(floor, asked and value or 0) then
 			trade = {goods = goods, goods_count = goods_count}
 		end
 	end
 	if not trade then return nil end
 	trade.seller, trade.buyer, trade.item, trade.count = seller, buyer, item, count
 	if from ~= item then trade.from, trade.from_count = from, from_count end
-	trade.gain = worth_to_buyer - worth_to_seller
+	trade.gain = worth_to_buyer - (trade.pay or value)
 	return trade
 end
 
@@ -183,6 +205,7 @@ function M.settle(trade)
 		price = trade.goods_count .. " " .. trade.goods
 	end
 	local made = trade.from and string.format(" (from %d %s)", from_count, from) or ""
+	asks.sold(seller, trade.item, core.get_day_count and core.get_day_count() or 0)
 	core.log("action", string.format("[living_villages] trade: villager %s sold %d %s%s to %s for %s",
 		short_id(seller), trade.count, trade.item, made, short_id(buyer), price))
 	return true

@@ -148,15 +148,17 @@ local function has_news(who, item, home, price)
 	return {item = item, who = who, kind = "has", count = 40, price = price, home = home, heard = now, hops = 1}
 end
 
--- Terms: midpoint, whole emeralds, at least one, both gaining, within the budget.
+-- Terms: at the seller's ask, whole emeralds, at least one, the buyer valuing it at least
+-- the ask, within the budget.
 do
 	local n, pay = trips.terms(100, 40, 0.12, 0.04, 8)
-	assert(n == 40 and pay == 3, n .. " " .. pay) -- 40 * 0.08 = 3.2
+	assert(n == 40 and pay == 2, n .. " " .. pay) -- 40 * 0.04 = 1.6
 	n, pay = trips.terms(5, 40, 0.12, 0.04, 8)
-	assert(n == 13 and pay == 1, "a sale under one emerald grows to the fewest items that make one")
+	assert(n == 25 and pay == 1, "a sale under one emerald grows to the fewest items that make one")
 	n, pay = trips.terms(100, 40, 0.12, 0.04, 1)
-	assert(n == 12 and pay == 1, "cut to the budget")
-	assert(trips.terms(10, 40, 0.04, 0.05, 8) == nil, "the buyer must value it more")
+	assert(n == 25 and pay == 1, "cut to the budget")
+	assert(trips.terms(10, 40, 0.04, 0.05, 8) == nil, "the buyer must value it at the ask")
+	assert(trips.terms(10, 40, 0.05, 0.05, 8), "valuing it at the ask is enough")
 	assert(trips.terms(10, 0, 0.12, 0.04, 8) == nil and trips.terms(10, 40, 0.12, 0.04, 0) == nil)
 end
 
@@ -285,7 +287,7 @@ do
 	local roy = villager("roy-roaming", {x = -40, y = 1, z = 0}, {_villages_belongings = {[COBBLE] = 64}})
 	roy.teleport({x = -40, y = 1, z = 20})
 	possessions.add(bob, EMERALD, 3 * 64)
-	bob._villages_builder_wants = {[COBBLE] = 120}
+	bob._villages_builder_wants = {[COBBLE] = count(bob, COBBLE) + 120}
 	bob._villages_market_news = {has_news("roy-roaming", COBBLE, {x = -40, y = 1, z = 0}, 0.03)}
 	bob.walks = {}
 	now = now + 100

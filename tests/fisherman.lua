@@ -1383,9 +1383,10 @@ do
 	timeofday, water_sites = 0, {}
 end
 
--- The catch (ticket 4): one cycle in four lands a fish by mcl_fishing's odds; cod goes
--- in the barrel up to BARREL_COD, anything else in its belongings, and the keeper's
--- emeralds in the barrel go in its belongings.
+-- The catch (ticket 4): one cycle in four lands a fish by mcl_fishing's odds, into its
+-- belongings up to KEEP_COD of cod (to sell to the butcher; the keeper no longer fetches
+-- cod from the barrel, food loop 2026-11-13). Cod left in the barrel comes back into its
+-- belongings, and the keeper's emeralds in the barrel go in its belongings.
 do
 	local _, _, catch = dofile("fisherman.lua")
 	assert(catch.pick_catch(0) == "mcl_fishing:fish_raw" and catch.pick_catch(0.6) == "mcl_fishing:salmon_raw")
@@ -1426,16 +1427,21 @@ do
 	rolls = {2}
 	assert(catch.land_catch(finn) == nil, "three cycles in four land nothing")
 	held["mcl_core:emerald"] = 3
+	held["mcl_fishing:fish_raw"] = 2
 	rolls = {1, 0.1}
 	local fish, where = catch.land_catch(finn)
-	assert(fish == "mcl_fishing:fish_raw" and where == "barrel" and count("mcl_fishing:fish_raw") == 1)
+	assert(fish == "mcl_fishing:fish_raw" and where == "belongings")
+	assert(count("mcl_fishing:fish_raw") == 0 and finn._villages_belongings[fish] == 3, "barrel cod comes back")
 	assert(count("mcl_core:emerald") == 0 and finn._villages_belongings["mcl_core:emerald"] == 3, "collects its pay")
 	rolls = {1, 0.7}
 	fish, where = catch.land_catch(finn)
 	assert(fish == "mcl_fishing:salmon_raw" and where == "belongings" and finn._villages_belongings[fish] == 1)
-	held["mcl_fishing:fish_raw"] = catch.BARREL_COD
+	finn._villages_belongings["mcl_fishing:fish_raw"] = catch.KEEP_COD
+	held["mcl_fishing:fish_raw"] = 5
 	rolls = {1, 0.1}
-	assert(catch.land_catch(finn) == nil and count("mcl_fishing:fish_raw") == catch.BARREL_COD, "barrel's share is full")
+	assert(catch.land_catch(finn) == nil and finn._villages_belongings["mcl_fishing:fish_raw"] == catch.KEEP_COD,
+		"its cod is full")
+	assert(count("mcl_fishing:fish_raw") == 5, "and the barrel's waits")
 	math.random = real_random
 	minetest.get_meta = plain_meta
 end

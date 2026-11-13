@@ -1,9 +1,11 @@
 -- Small, bed-limited supplement to VoxeLibre's villager breeding. The birth
 -- cooldown survives mapblock unloads in bed metadata, not a mob cache. Automatic
--- births also need two parents fed by a farmer (food.lua). Two villagers a player has
--- fed into breeding (on_breed) have had their food already.
+-- births also need two parents that own food enough (possessions.can_parent: two days'
+-- worth each, in belongings and stash), a sign of a village that eats well; a birth
+-- takes none of it. Two villagers a player has fed into breeding (on_breed) have had
+-- their food already.
 local core = minetest
-local food = dofile(core.get_modpath("living_villages") .. "/food.lua")
+local possessions = dofile(core.get_modpath("living_villages") .. "/possessions.lua")
 local BED_RADIUS = 24
 local BED_HEIGHT = 12
 local MATE_RADIUS = 16
@@ -80,7 +82,7 @@ end
 local function nearby_mate(parent, bed)
 	for _, object in ipairs(core.get_objects_inside_radius(parent.object:get_pos(), MATE_RADIUS)) do
 		local other = object:get_luaentity()
-		if parents_ready(parent, other, bed) and food.can_parent(other) then return other end
+		if parents_ready(parent, other, bed) and possessions.can_parent(other) then return other end
 	end
 end
 
@@ -138,7 +140,7 @@ return function(def)
 		local time = core.get_timeofday()
 		if self.child or time < 0.25 or time > 0.6 then return result end
 		-- Before the day is marked, as a parent fed later this morning may yet qualify.
-		if not food.can_parent(self) then return result end
+		if not possessions.can_parent(self) then return result end
 		local day = core.get_day_count()
 		if self._villages_birth_check_day == day then return result end
 		self._villages_birth_check_day = day
@@ -151,10 +153,7 @@ return function(def)
 			for _, bed in ipairs(beds) do
 				local mate = is_free(bed) and nearby_mate(self, bed.pos)
 				if mate then
-					if create_child(self, bed, beds, day) then
-						food.spend_on_birth(self)
-						food.spend_on_birth(mate)
-					end
+					create_child(self, bed, beds, day)
 					break
 				end
 			end

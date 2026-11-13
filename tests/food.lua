@@ -35,18 +35,15 @@ assert(not food.wants(child))
 world.day = world.day + 1
 assert(food.wants(child))
 
--- Becoming a parent.
+-- Becoming a parent depends on food owned (possessions.can_parent); the setting stands.
 assert(food.births_need_food())
-adult._villages_food = 11
-assert(not food.can_parent(adult))
-adult._villages_food = 13
-assert(food.can_parent(adult))
-food.spend_on_birth(adult)
-assert(adult._villages_food == 1)
 world.settings["living_villages_births_need_food"] = false
-assert(not food.births_need_food() and food.can_parent(adult))
-food.spend_on_birth(adult)
-assert(adult._villages_food == 1, "nothing spent with the setting off")
+assert(not food.births_need_food())
+
+-- Raw food is eaten only when starving; the rest is dinner.
+assert(food.is_prepared("mcl_farming:bread") and food.is_prepared("mcl_mobitems:cooked_beef"))
+assert(not food.is_prepared("mcl_core:apple") and not food.is_prepared("mcl_farming:potato_item"))
+assert(not food.is_prepared("mcl_core:cobble"))
 
 -- Every food the farmer offers has a value.
 for _, item in ipairs(food.FOODS) do

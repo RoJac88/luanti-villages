@@ -8,14 +8,13 @@
 -- also when vanilla's do_work unlocks its trades.
 --
 -- Who it feeds (docs/villager-economy-design.md, The farmer's food). With the economy
--- on: itself, its household (villagers whose beds are in the same house as its
--- own, possessions.same_house) and every child, free and as much as they
--- want; a starving villager one item free; anyone else who carries no food and has
--- BUNDLE_PRICE emeralds buys a bundle, as many of the food as vanilla's trades sell for
--- one emerald (six loaves), at ledger.SCALE emeralds (ticket 11h), eats what it wants of
--- it and keeps the rest (possessions.lua). The emeralds go in the farmer's belongings, as do any the keeper leaves in its chest
--- for the food it fetched (keeper_supply.lua), which it collects when it next stores
--- its surplus. With the economy off it feeds everyone free, as it always did.
+-- on, only children, free, once a day each (food.lua): adults, the farmer and its
+-- household too, eat their dinner at the tavern or from what they own (possessions.lua),
+-- and one with no money relies on alms (alms.lua). Its bread goes to its work chest past
+-- BREAD_KEEP in the pouch, for the keeper to fetch and pay for (keeper_supply.lua); up to
+-- OWN_BREAD loaves go in its belongings first, for its own dinner and to sell. The keeper's
+-- emeralds left in its chest go in its belongings when it next stores its surplus. With
+-- the economy off it feeds everyone free, as it always did.
 local core = minetest
 local common = dofile(core.get_modpath("living_villages") .. "/common.lua")
 local field = dofile(core.get_modpath("living_villages") .. "/farm_field.lua")
@@ -25,7 +24,6 @@ local food = dofile(core.get_modpath("living_villages") .. "/food.lua")
 local clock = dofile(core.get_modpath("living_villages") .. "/economy_clock.lua")
 local possessions = dofile(core.get_modpath("living_villages") .. "/possessions.lua")
 local wants = dofile(core.get_modpath("living_villages") .. "/wants.lua")
-local ledger = dofile(core.get_modpath("living_villages") .. "/ledger.lua")
 
 local TICK_SECONDS = 1
 local IDLE_SECONDS = 5
@@ -65,9 +63,12 @@ local DEPOSIT_KEEP = {
 	["mcl_farming:carrot_item"] = 16,
 	["mcl_farming:beetroot_item"] = 16,
 	[WHEAT] = WHEAT_PER_BREAD,
-	[BREAD] = 8,
+	[BREAD] = 2,
 	[BONE_MEAL] = BONE_MEAL_LIMIT_WITH_CHEST,
 }
+-- With the economy on, loaves over the keep go to its belongings, up to this many, for its
+-- own dinners and to sell, before the rest goes in the chest for the keeper.
+local OWN_BREAD = 4
 -- With the economy on, wheat over the keep goes to its belongings, up to this much, for
 -- sale to villagers (a leatherworker breeds its herd on it, herd.lua), before the rest
 -- goes in the chest: the pouch and the chest are not goods it trades.
@@ -242,11 +243,12 @@ local function deposit(self, pos, session, now)
 	if clock.enabled() then collect_pay(self, pos) end
 	local item, extra = excess_item(self)
 	if not item then return end
-	if item == WHEAT and clock.enabled() then
-		local room = SALE_WHEAT - possessions.count(self, WHEAT)
-		local moved = room > 0 and stock.take(self, WHEAT, math.min(room, extra)) or 0
+	local own = clock.enabled() and ({[WHEAT] = SALE_WHEAT, [BREAD] = OWN_BREAD})[item]
+	if own then
+		local room = own - possessions.count(self, item)
+		local moved = room > 0 and stock.take(self, item, math.min(room, extra)) or 0
 		if moved > 0 then
-			possessions.add(self, WHEAT, moved)
+			possessions.add(self, item, moved)
 			extra = extra - moved
 		end
 		if extra <= 0 then return end
@@ -358,78 +360,22 @@ local function spare_food(self, session)
 	return nil
 end
 
-local same_house = possessions.same_house
-
--- A bundle's price: one emerald at vanilla's prices.
-local BUNDLE_PRICE = ledger.SCALE
-
--- How many of the food one vanilla emerald buys (ledger.lua's prices are SCALE times it).
-local function bundle(item)
-	local price = ledger.price(item)
-	if not price or price <= 0 then return nil end
-	return math.max(1, math.floor(BUNDLE_PRICE / price + 0.5))
+-- Whether it feeds this villager: with the economy on, a child only (adults eat at the
+-- tavern or from what they own); with it off, everyone, as it always did.
+local function feeds(self, target)
+	return not clock.enabled() or (target.child and target ~= self)
 end
 
--- The best food it has a whole bundle of to spare, and the bundle's size.
-local function food_for_sale(self, session)
-	for _, item in ipairs(food.FOODS) do
-		local size = bundle(item)
-		if size and not (session.sowing and field.is_seed(item))
-			and stock.count(self, item) - (FOOD_SEED_KEEP[item] or 0) >= size then
-			return item, size
-		end
-	end
-	return nil
-end
-
--- What a villager gets from it: free (all it wants), sale (a bundle for BUNDLE_PRICE),
--- handout (one item), or nil.
-local function terms(self, target)
-	if target == self or target.child or not clock.enabled() or same_house(self._bed, target._bed) then
-		return "free"
-	end
-	if possessions.emeralds(target) >= BUNDLE_PRICE and possessions.food_carried(target) == 0 then return "sale" end
-	if food.state(target) == "starving" then return "handout" end
-	return nil
-end
-
--- The terms it can meet with what it has now: one who would buy but finds no whole
--- bundle on offer still gets a handout if it is starving.
 local function deal_for(self, target, session)
-	local deal = terms(self, target)
-	if deal == "sale" and not food_for_sale(self, session) then
-		deal = food.state(target) == "starving" and "handout" or nil
-	end
-	if deal and deal ~= "sale" and not spare_food(self, session) then return nil end
-	return deal
+	if not feeds(self, target) or not spare_food(self, session) then return nil end
+	return "free"
 end
 
 -- Whether to seek this villager out: someone it can serve now, or, while it has no food
 -- at all, someone it would serve once it fetches some (plot_jobs).
 local function worth_seeking(self, target, session)
 	if deal_for(self, target, session) then return true end
-	return terms(self, target) ~= nil and not spare_food(self, session)
-end
-
-local function sell(self, target, session)
-	local item, size = food_for_sale(self, session)
-	if not item then return nil end
-	local paid = possessions.take(target, EMERALD, BUNDLE_PRICE)
-	if paid < BUNDLE_PRICE then
-		possessions.add(target, EMERALD, paid)
-		return nil
-	end
-	possessions.add(self, EMERALD, paid)
-	stock.take(self, item, size)
-	local left = size
-	while left > 0 and food.wants(target) do
-		food.receive(target, item)
-		left = left - 1
-	end
-	if left > 0 then possessions.add(target, item, left) end
-	core.log("action", string.format("[living_villages] farmer %s sold %d %s to %s for %d emeralds",
-		tostring(self._id), size, item, tostring(target._id), BUNDLE_PRICE))
-	return item
+	return feeds(self, target) and not spare_food(self, session)
 end
 
 -- Feeds the villager on its terms, from what the farmer can spare.
@@ -437,17 +383,12 @@ local function hand_over(self, target, session)
 	local deal = deal_for(self, target, session)
 	if not deal then return false end
 	local given
-	if deal == "sale" then
-		given = sell(self, target, session)
-	else
-		while food.wants(target) do
-			local item = spare_food(self, session)
-			if not item then break end
-			stock.take(self, item, 1)
-			food.receive(target, item)
-			given = item
-			if deal == "handout" then break end
-		end
+	while food.wants(target) do
+		local item = spare_food(self, session)
+		if not item then break end
+		stock.take(self, item, 1)
+		food.receive(target, item)
+		given = item
 	end
 	if given and target ~= self then
 		food.show_handover(self.object:get_pos(), target.object:get_pos(), given, target.object)
@@ -558,7 +499,7 @@ end
 local function next_step(self, session, pos, now)
 	local farm = field.scan(self._jobsite)
 	session.sowing = #farm.empty > 0 or #field.tillable(self._jobsite, farm.soil) > 0
-	-- It looks after itself first: a farmer can be a parent too.
+	-- With the economy off it looks after itself first (on, it eats its own bread at dinner).
 	if hand_over(self, self, session) then return "worked" end
 	local jobs = plot_jobs(self, session, farm, now)
 	-- Work in reach goes first, so one walk does a whole patch of plots. But the composter
