@@ -30,10 +30,11 @@ local ledger = dofile(core.get_modpath("living_villages") .. "/ledger.lua")
 -- Farm output (ticket 18). VoxeLibre's crops take some 2800 s of loaded time to ripen
 -- beside their own kind, so a farmer mostly waits on its field. In the work stage, with
 -- nothing else to do, it tends growing crops: each tend grows a crop one stage with
--- TEND_CHANCE times its hoe's gain (rate - 1, wants.lua), at most 1; a plot is tended at
--- most once in TEND_SECONDS, by any farmer. About 3.5 tends a plot a work day: a stone
--- hoe adds some 1.5 stages a day to a plot's 3, an iron one 3; by hand it does not tend.
-local TEND_CHANCE = 0.85
+-- TEND_CHANCE times its hoe's rate (wants.lua; 1 by hand), at most 1; a plot is tended at
+-- most once in TEND_SECONDS, by any farmer. About 3.5 tends a plot a work day add to a
+-- plot's 3 stages a day some 1.2 by hand, 1.9 with a stone hoe, 2.5 with an iron one and
+-- 3.1 with gold or diamond: a tool is a bonus, not a need.
+local TEND_CHANCE = 0.35
 local TEND_SECONDS = 120
 -- How often it looks again at the other farmers' composters and what the village asks.
 local LOOK_SECONDS = 30
@@ -163,9 +164,9 @@ local function crop_worth(self, session, now)
 	return worth
 end
 
--- How likely a tend is to grow a crop, by the hoe in use: 0 by hand.
+-- How likely a tend is to grow a crop, by the hoe in use.
 local function tend_chance(self)
-	return math.min(TEND_CHANCE * (wants.tool_rate(self, "harvest") - 1), 1)
+	return math.min(TEND_CHANCE * wants.tool_rate(self, "harvest"), 1)
 end
 
 -- The growing crops not tended lately.
@@ -549,14 +550,6 @@ local function plot_jobs(self, session, farm, now)
 			wanted = stock.count(self, BONE_MEAL) > 0,
 			work = fertilise,
 		},
-		{
-			positions = tendable(farm.growing, now),
-			wanted = tend_chance(self) > 0,
-			work = function(_, pos)
-				tended[key(pos)] = now + TEND_SECONDS
-				field.tend(pos, tend_chance(self))
-			end,
-		},
 		{positions = {self._jobsite}, wanted = composter_has_work(self, composter, #chests > 0), work = work_composter, last_resort = true},
 		{
 			positions = not seeds and #farm.empty > 0 and chests_with_seeds(session, chests, now) or {},
@@ -567,6 +560,16 @@ local function plot_jobs(self, session, farm, now)
 			positions = #hungry > 0 and not has_food and chests_with_food(session, chests, now) or {},
 			wanted = not has_food,
 			work = withdraw_food,
+		},
+		-- Tending fills its time, after every other job, in reach or not (ticket 18).
+		{
+			positions = tendable(farm.growing, now),
+			wanted = tend_chance(self) > 0,
+			last_resort = true,
+			work = function(_, pos)
+				tended[key(pos)] = now + TEND_SECONDS
+				field.tend(pos, tend_chance(self))
+			end,
 		},
 	}
 end

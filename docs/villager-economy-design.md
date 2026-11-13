@@ -1555,11 +1555,17 @@ durability, gold yielding most for wearing out first. The best hoe held is taken
 ledger asks for a stone one, which the tool smith makes, and values every tier at its
 worth (uses × a harvest's goods × the yield's gain), so a better hoe sells to a farmer.
 
-**Tending** (`farmer.lua`). In the work stage with nothing else to do the farmer tends
-growing crops: each tend grows one a stage with 0.85 × the hoe's gain (at most 1; stone
-0.43, iron 0.85), a plot at most once in 120 s by any farmer. Some 3.5 tends a plot a work
-day add 1.5 stages with a stone hoe and 3 with an iron one to the 3 a plot grows by
-itself in a day. By hand it does not tend. Like hunger it needs the village loaded.
+**Tending** (`farmer.lua`). In the work stage, after every other job, the farmer tends
+growing crops: each tend grows one a stage with 0.35 × the hoe's rate (by hand 0.35,
+stone 0.53, iron 0.7, gold and diamond 0.875), a plot at most once in 120 s by any farmer.
+Some 3.5 tends a plot a work day add to the 3 stages a plot grows by itself in a day 1.2 by
+hand, 1.9 with a stone hoe, 2.5 with iron and 3.1 with gold or diamond: a tool is a bonus,
+not a need. Like hunger it needs the village loaded.
+
+**Starving still works** (`production.lua`). A starving villager crafted nothing, so a
+village that ran out of food could not cook its way back: the ColonyFood world, starving
+when this landed, made nothing in four days. It now crafts at a quarter of the rate (a
+hungry one at half), on its shorter starving work day.
 
 **Sowing for the village** (`farm_field.choose_seed`, `harvest_worth`). A harvest of each
 crop is worth its net yield at the best price heard asked (market news `asking`) for the

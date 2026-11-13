@@ -93,7 +93,7 @@ assert(logs[#logs]:find("made 1 mcl_tools:shovel_stone", 1, true))
 assert(production.work(tobias, 1000) == 2)
 assert(count(tobias, "mcl_core:stick") == 0 and tobias._villages_craft == nil, "nothing left: nothing banked")
 
--- Hungry works at half the rate; starving not at all, and holds its restock.
+-- Hungry works at half the rate; starving at a quarter (ticket 18), and holds its restock.
 local hungry = smith({_villages_food = 2})
 possessions.add(hungry, "mcl_core:cobble", 3)
 possessions.add(hungry, "mcl_core:stick", 2)
@@ -101,7 +101,8 @@ assert(production.work(hungry, 200) == 0 and hungry._villages_craft == 100)
 local starving = smith({_villages_food = 0})
 possessions.add(starving, "mcl_core:cobble", 3)
 possessions.add(starving, "mcl_core:stick", 2)
-assert(production.work(starving, 500) == 0)
+assert(production.work(starving, 400) == 0 and starving._villages_craft == 100)
+assert(production.work(starving, 80) == 1, "slowly, but it makes one")
 assert(production.restock_held(starving) == "starving")
 
 -- Fuel: a lump is 8 smelts, charcoal burned first, the rest kept for the next item.

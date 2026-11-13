@@ -476,11 +476,20 @@ do
 	world.now = world.now + 121
 	step()
 	assert(world.name(young) == "mcl_farming:wheat_4")
-	-- By hand it does not tend.
+	-- By hand it tends too, at a lower chance: a hoe is a bonus.
 	setup()
 	young = plot(1, 1, "mcl_farming:wheat_2")
-	step(3)
-	assert(world.name(young) == "mcl_farming:wheat_2")
+	step()
+	assert(world.name(young) == "mcl_farming:wheat_3", "a roll of 0 grows it by hand")
+	setup()
+	young = plot(1, 1, "mcl_farming:wheat_2")
+	math.random = function() return 0.5 end
+	step()
+	assert(world.name(young) == "mcl_farming:wheat_2", "0.35 by hand: a roll of 0.5 does not")
+	setup({_villages_wants = {hoe = {item = "mcl_farming:hoe_iron", left = 128}}})
+	young = plot(1, 1, "mcl_farming:wheat_2")
+	step()
+	assert(world.name(young) == "mcl_farming:wheat_3", "0.7 with an iron hoe: it does")
 	math.random = real_random
 end
 
