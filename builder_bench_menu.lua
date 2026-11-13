@@ -288,20 +288,23 @@ function M.formspec(view)
 
 	parts[#parts + 1] = ("button[%.2f,0.15;2.2,0.65;refresh;%s]"):format(WIDTH - 2.6, escape(S("Refresh")))
 	local selecting = view.view == M.SELECT
-	local intro
+	-- The Select tab says where its files come from on two lines, clear of the Refresh button.
+	local status_y = 0.95
 	if selecting then
-		intro = S("Files from @1. Put a .mts file there, with a .png of the same name for a picture, and press Refresh.",
-			view.place or "")
+		parts[#parts + 1] = ("label[0.4,0.35;%s]"):format(escape(S("Schematics from @1.", view.place or "")))
+		parts[#parts + 1] = ("label[0.4,0.75;%s]"):format(escape(
+			S("Add a .mts file there, with a .png of the same name for a picture, then press Refresh.")))
+		status_y = 1.15
 	else
-		intro = S("The Builder builds what the village needs. To choose a building, order one on the next tab.")
+		parts[#parts + 1] = ("label[0.4,0.45;%s]"):format(escape(
+			S("The Builder builds what the village needs. To choose a building, order one on the next tab.")))
 	end
-	parts[#parts + 1] = ("label[0.4,0.45;%s]"):format(escape(intro))
 	local status = selecting and order_text(view.order) or view.project_text
-	if status then parts[#parts + 1] = ("label[0.4,0.95;%s]"):format(escape(status)) end
+	if status then parts[#parts + 1] = ("label[0.4,%.2f;%s]"):format(status_y, escape(status)) end
 	if selecting and view.can_refund then
-		parts[#parts + 1] = ("button[0.4,1.25;3,0.6;refund;%s]"):format(escape(S("Take the refund")))
+		parts[#parts + 1] = ("button[0.4,1.38;3,0.55;refund;%s]"):format(escape(S("Take the refund")))
 	elseif selecting and not view.can_use then
-		parts[#parts + 1] = ("label[0.4,1.45;%s]"):format(escape(S("This bench is protected, so you can only look.")))
+		parts[#parts + 1] = ("label[0.4,1.6;%s]"):format(escape(S("This bench is protected, so you can only look.")))
 	end
 
 	if view.notice then

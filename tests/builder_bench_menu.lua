@@ -178,7 +178,7 @@ do
 	send({tabs = "2"})
 	local form = last()
 	assert(has(form, ";2;false") and priced_for == "ann")
-	assert(has(form, "Cottage") and has(form, "Files from <world>/schems"))
+	assert(has(form, "Cottage") and has(form, "Schematics from <world>/schems."))
 	assert(has(form, "448") and has(form, "Price"))
 	-- Only the first four materials, first lines of their descriptions.
 	assert(has(form, "50 Cobblestone") and not has(form, "Hard"))
