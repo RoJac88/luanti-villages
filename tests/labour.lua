@@ -2,6 +2,7 @@
 local now, day, time = 1000, 5, 9000 / 24000
 local settings = {}
 local nodes, objects, logs = {}, {}, {}
+local player_leaves = {}
 local function key(pos) return pos.x .. "," .. pos.y .. "," .. pos.z end
 local function parse(k)
 	local x, y, z = k:match("(-?%d+),(-?%d+),(-?%d+)")
@@ -25,6 +26,7 @@ local GROUPS = {
 	["mcl_core:lava_source"] = {lava = 3},
 	["mcl_core:water_source"] = {water = 3},
 	["mcl_core:water_flowing"] = {water = 3},
+	["mcl_core:tree"] = {tree = 1},
 }
 
 ItemStack = function(text)
@@ -48,6 +50,9 @@ minetest = {
 	get_timeofday = function() return time end,
 	get_item_group = function(name, group) return GROUPS[name] and GROUPS[name][group] or 0 end,
 	registered_nodes = {},
+	get_meta = function(pos)
+		return {get_int = function(_, field) return field == "player_leaves" and player_leaves[key(pos)] or 0 end}
+	end,
 	settings = {
 		get = function(_, name) return settings[name] end,
 		get_bool = function(_, name, default)
@@ -235,6 +240,29 @@ assert(count(wade, "mcl_core:tree") == 6 and nodes[key(spot)] == "mcl_core:sapli
 -- A grove short of trees gets a spare sapling from the felling, to plant a new spot.
 assert(count(wade, "mcl_core:sapling") == 1, "the spare sapling")
 assert(not nodes[key({x = spot.x, y = spot.y + 2, z = spot.z})], "trunk gone")
+-- A felled tree's own leaves decay, though its grove neighbour stands 5 away; leaves
+-- nearer the neighbour, and leaves a player placed, stay.
+do
+	minetest.registered_nodes["mcl_core:leaves_orphan"] = {}
+	local a, b = {x = 200, y = 1, z = 200}, {x = 205, y = 1, z = 200}
+	for y = 0, 4 do
+		nodes[key({x = a.x, y = a.y + y, z = a.z})] = "mcl_core:tree"
+		nodes[key({x = b.x, y = b.y + y, z = b.z})] = "mcl_core:tree"
+	end
+	local own, shared, near_b, placed = {x = 198, y = 5, z = 200}, {x = 202, y = 5, z = 201}, {x = 203, y = 5, z = 200}, {x = 199, y = 5, z = 201}
+	for _, leaf in ipairs({own, shared, near_b, placed}) do nodes[key(leaf)] = "mcl_core:leaves" end
+	player_leaves[key(placed)] = 1
+	local log, felled = labour.fell(a)
+	assert(log == "mcl_core:tree" and felled == 5)
+	assert(nodes[key(own)] == "mcl_core:leaves_orphan", "its own leaf decays")
+	assert(nodes[key(shared)] == "mcl_core:leaves_orphan", "nearer the felled trunk than the standing one")
+	assert(nodes[key(near_b)] == "mcl_core:leaves", "the standing tree keeps its own")
+	assert(nodes[key(placed)] == "mcl_core:leaves", "a player's leaves stay")
+	assert(nodes[key(b)] == "mcl_core:tree")
+	for y = 0, 4 do nodes[key({x = b.x, y = b.y + y, z = b.z})] = nil end
+	for _, leaf in ipairs({own, shared, near_b, placed}) do nodes[key(leaf)] = nil end
+	minetest.registered_nodes["mcl_core:leaves_orphan"] = nil
+end
 -- A sapling someone broke: replanted if it has one, else the spot is given up.
 nodes[key(spot)] = nil
 wade._villages_belongings["mcl_core:sapling"] = nil
