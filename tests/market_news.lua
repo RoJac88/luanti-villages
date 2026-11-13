@@ -198,6 +198,29 @@ do
 	shepherd._villages_market_news = nil
 end
 
+-- A fisherman tells of its spare catch, though it values the cod at next to nothing and
+-- the iron armour it was born with at far more (ColonyFood, 2026-11-13: the butcher never
+-- heard of 16 cod).
+do
+	local fisher = villager("fisher", {["mcl_fishing:fish_raw"] = 16, ["mcl_armor:leggings_iron"] = 1,
+		["mcl_armor:chestplate_iron"] = 1, ["mcl_armor:helmet_iron"] = 1, ["mcl_armor:boots_iron"] = 1},
+		{_profession = "fisherman"})
+	local told
+	for _, entry in ipairs(news.own(fisher, possessions.assess(fisher), now)) do
+		if entry.kind == "has" and entry.item == "mcl_fishing:fish_raw" then told = entry end
+	end
+	assert(told and told.count == 16, "its catch is news")
+	assert(math.abs(told.price - dofile("asks.lua").ask(fisher, "mcl_fishing:fish_raw")) < 1e-9)
+	-- A nitwit holding the same tells only its top three.
+	local nitwit = villager("nit", {["mcl_fishing:fish_raw"] = 16, ["mcl_armor:leggings_iron"] = 1,
+		["mcl_armor:chestplate_iron"] = 1, ["mcl_armor:helmet_iron"] = 1, ["mcl_armor:boots_iron"] = 1})
+	local has = 0
+	for _, entry in ipairs(news.own(nitwit, possessions.assess(nitwit), now)) do
+		if entry.kind == "has" then has = has + 1 end
+	end
+	assert(has <= news.OWN_ITEMS, has)
+end
+
 settings.living_villages_economy = false
 local hal, ivy = villager("hal", {["mcl_core:coal_lump"] = 40}), villager("ivy", {})
 assert(news.exchange({hal, ivy}) == 0 and ivy._villages_market_news == nil)
