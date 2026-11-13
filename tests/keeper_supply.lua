@@ -238,10 +238,16 @@ assert(supply.source(jukebox, chests, function(pos) return vector.equals(pos, fa
 nodes[key(barrel)] = nil
 
 -- A farm with nothing to fetch: no trip, and it checks again later.
-inventories[key(farm_chest)] = {["mcl_farming:carrot_item"] = 40}
+inventories[key(farm_chest)] = {["mcl_farming:beetroot_item"] = 40}
 kate._villages_supply_next = nil
 supply.step(kate, now)
 assert(not trip and kate._villages_supply_next == now + supply.RETRY_SECONDS)
+-- Carrots, the tavern's last resort (meal.lua), are worth the trip, at a quarter of a
+-- dinner each.
+inventories[key(farm_chest)] = {["mcl_farming:carrot_item"] = 40}
+assert(vector.equals(supply.source(jukebox, chests), farm_chest), "carrots to fetch")
+assert(supply.worth({["mcl_farming:carrot_item"] = 4}) == supply.worth({["mcl_farming:bread"] = 1}))
+inventories[key(farm_chest)] = {}
 
 -- Its shift: one dish every COOK_SECONDS at the jukebox, a potato baked. Wheat and raw
 -- fish it leaves: only the farmer bakes bread, only the butcher cooks fish.

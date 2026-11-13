@@ -56,7 +56,16 @@ local RAW = {
 	["mcl_farming:sweet_berry"] = true,
 }
 
-local M = {FULL = FULL, HUNGRY = HUNGRY, POINTS = POINTS, RAW = RAW}
+-- Eaten only when starving, and no food in trade (2026-11-13): a starving fisherman sat
+-- on its catch while it starved in ColonyFood. Kept out of POINTS, so the catch stays the
+-- butcher's input and is not priced or asked for as food (goods.lua). Half of what it
+-- gives a player.
+local LAST_RESORT = {
+	["mcl_fishing:fish_raw"] = 1,
+	["mcl_fishing:salmon_raw"] = 1,
+}
+
+local M = {FULL = FULL, HUNGRY = HUNGRY, POINTS = POINTS, RAW = RAW, LAST_RESORT = LAST_RESORT}
 
 -- Whether an item is food fit for dinner: food, and not raw.
 function M.is_prepared(item)
@@ -115,7 +124,7 @@ function M.wants(self)
 end
 
 function M.receive(self, item)
-	local points = POINTS[item]
+	local points = POINTS[item] or LAST_RESORT[item]
 	if not points then return false end
 	if self.child then
 		local timer = self.hornytimer or 0

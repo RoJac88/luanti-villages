@@ -57,6 +57,9 @@ local BITE_SECONDS = 0.8
 -- A plate hold lapses unless renewed, so one left by a guest that unloaded
 -- frees itself.
 local HOLD_SECONDS = 5
+-- A last resort (2026-11-13): with no dish in the pantry, a villager guest is served a
+-- plate of raw carrots, as many as make about a loaf's points, at dinner's price.
+local LAST_RESORT, LAST_RESORT_PORTION = "mcl_farming:carrot_item", 4
 -- How far from the jukebox its keeper is looked for: keeper.lua's staffing
 -- distance, with room to spare.
 local KEEPER_RADIUS = 4
@@ -157,6 +160,11 @@ local function has_room(self)
 	return not is_villager(self) or food.points(self) <= possessions.EAT_AT
 end
 
+-- Whether the pantry holds a last-resort plate.
+local function last_resort(chests)
+	return pantry.count(chests, LAST_RESORT) >= LAST_RESORT_PORTION
+end
+
 -- A display whose guest no longer holds its plate: the guest unloaded, or
 -- was removed, while the plate stayed loaded, and nothing will finish it.
 local function orphaned(entity)
@@ -247,7 +255,9 @@ function M.explain(self, jukebox)
 	if #menu() == 0 then return "the menu is empty" end
 	local chests = pantry.chests(jukebox)
 	if chests then
-		if #pantry.available(chests, menu()) == 0 then return "the pantry is empty" end
+		if #pantry.available(chests, menu()) == 0 and not (is_villager(self) and last_resort(chests)) then
+			return "the pantry is empty"
+		end
 		if not has_room(self) then return "the diner is not hungry" end
 		local price, can_pay = terms(self, jukebox)
 		if price > 0 and not can_pay() then return "the diner cannot pay " .. price .. " emerald(s)" end
@@ -258,12 +268,14 @@ end
 
 -- Takes the meal out of the pantry and the payment into it. False if either fails,
 -- having changed nothing.
-local function settle(self, jukebox, chests, item)
+local function settle(self, jukebox, chests, item, portion)
+	portion = portion or 1
 	local price, can_pay, pay = terms(self, jukebox)
 	if price > 0 and (not can_pay() or not pantry.has_room(chests, pantry.EMERALD, price)) then
 		return false
 	end
-	if not pantry.take(chests, item) then return false end
+	if pantry.count(chests, item) < portion then return false end
+	for _ = 1, portion do pantry.take(chests, item) end
 	if price > 0 then
 		pay()
 		pantry.put(chests, pantry.EMERALD, price)
@@ -284,6 +296,10 @@ local function serve(self, jukebox)
 	local chests = pantry.chests(jukebox)
 	if chests and not has_room(self) then return end
 	local items = chests and pantry.available(chests, menu()) or menu()
+	local portion = 1
+	if #items == 0 and chests and is_villager(self) and last_resort(chests) then
+		items, portion = {LAST_RESORT}, LAST_RESORT_PORTION
+	end
 	if #items == 0 then return end
 	local item = items[math.random(#items)]
 	clear_orphans(pos)
@@ -293,7 +309,7 @@ local function serve(self, jukebox)
 		plates[key(pos)] = nil
 		return
 	end
-	if chests and not settle(self, jukebox, chests, item) then
+	if chests and not settle(self, jukebox, chests, item, portion) then
 		object:remove()
 		plates[key(pos)] = nil
 		return
@@ -306,7 +322,7 @@ local function serve(self, jukebox)
 	-- A villager guest is fed when served; a player diner (no luaentity of its own)
 	-- by its bites.
 	if chests and not self._villages_on_bite then
-		food.receive(self, item)
+		for _ = 1, portion do food.receive(self, item) end
 		-- Its dinner for the day: it eats nothing of its own tonight (possessions.lua).
 		self._villages_dined_day = core.get_day_count()
 	end

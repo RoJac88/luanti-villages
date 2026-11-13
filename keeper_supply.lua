@@ -6,7 +6,7 @@
 -- * In its free hours, while the pantry holds fewer than TARGET_MEALS, it walks to the
 --   nearest farmer's work chest with food within SUPPLY_RADIUS of the jukebox (the chest
 --   nearest a claimed composter, the one farmer.lua stores its surplus in). It takes up
---   to CARRY of bread and potatoes and carries them back to its jukebox, from where it
+--   to CARRY of bread, potatoes and then carrots and carries them back to its jukebox, from where it
 --   fills the pantry (a pantry chest behind the bar may have nowhere to stand by it).
 --   Only the farmer bakes bread, and only the butcher cooks meat and fish (recipes.lua):
 --   the keeper buys those ready made.
@@ -72,14 +72,18 @@ local REACH = 3
 
 local BREAD = "mcl_farming:bread"
 local POTATO = "mcl_farming:potato_item"
+-- Carrots are a last resort (meal.lua serves a plate of them only with no dish in the
+-- pantry), fetched after the rest, and they count toward no meal the pantry holds.
+local CARROT = "mcl_farming:carrot_item"
+local CARROTS_PER_MEAL = 4
 -- What it fetches, most wanted first.
-local SUPPLIES = {BREAD, POTATO}
+local SUPPLIES = {BREAD, POTATO, CARROT}
 local RECIPES = {
 	{from = POTATO, count = 1, to = "mcl_farming:potato_item_baked"},
 }
 local STARTING_STOCK = {{BREAD, 9}, {POTATO, 6}}
 -- Dinners each supply makes.
-local MEALS = {[BREAD] = 1, [POTATO] = 1}
+local MEALS = {[BREAD] = 1, [POTATO] = 1, [CARROT] = 1 / CARROTS_PER_MEAL}
 
 local COMPOSTERS = {"mcl_composters:composter", "mcl_composters:composter_ready"}
 for level = 1, 7 do COMPOSTERS[#COMPOSTERS + 1] = "mcl_composters:composter_" .. level end

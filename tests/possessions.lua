@@ -262,6 +262,17 @@ possessions.eat(kim)
 assert(kim._villages_food == 3 and possessions.count(kim, "mcl_farming:carrot_item") == 0)
 kim._villages_food = 1
 assert(#possessions.eat(kim) == 0, "hungry is not starving")
+-- Raw fish is a last resort too (2026-11-13): no dinner, but eaten when starving.
+possessions.add(kim, "mcl_fishing:fish_raw", 6)
+stage = "home"
+kim._villages_food, kim._villages_dined_day = 5, nil
+assert(#possessions.eat(kim) == 0 and possessions.count(kim, "mcl_fishing:fish_raw") == 6, "no dinner of raw fish")
+stage = "work"
+kim._villages_food = 0
+possessions.eat(kim)
+assert(kim._villages_food == 4 and possessions.count(kim, "mcl_fishing:fish_raw") == 2, "starving, it eats its catch")
+possessions.take(kim, "mcl_fishing:fish_raw", 2)
+kim._villages_food = 1
 stage = "home"
 -- Its stash, only within reach.
 local kim_bed, kim_chest = {x = 500, y = 0, z = 0}, {x = 502, y = 0, z = 0}
