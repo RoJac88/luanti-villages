@@ -128,4 +128,64 @@ world.set({x = 2, y = 1, z = 3}, "mcl_core:dirt")
 local lost = field.tillable(composter, field.scan(composter).soil)
 assert(#lost == 1 and lost[1].x == 2 and lost[1].z == 3, "only the lost plot")
 
+-- Ticket 18. A hoe's yield multiplies the product, never the seeds: the whole part of the
+-- extra always, the rest by chance.
+do
+	local real_random = math.random
+	local wheat = plot(-3, -3, "mcl_farming:wheat")
+	math.random = function() return 0.4 end
+	local got = field.harvest(wheat, 1.5)
+	assert(#got == 4 and got[4] == "mcl_farming:wheat_item 1", "a half over: one more on a roll under 0.5")
+	wheat = plot(-3, -3, "mcl_farming:wheat")
+	math.random = function() return 0.6 end
+	assert(#field.harvest(wheat, 1.5) == 3, "and none over it")
+	local potato = plot(-3, -4, "mcl_farming:potato")
+	got = field.harvest(potato, 2.5)
+	assert(got[2] == "mcl_farming:potato_item 3", "two potatoes at 2.5: three more")
+	wheat = plot(-3, -3, "mcl_farming:wheat")
+	assert(#field.harvest(wheat, 1) == 3 and #field.harvest(plot(-3, -5, "mcl_farming:wheat")) == 3, "no hoe, no extra")
+	-- Tending grows a crop one stage on a roll under its chance; the last stage ripens.
+	local young = plot(-4, -3, "mcl_farming:wheat_3")
+	math.random = function() return 0.5 end
+	assert(not field.tend(young, 0.4) and world.name(young) == "mcl_farming:wheat_3")
+	assert(field.tend(young, 0.6) and world.name(young) == "mcl_farming:wheat_4")
+	local late = plot(-4, -4, "mcl_farming:wheat_7")
+	assert(field.tend(late, 1) and world.name(late) == "mcl_farming:wheat")
+	local beet = plot(-4, -5, "mcl_farming:beetroot_2")
+	assert(field.tend(beet, 1) and world.name(beet) == "mcl_farming:beetroot")
+	assert(not field.tend(plot(-4, -6, "mcl_farming:wheat"), 1), "a ripe crop is not tended")
+	math.random = real_random
+end
+
+-- What a harvest is worth by what the village asks: a potato's 1.5 net at a baked
+-- potato's ask, wheat at a third of bread's.
+do
+	local asked = {["mcl_farming:bread"] = 30, ["mcl_farming:potato_item_baked"] = 10, ["mcl_farming:carrot_item"] = 4}
+	local worth = field.harvest_worth(function(item) return asked[item] end)
+	assert(worth["mcl_farming:wheat_seeds"] == 10 and worth["mcl_farming:potato_item"] == 15)
+	assert(math.abs(worth["mcl_farming:carrot_item"] - 7.2) < 1e-9 and worth["mcl_farming:beetroot_seeds"] == 0)
+	-- Sowing follows the worth, still passing over a crop next door where another will do.
+	local spot = {x = -10, y = 2, z = 10}
+	local stock_of = function() return 8 end
+	assert(field.choose_seed(spot, stock_of, worth) == "mcl_farming:potato_item")
+	world.set({x = -9, y = 2, z = 10}, "mcl_farming:potato_3")
+	assert(field.choose_seed(spot, stock_of, worth) == "mcl_farming:wheat_seeds", "the next best beside a potato")
+end
+
+-- Two composters' fields: each counts and tills only the cells nearer its own.
+do
+	local a, b = {x = 40, y = 2, z = 0}, {x = 46, y = 2, z = 0}
+	local others = {a, b}
+	assert(field.is_own(a, {x = 42, y = 1, z = 0}, others) and not field.is_own(b, {x = 42, y = 1, z = 0}, others))
+	assert(field.is_own(b, {x = 44, y = 1, z = 3}, others) and not field.is_own(a, {x = 44, y = 1, z = 3}, others))
+	-- Halfway: the first by position.
+	assert(field.is_own(a, {x = 43, y = 1, z = 0}, others) and not field.is_own(b, {x = 43, y = 1, z = 0}, others))
+	assert(field.is_own(a, {x = 50, y = 1, z = 0}, {a}), "alone, all of it")
+	for x = 41, 45 do world.set({x = x, y = 1, z = 1}, "mcl_farming:soil_wet") end
+	local scanned = field.scan(a, others)
+	local own = 0
+	for _, pos in ipairs(scanned.soil) do if pos.x >= 41 and pos.x <= 45 and pos.z == 1 then own = own + (field.is_own(a, pos, others) and 1 or 0) end end
+	assert(#scanned.own_soil < #scanned.soil and own == 3, own)
+end
+
 print("farm_field.lua: ok")

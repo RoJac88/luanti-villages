@@ -14,6 +14,13 @@
 -- goods one use yields at their price, times the rate's gain. Market news posts the
 -- need, and conversations and trade trips buy it as any other.
 --
+-- A good may come in tiers (`tiers`, best first, each {item, uses, rate}), as hoes do
+-- (ticket 18): one in use is the best tier it holds when it takes one up, and wears and
+-- works by its own uses and rate. The ledger still asks for `item`, the tier the village
+-- makes, and values every tier at its own worth, so a better one is bought when offered.
+-- A hoe's rate is no speed but the harvest's yield (farmer.lua), and how much its
+-- tending speeds growth: the farmer waits on the crop, not the crop on the farmer.
+--
 -- A book (ticket 11e) lasts days, not uses: every adult wants one, and reads one it holds
 -- whenever it next works (M.use, and production.lua's crafting through M.reading_rate).
 -- For BOOK.days of game time after (`_villages_wants.book.until`) its work goes BOOK.rate
@@ -25,7 +32,15 @@ local M = {}
 
 M.GOODS = {
 	{key = "hoe", item = "mcl_farming:hoe_stone", professions = {farmer = true}, use = "harvest",
-		uses = 64, rate = 1.5, yields = {["mcl_farming:wheat_item"] = 1}},
+		uses = 64, rate = 1.5, yields = {["mcl_farming:wheat_item"] = 1}, effect = "yield",
+		-- About half VoxeLibre's durability; gold, worn out fastest, yields most for it.
+		tiers = {
+			{item = "mcl_farming:hoe_diamond", uses = 512, rate = 2.5},
+			{item = "mcl_farming:hoe_gold", uses = 16, rate = 2.5},
+			{item = "mcl_farming:hoe_iron", uses = 128, rate = 2},
+			{item = "mcl_farming:hoe_stone", uses = 64, rate = 1.5},
+			{item = "mcl_farming:hoe_wood", uses = 30, rate = 1.25},
+		}},
 	{key = "axe", item = "mcl_tools:axe_stone", activities = {woodcutter = true}, use = "fell",
 		uses = 32, rate = 1.5, yields = {["mcl_core:tree"] = 5}},
 	{key = "pickaxe", item = "mcl_tools:pick_stone", activities = {quarrier = true}, use = "mine",
@@ -69,11 +84,25 @@ function M.in_use(self, good)
 	return held and held[good.key] or nil
 end
 
--- What one good brings over its life, in emeralds.
-function M.worth(good)
+-- The tiers of a good, best first: its own list, or the good itself.
+function M.tiers(good)
+	return good.tiers or {good}
+end
+
+-- The tier of `good` that `item` is, or nil.
+function M.tier(good, item)
+	for _, tier in ipairs(M.tiers(good)) do
+		if tier.item == item then return tier end
+	end
+	return nil
+end
+
+-- What one good brings over its life, in emeralds: the given tier's, or the good's own.
+function M.worth(good, tier)
+	tier = tier or good
 	local per_use = 0
 	for item, count in pairs(good.yields) do per_use = per_use + count * (ledger.price(item) or 0) end
-	return good.uses * per_use * (good.rate - 1)
+	return tier.uses * per_use * (tier.rate - 1)
 end
 
 local function reads(self)
@@ -89,8 +118,9 @@ function M.targets(self, now)
 	local targets, worth = {}, {}
 	for _, good in ipairs(M.goods(self)) do
 		local current = M.in_use(self, good)
-		if not current or current.left <= good.uses * M.NEARLY_WORN then targets[good.item] = 1 end
-		worth[good.item] = M.worth(good)
+		local uses = current and (M.tier(good, current.item) or good).uses or good.uses
+		if not current or current.left <= uses * M.NEARLY_WORN then targets[good.item] = 1 end
+		for _, tier in ipairs(M.tiers(good)) do worth[tier.item] = M.worth(good, tier) end
 	end
 	if reads(self) then
 		local book = self._villages_wants and self._villages_wants.book
@@ -172,26 +202,43 @@ function M.tool_use(self, use, take, now)
 		if good.use == use then
 			self._villages_wants = self._villages_wants or {}
 			local current = self._villages_wants[good.key]
-			if not current and take and take(self, good.item, 1) > 0 then
-				current = {item = good.item, left = good.uses}
-				self._villages_wants[good.key] = current
-				core.log("action", string.format("[living_villages] villager %s takes up a %s",
-					tostring(self._id):sub(1, 6), good.item))
+			if not current and take then
+				for _, tier in ipairs(M.tiers(good)) do
+					if take(self, tier.item, 1) > 0 then
+						current = {item = tier.item, left = tier.uses}
+						self._villages_wants[good.key] = current
+						core.log("action", string.format("[living_villages] villager %s takes up a %s",
+							tostring(self._id):sub(1, 6), tier.item))
+						break
+					end
+				end
 			end
 			if not current then
 				note_pace(self, good, nil, now or 0)
 				if not next(self._villages_wants) then self._villages_wants = nil end
 				return 1
 			end
+			local tier = M.tier(good, current.item) or good
 			current.left = current.left - 1
-			note_pace(self, good, good.item, now or 0)
+			note_pace(self, good, current.item, now or 0)
 			if current.left <= 0 then
 				self._villages_wants[good.key] = nil
 				if not next(self._villages_wants) then self._villages_wants = nil end
 				core.log("action", string.format("[living_villages] villager %s wore out its %s",
-					tostring(self._id):sub(1, 6), good.item))
+					tostring(self._id):sub(1, 6), current.item))
 			end
-			return good.rate
+			return tier.rate
+		end
+	end
+	return 1
+end
+
+-- The rate of the good in use for `use`, without wearing it: 1 with none.
+function M.tool_rate(self, use)
+	for _, good in ipairs(M.goods(self)) do
+		if good.use == use then
+			local current = M.in_use(self, good)
+			return current and (M.tier(good, current.item) or good).rate or 1
 		end
 	end
 	return 1
@@ -202,7 +249,10 @@ function M.status(self)
 	local parts = {}
 	for _, good in ipairs(M.GOODS) do
 		local current = M.in_use(self, good)
-		if current then table.insert(parts, string.format("%s, %d of %d uses left", current.item, current.left, good.uses)) end
+		if current then
+			local uses = (M.tier(good, current.item) or good).uses
+			table.insert(parts, string.format("%s, %d of %d uses left", current.item, current.left, uses))
+		end
 	end
 	local book = self._villages_wants and self._villages_wants.book
 	if book then
