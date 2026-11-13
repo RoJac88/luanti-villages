@@ -291,6 +291,23 @@ step(2)
 assert(#world.dropped == 0)
 assert(world.meta({x = 2, y = 2, z = 0}).inv:get_stack("main", 1):to_string() == "mcl_farming:potato_item_poison 1")
 
+-- Wheat in its own chest comes back to be baked, three loaves' worth, and baked rather
+-- than stored again (2026-11-13: nobody trades a farm chest's wheat).
+setup()
+local granary = support.chest(world, {x = 2, y = 2, z = 0}, nil, {"mcl_farming:wheat_item 12"})
+step()
+assert(pouch("mcl_farming:wheat_item") == 9 and granary:get_stack("main", 1):to_string() == "mcl_farming:wheat_item 3")
+step(12)
+assert(pouch("mcl_farming:wheat_item") == 0 and granary:get_stack("main", 1):is_empty(), "all of it, a loaf's worth at a time")
+assert(pouch("mcl_farming:bread") + (farmer._villages_belongings or {})["mcl_farming:bread"] == 4, "four loaves")
+-- Not with withdrawing off.
+setup()
+world.settings["living_villages_farmer_chest_withdraw"] = false
+granary = support.chest(world, {x = 2, y = 2, z = 0}, nil, {"mcl_farming:wheat_item 12"})
+step(3)
+assert(pouch("mcl_farming:wheat_item") == 0, "deposit-only")
+world.settings["living_villages_farmer_chest_withdraw"] = nil
+
 -- Out of seeds with empty plots, it fetches some from a chest; only then.
 setup()
 local bare_plot = plot(1, 1)
