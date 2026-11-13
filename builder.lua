@@ -57,8 +57,8 @@ local PROJECT = "villages_project"
 -- Which schematics this bench builds from: catalog.SCHEMEDIT, catalog.FOLDER, or nothing
 -- for the stock buildings, so that a bench from before this existed goes on as it did.
 local SOURCE = "villages_source"
--- Needs (builder_needs.lua) given up on for a while, need -> game time: a tavern, bell or
--- church with no site near the beds it should serve.
+-- Needs (builder_needs.lua) given up on for a while, need or building -> game time: a tavern,
+-- bell or church with no site near the beds it should serve, a lamp with none away from lamps.
 local SKIP_NEEDS = "villages_skip_needs"
 
 -- A villager whose bed is this near a free bench takes it at once, ahead of any other
@@ -317,6 +317,7 @@ local function site_request(bench, project)
 		bench = bench,
 		center = project.near or center,
 		within = project.within,
+		keep_away = project.keep_away,
 		reserved = with_avoided(live_reservations(record, pos_key(bench)), bench),
 	}
 end
@@ -562,7 +563,7 @@ local function choose(self, session, bench)
 	if not need then return end
 	save_project(bench, {
 		state = "finding_site", building = need.building, need = need.need, reason = need.reason,
-		near = need.near, within = need.within,
+		near = need.near, within = need.within, keep_away = need.keep_away,
 	})
 	core.log("action", string.format("[living_villages] builder %s will put up a %s (%s: %s)", tostring(self._id),
 		need.building, need.need, need.reason))
@@ -589,10 +590,11 @@ local function start_search(self, session, bench, project)
 			table.sort(reasons)
 			core.log("action", string.format("[living_villages] builder %s found no site for a %s: %s",
 				tostring(self._id), project.building, table.concat(reasons, ", ")))
-			-- One that must stand near some beds is let go, and that need left a while, so
-			-- the Builder gets on with the next.
-			if current.within then
-				if current.need then skip_need(bench, current.need, core.get_gametime()) end
+			-- One that must stand near some beds, or away from others of its kind, is let go,
+			-- and that need or building left a while, so the Builder gets on with the next.
+			if current.within or current.keep_away then
+				local skip = current.keep_away and current.building or current.need
+				if skip then skip_need(bench, skip, core.get_gametime()) end
 				save_project(bench, nil)
 				return
 			end

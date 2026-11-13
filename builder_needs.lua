@@ -17,7 +17,9 @@
 --                jobsite already stands free, when it lacks people, not buildings.
 --   6. jobs      More unemployed adults than free job blocks: a workplace.
 --   7. mix       Nothing pressing: the mix the village generated with (village_census.lua),
---                the worst gap's buildings counting double, as before.
+--                the worst gap's buildings counting double, as before. A lamp only comes
+--                this way, and goes up no nearer than SPREAD.lamp to another lamp, so they
+--                spread over the village; with no such site it is left out a while.
 --
 -- Houses and workplaces are each picked as a proportional mix among themselves, by the
 -- generator's own ratios (village_census.pick_among).
@@ -40,6 +42,11 @@ M.CIVIC = {
 	{need = "bell", building = "belltower", reach = 42},
 	{need = "church", building = "church", reach = 48},
 }
+-- Buildings kept apart from others of their kind: name -> {node that marks one, least distance
+-- from the new one's middle, horizontally}. A lamp's light is a sea lantern, which no other
+-- village building has.
+M.SPREAD = {lamp = {node = "mcl_ocean:sea_lantern", distance = 20}}
+
 -- Fewer beds than this out of reach are a stray house, not a part of the village.
 M.MIN_UNSERVED = 3
 -- Food is urgent when at least this many adults, and this share of them, are hungry.
@@ -117,13 +124,15 @@ local function plural(n, one, many)
 	return n .. " " .. (n == 1 and one or many)
 end
 
--- What to build next: {building, need, reason, near, within} or nil. near and within are
--- for a building that must serve a part of the village: the site search starts from near
--- and takes nothing further than within from it.
+-- What to build next: {building, need, reason, near, within, keep_away} or nil. near and
+-- within are for a building that must serve a part of the village: the site search starts
+-- from near and takes nothing further than within from it. keep_away {spots, distance} is for
+-- one of SPREAD: the search takes nothing whose middle is nearer than distance to a spot.
 --   survey: {beds = {{pos, free}}, bedless, food = {adults, hungry, starving} or nil,
 --            civic = {tavern = {pos}, bell = {pos}, church = {pos}}, civic_beds = {{pos}},
 --            gap = {profession, items, buildings = set} or nil, idle, free_jobs,
---            free_by_profession = {profession = n}, skip = {need = true}}
+--            free_by_profession = {profession = n}, spread = {building = {pos}},
+--            skip = {need or building = true}}
 --   record, schematic_table, block_totals: as village_census.pick takes them.
 function M.decide(survey, record, schematic_table, block_totals, census)
 	local skip = survey.skip or {}
@@ -196,7 +205,11 @@ function M.decide(survey, record, schematic_table, block_totals, census)
 		if found then return found end
 	end
 
-	return answer(census.pick(record, schematic_table, block_totals, favoured), "mix", "the village's mix")
+	local building = census.pick(record, schematic_table, block_totals, favoured, skip)
+	local spread = building and M.SPREAD[building]
+	return answer(building, "mix", "the village's mix", spread and {
+		keep_away = {spots = (survey.spread or {})[building] or {}, distance = spread.distance},
+	})
 end
 
 -- Reading the world, in game only. --------------------------------------------------------
@@ -233,18 +246,27 @@ function M.survey(core, bench, opts)
 	local maxp = {x = bench.x + opts.radius, y = bench.y + opts.height, z = bench.z + opts.radius}
 	local common = opts.common
 	local names = {BED_GROUP, JUKEBOX, PULPIT, BELL}
+	local spread_of = {}
+	for building, spread in pairs(M.SPREAD) do
+		names[#names + 1] = spread.node
+		spread_of[spread.node] = building
+	end
 	for _, name in ipairs(common.workstation_search_nodes()) do names[#names + 1] = name end
 	for level = 1, 7 do names[#names + 1] = "mcl_composters:composter_" .. level end
 	names[#names + 1] = "mcl_composters:composter_ready"
 
 	local survey = {
 		beds = {}, civic_beds = {}, civic = {tavern = {}, bell = {}, church = {}},
-		free_jobs = 0, free_by_profession = {}, bedless = 0, idle = 0, gap = opts.gap, skip = opts.skip,
+		free_jobs = 0, free_by_profession = {}, spread = {}, bedless = 0, idle = 0, gap = opts.gap, skip = opts.skip,
 	}
 	for _, pos in ipairs(find(core, minp, maxp, names)) do
 		local node = core.get_node_or_nil(pos)
 		local name = node and node.name or ""
-		if name == JUKEBOX then
+		if spread_of[name] then
+			local list = survey.spread[spread_of[name]] or {}
+			survey.spread[spread_of[name]] = list
+			list[#list + 1] = pos
+		elseif name == JUKEBOX then
 			table.insert(survey.civic.tavern, pos)
 		elseif name == PULPIT then
 			table.insert(survey.civic.church, pos)

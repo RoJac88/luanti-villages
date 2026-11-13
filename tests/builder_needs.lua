@@ -150,6 +150,19 @@ do
 	assert(found.need == "mix" and found.building == census.pick(RECORD, TABLE))
 end
 
+-- A lamp comes from the mix, kept away from the lamps there are; left out a while, the mix
+-- picks something else.
+do
+	local lamp_table = {{name = "small_house", max_num = 0.5}, {name = "lamp", max_num = 0.5}}
+	local record = village({small_house = 1, lamp = 1}) -- level: the tie goes to the name
+	local lamps = {{x = 5, y = 1, z = 5}}
+	local found = needs.decide(survey({spread = {lamp = lamps}}), record, lamp_table, nil, census)
+	assert(found.need == "mix" and found.building == "lamp", found.building)
+	assert(found.keep_away.spots == lamps and found.keep_away.distance == needs.SPREAD.lamp.distance)
+	found = needs.decide(survey({skip = {lamp = true}}), record, lamp_table, nil, census)
+	assert(found.building == "small_house" and not found.keep_away, found.building)
+end
+
 -- Houses keep the generator's proportions among themselves, a duplex included though the
 -- village never had one.
 do
