@@ -101,6 +101,10 @@ local DEPOSIT_TRIGGER = 8
 local FOOD_TRIGGER = 2
 local FOOD_DEPOSITS = {BREAD, "mcl_farming:potato_item"}
 local WITHDRAW_SEEDS = 8
+-- Wheat it stored, taken back to bake (2026-11-13): no one trades a farm chest's wheat,
+-- so 12 sat in one for days while the village starved. Three loaves' worth at a time,
+-- under DEPOSIT_TRIGGER over the keep, so it bakes them rather than storing them again.
+local WITHDRAW_WHEAT = 3 * WHEAT_PER_BREAD
 local SEEDS = {"mcl_farming:wheat_seeds", "mcl_farming:potato_item"}
 local CHEST_SCAN_SECONDS = 60
 -- Handing food over: from this far off, to those this near its farm. It keeps a few
@@ -356,6 +360,26 @@ local function chests_with_seeds(session, chests, now)
 	return found
 end
 
+-- Its own chest, if it holds a loaf's wheat, for a farmer with too little to bake and
+-- room for more bread.
+local function chests_with_wheat(self, session, chests, now)
+	if not stock.may_withdraw() or stock.count(self, WHEAT) >= WHEAT_PER_BREAD
+		or stock.count(self, BREAD) >= BREAD_LIMIT then
+		return {}
+	end
+	local found = {}
+	for _, chest in ipairs(own_chest(chests)) do
+		if not skipped(session, chest, now) and stock.chest_count(chest, WHEAT) >= WHEAT_PER_BREAD then
+			table.insert(found, chest)
+		end
+	end
+	return found
+end
+
+local function withdraw_wheat(self, pos)
+	stock.take_from_chest(self, pos, WHEAT, WITHDRAW_WHEAT - stock.count(self, WHEAT))
+end
+
 local function withdraw_seeds(self, pos)
 	for _, seed in ipairs(SEEDS) do
 		if stock.take_from_chest(self, pos, seed, WITHDRAW_SEEDS) > 0 then return end
@@ -565,6 +589,7 @@ local function plot_jobs(self, session, farm, now)
 			wanted = not seeds,
 			work = withdraw_seeds,
 		},
+		{positions = chests_with_wheat(self, session, chests, now), wanted = true, work = withdraw_wheat},
 		{
 			positions = #hungry > 0 and not has_food and chests_with_food(session, chests, now) or {},
 			wanted = not has_food,
