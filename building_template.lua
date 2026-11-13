@@ -279,6 +279,16 @@ local function is_flowing(name, engine)
 	return def ~= nil and def.liquidtype == "flowing"
 end
 
+-- Ground the site search builds on (builder_site.lua counts any solid natural node a column's
+-- ground): what the floor layer may replace, sand or stone as much as grass. A placed node
+-- (is_ground_content false) is someone's work, and in the way.
+local function natural_ground(name, engine)
+	if materials.is_ground(name) then return true end
+	local def = engine.registered_nodes[name]
+	return def ~= nil and def.is_ground_content ~= false and def.walkable ~= false
+		and (def.liquidtype or "none") == "none"
+end
+
 local function matches(wanted, found)
 	return materials.identity(wanted) == materials.identity(found)
 end
@@ -351,7 +361,7 @@ function M.compare(plan, get_name, engine)
 			else
 				local top_found = step.top and get_name(step.top.pos)
 				if not stands(step, found, engine) then
-					local ground = materials.is_ground(found) or found == plan.surface_mat
+					local ground = found == plan.surface_mat or natural_ground(found, engine)
 					local replaceable = is_open(found, engine) or (step.on_floor and ground)
 						or found == materials.planted_on(step.node.name)
 						or (plan.cut_at[key(step.pos)] and materials.is_dirt(found))

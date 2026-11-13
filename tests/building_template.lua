@@ -803,6 +803,22 @@ do
 	assert(#look(WATER) == 1 and #look(SAND) == 1)
 	local missing, blocked = look("mcl_core:stone")
 	assert(#missing == 0 and #blocked == 1)
+
+	-- The floor layer replaces whatever natural ground the site search built on, sand as much as
+	-- grass; a placed block is someone's work.
+	engine.registered_nodes["mcl_core:cobble"] = {groups = {}, is_ground_content = false}
+	local floor = template.plan({{pos = {x = 0, y = -1, z = 0}, name = "mcl_core:stone", param2 = 0}},
+		{floor_y = -1, surface_mat = "mcl_core:dirt_with_grass", custom = true}, engine).steps[1]
+	assert(floor.on_floor)
+	local function on_floor(found)
+		return template.compare({steps = {floor}, cut_at = {}}, function() return found end, engine)
+	end
+	missing, blocked = on_floor(SAND)
+	assert(#missing == 1 and #blocked == 0, "sand is ground")
+	missing, blocked = on_floor("mcl_core:cobble")
+	assert(#missing == 0 and #blocked == 1)
+	missing, blocked = on_floor(WATER)
+	assert(#missing == 1 and #blocked == 0, "water is open")
 end
 
 print("building_template: ok")
