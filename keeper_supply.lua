@@ -59,8 +59,10 @@ local COOK_SECONDS = 10
 local PURSE = 8 * SCALE
 local DINNER = ledger.DINNER
 local TAB_CAP = 8 * SCALE
--- What it keeps on it from the pantry, for the dishes it buys: eight dinners.
-local FLOAT = 8 * ledger.DINNER
+-- What it keeps on it from the pantry, for the dishes it buys: the whole purse, so a
+-- dish dear in a short week is still within its reach (run of 2026-11-13: eight dinners'
+-- 144 could not buy one cooked salmon while the pantry held 530).
+local FLOAT = PURSE
 local TAB = "villages_keeper_tab"
 -- The tab is kept to 4 places: a third and two thirds written down must still make one.
 local EPSILON = 1e-3

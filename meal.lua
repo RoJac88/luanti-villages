@@ -24,8 +24,9 @@
 -- to sell): VILLAGER_PRICE emeralds from its belongings (possessions.lua) into the
 -- pantry, unless it is the keeper or of the keeper's household (possessions.same_house),
 -- who eat free. At a pantry it is served only when it has room for a meal, at or below
--- possessions.EAT_AT points, the same mark at which it eats what it carries, so one fed
--- from home keeps its emeralds. One that cannot pay is not served. Each payment is
+-- possessions.EAT_AT points. Served, it has had its dinner for the day
+-- (`_villages_dined_day`); one that was not eats its own food at home afterwards
+-- (possessions.lua). One that cannot pay is not served. Each payment is
 -- logged (ticket 11b), so a probe run shows where the money goes.
 --
 -- News at the tavern: once an evening, a villager seated at a tavern whose keeper is on
@@ -304,7 +305,11 @@ local function serve(self, jukebox)
 	self._villages_meal = {plate = pos, item = item, served_at = now(), object = object, bite_in = 0}
 	-- A villager guest is fed when served; a player diner (no luaentity of its own)
 	-- by its bites.
-	if chests and not self._villages_on_bite then food.receive(self, item) end
+	if chests and not self._villages_on_bite then
+		food.receive(self, item)
+		-- Its dinner for the day: it eats nothing of its own tonight (possessions.lua).
+		self._villages_dined_day = core.get_day_count()
+	end
 end
 
 -- Swaps market news with the keeper on duty, once a day. Returns whether it did.

@@ -65,13 +65,20 @@ assert(n == 1 or n == 2)
 local foods = {["mcl_farming:bread"] = 4, ["mcl_farming:carrot_item"] = 1}
 local smithy = ledger.assess({
 	id = "sam", profession = "tool_smith", max_tier = 1, food_points = 2, hunger_per_day = 4, foods = foods,
-	held = {["mcl_core:coal_lump"] = 5, ["mcl_farming:bread"] = 1, ["mcl_core:emerald"] = 9, ["mcl_core:stick"] = 40},
+	held = {["mcl_core:coal_lump"] = 5, ["mcl_farming:bread"] = 1, ["mcl_core:emerald"] = 100, ["mcl_core:stick"] = 40},
 })
--- Food (ticket 15, by its points from any food): 3 days at 4 a day, less the 2 it has,
--- 10 points; the loaf it carries gives 4, so 6 short: 2 loaves, or 6 carrots, or 2 apples.
-assert(smithy.categories.food.target == 10 and smithy.categories.food.short == 6)
-assert(smithy.needs["mcl_farming:bread"] == 2 and smithy.needs["mcl_farming:carrot_item"] == 6)
+-- Food (ticket 15, by its points from any food): with over five dinners' emeralds, 2 days
+-- at 4 a day, 8 points; the loaf it carries gives 4, so 4 short: a loaf, 4 carrots, 2 apples.
+assert(smithy.categories.food.target == 8 and smithy.categories.food.short == 4)
+assert(smithy.needs["mcl_farming:bread"] == 1 and smithy.needs["mcl_farming:carrot_item"] == 4)
 assert(smithy.needs["mcl_core:apple"] == 2 and smithy.group["mcl_core:apple"] == "food")
+-- With less money it relies on the tavern; starving, it wants a day's food.
+local poor = ledger.assess({id = "sam", profession = "nitwit", food_points = 2, hunger_per_day = 4, foods = foods,
+	held = {["mcl_core:emerald"] = ledger.STOCK_MONEY}})
+assert(not poor.categories.food)
+local starving = ledger.assess({id = "sam", profession = "nitwit", food_points = 0, hunger_per_day = 4, foods = foods,
+	held = {["mcl_core:emerald"] = 3}})
+assert(starving.categories.food.target == 4)
 -- Fuel by burn seconds: its trade table's 15 coal, 1200 s, less 5 lumps' 400: 10 lumps.
 assert(smithy.needs["mcl_core:coal_lump"] == 10 and smithy.needs["mcl_core:charcoal_lump"] == 10)
 assert(smithy.surplus["mcl_core:stick"] and not smithy.surplus["mcl_core:emerald"], "emeralds are money, not surplus")
@@ -79,13 +86,13 @@ assert(smithy.surplus["mcl_core:stick"] and not smithy.surplus["mcl_core:emerald
 assert(smithy.value("mcl_core:coal_lump") > ledger.price("mcl_core:coal_lump"))
 assert(smithy.value("mcl_core:stick") < ledger.price("mcl_core:stick"))
 assert(smithy.value("mcl_core:emerald") == 1 and smithy.value("no:such_item") == nil)
--- A fed villager wants no food.
+-- A fed villager with little money wants no food.
 local fed = ledger.assess({id = "sam", profession = "nitwit", food_points = 20, hunger_per_day = 4, foods = foods, held = {}})
 assert(not fed.categories.food and not fed.needs["mcl_farming:bread"])
--- One that has eaten its fill of bread needs no apples: the points are what count.
+-- One with its fill of bread needs no apples: the points are what count.
 local loaded = ledger.assess({id = "sam", profession = "nitwit", food_points = 2, hunger_per_day = 4,
-	held = {["mcl_farming:bread"] = 6}})
-assert(not loaded.needs["mcl_core:apple"] and loaded.surplus["mcl_farming:bread"] == 2, "24 points, 10 wanted and a reserve of 3")
+	held = {["mcl_farming:bread"] = 6, ["mcl_core:emerald"] = 200}})
+assert(not loaded.needs["mcl_core:apple"] and loaded.surplus["mcl_farming:bread"] == 3, "24 points, 8 wanted and a reserve of 3")
 -- A Builder's missing materials add to what it wants.
 local builder = ledger.assess({id = "bo", profession = "mason", max_tier = 1, extra = {["mcl_core:cobble"] = 40}, held = {}})
 assert(builder.needs["mcl_core:cobble"] == 40)

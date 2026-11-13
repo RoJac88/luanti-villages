@@ -42,7 +42,9 @@ minetest = {
 		return {
 			get_string = function(_, field) return metas[k][field] or "" end,
 			set_string = function(_, field, value) metas[k][field] = value end,
-			get_inventory = function() return {get_size = function() return sizes[k] or 0 end} end,
+			get_inventory = function()
+				return {get_size = function() return sizes[k] or 0 end, get_list = function() return {} end}
+			end,
 		}
 	end,
 	find_nodes_in_area = function(minp, maxp, names)
@@ -63,6 +65,10 @@ minetest = {
 
 minetest.log = function(_, message) table.insert(logs, message) end
 local possessions = dofile("possessions.lua")
+-- The stage of the day and the day, for eating (a test's own, not common.lua's).
+local stage, day = "work", 1
+possessions.stage_of = function() return stage end
+minetest.get_day_count = function() return day end
 local stock = dofile("farm_stock.lua")
 
 local function chest(pos, name)
@@ -222,19 +228,41 @@ local before = plain.do_custom
 possessions.install(plain)
 assert(plain.do_custom == before)
 
--- Eating (ticket 4): at or below 8 points, the best food it carries, then its stash's
--- if it stands by it; not above 8, and not a child.
+-- Eating, once a day: dinner at home (when it had none at the tavern), its own prepared
+-- food, at or below 8 points, until above; between dinners only when starving, anything,
+-- until hungry no more (4). Not a child.
 settings.living_villages_economy = nil
-local kim = {_id = "kim", _villages_food = 9, _villages_belongings = {["mcl_farming:bread"] = 2, ["mcl_farming:carrot_item"] = 3}}
+local kim = {_id = "kim", _villages_food = 8, _villages_belongings = {["mcl_farming:bread"] = 2, ["mcl_farming:carrot_item"] = 3}}
+assert(#possessions.eat(kim) == 0, "not at work")
+stage = "home"
+kim._villages_food = 9
 assert(#possessions.eat(kim) == 0, "not hungry enough")
 kim._villages_food = 8
+kim._villages_dined_day = day
+assert(#possessions.eat(kim) == 0, "it dined at the tavern")
+kim._villages_dined_day = nil
 local eaten = possessions.eat(kim)
 assert(#eaten == 1 and eaten[1] == "mcl_farming:bread" and kim._villages_food == 12)
+assert(kim._villages_dined_day == day, "its dinner for the day")
 assert(kim._villages_tally.used["mcl_farming:bread"] == 1, "a meal is in its tally")
 assert(possessions.food_carried(kim) == 4 + 3)
+-- Raw food is no dinner.
+day = 2
+kim._villages_food = 5
+kim._villages_belongings["mcl_farming:bread"] = 0
+assert(#possessions.eat(kim) == 0 and possessions.count(kim, "mcl_farming:carrot_item") == 3)
+-- Starving, at any time: anything, raw too, until hungry no more.
+stage = "work"
+kim._villages_food = 0
+kim._villages_belongings["mcl_farming:bread"] = 1
+possessions.eat(kim)
+assert(kim._villages_food == 4 and possessions.count(kim, "mcl_farming:bread") == 0, tostring(kim._villages_food))
 kim._villages_food = 0
 possessions.eat(kim)
-assert(kim._villages_food == 7 and possessions.count(kim, "mcl_farming:bread") == 0 and possessions.count(kim, "mcl_farming:carrot_item") == 0)
+assert(kim._villages_food == 3 and possessions.count(kim, "mcl_farming:carrot_item") == 0)
+kim._villages_food = 1
+assert(#possessions.eat(kim) == 0, "hungry is not starving")
+stage = "home"
 -- Its stash, only within reach.
 local kim_bed, kim_chest = {x = 500, y = 0, z = 0}, {x = 502, y = 0, z = 0}
 bed(kim_bed, "kim")
@@ -296,6 +324,29 @@ do
 	local builder = {_id = "bo", _profession = "mason", _villages_builder = true, _villages_food = 20}
 	assert(possessions.assess(mason).needs["mcl_core:clay_lump"], "the mason wants clay")
 	assert(not possessions.assess(builder).needs["mcl_core:clay_lump"], "the Builder does not")
+end
+
+-- A parent owns two days of food; a birth takes none of it.
+do
+	local pat = {_id = "pat", _villages_belongings = {["mcl_farming:bread"] = 1, ["mcl_core:apple"] = 1}}
+	assert(possessions.food_owned(pat) == 7 and not possessions.can_parent(pat))
+	possessions.add(pat, "mcl_farming:carrot_item", 1)
+	assert(possessions.can_parent(pat))
+	settings.living_villages_births_need_food = false
+	assert(possessions.can_parent({_id = "none"}), "the setting off")
+	settings.living_villages_births_need_food = nil
+end
+
+-- A starving villager walks slower and stops work early, until it eats.
+do
+	local sal = {_id = "sal", _villages_food = 0, walk_velocity = 2, run_velocity = 4}
+	assert(possessions.apply_hunger(sal) and sal._villages_starving)
+	assert(sal.walk_velocity == 2 * possessions.STARVING_SPEED and sal.run_velocity == 4 * possessions.STARVING_SPEED)
+	possessions.apply_hunger(sal)
+	assert(sal.walk_velocity == 2 * possessions.STARVING_SPEED, "slowed once")
+	sal._villages_food = 3
+	assert(not possessions.apply_hunger(sal) and not sal._villages_starving)
+	assert(sal.walk_velocity == 2 and sal.run_velocity == 4 and not sal._villages_slowed)
 end
 
 print("possessions.lua: ok")

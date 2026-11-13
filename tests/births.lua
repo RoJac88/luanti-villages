@@ -148,24 +148,28 @@ fail_spawn = true
 assert(def.on_breed(alice, bob) == false)
 assert(data[key(failed_bed)].villager == "", "failed spawns must leave the bed free")
 
--- With food required: automatic births need both parents fed, and spend it.
+-- With food required: automatic births need both parents to own food, two loaves'
+-- worth (possessions.PARENT_FOOD points), as a sign the village eats well. A birth
+-- spends neither the food nor the parents' hunger (food loop, 2026-11-13).
 fail_spawn = false
 births_need_food = true
 local before = births
 day, time = 40, 0.4
 data[key(failed_bed)].villager = ""
+alice._villages_food, bob._villages_food = 12, 12
 def.do_custom(alice, 1)
-assert(births == before, "an unfed parent has none")
-assert(alice._villages_birth_check_day ~= 40, "and may yet be fed this morning")
-alice._villages_food = 12
-bob._villages_food = 11
+assert(births == before, "a parent owning no food has none")
+assert(alice._villages_birth_check_day ~= 40, "and may yet buy some this morning")
+alice._villages_belongings = {["mcl_farming:bread"] = 2}
+bob._villages_belongings = {["mcl_farming:bread"] = 1}
 def.do_custom(alice, 1)
-assert(births == before, "an unfed mate is no mate")
+assert(births == before, "a mate owning too little is no mate")
 day = 41
-bob._villages_food = 12
+bob._villages_belongings = {["mcl_farming:bread"] = 1, ["mcl_farming:carrot_item"] = 4}
 def.do_custom(alice, 1)
-assert(births == before + 1, "both fed")
-assert(alice._villages_food == 0 and bob._villages_food == 0, "both spent it")
+assert(births == before + 1, "both own food enough")
+assert(alice._villages_food == 12 and bob._villages_food == 12, "hunger untouched")
+assert(alice._villages_belongings["mcl_farming:bread"] == 2, "and the food kept")
 
 -- A player's feeding has paid already, so it needs nothing more and spends nothing.
 local fed_bed = bed(21)

@@ -9,8 +9,9 @@
 -- when it talks, with hops 0. What it has heard is
 -- `_villages_market_news`, a list of at most NEWS_ENTRIES entries:
 --
---   {item, who = <villager _id>, kind = "has" | "needs", count, price = <its value to
---    who, in emeralds>, home = <who's bed>, heard = <game time it was first told>, hops}
+--   {item, who = <villager _id>, kind = "has" | "needs", count, price = <in emeralds: what
+--    who asks for one it has (asks.lua), or its value to who of one it needs>, home =
+--    <who's bed>, heard = <game time it was first told>, hops}
 --
 -- In a finished conversation each member tells each other up to NEWS_SHARE entries,
 -- its own and its hearsay, picked at random weighted by the listener's interest: an
@@ -30,6 +31,7 @@ local clock = dofile(core.get_modpath("living_villages") .. "/economy_clock.lua"
 local possessions = dofile(core.get_modpath("living_villages") .. "/possessions.lua")
 local ledger = dofile(core.get_modpath("living_villages") .. "/ledger.lua")
 local prices = dofile(core.get_modpath("living_villages") .. "/prices.lua")
+local asks = dofile(core.get_modpath("living_villages") .. "/asks.lua")
 local goods = dofile(core.get_modpath("living_villages") .. "/goods.lua")
 
 local NEWS_ENTRIES = 24
@@ -162,6 +164,8 @@ function M.own(self, view, now)
 		local told = {}
 		local function add(item, count, price)
 			told[item] = true
+			-- What it has is told at its ask (asks.lua), what a buyer would pay it.
+			if kind == "has" then price = asks.ask(self, item) or price end
 			entries[#entries + 1] = {
 				item = item, who = self._id, kind = kind, count = count,
 				price = price or view.value(item), home = home, heard = now, hops = 0,

@@ -1,11 +1,12 @@
--- What food does for a villager. A farmer hands it over directly (farmer.lua), and
--- this is the receiving end. VoxeLibre's own feed_tame needs a player's hand and its
--- pickup treats food as breeding input, so neither serves here.
+-- What food does for a villager: the receiving end of a dinner (meal.lua), of what it
+-- eats of its own (possessions.lua) and of a farmer feeding a child (farmer.lua).
+-- VoxeLibre's own feed_tame needs a player's hand and its pickup treats food as breeding
+-- input, so neither serves here.
 --
 -- As in Java, an adult is short of food below 12 points, a loaf being worth 4 and a
--- crop 1. A villager needs 12 to become a parent, and spends them when it does, so
--- automatic births (births.lua) depend on a working farm. A child takes no points:
--- each feed, once a day, brings it closer to grown.
+-- crop 1: a day's food is a dinner. Raw food (RAW) is eaten only by a villager starving;
+-- the rest is prepared, what dinner is made of. A child takes no points: each feed,
+-- once a day, brings it closer to grown.
 --
 -- An adult's points fall by living_villages_hunger_per_day (4, a loaf) per game day
 -- of its economic clock (economy_clock.lua), worked out when they are next read, so
@@ -45,7 +46,22 @@ local HEAL = 4
 local CHILD_GROW_TIME = 60
 local CHILD_FEED_SHARE = 0.1
 
-local M = {FULL = FULL, HUNGRY = HUNGRY, POINTS = POINTS}
+-- Raw food, eaten as it comes: a villager eats it only when starving. The rest is
+-- prepared (baked, cooked), what dinner is made of.
+local RAW = {
+	["mcl_farming:potato_item"] = true,
+	["mcl_farming:carrot_item"] = true,
+	["mcl_farming:beetroot_item"] = true,
+	["mcl_core:apple"] = true,
+	["mcl_farming:sweet_berry"] = true,
+}
+
+local M = {FULL = FULL, HUNGRY = HUNGRY, POINTS = POINTS, RAW = RAW}
+
+-- Whether an item is food fit for dinner: food, and not raw.
+function M.is_prepared(item)
+	return POINTS[item] ~= nil and not RAW[item]
+end
 
 -- Best first.
 M.FOODS = {"mcl_farming:bread", "mcl_farming:beetroot_item", "mcl_farming:potato_item", "mcl_farming:carrot_item"}
@@ -137,13 +153,5 @@ function M.births_need_food()
 	return not core.settings or core.settings:get_bool("living_villages_births_need_food", true)
 end
 
--- Whether this villager is fed well enough to become a parent.
-function M.can_parent(self)
-	return not M.births_need_food() or M.points(self) >= FULL
-end
-
-function M.spend_on_birth(self)
-	if M.births_need_food() then self._villages_food = math.max(M.points(self) - FULL, 0) end
-end
 
 return M

@@ -105,8 +105,10 @@ assert(production.work(starving, 500) == 0)
 assert(production.restock_held(starving) == "starving")
 
 -- Fuel: a lump is 8 smelts, charcoal burned first, the rest kept for the next item.
--- (Short 8 food points: one porkchop's 6 leave it wanting a second, ticket 15.)
+-- (With over 5 dinners' emeralds it wants two days' food, 8 points: one porkchop's 6 leave
+-- it wanting a second, tickets 15 and 17.)
 local bram = smith({_id = "bram", _profession = "butcher", _villages_food = 4})
+possessions.add(bram, "mcl_core:emerald", 100)
 possessions.add(bram, "mcl_mobitems:porkchop", 2)
 possessions.add(bram, "mcl_core:coal_lump", 1)
 possessions.add(bram, "mcl_core:charcoal_lump", 1)
@@ -115,6 +117,7 @@ assert(count(bram, "mcl_mobitems:cooked_porkchop") == 2 and count(bram, "mcl_cor
 assert(count(bram, "mcl_core:charcoal_lump") == 0 and bram._villages_fuel == 6)
 -- Any fuel will do (ticket 15): planks burn 1.5 smelts each, and the butcher cooks fish.
 local planker = smith({_id = "planker", _profession = "butcher", _villages_food = 4})
+possessions.add(planker, "mcl_core:emerald", 100)
 possessions.add(planker, "mcl_fishing:fish_raw", 2)
 possessions.add(planker, "mcl_core:wood", 3)
 assert(production.work(planker, 240) == 2, "cooks both fish")

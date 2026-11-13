@@ -186,14 +186,15 @@ do
 	local asking = news.asking({need})
 	local per = 5 / dofile("food.lua").POINTS[BREAD]
 	assert(math.abs(asking[APPLE] - per * dofile("food.lua").POINTS[APPLE]) < 1e-9)
-	-- Someone asked for string: it offers 4 a wool, at a quarter of the wool's value.
+	-- Someone asked for string: it offers 4 a wool, at its ask for string (asks.lua).
 	shepherd._villages_market_news = {{item = STRING, who = "weaver", kind = "needs", count = 8, price = 1,
 		heard = now, hops = 1}}
 	local offered
 	for _, entry in ipairs(news.own(shepherd, view, now)) do
 		if entry.kind == "has" and entry.item == STRING then offered = entry end
 	end
-	assert(offered and offered.count == 20 and offered.price == 0.5)
+	assert(offered and offered.count == 20)
+	assert(math.abs(offered.price - dofile("asks.lua").ask(shepherd, STRING)) < 1e-9, offered.price)
 	shepherd._villages_market_news = nil
 end
 

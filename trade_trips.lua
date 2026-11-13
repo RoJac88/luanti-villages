@@ -32,9 +32,10 @@
 -- short for most trips), with M.activity_override, or builder.lua's for the Builder,
 -- keeping vanilla from calling it back to its jobsite. It is dropped once the day after
 -- the one it was planned on is over.
--- Planning. Only news whose count can make up a sale under M.terms, at the midpoint of
--- the two values and within its emeralds: a seller with too little spare to come to a
--- whole emerald could not sell (run 34's wool trip).
+-- Planning. Only news whose count can make up a sale under M.terms, at the seller's asking
+-- price (asks.lua, heard in the news) and within its emeralds: a seller with too little
+-- spare to come to a whole emerald could not sell (run 34's wool trip). One short of
+-- emeralds for all it wants buys as many as they pay for.
 --
 -- Porters. A nitwit or unemployed villager may choose the porter activity for the day
 -- (labour.lua). At the end of a conversation (conversation.lua, after exchange.lua), a
@@ -160,7 +161,7 @@ function M.plan(self, view, heard, from)
 		if item ~= EMERALD and value and M.urgency(view, item) >= URGENT then
 			for _, entry in ipairs(heard) do
 				if entry.kind == "has" and entry.item == item and entry.home and entry.who ~= self._id
-					and (entry.price or 0) < value and not is_skipped(self, entry.who, item)
+					and (entry.price or 0) <= value and not is_skipped(self, entry.who, item)
 					and vector.distance(from, entry.home) <= TRIP_RADIUS
 					and (M.terms(need, entry.count or 0, value, entry.price or 0, possessions.emeralds(self))
 						or log_short(self, entry, need, value)) then
@@ -251,11 +252,11 @@ local function take(chest, item, count)
 	return taken
 end
 
--- The terms of a sale of up to `want` of `held` at the midpoint of `value` (buyer's) and
--- `price` (seller's), with at most `budget` emeralds: count, pay; or nil.
+-- The terms of a sale of up to `want` of `held` at `price` (the seller's ask), to a buyer
+-- that values one at `value`, with at most `budget` emeralds: count, pay; or nil.
 function M.terms(want, held, value, price, budget)
-	if value <= price or held <= 0 or budget < 1 then return nil end
-	local unit = (value + price) / 2
+	if value < price or price <= 0 or held <= 0 or budget < 1 then return nil end
+	local unit = price
 	local count = math.min(want, held)
 	if count * unit < 1 then count = math.min(math.ceil(1 / unit), held) end
 	local pay = math.max(math.floor(count * unit + 0.5), 1)
@@ -263,7 +264,8 @@ function M.terms(want, held, value, price, budget)
 		count = math.min(count, math.floor(budget / unit))
 		pay = math.max(math.floor(count * unit + 0.5), 1)
 	end
-	if count < 1 or pay > budget or pay > count * value or pay < count * price then return nil end
+	-- Rounded to whole emeralds, the pay may fall half an emerald short of the ask.
+	if count < 1 or pay > budget or pay < count * price - 0.5 then return nil end
 	return count, pay
 end
 
@@ -299,14 +301,16 @@ function M.buy_from_stash(self, trip, chest)
 end
 
 -- Buys from the seller in person. Returns how many it bought. It asks for no more than
--- its budget covers at the midpoint, so a lot it cannot afford whole is bought in part.
+-- its budget covers at the seller's ask (the midpoint for an item with none), so a lot
+-- it cannot afford whole is bought in part.
 function M.buy_in_person(self, trip, seller)
 	local budget, value = budget_and_value(self, trip)
 	local item = trip.item
 	local seller_view = possessions.assess(seller)
 	local seller_value = seller_view.value(item) or 0
-	local unit = (value + seller_value) / 2
+	local unit = exchange.asking(seller, self, item) or (value + seller_value) / 2
 	if unit <= 0 then return 0, "no price" end
+	if value < unit then return 0, string.format("asks %.2f each, over our %.2f", unit, value) end
 	if budget < 1 then return 0, "no budget" end
 	local own = not trip.client and possessions.assess(self) or nil
 	local need = trip.client and (trip.want - (trip.bought or 0)) or (own.needs[item] or 0)
