@@ -51,9 +51,6 @@ end
 
 local function summary_lines(report)
 	local lines = {STATE_TEXT[report.state] or report.state}
-	if report.no_projects then
-		lines[#lines + 1] = S("Its bench is set to schematics it cannot use, or has none.")
-	end
 	if report.building then
 		lines[#lines + 1] = S("Building: @1", pretty_building(report.building))
 		if report.reason then lines[#lines + 1] = S("Because @1.", report.reason) end

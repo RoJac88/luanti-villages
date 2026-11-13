@@ -1,5 +1,5 @@
--- What a Builder's village needs built next, in its default mode (no schematic source on
--- the bench). Needs are tried in order, and the first one that has a building to answer it
+-- What a Builder's village needs built next, in its default mode (when no player's order is
+-- in hand). Needs are tried in order, and the first one that has a building to answer it
 -- wins:
 --
 --   1. bedless   Villagers have no bed and none is free: a house.

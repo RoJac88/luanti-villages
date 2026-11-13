@@ -1297,7 +1297,7 @@ do
 	assert(ok and message:find("Added 0 items", 1, true) and message:find(COBBLE .. " 10", 1, true), message)
 end
 
--- A bench set to a directory of schematics.
+-- Orders: a player pays the bench for one of <world>/schems.
 do
 	local WORLD = "/world"
 	local DIR = WORLD .. "/schems"
@@ -1364,28 +1364,75 @@ do
 	add("cabin", cabin)
 	local CATALOG = dofile("builder_catalog.lua")
 
-	-- Set it and the next project comes from there, from its own copy.
+	local function held(player)
+		local count = 0
+		for _, stack in ipairs(player.inv:get_list("main")) do
+			if stack:get_name() == "mcl_core:emerald" then count = count + stack:get_count() end
+		end
+		return count
+	end
+
+	-- The price: a base and the blocks, at the economy's scale, less for a player the Builder
+	-- likes and more for one it does not.
+	assert(builder.order_price(0, 0, 1) == builder.ORDER_BASE)
+	assert(builder.order_price(64, 0, 64) == (builder.ORDER_BASE + 2) * 64)
+	assert(builder.order_price(64, 150, 1) == math.ceil((builder.ORDER_BASE + 2) * 0.5))
+	assert(builder.order_price(64, 1000, 1) == math.ceil((builder.ORDER_BASE + 2) * builder.ORDER_FACTOR_MIN))
+	assert(builder.order_price(64, -150, 1) == math.ceil((builder.ORDER_BASE + 2) * 1.5))
+	assert(builder.order_price(64, -5000, 1) == (builder.ORDER_BASE + 2) * builder.ORDER_FACTOR_MAX)
+
+	-- What the Select schematic tab reads: each schematic, priced, and why one cannot be built.
 	local entity = hired()
 	local before = builder.load_project(BENCH_POS)
 	assert(before.building == "hut" and before.state == "finding_site")
-	assert(builder.source_of(BENCH_POS) == nil)
-	builder.set_source(BENCH_POS, CATALOG.SCHEMEDIT)
-	assert(builder.source_of(BENCH_POS) == CATALOG.SCHEMEDIT)
-	assert(builder.load_project(BENCH_POS) == nil, "a project nothing was done for is dropped")
+	add("alien", function()
+		return {size = {x = 1, y = 1, z = 1}, data = {{name = "nope:gone", prob = 254, param2 = 0}}}
+	end)
+	local listed = builder.catalog_options(BENCH_POS, "singleplayer")
+	assert(listed.directory == DIR)
+	local by_name = {}
+	for _, row in ipairs(listed.rows) do by_name[row.name] = row end
+	local price = builder.order_price(by_name.cabin.blocks, 0, 64)
+	assert(by_name.cabin.price == price and by_name.cabin.size.x == 3 and by_name.cabin.materials[1].item)
+	assert(by_name.alien.problem.code == "unknown_nodes" and by_name.alien.price == nil)
+
+	-- Ordering: with the emeralds, of what can be built, one at a time.
+	local poor = shopper({x = 2, y = 1, z = 2}, 0)
+	local ok, why = builder.place_order(BENCH_POS, poor, "cabin")
+	assert(not ok and why == "no_emeralds" and builder.order_of(BENCH_POS) == nil)
+	local buyer = shopper({x = 2, y = 1, z = 2}, 20)
+	assert(select(2, builder.place_order(BENCH_POS, buyer, "alien")) == "cannot_build")
+	assert(select(2, builder.place_order(BENCH_POS, buyer, "../../secrets")) == "no_file")
+	local paid
+	ok, paid = builder.place_order(BENCH_POS, buyer, "cabin")
+	assert(ok and paid == price and held(buyer) == 20 * 64 - price)
+	local order = builder.order_of(BENCH_POS)
+	assert(order.state == "waiting" and order.player == "singleplayer" and order.schem == "hcabin")
+	assert(files[CATALOG.snapshot_path("hcabin")] == "cabin", "copied")
+	assert(select(2, builder.place_order(BENCH_POS, buyer, "cabin")) == "busy")
+
+	-- The Builder takes it up in place of the project it had not started, from its own copy.
 	advance(entity, 6)
 	local project = builder.load_project(BENCH_POS)
-	assert(project.building == "cabin" and project.source == CATALOG.SCHEMEDIT, tostring(project.building))
-	assert(project.schem == "hcabin" and project.seed)
-	assert(files[CATALOG.snapshot_path("hcabin")] == "cabin", "copied")
+	assert(project.building == "cabin" and project.source == builder.ORDER_SOURCE and project.order == "singleplayer")
+	assert(project.schem == "hcabin" and project.seed == order.seed)
+	-- The search runs at once here (no route queue), so a site is found in the same step.
+	order = builder.order_of(BENCH_POS)
+	assert(order.state == "accepted" and order.previous == nil)
 
-	-- Deleting the original changes nothing for a project that has its copy.
+	-- Deleting the original changes nothing for a project that has its copy. Once it has a
+	-- site the order is accepted: no refund from here on.
 	files[DIR .. "/cabin.mts"] = nil
 	assert(run_until(entity, project_gone_or("requires_materials")))
 	project = builder.load_project(BENCH_POS)
 	assert(project.state == "requires_materials" and project.pos, project.state)
+	order = builder.order_of(BENCH_POS)
+	assert(order.state == "accepted" and order.previous == nil)
+	assert(not builder.refund(BENCH_POS, buyer))
 
 	-- The bill has the job block, and neither the void nor the flow.
 	local report = builder.report(entity)
+	assert(report.reason == "ordered by singleplayer")
 	local needs = {}
 	for _, row in ipairs(report.rows) do needs[row.item] = row.need end
 	assert(needs[LOOM] == 1 and needs[COBBLE] == 1, "job block and wall")
@@ -1405,73 +1452,88 @@ do
 	local origin = project.pos
 	local void_at = {x = origin.x + 1, y = origin.y + 1, z = origin.z}
 	world.set(void_at, PRESERVED)
-	assert(run_until(entity, function() return not builder.load_project(BENCH_POS) end, 900), "it finishes")
+	assert(run_until(entity, function()
+		local now = builder.load_project(BENCH_POS)
+		return not now or now.building ~= "cabin"
+	end, 900), "it finishes")
 	assert(world.name(void_at) == PRESERVED, "a void leaves what is there")
 	assert(world.name({x = origin.x, y = origin.y + 1, z = origin.z}) == LOOM, "the job block is built")
 	assert(world.name({x = origin.x, y = origin.y + 1, z = origin.z + 1}) == COBBLE)
 	assert(world.name({x = origin.x + 2, y = origin.y + 1, z = origin.z}) == "air", "no flow is placed")
 	assert(stock.chest_count(chest, LOOM) == 0, "and paid for")
 
-	-- It counts apart from the stock mix.
-	assert(records[1].built_custom.schemedit.cabin == 1)
+	-- Finished, the order is done with, and it counts apart from the stock mix.
+	assert(builder.order_of(BENCH_POS) == nil)
+	assert(records[1].built_custom.order.cabin == 1)
 	assert(not (records[1].built and records[1].built.cabin))
+	assert(builder.catalog_options(BENCH_POS, "singleplayer").rows[1].name == "alien")
 
-	-- A directory with nothing to build says so, and does not fall back on stock buildings.
-	entity = hired()
-	files = {}
-	builder.set_source(BENCH_POS, CATALOG.SCHEMEDIT)
-	advance(entity, 6)
-	assert(builder.load_project(BENCH_POS) == nil)
-	report = builder.report(entity)
-	assert(report.state == "choosing" and report.no_projects)
-
-	-- Unknown nodes keep a schematic from being picked.
-	add("alien", function()
-		return {size = {x = 1, y = 1, z = 1}, data = {{name = "nope:gone", prob = 254, param2 = 0}}}
-	end)
-	advance(entity, 6)
-	assert(builder.load_project(BENCH_POS) == nil and builder.report(entity).no_projects)
-
-	-- Back to stock, and the note goes.
-	builder.set_source(BENCH_POS, "nonsense")
-	assert(builder.source_of(BENCH_POS) == nil)
-	advance(entity, 6)
-	assert(builder.load_project(BENCH_POS).building == "hut" and not builder.report(entity).no_projects)
-
-	-- A project already building is finished first: only one not started gives way.
+	-- A project under way is finished first: only one not started gives way.
 	add("cabin", cabin)
+	entity = hired()
+	advance(entity)
+	advance(entity)
 	project = builder.load_project(BENCH_POS)
-	project.state = "building"
+	assert(project.state == "requires_materials" and project.pos)
+	project.state = "blocked"
 	world.meta(BENCH_POS).fields.villages_project = core.serialize(project)
-	builder.set_source(BENCH_POS, CATALOG.SCHEMEDIT)
-	assert(builder.load_project(BENCH_POS).state == "building")
+	buyer = shopper({x = 2, y = 1, z = 2}, 20)
+	assert(builder.place_order(BENCH_POS, buyer, "cabin"))
+	advance(entity, 1)
+	local now = builder.load_project(BENCH_POS)
+	assert(now and now.building == "hut" and builder.order_of(BENCH_POS).state == "waiting")
+	world.meta(BENCH_POS).fields.villages_project = ""
+	world.meta(BENCH_POS).fields.villages_order = ""
 
-	-- What the bench's window reads: the stock mix, with no weights, and what is next.
+	-- No site for an order: back to the project it took the place of, and the player who paid
+	-- may take the emeralds back; nobody else may.
+	entity = hired()
+	ground = WATER
+	advance(entity)
+	advance(entity)
+	assert(builder.load_project(BENCH_POS).state == "no_site")
+	buyer = shopper({x = 2, y = 1, z = 2}, 20)
+	ok, paid = builder.place_order(BENCH_POS, buyer, "cabin")
+	assert(ok and held(buyer) == 20 * 64 - paid)
+	world.now = world.now + 100
+	advance(entity, 6)
+	assert(run_until(entity, function() return builder.order_of(BENCH_POS).state == "failed" end, 120))
+	project = builder.load_project(BENCH_POS)
+	assert(project and project.building == "hut" and project.state == "finding_site" and not project.order, "back as it was")
+	local stranger = shopper({x = 2, y = 1, z = 2}, 0)
+	stranger.get_player_name = function() return "someone" end
+	assert(not builder.refund(BENCH_POS, stranger) and builder.order_of(BENCH_POS))
+	local amount
+	ok, amount = builder.refund(BENCH_POS, buyer)
+	assert(ok and amount == paid and held(buyer) == 20 * 64)
+	assert(builder.order_of(BENCH_POS) == nil)
+	assert(not builder.refund(BENCH_POS, buyer), "only once")
+	ground = "mcl_core:dirt_with_grass"
+
+	-- An order whose project went unfinished another way (its copy lost) can be refunded too.
+	entity = hired()
+	buyer = shopper({x = 2, y = 1, z = 2}, 20)
+	assert(builder.place_order(BENCH_POS, buyer, "cabin"))
+	advance(entity, 6)
+	assert(builder.load_project(BENCH_POS).order)
+	world.meta(BENCH_POS).fields.villages_project = ""
+	advance(entity, 6)
+	assert(builder.order_of(BENCH_POS).state == "failed")
+	assert(builder.refund(BENCH_POS, buyer))
+
+	-- What the Default tab reads: the stock mix and what is next, and why.
 	do
-		local stock_options = builder.options(BENCH_POS, "stock")
-		assert(#stock_options.rows >= 1 and stock_options.directory == nil)
+		local stock_options = builder.options(BENCH_POS)
+		assert(#stock_options.rows >= 1 and stock_options.directory == nil and stock_options.reason)
 		local hut_row = stock_options.rows[1]
-		assert(hut_row.name == "hut" and hut_row.share == 1 and hut_row.is_next and hut_row.weight == nil)
+		assert(hut_row.name == "hut" and hut_row.share == 1 and hut_row.is_next)
 		assert(hut_row.size.x == 5 and hut_row.blocks > 0)
 		assert(hut_row.materials[1].item == COBBLE and hut_row.materials[1].count > 1, "what it is mostly made of")
-
-		-- A directory's, with what was built and why one cannot be.
-		records[1] = records[1] or {center = BENCH_POS}
-		records[1].built_custom = {schemedit = {cabin = 2}, folder = {cabin = 9}}
-		local listed = builder.options(BENCH_POS, CATALOG.SCHEMEDIT)
-		assert(listed.directory == DIR and listed.manifest_problem == nil)
-		local by_name = {}
-		for _, row in ipairs(listed.rows) do by_name[row.name] = row end
-		assert(by_name.cabin.is_next and by_name.cabin.weight == 1 and by_name.cabin.share == 1 and by_name.cabin.built == 2)
-		assert(by_name.cabin.size.x == 3 and by_name.cabin.materials[1].item)
-		assert(by_name.alien.problem.code == "unknown_nodes" and not by_name.alien.is_next and by_name.alien.share == 0)
-		assert(#builder.options(BENCH_POS, CATALOG.FOLDER).rows == 0)
 	end
 
 	-- A copy whose nodes have gone is dropped rather than built with holes.
-	builder.set_source(BENCH_POS, nil)
 	files[CATALOG.snapshot_path("halien")] = "alien"
-	local stranded = {state = "finding_site", building = "alien", source = CATALOG.SCHEMEDIT, schem = "halien", seed = 1}
+	local stranded = {state = "finding_site", building = "alien", source = "schemedit", schem = "halien", seed = 1}
 	world.meta(BENCH_POS).fields.villages_project = core.serialize(stranded)
 	world.now = world.now + 100
 	advance(entity, 6)

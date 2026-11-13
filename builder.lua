@@ -54,9 +54,6 @@ local BENCH = "living_villages:builder_block"
 M.BENCH = BENCH
 local PROFESSION = "mason"
 local PROJECT = "villages_project"
--- Which schematics this bench builds from: catalog.SCHEMEDIT, catalog.FOLDER, or nothing
--- for the stock buildings, so that a bench from before this existed goes on as it did.
-local SOURCE = "villages_source"
 -- Needs (builder_needs.lua) given up on for a while, need or building -> game time: a tavern,
 -- bell or church with no site near the beds it should serve, a lamp with none away from lamps.
 local SKIP_NEEDS = "villages_skip_needs"
@@ -384,28 +381,8 @@ function M.materials_report(self, bench, project)
 	}
 end
 
-function M.source_of(bench)
-	local source = core.get_meta(bench):get_string(SOURCE)
-	if source == catalog.SCHEMEDIT or source == catalog.FOLDER then return source end
-	return nil
-end
-
--- A project nothing has been done for yet is dropped, so the new source takes effect at once.
--- One under way is finished first.
+-- A project nothing has been done for yet, which an order may take the place of.
 local NOT_STARTED = {finding_site = true, no_site = true, requires_materials = true}
-function M.set_source(bench, source)
-	if source ~= catalog.SCHEMEDIT and source ~= catalog.FOLDER then source = nil end
-	if M.source_of(bench) == source then return end
-	core.get_meta(bench):set_string(SOURCE, source or "")
-	local project = M.load_project(bench)
-	if not (project and NOT_STARTED[project.state]) then return end
-	save_project(bench, nil)
-	if village_index then
-		village_index.update_village(bench, VILLAGE_RADIUS, function(record)
-			if record.reserved then record.reserved[pos_key(bench)] = nil end
-		end)
-	end
-end
 
 -- What the Builder knows of the market: its own news and what it has heard (market_news.lua).
 local function builder_news(self)
@@ -485,37 +462,11 @@ local function next_need(bench)
 	return needs.decide(survey, record, settlements and settlements.schematic_table, totals_of_buildings(), census)
 end
 
-local function pick_from(scan, record, source)
-	local weights, totals = {}, {}
-	for _, entry in ipairs(scan.entries) do
-		if not entry.problem and entry.weight > 0 then
-			weights[entry.name] = entry.weight
-			totals[entry.name] = entry.measured.blocks
-		end
-	end
-	return census.pick_custom(weights, census.custom_counts(record, source), totals)
-end
-
--- What a bench could build from a source, for its menu: {rows, directory, manifest_problem}.
--- A row is {name, share, built, is_next, size, blocks, materials}, and for a directory weight,
--- problem and image too. The stock buildings have no weights: a village's mix sets their shares.
-function M.options(bench, source)
+-- What the default mode could build, for the bench's Default tab: {rows, reason}. A row is
+-- {name, share, built, is_next, size, blocks, materials}; shares are the village's mix.
+function M.options(bench)
 	local record = village_index and village_index.read_village(bench, VILLAGE_RADIUS)
 	local rows = {}
-	if source == catalog.SCHEMEDIT or source == catalog.FOLDER then
-		local scan = catalog.scan(source)
-		local built = census.custom_counts(record, source)
-		local next_name = pick_from(scan, record, source)
-		for _, entry in ipairs(scan.entries) do
-			local measured = entry.measured or {}
-			rows[#rows + 1] = {
-				name = entry.name, weight = entry.weight, share = entry.share, built = built[entry.name] or 0,
-				is_next = entry.name == next_name, problem = entry.problem,
-				size = measured.size, blocks = measured.blocks, materials = measured.materials, image = entry.image,
-			}
-		end
-		return {rows = rows, directory = scan.directory, manifest_problem = scan.manifest_problem}
-	end
 	local settlements = rawget(_G, "settlements")
 	local schematic_table = settlements and settlements.schematic_table
 	local shares = census.shares(record, schematic_table) or {}
@@ -535,30 +486,181 @@ function M.options(bench, source)
 	return {rows = rows, reason = need and need.reason}
 end
 
--- The next schematic of a source. Nothing to build is said in the status window, and never
--- quietly made up with stock buildings the player turned away from.
-local function choose_custom(self, session, bench, source, record)
-	local scan = catalog.scan(source)
-	local name = pick_from(scan, record, source)
-	session.no_projects = name == nil or nil
-	if not name then return end
-	local hash = catalog.take_snapshot(scan.directory, name)
-	if not hash then
-		core.log("error", "[living_villages] could not copy schematic " .. name .. " for a project")
-		return
+-- Orders: a player pays the bench to have one of <world>/schems built (builder_catalog.lua).
+-- The order is kept in the bench's meta, {name, schem, seed, player, price, state}:
+--   waiting   paid for; taken up as soon as the project in hand has not been started
+--   started   the project, finding a site; what it took the place of is kept in `previous`
+--   accepted  a site was found: no refund from here on, and cleared when it is finished
+--   failed    no site: the previous project is back, and the player may take the refund
+-- One order at a time per bench.
+local ORDER = "villages_order"
+M.ORDER_SOURCE = "order"
+-- The price, in vanilla emeralds before the economy's scale: a base and so many blocks to an
+-- emerald, times a factor from the Builder's reputation for the player (gossip.lua), from
+-- half at REPUTATION_BEST or more to twice at -REPUTATION_WORST or less.
+M.ORDER_BASE = 4
+M.ORDER_BLOCKS_PER_EMERALD = 32
+M.REPUTATION_SPAN = 300
+M.ORDER_FACTOR_MIN, M.ORDER_FACTOR_MAX = 0.5, 2
+
+function M.order_of(bench)
+	return core.deserialize(core.get_meta(bench):get_string(ORDER)) or nil
+end
+
+local function save_order(bench, order)
+	core.get_meta(bench):set_string(ORDER, order and core.serialize(order) or "")
+end
+
+-- What an order of `blocks` blocks costs a player the Builder rates at `reputation`. Pure.
+function M.order_price(blocks, reputation, scale)
+	local factor = 1 - (reputation or 0) / M.REPUTATION_SPAN
+	factor = math.max(M.ORDER_FACTOR_MIN, math.min(M.ORDER_FACTOR_MAX, factor))
+	local base = M.ORDER_BASE + math.ceil((blocks or 0) / M.ORDER_BLOCKS_PER_EMERALD)
+	return math.max(1, math.ceil(base * factor)) * (scale or 1)
+end
+
+local gossip
+-- The bench's Builder's opinion of a player, or 0 when it is not loaded or gossip is off.
+local function reputation_at(bench, player_name)
+	local id = core.get_meta(bench):get_string("villager")
+	if id == "" then return 0 end
+	for _, villager in ipairs(economy_report.around(bench, VILLAGE_RADIUS)) do
+		if villager._villages_builder and villager._id == id then
+			gossip = gossip or dofile(core.get_modpath("living_villages") .. "/gossip.lua")
+			return gossip.reputation(villager, player_name)
+		end
 	end
-	save_project(bench, {
-		state = "finding_site", building = name, source = source, schem = hash,
-		seed = math.random(0, 2147483647),
+	return 0
+end
+
+local function price_for(bench, player_name, blocks)
+	local scale = 1
+	if economy_clock.enabled() then scale = dofile(core.get_modpath("living_villages") .. "/ledger.lua").SCALE end
+	return M.order_price(blocks, reputation_at(bench, player_name), scale)
+end
+
+-- What a player could order at a bench, for the Select schematic tab: {rows, directory}. A row
+-- is {name, built, size, blocks, materials, problem, image, price}.
+function M.catalog_options(bench, player_name)
+	local record = village_index and village_index.read_village(bench, VILLAGE_RADIUS)
+	local built = census.custom_counts(record)
+	local scan = catalog.scan()
+	local rows = {}
+	for _, entry in ipairs(scan.entries) do
+		local measured = entry.measured or {}
+		rows[#rows + 1] = {
+			name = entry.name, built = built[entry.name] or 0, problem = entry.problem, image = entry.image,
+			size = measured.size, blocks = measured.blocks, materials = measured.materials,
+			price = not entry.problem and price_for(bench, player_name, measured.blocks) or nil,
+		}
+	end
+	return {rows = rows, directory = scan.directory}
+end
+
+local function give_emeralds(player, count)
+	local stack = ItemStack(materials.EMERALD .. " " .. count)
+	local left = player:get_inventory():add_item("main", stack)
+	if not left:is_empty() then core.add_item(player:get_pos(), left) end
+end
+
+-- A player orders a schematic of <world>/schems by name. Returns true and the price, or false
+-- and why: "busy" (an order already), "no_file", "cannot_build", "no_emeralds", "copy_failed".
+function M.place_order(bench, player, name)
+	if M.order_of(bench) then return false, "busy" end
+	local scan = catalog.scan()
+	local entry
+	for _, candidate in ipairs(scan.entries) do
+		if candidate.name == name then entry = candidate end
+	end
+	if not entry then return false, "no_file" end
+	if entry.problem then return false, "cannot_build" end
+	local player_name = player:get_player_name()
+	local price = price_for(bench, player_name, entry.measured.blocks)
+	local inv = player:get_inventory()
+	local payment = materials.EMERALD .. " " .. price
+	if not inv:contains_item("main", payment) then return false, "no_emeralds" end
+	local hash = catalog.take_snapshot(scan.directory, name)
+	if not hash then return false, "copy_failed" end
+	inv:remove_item("main", payment)
+	save_order(bench, {
+		name = name, schem = hash, seed = math.random(0, 2147483647), player = player_name, price = price,
+		state = "waiting",
 	})
-	core.log("action", string.format("[living_villages] builder %s will put up %s from %s", tostring(self._id), name, source))
+	core.log("action", string.format("[living_villages] %s ordered %s at the bench at %s for %d emeralds",
+		player_name, name, core.pos_to_string(bench), price))
+	return true, price
+end
+
+-- The player who paid for a failed order takes back what they paid. Returns true and the
+-- amount, or false and "no_refund".
+function M.refund(bench, player)
+	local order = M.order_of(bench)
+	local player_name = player:get_player_name()
+	if not (order and order.state == "failed" and order.player == player_name) then return false, "no_refund" end
+	save_order(bench, nil)
+	give_emeralds(player, order.price)
+	core.log("action", string.format("[living_villages] %s took back %d emeralds for %s at the bench at %s",
+		player_name, order.price, order.name, core.pos_to_string(bench)))
+	return true, order.price
+end
+
+-- A project as it was before a site was found, to be taken up again later.
+local function unstarted(project)
+	return {
+		state = "finding_site", building = project.building, need = project.need, reason = project.reason,
+		near = project.near, within = project.within, keep_away = project.keep_away,
+		source = project.source, schem = project.schem, seed = project.seed, avoid = project.avoid,
+	}
+end
+
+-- A waiting order takes the place of a project nothing has been done for yet. Returns the
+-- project now in hand.
+local function take_order(self, bench, project)
+	local order = M.order_of(bench)
+	if order and (order.state == "started" or order.state == "accepted") and not (project and project.order) then
+		-- Its project went without being finished (its copy of the schematic was lost, say).
+		order.state, order.previous = "failed", nil
+		save_order(bench, order)
+		core.log("action", string.format("[living_villages] %s's order for %s at %s was dropped; it can be refunded",
+			order.player, order.name, core.pos_to_string(bench)))
+		return project
+	end
+	if not (order and order.state == "waiting") then return project end
+	if project and not NOT_STARTED[project.state] then return project end
+	if project and project.order then return project end
+	order.previous = project and unstarted(project) or nil
+	order.state = "started"
+	save_order(bench, order)
+	if project and project.pos and village_index then
+		village_index.update_village(bench, VILLAGE_RADIUS, function(record)
+			if record.reserved then record.reserved[pos_key(bench)] = nil end
+		end)
+	end
+	local taken = {
+		state = "finding_site", building = order.name, source = M.ORDER_SOURCE, schem = order.schem, seed = order.seed,
+		order = order.player, reason = "ordered by " .. order.player,
+	}
+	save_project(bench, taken)
+	core.log("action", string.format("[living_villages] builder %s takes up %s's order for %s%s", tostring(self._id),
+		order.player, order.name, project and (" in place of a " .. project.building) or ""))
+	return taken
+end
+
+-- No site for an order: the project it took the place of comes back, and the player may have
+-- the emeralds back.
+local function order_failed(bench, project)
+	local order = M.order_of(bench)
+	local previous = order and order.previous
+	if order then
+		order.previous, order.state = nil, "failed"
+		save_order(bench, order)
+	end
+	save_project(bench, previous)
+	core.log("action", string.format("[living_villages] no site for %s's order for %s; back to %s",
+		tostring(project.order), project.building, previous and ("a " .. previous.building) or "choosing"))
 end
 
 local function choose(self, session, bench)
-	local record = village_index and village_index.read_village(bench, VILLAGE_RADIUS)
-	local source = M.source_of(bench)
-	if source then return choose_custom(self, session, bench, source, record) end
-	session.no_projects = nil
 	local need = next_need(bench)
 	if not need then return end
 	save_project(bench, {
@@ -590,6 +692,7 @@ local function start_search(self, session, bench, project)
 			table.sort(reasons)
 			core.log("action", string.format("[living_villages] builder %s found no site for a %s: %s",
 				tostring(self._id), project.building, table.concat(reasons, ", ")))
+			if current.order then return order_failed(bench, current) end
 			-- One that must stand near some beds, or away from others of its kind, is let go,
 			-- and that need or building left a while, so the Builder gets on with the next.
 			if current.within or current.keep_away then
@@ -603,6 +706,13 @@ local function start_search(self, session, bench, project)
 			return
 		end
 		local record = village_index and village_index.read_village(bench, VILLAGE_RADIUS)
+		if current.order then
+			local order = M.order_of(bench)
+			if order and order.state == "started" then
+				order.state, order.previous = "accepted", nil
+				save_order(bench, order)
+			end
+		end
 		current.state = "requires_materials"
 		current.pos = {x = found.x, y = found.floor, z = found.z}
 		current.rotat = found.rotat
@@ -1051,6 +1161,10 @@ end
 local function finish_building(self, session, bench, project)
 	local key = pos_key(bench)
 	surveys[key] = nil
+	if project.order then
+		local order = M.order_of(bench)
+		if order and order.state == "accepted" then save_order(bench, nil) end
+	end
 	if village_index then
 		village_index.update_village(bench, VILLAGE_RADIUS, function(record)
 			if project.schem then
@@ -1532,7 +1646,7 @@ local function stamp(self, session, bench, now)
 end
 
 local function tick(self, session, bench, now)
-	local project = M.load_project(bench)
+	local project = take_order(self, bench, M.load_project(bench))
 	if not project then
 		choose(self, session, bench)
 		session.next_at = now + TICK_SECONDS
@@ -1562,7 +1676,6 @@ function M.report(self)
 	if not project then
 		return {
 			state = "choosing", bench = bench, at_work = common.is_work_time(self),
-			no_projects = session_of(self).no_projects,
 		}
 	end
 	local report = {

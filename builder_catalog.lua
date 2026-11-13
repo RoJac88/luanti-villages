@@ -1,11 +1,7 @@
--- The buildings a bench can draw on besides the stock ones: the .mts files of a directory,
--- with a weight for each from that directory's builder_projects.json, and whether a Builder
--- could actually put each one up. schemedit has no API and always exports to <world>/schems,
--- so all that integrating with it takes is reading that directory.
---
--- Mod security only lets a mod list and read inside the world and loaded mods, and refuses
--- symlinks out, so the project folder is a path inside the world. It comes from a setting and
--- never from a player.
+-- The buildings a player can order at a bench (builder_bench_menu.lua's Select schematic tab):
+-- the .mts files of <world>/schems, a picture of each from a PNG or JPEG of the same name, and
+-- whether a Builder could actually put each one up. schemedit has no API and always exports
+-- to <world>/schems, so all that integrating with it takes is reading that directory.
 --
 -- A player's schematic has had none of the checks a stock building has, so nothing is taken on
 -- trust. An unknown node would silently place as air, and a block nobody can supply would keep
@@ -16,11 +12,6 @@ local site = dofile(core.get_modpath("living_villages") .. "/builder_site.lua")
 
 local M = {}
 
-M.SCHEMEDIT, M.FOLDER = "schemedit", "folder"
-M.MANIFEST = "builder_projects.json"
-M.DEFAULT_FOLDER = "builder_schems"
-M.DEFAULT_WEIGHT = 1
-M.MAX_WEIGHT = 1000
 M.MAX_FILE_BYTES = 1024 * 1024
 -- Every cell becomes a table in a Builder's plan, on the main thread.
 M.MAX_VOLUME = 64000
@@ -31,29 +22,10 @@ local function setting_number(engine, name, default)
 	return tonumber(engine.settings and engine.settings:get(name)) or default
 end
 
--- A relative path of plain names, so it cannot climb out of the world.
-function M.valid_folder(path)
-	if type(path) ~= "string" or path == "" then return false end
-	for part in (path .. "/"):gmatch("(.-)/") do
-		if not part:match("^[%w_%-]+$") then return false end
-	end
-	return true
-end
-
--- The directory of a source, or nil for one that has none, such as the stock buildings.
-function M.directory(source, engine)
+-- The one directory a player's schematics come from: where schemedit exports.
+function M.directory(engine)
 	engine = engine or core
-	if source == M.SCHEMEDIT then return engine.get_worldpath() .. "/schems" end
-	if source ~= M.FOLDER then return nil end
-	local folder = engine.settings and engine.settings:get("living_villages_builder_schem_dir")
-	if folder == nil or folder == "" then
-		folder = M.DEFAULT_FOLDER
-	elseif not M.valid_folder(folder) then
-		engine.log("warning", "[living_villages] living_villages_builder_schem_dir must be a path inside the world; using "
-			.. M.DEFAULT_FOLDER)
-		folder = M.DEFAULT_FOLDER
-	end
-	return engine.get_worldpath() .. "/" .. folder
+	return engine.get_worldpath() .. "/schems"
 end
 
 -- The schematics of a directory, as names without the suffix, sorted. Missing is empty.
@@ -66,53 +38,6 @@ function M.list(directory, engine)
 	end
 	table.sort(names)
 	return names
-end
-
--- The manifest as a table, empty if there is none. nil and "malformed" for a file that is
--- there but cannot be read, which must not be written over: it is a player's work.
-function M.read_manifest(directory, engine)
-	engine = engine or core
-	local file = io.open(directory .. "/" .. M.MANIFEST, "rb")
-	if not file then return {} end
-	local text = file:read("*a")
-	file:close()
-	local manifest = engine.parse_json(text)
-	if type(manifest) ~= "table" then return nil, "malformed" end
-	if manifest.projects ~= nil and type(manifest.projects) ~= "table" then return nil, "malformed" end
-	return manifest
-end
-
--- A weight as given, or nil for what is not one. NaN fails both comparisons.
-function M.clean_weight(value)
-	local weight = tonumber(value)
-	if not weight or not (weight >= 0 and weight <= M.MAX_WEIGHT) then return nil end
-	return weight
-end
-
-local function weight_of(manifest, name)
-	local entry = manifest.projects and manifest.projects[name]
-	return type(entry) == "table" and M.clean_weight(entry.weight) or M.DEFAULT_WEIGHT
-end
-
--- Sets one building's weight. Returns true, or false and "bad_weight", "no_file", "malformed"
--- or "write_failed". Other fields of the manifest are kept.
-function M.set_weight(directory, name, value, engine)
-	engine = engine or core
-	local weight = M.clean_weight(value)
-	if not weight then return false, "bad_weight" end
-	local known = false
-	for _, listed in ipairs(M.list(directory, engine)) do known = known or listed == name end
-	if not known then return false, "no_file" end
-	local manifest, problem = M.read_manifest(directory, engine)
-	if not manifest then return false, problem end
-	manifest.version = manifest.version or 1
-	manifest.projects = manifest.projects or {}
-	if type(manifest.projects[name]) ~= "table" then manifest.projects[name] = {} end
-	manifest.projects[name].weight = weight
-	if not engine.safe_file_write(directory .. "/" .. M.MANIFEST, engine.write_json(manifest, true)) then
-		return false, "write_failed"
-	end
-	return true
 end
 
 -- The picture beside each schematic of a directory, name -> file. PNG beats JPEG.
@@ -255,34 +180,20 @@ function M.take_snapshot(directory, name, engine)
 	return hash
 end
 
--- Everything a menu shows of a source: {directory, entries, manifest_problem}. An entry is
--- {name, weight, share, hash, measured, problem, image}, sorted by name. Shares sum to 1 over what
--- can be built; a building that cannot be built, or has weight 0, has a share of 0.
-function M.scan(source, engine)
+-- Everything the bench's window shows of the directory: {directory, entries}. An entry is
+-- {name, hash, measured, problem, image}, sorted by name.
+function M.scan(engine)
 	engine = engine or core
-	local directory = M.directory(source, engine)
-	if not directory then return nil end
-	local manifest, manifest_problem = M.read_manifest(directory, engine)
-	manifest = manifest or {}
+	local directory = M.directory(engine)
 	local reach = setting_number(engine, "living_villages_builder_reach", site.config.reach)
 	local images = images_in(directory, engine)
-	local entries, total = {}, 0
+	local entries = {}
 	for _, name in ipairs(M.list(directory, engine)) do
 		local measured, problem, hash = examine(directory .. "/" .. name .. ".mts", engine)
 		problem = problem or M.problem_of(measured, reach)
-		local entry = {
-			name = name, weight = weight_of(manifest, name), share = 0, hash = hash, measured = measured, problem = problem,
-			image = images[name],
-		}
-		if not problem then total = total + entry.weight end
-		entries[#entries + 1] = entry
+		entries[#entries + 1] = {name = name, hash = hash, measured = measured, problem = problem, image = images[name]}
 	end
-	if total > 0 then
-		for _, entry in ipairs(entries) do
-			if not entry.problem then entry.share = entry.weight / total end
-		end
-	end
-	return {directory = directory, entries = entries, manifest_problem = manifest_problem}
+	return {directory = directory, entries = entries}
 end
 
 return M

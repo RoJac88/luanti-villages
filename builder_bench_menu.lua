@@ -1,50 +1,48 @@
--- The window a right-click on a Builder's bench opens: which schematics the bench builds from
--- (the stock buildings, schemedit's directory or the project folder), what each source holds
--- with its share of what gets built, each building's weight, and a picture of it if it has one
--- (builder_preview.lua) or else what it is mostly made of. A tab only looks; a button
--- puts that source to use, so a player can see what is in one first.
+-- The window a right-click on a Builder's bench opens, in three tabs:
 --
--- The Economy tab (docs/villager-economy-design.md, Visibility; ticket 10) shows the
--- bench's economy report (builder.economy, economy_report.lua) in two halves, each
--- labelled with how it is known: what the bench's Builder has heard in market news
--- (shortages, gluts, and the worst gaps: professions missing that would make what the
--- village is short of, the first of which the census favours), and what is seen of the
--- villagers loaded around the bench (professions present, nitwits and the unemployed
--- with their labour, and goods made and used today and yesterday). It only looks.
+-- * Default: what the Builder builds by itself, for what the village needs (builder_needs.lua),
+--   with the village's mix, what is next and why.
+-- * Select schematic: the schematics of <world>/schems (builder_catalog.lua), each with a
+--   picture if a PNG or JPEG of the same name is beside it (builder_preview.lua) or else what
+--   it is mostly made of, and its price for this player, by its size and the Builder's opinion
+--   of them (builder.lua). Ordering one pays the bench; the Builder takes it up in place of
+--   whatever it has not started. If it finds no site, it goes back to what it was doing and
+--   the player who paid may take the emeralds back here.
+-- * Economy (docs/villager-economy-design.md, Visibility; ticket 10): the bench's economy
+--   report (builder.economy, economy_report.lua) in two halves, each labelled with how it is
+--   known: what the bench's Builder has heard in market news (shortages, gluts, and the worst
+--   gaps: professions missing that would make what the village is short of), and what is seen
+--   of the villagers loaded around the bench (professions present, nitwits and the unemployed
+--   with their labour, and goods made and used today and yesterday). It only looks.
 --
--- Weights belong to a directory, so they change every bench using it, and need the server
--- privilege. The source belongs to one bench, and takes what building there takes. Everything
--- a client sends is checked against what the server showed it: names and paths never come
+-- An order takes what building takes: the bench must not be protected from the player.
+-- Everything a client sends is checked against what the server showed it: names never come
 -- from a field.
 local core = minetest
 local S = core.get_translator and core.get_translator("living_villages") or function(message) return message end
-local catalog = dofile(core.get_modpath("living_villages") .. "/builder_catalog.lua")
 local preview = dofile(core.get_modpath("living_villages") .. "/builder_preview.lua")
 
 local M = {}
 
 M.FORM = "living_villages:builder_bench"
-M.STOCK = "stock"
+M.DEFAULT, M.SELECT, M.ECONOMY = "default", "select", "economy"
 local BENCH = "living_villages:builder_block"
 -- A little past a player's reach, for one who stepped back with the window open.
 local MAX_DISTANCE = 12
 local WIDTH, HEIGHT = 15, 10
 local MATERIALS_SHOWN = 4
 local PICTURE_WIDTH, PICTURE_HEIGHT = 5, 2.7
-local ROW_COLOR, HEADER_COLOR, PROBLEM_COLOR = "#ffffff", "#c8c8c8", "#ff8a80"
+local ROW_COLOR, HEADER_COLOR, PROBLEM_COLOR, GOOD_COLOR = "#ffffff", "#c8c8c8", "#ff8a80", "#7fe08a"
 
 local TABS = {
-	{source = M.STOCK, title = S("Default")},
-	{source = catalog.SCHEMEDIT, title = S("Schemedit")},
-	{source = catalog.FOLDER, title = S("Project folder")},
-	{economy = true, title = S("Economy")},
+	{view = M.DEFAULT, title = S("Default")},
+	{view = M.SELECT, title = S("Select schematic")},
+	{view = M.ECONOMY, title = S("Economy")},
 }
-local ECONOMY_TAB = #TABS
 local ECONOMY_ROWS = 5
 local GOODS_SHOWN = 4
 
--- player name -> {bench, builder, source being viewed, options, selected name, notice,
--- economy = whether the Economy tab is showing}
+-- player name -> {bench, builder, view, options, selected name}
 local open = {}
 
 local function escape(text)
@@ -89,10 +87,9 @@ local function item_label(item)
 	return (description:match("^[^\n]*"))
 end
 
-local function tab_index(source, economy)
-	if economy then return ECONOMY_TAB end
+local function tab_index(view)
 	for i, tab in ipairs(TABS) do
-		if tab.source == source then return i end
+		if tab.view == view then return i end
 	end
 	return 1
 end
@@ -103,14 +100,18 @@ local function row_of(options, name)
 	end
 end
 
--- Where a source's files go, as a player would find it, and what else to know.
-local function where_text(view)
-	if view.source == M.STOCK then return S("The buildings a village generates with, in the mix it generated with.") end
-	local place = view.place or ""
-	if view.source == catalog.SCHEMEDIT and not view.schemedit_installed then
-		return S("Files from @1. The schemedit mod is not on, but what is there can still be built.", place)
+-- What the bench's order says, for the Select schematic tab, or nil with none.
+local function order_text(order)
+	if not order then return nil end
+	local name, by = pretty(order.name), order.player
+	if order.state == "waiting" then
+		return S("Ordered by @1: @2, to be started when the Builder is free.", by, name)
+	elseif order.state == "started" then
+		return S("Ordered by @1: @2. The Builder is looking for a site.", by, name)
+	elseif order.state == "accepted" then
+		return S("Ordered by @1: @2, under way.", by, name)
 	end
-	return S("Files from @1. Put a .mts file there and press Refresh.", place)
+	return S("No site was found for @1's @2. @3 emeralds can be refunded to them.", by, name, tostring(order.price))
 end
 
 local function detail_parts(view, row)
@@ -131,16 +132,16 @@ local function detail_parts(view, row)
 		line(S("Size: @1 by @2, @3 high", tostring(row.size.x), tostring(row.size.z), tostring(row.size.y)))
 	end
 	if row.blocks then line(S("Blocks: @1", tostring(row.blocks))) end
-	line(S("Share: @1", percent(row.share)))
+	if view.view == M.DEFAULT then line(S("Share: @1", percent(row.share))) end
 	line(S("Built here: @1", tostring(row.built or 0)))
-	if row.is_next then line(core.colorize("#7fe08a", S("Next to be built"))) end
+	if row.is_next then line(core.colorize(GOOD_COLOR, S("Next to be built"))) end
 	if row.problem then
 		y = y + 0.05
 		parts[#parts + 1] = ("textarea[%.2f,%.2f;%.2f,%.1f;;;%s]"):format(x, y, w, view.preview and 1.2 or 1.6,
 			escape(core.colorize(PROBLEM_COLOR, problem_text(row.problem))))
 		y = y + 1.7
 	end
-	-- The picture takes their place: there is no room for both above the weight.
+	-- The picture takes their place: there is no room for both.
 	if not view.preview and row.materials and #row.materials > 0 then
 		y = y + 0.1
 		for i = 1, math.min(MATERIALS_SHOWN, #row.materials) do
@@ -151,18 +152,16 @@ local function detail_parts(view, row)
 			y = y + 0.65
 		end
 	end
-	if view.source ~= M.STOCK then
+	-- One order at a time: while there is one, its line at the top says so.
+	if view.view == M.SELECT and row.price and not view.order then
 		local top = HEIGHT - 1.75
-		if view.can_edit and not view.options.manifest_problem then
-			parts[#parts + 1] = ("field[%.2f,%.2f;1.6,0.7;weight;%s;%s]"):format(x, top, escape(S("Weight")),
-				escape(("%g"):format(row.weight or catalog.DEFAULT_WEIGHT)))
-			parts[#parts + 1] = "field_close_on_enter[weight;false]"
-			parts[#parts + 1] = ("button[%.2f,%.2f;1.6,0.7;set_weight;%s]"):format(x + 1.75, top, escape(S("Set")))
-			parts[#parts + 1] = ("tooltip[set_weight;%s]"):format(
-				escape(S("For every bench using this directory. 0 means never.")))
+		if view.can_use then
+			parts[#parts + 1] = ("button[%.2f,%.2f;%.2f,0.7;order;%s]"):format(x, top, w,
+				escape(S("Order for @1 emeralds", tostring(row.price))))
+			parts[#parts + 1] = ("tooltip[order;%s]"):format(escape(
+				S("Paid now. The materials still have to be found. It can be refunded if no site can be found.")))
 		else
-			parts[#parts + 1] = ("label[%.2f,%.2f;%s]"):format(x, top + 0.35,
-				escape(S("Weight: @1", ("%g"):format(row.weight or catalog.DEFAULT_WEIGHT))))
+			parts[#parts + 1] = ("label[%.2f,%.2f;%s]"):format(x, top + 0.35, escape(S("Price: @1 emeralds", tostring(row.price))))
 		end
 	end
 	return table.concat(parts)
@@ -263,6 +262,8 @@ local function economy_parts(report)
 end
 
 -- The form, from what show() gathered. Pure, for the tests.
+--   view: {view, report (economy), options, selected, preview, notice, place, can_use,
+--          project_text, order, can_refund}
 function M.formspec(view)
 	local options = view.options
 	local parts = {
@@ -270,44 +271,47 @@ function M.formspec(view)
 	}
 	local titles = {}
 	for i, tab in ipairs(TABS) do titles[i] = escape(tab.title) end
-	parts[#parts + 1] = ("tabheader[0,0;tabs;%s;%d;false;false]"):format(table.concat(titles, ","),
-		tab_index(view.source, view.economy))
-	if view.economy then
+	parts[#parts + 1] = ("tabheader[0,0;tabs;%s;%d;false;false]"):format(table.concat(titles, ","), tab_index(view.view))
+	if view.view == M.ECONOMY then
 		parts[#parts + 1] = economy_parts(view.report)
 		return table.concat(parts)
 	end
 
-	local in_use = view.source == view.in_use
-	if in_use then
-		parts[#parts + 1] = ("label[0.4,0.45;%s]"):format(escape(core.colorize("#7fe08a", S("This bench builds from these."))))
-	elseif view.can_use then
-		parts[#parts + 1] = ("button[0.4,0.15;4,0.65;use;%s]"):format(escape(S("Build from these")))
-	else
-		parts[#parts + 1] = ("label[0.4,0.45;%s]"):format(escape(S("This bench is protected, so you can only look.")))
-	end
 	parts[#parts + 1] = ("button[%.2f,0.15;2.2,0.65;refresh;%s]"):format(WIDTH - 2.6, escape(S("Refresh")))
-	parts[#parts + 1] = ("label[0.4,1.05;%s]"):format(escape(where_text(view)))
-	if view.project_text then
-		parts[#parts + 1] = ("label[0.4,1.45;%s]"):format(escape(view.project_text))
+	local selecting = view.view == M.SELECT
+	local intro
+	if selecting then
+		intro = S("Files from @1. Put a .mts file there, with a .png of the same name for a picture, and press Refresh.",
+			view.place or "")
+	else
+		intro = S("The Builder builds what the village needs. To choose a building, order one on the next tab.")
+	end
+	parts[#parts + 1] = ("label[0.4,0.45;%s]"):format(escape(intro))
+	local status = selecting and order_text(view.order) or view.project_text
+	if status then parts[#parts + 1] = ("label[0.4,0.95;%s]"):format(escape(status)) end
+	if selecting and view.can_refund then
+		parts[#parts + 1] = ("button[0.4,1.25;3,0.6;refund;%s]"):format(escape(S("Take the refund")))
+	elseif selecting and not view.can_use then
+		parts[#parts + 1] = ("label[0.4,1.45;%s]"):format(escape(S("This bench is protected, so you can only look.")))
 	end
 
-	if options.manifest_problem then
-		parts[#parts + 1] = ("label[0.4,%.2f;%s]"):format(HEIGHT - 0.75, escape(core.colorize(PROBLEM_COLOR,
-			S("@1 cannot be read. Using weight 1 for all until it is fixed.", catalog.MANIFEST))))
-	elseif view.notice then
+	if view.notice then
 		parts[#parts + 1] = ("label[0.4,%.2f;%s]"):format(HEIGHT - 0.75, escape(view.notice))
-	elseif options.reason then
+	elseif not selecting and options.reason then
 		parts[#parts + 1] = ("label[0.4,%.2f;%s]"):format(HEIGHT - 0.75, escape(S("Next, because @1.", options.reason)))
 	end
 
 	-- A header in the table's own first row keeps it in line with its columns.
-	local cells = {HEADER_COLOR, "", escape(S("Building")), escape(S("Weight")), escape(S("Share")), escape(S("Built"))}
+	local cells = {HEADER_COLOR, "", escape(S("Building")), escape(selecting and S("Price") or S("Share")), escape(S("Built"))}
 	for _, row in ipairs(options.rows) do
 		cells[#cells + 1] = row.problem and PROBLEM_COLOR or ROW_COLOR
 		cells[#cells + 1] = row.problem and "x" or (row.is_next and ">" or "")
 		cells[#cells + 1] = escape(pretty(row.name))
-		cells[#cells + 1] = row.weight and ("%g"):format(row.weight) or "-"
-		cells[#cells + 1] = percent(row.share)
+		if selecting then
+			cells[#cells + 1] = row.price and tostring(row.price) or "-"
+		else
+			cells[#cells + 1] = percent(row.share)
+		end
 		cells[#cells + 1] = tostring(row.built or 0)
 	end
 	local _, selected_index = nil, 0
@@ -315,8 +319,8 @@ function M.formspec(view)
 	if selected then
 		_, selected_index = row_of(options, view.selected)
 	end
-	parts[#parts + 1] = "tablecolumns[color;text,align=center,width=1;text,width=14;"
-		.. "text,align=right,width=4;text,align=right,width=4;text,align=right,width=4]"
+	parts[#parts + 1] = "tablecolumns[color;text,align=center,width=1;text,width=16;"
+		.. "text,align=right,width=5;text,align=right,width=4]"
 	parts[#parts + 1] = ("table[0.4,2;8.9,%.2f;projects;%s;%d]"):format(HEIGHT - 3, table.concat(cells, ","), selected_index + 1)
 	if selected then
 		parts[#parts + 1] = detail_parts(view, selected)
@@ -335,18 +339,20 @@ local function can_use(name, bench)
 	return not core.is_protected(bench, name)
 end
 
-local function can_edit(name)
-	return core.check_player_privs(name, {server = true}) == true
-end
-
 local function project_text(project)
 	if not project then return nil end
 	return S("Now: @1, @2", pretty(project.building), (project.state:gsub("_", " ")))
 end
 
--- Reads the source afresh. Only here, not on a click in the table: it reads every file.
-local function load_options(context)
-	context.options = context.builder.options(context.bench, context.source)
+-- Reads afresh. Only here, not on a click in the table: the Select tab reads every file.
+local function load_options(name, context)
+	if context.view == M.SELECT then
+		context.options = context.builder.catalog_options(context.bench, name)
+	elseif context.view == M.DEFAULT then
+		context.options = context.builder.options(context.bench)
+	else
+		return
+	end
 	if not (context.selected and row_of(context.options, context.selected)) then
 		local first = context.options.rows[1]
 		context.selected = first and first.name or nil
@@ -355,8 +361,8 @@ end
 
 local show
 show = function(name, context, notice)
-	if context.economy then
-		core.show_formspec(name, M.FORM, M.formspec({economy = true, report = context.builder.economy(context.bench)}))
+	if context.view == M.ECONOMY then
+		core.show_formspec(name, M.FORM, M.formspec({view = M.ECONOMY, report = context.builder.economy(context.bench)}))
 		return
 	end
 	local directory = context.options.directory
@@ -372,44 +378,43 @@ show = function(name, context, notice)
 	local world = core.get_worldpath()
 	local place = directory
 	if directory and directory:sub(1, #world) == world then place = "<world>" .. directory:sub(#world + 1) end
+	local order = context.builder.order_of(context.bench)
 	core.show_formspec(name, M.FORM, M.formspec({
-		source = context.source,
-		in_use = context.builder.source_of(context.bench) or M.STOCK,
+		view = context.view,
 		options = context.options,
 		selected = context.selected,
 		preview = picture,
 		notice = notice,
 		place = place,
-		schemedit_installed = core.get_modpath("schemedit") ~= nil,
 		can_use = can_use(name, context.bench),
-		can_edit = can_edit(name),
 		project_text = project_text(context.builder.load_project(context.bench)),
+		order = order,
+		can_refund = order ~= nil and order.state == "failed" and order.player == name,
 	}))
 end
 
 function M.open(name, bench, builder)
-	local source = builder.source_of(bench) or M.STOCK
-	local context = {bench = bench, builder = builder, source = source}
-	load_options(context)
+	local context = {bench = bench, builder = builder, view = M.DEFAULT}
+	load_options(name, context)
 	open[name] = context
 	show(name, context)
 end
 
-local WEIGHT_MESSAGES = {
-	bad_weight = S("A weight is a number from 0 to @1.", tostring(catalog.MAX_WEIGHT)),
+local ORDER_MESSAGES = {
+	busy = S("This bench has an order already."),
 	no_file = S("That schematic has gone."),
-	malformed = S("@1 cannot be read, so it was not changed.", catalog.MANIFEST),
-	write_failed = S("The weight could not be saved."),
+	cannot_build = S("A Builder cannot put that up."),
+	no_emeralds = S("You do not have the emeralds."),
+	copy_failed = S("The schematic could not be copied for the Builder."),
 }
 
-local function handle_weight(name, context, fields)
-	if not can_edit(name) then return S("Changing a weight needs the server privilege.") end
-	local directory = context.options.directory
-	if not (directory and context.selected) then return nil end
-	local ok, why = catalog.set_weight(directory, context.selected, fields.weight)
-	load_options(context)
-	if not ok then return WEIGHT_MESSAGES[why] or why end
-	return S("Weight saved.")
+local function handle_order(player, name, context)
+	if not can_use(name, context.bench) then return S("This bench is protected, so you can only look.") end
+	if not context.selected then return nil end
+	local ok, result = context.builder.place_order(context.bench, player, context.selected)
+	load_options(name, context)
+	if not ok then return ORDER_MESSAGES[result] or result end
+	return S("Ordered for @1 emeralds.", tostring(result))
 end
 
 local function handle_fields(player, fields)
@@ -429,32 +434,20 @@ local function handle_fields(player, fields)
 
 	local notice
 	local tab = tonumber(fields.tabs)
-	if fields.use then
-		if can_use(name, context.bench) then
-			context.builder.set_source(context.bench, context.source)
-			notice = S("Saved. A building already started is finished first.")
-		else
-			notice = S("This bench is protected, so you can only look.")
-		end
-		load_options(context)
-	elseif fields.set_weight or fields.key_enter_field == "weight" then
-		notice = handle_weight(name, context, fields)
+	if fields.order and context.view == M.SELECT then
+		notice = handle_order(player, name, context)
+	elseif fields.refund and context.view == M.SELECT then
+		local ok, amount = context.builder.refund(context.bench, player)
+		notice = ok and S("@1 emeralds refunded.", tostring(amount)) or S("There is nothing to refund to you.")
 	elseif fields.refresh then
-		-- The Economy tab reads afresh in show(); the source's files need not be.
-		if not context.economy then load_options(context) end
-	elseif tab and TABS[tab] and TABS[tab].economy then
-		context.economy = true
-	elseif tab and TABS[tab] and context.economy and TABS[tab].source == context.source then
-		context.economy = false
-	elseif tab and TABS[tab] and TABS[tab].source ~= context.source then
-		context.economy = false
-		context.source, context.selected = TABS[tab].source, nil
-		if context.source == catalog.FOLDER then core.mkdir(catalog.directory(catalog.FOLDER)) end
-		load_options(context)
+		load_options(name, context)
+	elseif tab and TABS[tab] and TABS[tab].view ~= context.view then
+		context.view, context.selected = TABS[tab].view, nil
+		load_options(name, context)
 	elseif fields.projects then
 		local event = core.explode_table_event(fields.projects)
 		-- Row 1 is the header.
-		local row = (event.type == "CHG" or event.type == "DCL") and context.options.rows[event.row - 1]
+		local row = (event.type == "CHG" or event.type == "DCL") and context.options and context.options.rows[event.row - 1]
 		if row then context.selected = row.name end
 	else
 		return
@@ -462,11 +455,12 @@ local function handle_fields(player, fields)
 	show(name, context, notice)
 end
 
--- `builder`: options(bench, source), source_of(bench), set_source(bench, source), load_project(bench),
--- economy(bench).
+-- `builder`: options(bench), catalog_options(bench, player name), order_of(bench),
+-- place_order(bench, player, name), refund(bench, player), load_project(bench), economy(bench).
 function M.install(builder)
 	core.override_item(BENCH, {
-		_doc_items_usagehelp = S("Rightclick to choose what a Builder builds from it. Sneak to place a block against it."),
+		_doc_items_usagehelp = S("Rightclick to see what a Builder will build from it, or to order a building. "
+			.. "Sneak to place a block against it."),
 		on_rightclick = function(pos, _, clicker, itemstack)
 			if clicker and clicker.is_player and clicker:is_player() then
 				M.open(clicker:get_player_name(), pos, builder)
