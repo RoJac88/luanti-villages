@@ -1493,6 +1493,15 @@ not raw crops or apples), until above 8. Outside dinner, and raw food, only when
 starving (0 points), and then only up to 4. Hunger falls 4 points a day, so one dinner
 covers it.
 
+**Skipped nights count** (`economy_clock.lua`). Hunger runs on the economic clock, game
+seconds while a player is near. Skipping a night (players sleeping, or a test world's
+`lv_keep`) moves the time of day but not game time, so a skipped night cost no hunger: about
+2.3 points a calendar day instead of 4, and only every other dinner was eaten. Now each
+stamp notes the calendar too, and a jump while the villager stays active adds what the
+calendar ran past game time, up to a day. A village nobody is near still neither hungers
+nor pays rent; production keeps only time in its work stage, so a skipped night is no
+extra crafting.
+
 **Starving hurts.** A starving adult walks at 0.7 times its speed and stops work at
 12500 instead of 15500 (`common.lua`, `STARVING_WORK_END`).
 

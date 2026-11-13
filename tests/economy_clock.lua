@@ -52,6 +52,48 @@ in_range = false
 now = now + 10
 assert(clock.advance(w, now) == 10 and w._villages_econ_stamp == nil)
 
+-- A night skipped while active (time of day set forward, game time running on) counts:
+-- the calendar ran 0.425 of a day (10200 ticks) in 10 s, so the clock adds that day's
+-- share, 510 s at time_speed 72's 1200 s day. Not when it was away across it, and never
+-- more than a day for one jump.
+do
+	local day, tod = 10, 19200 / 24000
+	minetest.get_day_count = function() return day end
+	minetest.get_timeofday = function() return tod end
+	local n = {}
+	now = 5000
+	clock.advance(n, now, true)
+	now, tod = now + 10, tod + 10 / 1200
+	assert(math.abs(clock.advance(n, now, true) - 10) < 1e-6, "an ordinary stamp adds game time only")
+	day, tod, now = 11, 5400 / 24000, now + 10
+	local after = clock.advance(n, now, true)
+	assert(math.abs(after - (20 + (0.425 - 10 / 1200) * 1200 - 10)) < 1e-6, after)
+	-- Away across the night: nothing.
+	local away = {}
+	day, tod, now = 20, 19200 / 24000, now + 1000
+	clock.advance(away, now, true)
+	day, tod, now = 21, 5400 / 24000, now + clock.AWAY_GAP
+	assert(clock.advance(away, now, true) == 0)
+	-- No player near when it was skipped: nothing.
+	local idle = {}
+	day, tod, now = 30, 19200 / 24000, now + 1000
+	clock.advance(idle, now, true)
+	now = now + 10
+	clock.advance(idle, now, false)
+	day, tod, now = 31, 5400 / 24000, now + 10
+	assert(clock.advance(idle, now, true) == 0)
+	-- A jump of days (/time) counts one day at most.
+	local jumped = {}
+	day, tod, now = 40, 0.5, now + 1000
+	clock.advance(jumped, now, true)
+	day, now = 45, now + 10
+	assert(math.abs(clock.advance(jumped, now, true) - (10 + 1200)) < 1e-6)
+	-- Time set back counts game time only.
+	day, now = 41, now + 10
+	assert(math.abs(clock.advance(jumped, now, true) - (20 + 1200)) < 1e-6)
+	minetest.get_day_count, minetest.get_timeofday = nil, nil
+end
+
 -- install wraps do_custom outermost and passes its result through; off, it does nothing.
 local calls = 0
 local def = {do_custom = function() calls = calls + 1 return false end}
