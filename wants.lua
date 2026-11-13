@@ -32,7 +32,7 @@ local M = {}
 
 M.GOODS = {
 	{key = "hoe", item = "mcl_farming:hoe_stone", professions = {farmer = true}, use = "harvest",
-		uses = 64, rate = 1.5, yields = {["mcl_farming:wheat_item"] = 1}, effect = "yield",
+		uses = 64, rate = 1.5, yields = {["mcl_farming:wheat_item"] = 2}, effect = "yield",
 		-- About half VoxeLibre's durability; gold, worn out fastest, yields most for it.
 		tiers = {
 			{item = "mcl_farming:hoe_diamond", uses = 512, rate = 2.5},

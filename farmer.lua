@@ -60,25 +60,27 @@ local WHEAT_PER_BREAD = 3
 local BREAD_LIMIT = 12
 -- What it composts, and how much of each it keeps for sowing and eating. Bread goes
 -- to villagers, so it is never composted.
+-- Carrots and beetroot it no longer sows (farm_field.lua): with no chest to take them,
+-- all of them.
 local COMPOST_KEEP = {
 	["mcl_farming:wheat_seeds"] = 8,
-	["mcl_farming:beetroot_seeds"] = 8,
+	["mcl_farming:beetroot_seeds"] = 0,
 	["mcl_farming:potato_item"] = 8,
-	["mcl_farming:carrot_item"] = 8,
-	["mcl_farming:beetroot_item"] = 8,
+	["mcl_farming:carrot_item"] = 0,
+	["mcl_farming:beetroot_item"] = 0,
 	[WHEAT] = WHEAT_PER_BREAD,
 }
 -- It stops composting once it holds this much bone meal, so the surplus is not all
 -- turned into something it cannot use. With a chest for the surplus it needs less.
 local BONE_MEAL_LIMIT = 32
 local BONE_MEAL_LIMIT_WITH_CHEST = 4
--- What it holds on to when it goes to a chest. Anything else it picks up goes in whole.
+-- What it holds on to when it goes to a chest. Anything else it picks up goes in whole:
+-- carrots and beetroot, which it no longer sows (farm_field.lua), go to the chest, the
+-- carrots for the tavern's last resort (meal.lua). Potatoes are kept for a field's half
+-- of potato plots, not more: the rest go to the keeper to bake (keeper_supply.lua).
 local DEPOSIT_KEEP = {
 	["mcl_farming:wheat_seeds"] = 16,
-	["mcl_farming:beetroot_seeds"] = 16,
-	["mcl_farming:potato_item"] = 16,
-	["mcl_farming:carrot_item"] = 16,
-	["mcl_farming:beetroot_item"] = 16,
+	["mcl_farming:potato_item"] = 8,
 	[WHEAT] = WHEAT_PER_BREAD,
 	[BREAD] = 2,
 	[BONE_MEAL] = BONE_MEAL_LIMIT_WITH_CHEST,
@@ -92,20 +94,20 @@ local OWN_BREAD = 4
 local SALE_WHEAT = 8
 -- A trip to a chest waits for this much over the keep, unless the pouch is full.
 local DEPOSIT_TRIGGER = 8
--- Bread is worth a trip sooner: past the keep it is for its own dinners and the tavern's
--- pantry, and both reach it only through the chest trip (run of 2026-11-13: a starving
--- farmer carried 8 loaves, 6 over the keep, while the keeper found none to fetch).
-local BREAD_TRIGGER = 2
+-- Food is worth a trip sooner: past the keep, bread is for its own dinners and the
+-- tavern's pantry and potatoes for the keeper to bake, and both reach them only through
+-- the chest trip (run of 2026-11-13: a starving farmer carried 8 loaves, 6 over the
+-- keep, while the keeper found none to fetch).
+local FOOD_TRIGGER = 2
+local FOOD_DEPOSITS = {BREAD, "mcl_farming:potato_item"}
 local WITHDRAW_SEEDS = 8
-local SEEDS = {
-	"mcl_farming:wheat_seeds", "mcl_farming:beetroot_seeds", "mcl_farming:potato_item", "mcl_farming:carrot_item",
-}
+local SEEDS = {"mcl_farming:wheat_seeds", "mcl_farming:potato_item"}
 local CHEST_SCAN_SECONDS = 60
 -- Handing food over: from this far off, to those this near its farm. It keeps a few
 -- of the crops that are also its seed.
 local HANDOVER_REACH = 3
 local DELIVERY_RADIUS = 32
-local FOOD_SEED_KEEP = {["mcl_farming:potato_item"] = 4, ["mcl_farming:carrot_item"] = 4}
+local FOOD_SEED_KEEP = {["mcl_farming:potato_item"] = 4}
 local WITHDRAW_FOOD = 8
 -- Beds this near its own, across and up or down, are its household's.
 local EMERALD = "mcl_core:emerald"
@@ -297,7 +299,9 @@ local function excess_item(self)
 end
 
 local function wants_to_deposit(self)
-	if stock.count(self, BREAD) - DEPOSIT_KEEP[BREAD] >= BREAD_TRIGGER then return true end
+	for _, item in ipairs(FOOD_DEPOSITS) do
+		if stock.count(self, item) - DEPOSIT_KEEP[item] >= FOOD_TRIGGER then return true end
+	end
 	local item, extra = excess_item(self)
 	if not item then return false end
 	-- Something it never keeps is only ever on its way to a chest.

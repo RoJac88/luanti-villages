@@ -43,7 +43,7 @@ setup()
 local crop = plot(1, 1, "mcl_farming:wheat")
 step()
 assert(world.name(crop) == "air", "harvested")
-assert(pouch("mcl_farming:wheat_seeds") == 2 and pouch("mcl_farming:wheat_item") == 1)
+assert(pouch("mcl_farming:wheat_seeds") == 2 and pouch("mcl_farming:wheat_item") == 2, "wheat yields twice")
 assert(#world.dropped == 0, "nothing on the ground for villagers to eat")
 assert(farmer_module.activity_override(farmer, "work") == "farm", "not called back mid-job")
 assert(step() == false, "do_states would turn it away")
@@ -154,7 +154,7 @@ assert(pouch("mcl_bone_meal:bone_meal") == 1 and #world.dropped == 0)
 step()
 assert(pouch("mcl_bone_meal:bone_meal") == 0)
 assert(world.bone_mealed.x == 2, "the least grown")
-assert(world.name({x = 2, y = 2, z = 1}) == "mcl_farming:wheat_3")
+assert(world.name({x = 2, y = 2, z = 1}) == "mcl_farming:wheat_3", world.name({x = 2, y = 2, z = 1}))
 step(4)
 assert(pouch("mcl_farming:wheat_seeds") == 8, "the keep is kept")
 
@@ -164,9 +164,9 @@ step(3)
 assert(pouch("mcl_farming:bread") == 12 and #world.composted == 0)
 
 -- Plenty of bone meal: the surplus stays, for villagers and storage.
-setup({_villages_farm_pouch = {["mcl_bone_meal:bone_meal"] = 32, ["mcl_farming:carrot_item"] = 20}})
+setup({_villages_farm_pouch = {["mcl_bone_meal:bone_meal"] = 32, ["mcl_farming:wheat_seeds"] = 20}})
 step(3)
-assert(#world.composted == 0 and pouch("mcl_farming:carrot_item") == 20)
+assert(#world.composted == 0 and pouch("mcl_farming:wheat_seeds") == 20)
 
 -- A composter stuck at level 7 waits for its timer rather than taking more.
 setup({_villages_farm_pouch = {["mcl_farming:wheat_seeds"] = 16}})
@@ -175,85 +175,85 @@ step(2)
 assert(#world.composted == 0 and world.meta(job).timer == true)
 
 -- Well over what it keeps, it stores the excess in a chest in range and keeps the rest.
-setup({_villages_farm_pouch = {["mcl_bone_meal:bone_meal"] = 4, ["mcl_farming:carrot_item"] = 30}})
+setup({_villages_farm_pouch = {["mcl_bone_meal:bone_meal"] = 4, ["mcl_farming:wheat_seeds"] = 30}})
 support.chest(world, {x = 2, y = 2, z = 0})
 step()
-assert(pouch("mcl_farming:carrot_item") == 16)
-assert(world.meta({x = 2, y = 2, z = 0}).inv:get_stack("main", 1):to_string() == "mcl_farming:carrot_item 14")
+assert(pouch("mcl_farming:wheat_seeds") == 16)
+assert(world.meta({x = 2, y = 2, z = 0}).inv:get_stack("main", 1):to_string() == "mcl_farming:wheat_seeds 14")
 assert(#world.composted == 0, "with a chest and bone meal in hand, it stores rather than composts")
 
 -- It walks to a chest that is further off.
-setup({_villages_farm_pouch = {["mcl_bone_meal:bone_meal"] = 4, ["mcl_farming:carrot_item"] = 30}})
+setup({_villages_farm_pouch = {["mcl_bone_meal:bone_meal"] = 4, ["mcl_farming:wheat_seeds"] = 30}})
 support.chest(world, {x = 20, y = 2, z = 0})
 step()
 assert(#farmer.walks == 1 and farmer.walks[1].x == 20)
 step()
-assert(pouch("mcl_farming:carrot_item") == 16)
+assert(pouch("mcl_farming:wheat_seeds") == 16)
 
 -- Stood at its composter with room for more bone meal, it still goes to the chest
 -- first: the composter must not swallow the surplus on the way.
-setup({_villages_farm_pouch = {["mcl_farming:carrot_item"] = 40}})
+setup({_villages_farm_pouch = {["mcl_farming:wheat_seeds"] = 40}})
 local store = support.chest(world, {x = 20, y = 2, z = 0})
 step()
 assert(#world.composted == 0 and #farmer.walks == 1 and farmer.walks[1].x == 20)
 step()
-assert(pouch("mcl_farming:carrot_item") == 16)
-assert(store:get_stack("main", 1):to_string() == "mcl_farming:carrot_item 24")
+assert(pouch("mcl_farming:wheat_seeds") == 16)
+assert(store:get_stack("main", 1):to_string() == "mcl_farming:wheat_seeds 24")
 
 -- A hungry child out of reach comes before the composter too.
-setup({_villages_farm_pouch = {["mcl_farming:carrot_item"] = 40}})
+setup({_villages_farm_pouch = {["mcl_farming:wheat_seeds"] = 40, ["mcl_farming:bread"] = 2}})
 local customer = support.farmer(world, {x = 20, y = 2, z = 0})
 customer._id, customer._profession, customer.child = "customer", "mason", true
 step()
 assert(#world.composted == 0 and #farmer.walks == 1)
 
 -- Plots in reach still come first, so one walk works a whole patch.
-setup({_villages_farm_pouch = {["mcl_farming:carrot_item"] = 40}})
+setup({_villages_farm_pouch = {["mcl_farming:wheat_seeds"] = 40}})
 support.chest(world, {x = 20, y = 2, z = 0})
 local on_the_way = plot(1, 1, "mcl_farming:wheat")
 step()
 assert(world.name(on_the_way) == "air" and #farmer.walks == 0)
 
 -- A small excess is not worth a trip.
-setup({_villages_farm_pouch = {["mcl_bone_meal:bone_meal"] = 4, ["mcl_farming:carrot_item"] = 20}})
+setup({_villages_farm_pouch = {["mcl_bone_meal:bone_meal"] = 4, ["mcl_farming:wheat_seeds"] = 20}})
 support.chest(world, {x = 20, y = 2, z = 0})
 step(3)
-assert(#farmer.walks == 0 and pouch("mcl_farming:carrot_item") == 20)
+assert(#farmer.walks == 0 and pouch("mcl_farming:wheat_seeds") == 20)
 
 -- A full chest is left alone for a while, and nothing is lost to it.
-setup({_villages_farm_pouch = {["mcl_bone_meal:bone_meal"] = 4, ["mcl_farming:carrot_item"] = 30}})
+setup({_villages_farm_pouch = {["mcl_bone_meal:bone_meal"] = 4, ["mcl_farming:wheat_seeds"] = 30}})
 local full = support.chest(world, {x = 2, y = 2, z = 0})
 for i = 1, 27 do full:set_stack("main", i, "mcl_core:stone 64") end
 step(3)
-assert(pouch("mcl_farming:carrot_item") == 30)
+assert(pouch("mcl_farming:wheat_seeds") == 30)
 
 -- Its surplus goes to the chest nearest its composter, not the one nearest itself, so a
 -- player can move it off a chest such as a Builder's by placing one nearer.
-setup({_villages_farm_pouch = {["mcl_bone_meal:bone_meal"] = 4, ["mcl_farming:carrot_item"] = 30}})
+setup({_villages_farm_pouch = {["mcl_bone_meal:bone_meal"] = 4, ["mcl_farming:wheat_seeds"] = 30}})
 local builders = support.chest(world, {x = 7, y = 2, z = 0})
 local placed = support.chest(world, {x = -6, y = 2, z = 0})
 step()
 assert(#farmer.walks == 1 and farmer.walks[1].x == -6, "the chest nearer the composter")
 step()
-assert(placed:get_stack("main", 1):to_string() == "mcl_farming:carrot_item 14")
+assert(placed:get_stack("main", 1):to_string() == "mcl_farming:wheat_seeds 14")
 assert(builders:get_stack("main", 1):is_empty(), "the other chest is left alone")
 
 -- That chest full, it waits rather than fill another.
-setup({_villages_farm_pouch = {["mcl_bone_meal:bone_meal"] = 4, ["mcl_farming:carrot_item"] = 30}})
+setup({_villages_farm_pouch = {["mcl_bone_meal:bone_meal"] = 4, ["mcl_farming:wheat_seeds"] = 30}})
 builders = support.chest(world, {x = 8, y = 2, z = 0})
 placed = support.chest(world, {x = -6, y = 2, z = 0})
 for i = 1, 27 do placed:set_stack("main", i, "mcl_core:stone 64") end
 step(6)
-assert(builders:get_stack("main", 1):is_empty() and pouch("mcl_farming:carrot_item") == 30)
+assert(builders:get_stack("main", 1):is_empty() and pouch("mcl_farming:wheat_seeds") == 30)
 
 -- Both halves of a double chest are its own.
-setup({_villages_farm_pouch = {["mcl_bone_meal:bone_meal"] = 4, ["mcl_farming:carrot_item"] = 30}})
+setup({_villages_farm_pouch = {["mcl_bone_meal:bone_meal"] = 4, ["mcl_farming:wheat_seeds"] = 30}})
 local near_half = support.chest(world, {x = 2, y = 2, z = 0}, "mcl_chests:chest_left")
 local far_half = support.chest(world, {x = 3, y = 2, z = 0}, "mcl_chests:chest_right")
 builders = support.chest(world, {x = 4, y = 2, z = 0})
 for i = 1, 27 do near_half:set_stack("main", i, "mcl_core:stone 64") end
 step(6)
-assert(far_half:get_stack("main", 1):to_string() == "mcl_farming:carrot_item 14")
+assert(far_half:get_stack("main", 1):to_string() == "mcl_farming:wheat_seeds 14")
 assert(builders:get_stack("main", 1):is_empty())
 
 -- With no chest it never places one and leaves no food on the ground: surplus goes to the composter, and a full pouch waits with the crop standing.
@@ -268,13 +268,13 @@ step(7)
 assert(world.name(waiting) ~= "mcl_farming:wheat", "room made, so it harvests")
 
 -- A chest placed later is found on its next look.
-setup({_villages_farm_pouch = {["mcl_bone_meal:bone_meal"] = 32, ["mcl_farming:carrot_item"] = 30}})
+setup({_villages_farm_pouch = {["mcl_bone_meal:bone_meal"] = 32, ["mcl_farming:wheat_seeds"] = 30}})
 step(2)
-assert(pouch("mcl_farming:carrot_item") == 30, "nowhere for it to go")
+assert(pouch("mcl_farming:wheat_seeds") == 30, "nowhere for it to go")
 support.chest(world, {x = 2, y = 2, z = 0})
 world.now = world.now + 61
 step(2)
-assert(pouch("mcl_farming:carrot_item") == 16)
+assert(pouch("mcl_farming:wheat_seeds") == 16)
 
 -- Inedible drops: into the pouch with a chest to take them, on the ground without.
 setup()
@@ -336,10 +336,10 @@ step()
 assert(distant._villages_food == 12)
 
 -- It keeps a few of the crops that are also its seed.
-setup({_villages_farm_pouch = {["mcl_farming:carrot_item"] = 6}})
+setup({_villages_farm_pouch = {["mcl_farming:potato_item"] = 6}})
 local peckish = neighbour(2, 1)
 step(3)
-assert(peckish._villages_food == 2 and pouch("mcl_farming:carrot_item") == 4)
+assert(peckish._villages_food == 2 and pouch("mcl_farming:potato_item") == 4)
 
 -- Nobody beyond its range, nobody asleep, nobody full, and not itself by walking.
 setup({_villages_farm_pouch = {["mcl_farming:bread"] = 3}})
@@ -428,6 +428,21 @@ assert(#farmer.walks == 1 and farmer.walks[1].x == 20, "six loaves over the keep
 step()
 assert(pouch("mcl_farming:bread") == 2 and farmer._villages_belongings["mcl_farming:bread"] == 4)
 assert(bread_chest:get_stack("main", 1):to_string() == "mcl_farming:bread 2", "the rest for the keeper")
+-- Potatoes too: past a keep of 8, two over send it, for the keeper to bake. Carrots and
+-- beetroot, never sown now, go in whole.
+setup({_villages_farm_pouch = {["mcl_farming:potato_item"] = 10, ["mcl_farming:carrot_item"] = 3,
+	["mcl_farming:beetroot_item"] = 2}})
+local potato_chest = support.chest(world, {x = 2, y = 2, z = 0})
+step(4)
+assert(pouch("mcl_farming:potato_item") == 8 and pouch("mcl_farming:carrot_item") == 0
+	and pouch("mcl_farming:beetroot_item") == 0)
+local stored = {}
+for i = 1, 3 do
+	local stack = potato_chest:get_stack("main", i)
+	if not stack:is_empty() then stored[stack:get_name()] = stack:get_count() end
+end
+assert(stored["mcl_farming:potato_item"] == 2 and stored["mcl_farming:carrot_item"] == 3
+	and stored["mcl_farming:beetroot_item"] == 2)
 -- One loaf over is not.
 setup({_villages_farm_pouch = {["mcl_farming:bread"] = 3}})
 support.chest(world, {x = 20, y = 2, z = 0})
@@ -471,15 +486,15 @@ local till = support.chest(world, {x = 2, y = 2, z = 0}, nil, {"mcl_core:emerald
 step(3)
 assert(belongings(farmer, "mcl_core:emerald") == 3 and till:get_stack("main", 1):get_name() ~= "mcl_core:emerald")
 
--- Ticket 18. A hoe multiplies the harvest: with a stone one (×1.5), a lucky roll makes
--- one wheat two.
+-- Ticket 18. A hoe multiplies the harvest: with a stone one (×1.5), wheat's two (farm
+-- output, 2026-11-13) become three.
 do
 	local real_random = math.random
 	math.random = function() return 0 end
 	setup({_villages_wants = {hoe = {item = "mcl_farming:hoe_stone", left = 64}}})
 	plot(1, 1, "mcl_farming:wheat")
 	step()
-	assert(pouch("mcl_farming:wheat_item") == 2 and farmer._villages_wants.hoe.left == 63)
+	assert(pouch("mcl_farming:wheat_item") == 3 and farmer._villages_wants.hoe.left == 63)
 	-- With nothing else to do it tends a growing crop, which grows a stage; a plot tended
 	-- lately waits its turn.
 	setup({_villages_wants = {hoe = {item = "mcl_farming:hoe_iron", left = 128}}})
