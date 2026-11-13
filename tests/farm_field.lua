@@ -25,9 +25,10 @@ assert(#field.scan(job).mature == 0)
 assert(field.harvest(mature) == nil and world.name(mature) == "mcl_farming:wheat")
 world.protected["1,2,1"] = nil
 
--- A harvest yields the node's own drops, and takes the crop.
+-- A harvest yields the node's own drops, and takes the crop. Wheat yields twice its one
+-- wheat (farm output, 2026-11-13): the second comes as a drop of its own.
 local drops = field.harvest(mature)
-assert(#drops == 3 and world.name(mature) == "air")
+assert(#drops == 4 and drops[4] == "mcl_farming:wheat_item 1" and world.name(mature) == "air")
 assert(field.harvest(mature) == nil, "already gone")
 
 -- Planting keeps the plant's mesh option, which the old replant lost.
@@ -38,19 +39,21 @@ assert(not field.plant({x = 5, y = 2, z = 5}, "mcl_farming:wheat_seeds"), "no so
 assert(not field.plant(mature, "mcl_core:stone"), "not a seed")
 assert(field.is_seed("mcl_farming:potato_item") and not field.is_seed("mcl_farming:bread"))
 
--- Beetroot starts at stage 0, unlike the others.
-assert(field.plant(mature, "mcl_farming:beetroot_seeds") and world.name(mature) == "mcl_farming:beetroot_0")
+-- Only wheat and potatoes are sown: carrots and beetroot already growing are harvested,
+-- never sown again.
+assert(not field.plant(mature, "mcl_farming:beetroot_seeds") and not field.plant(mature, "mcl_farming:carrot_item"))
+assert(not field.is_seed("mcl_farming:carrot_item"))
 
 -- Seed choice: most stock wins, unless that crop is next door and another will do.
 local counts = {}
 local function count_of(name) return counts[name] or 0 end
 local lone = plot(5, 5)
 assert(field.choose_seed(lone, count_of) == nil, "no seeds")
-counts = {["mcl_farming:carrot_item"] = 2, ["mcl_farming:wheat_seeds"] = 5}
-assert(field.choose_seed(lone, count_of) == "mcl_farming:wheat_seeds")
+counts = {["mcl_farming:potato_item"] = 2, ["mcl_farming:wheat_seeds"] = 5, ["mcl_farming:carrot_item"] = 9}
+assert(field.choose_seed(lone, count_of) == "mcl_farming:wheat_seeds", "carrots are never sown")
 plot(6, 5, "mcl_farming:wheat_3")
-assert(field.choose_seed(lone, count_of) == "mcl_farming:carrot_item")
-plot(4, 5, "mcl_farming:carrot")
+assert(field.choose_seed(lone, count_of) == "mcl_farming:potato_item")
+plot(4, 5, "mcl_farming:potato")
 assert(field.choose_seed(lone, count_of) == "mcl_farming:wheat_seeds", "both next door: most stock")
 
 -- Tilling. A fresh world: dirt at y 1 around a composter at y 2.
@@ -129,21 +132,24 @@ local lost = field.tillable(composter, field.scan(composter).soil)
 assert(#lost == 1 and lost[1].x == 2 and lost[1].z == 3, "only the lost plot")
 
 -- Ticket 18. A hoe's yield multiplies the product, never the seeds: the whole part of the
--- extra always, the rest by chance.
+-- extra always, the rest by chance. Wheat's own doubling multiplies with the hoe's.
 do
 	local real_random = math.random
 	local wheat = plot(-3, -3, "mcl_farming:wheat")
 	math.random = function() return 0.4 end
-	local got = field.harvest(wheat, 1.5)
-	assert(#got == 4 and got[4] == "mcl_farming:wheat_item 1", "a half over: one more on a roll under 0.5")
+	local got = field.harvest(wheat, 1.25)
+	assert(#got == 4 and got[4] == "mcl_farming:wheat_item 2", "2.5 in all: a half over, one more on a roll under 0.5")
 	wheat = plot(-3, -3, "mcl_farming:wheat")
 	math.random = function() return 0.6 end
-	assert(#field.harvest(wheat, 1.5) == 3, "and none over it")
+	got = field.harvest(wheat, 1.25)
+	assert(#got == 4 and got[4] == "mcl_farming:wheat_item 1", "and none over it")
 	local potato = plot(-3, -4, "mcl_farming:potato")
 	got = field.harvest(potato, 2.5)
 	assert(got[2] == "mcl_farming:potato_item 3", "two potatoes at 2.5: three more")
 	wheat = plot(-3, -3, "mcl_farming:wheat")
-	assert(#field.harvest(wheat, 1) == 3 and #field.harvest(plot(-3, -5, "mcl_farming:wheat")) == 3, "no hoe, no extra")
+	assert(#field.harvest(wheat, 1) == 4 and #field.harvest(plot(-3, -5, "mcl_farming:wheat")) == 4, "no hoe: wheat's own doubling only")
+	got = field.harvest(plot(-3, -6, "mcl_farming:potato"))
+	assert(#got == 1, "no hoe, no extra potato")
 	-- Tending grows a crop one stage on a roll under its chance; the last stage ripens.
 	local young = plot(-4, -3, "mcl_farming:wheat_3")
 	math.random = function() return 0.5 end
@@ -158,18 +164,18 @@ do
 end
 
 -- What a harvest is worth by what the village asks: a potato's 1.5 net at a baked
--- potato's ask, wheat at a third of bread's.
+-- potato's ask, wheat's 2 at a third of bread's. Crops never sown have no worth.
 do
 	local asked = {["mcl_farming:bread"] = 30, ["mcl_farming:potato_item_baked"] = 10, ["mcl_farming:carrot_item"] = 4}
 	local worth = field.harvest_worth(function(item) return asked[item] end)
-	assert(worth["mcl_farming:wheat_seeds"] == 10 and worth["mcl_farming:potato_item"] == 15)
-	assert(math.abs(worth["mcl_farming:carrot_item"] - 7.2) < 1e-9 and worth["mcl_farming:beetroot_seeds"] == 0)
+	assert(worth["mcl_farming:wheat_seeds"] == 20 and worth["mcl_farming:potato_item"] == 15)
+	assert(worth["mcl_farming:carrot_item"] == nil and worth["mcl_farming:beetroot_seeds"] == nil)
 	-- Sowing follows the worth, still passing over a crop next door where another will do.
 	local spot = {x = -10, y = 2, z = 10}
 	local stock_of = function() return 8 end
-	assert(field.choose_seed(spot, stock_of, worth) == "mcl_farming:potato_item")
-	world.set({x = -9, y = 2, z = 10}, "mcl_farming:potato_3")
-	assert(field.choose_seed(spot, stock_of, worth) == "mcl_farming:wheat_seeds", "the next best beside a potato")
+	assert(field.choose_seed(spot, stock_of, worth) == "mcl_farming:wheat_seeds")
+	world.set({x = -9, y = 2, z = 10}, "mcl_farming:wheat_3")
+	assert(field.choose_seed(spot, stock_of, worth) == "mcl_farming:potato_item", "the next best beside wheat")
 end
 
 -- Two composters' fields: each counts and tills only the cells nearer its own.

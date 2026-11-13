@@ -17,24 +17,30 @@ local DEFAULT_MAX_PLOTS = 40
 -- harvest leaves on average once the seed is put back (VoxeLibre's drops: a potato 2.5,
 -- a carrot 2.8, less one replanted); `makes` what the product becomes and how many it
 -- takes, for what the village asks for that (three wheat a loaf, a potato baked).
+--
+-- Farm output (2026-11-13): a farmer sows only wheat and potatoes (`sown`), so a hand
+-- farmer feeds a little less than a fisherman whose catch is cooked (about 28 points a
+-- day to its 30, at some 6.5 harvests), and a hoe makes it far better (wants.lua). A
+-- wheat harvest yields `yield` times VoxeLibre's one wheat, so a loaf's worth of wheat
+-- is not a third of a baked potato's. Carrots and beetroot already growing are still
+-- tended and harvested, never sown again.
 local CROPS = {
 	{id = "wheat", mature = "mcl_farming:wheat", seed = "mcl_farming:wheat_seeds", prefix = "mcl_farming:wheat_", first = 1, last = 7,
-		product = "mcl_farming:wheat_item", net = 1, makes = {item = "mcl_farming:bread", from = 3}},
+		product = "mcl_farming:wheat_item", net = 2, yield = 2, sown = true, makes = {item = "mcl_farming:bread", from = 3}},
 	{id = "potato", mature = "mcl_farming:potato", seed = "mcl_farming:potato_item", prefix = "mcl_farming:potato_", first = 1, last = 7,
-		product = "mcl_farming:potato_item", net = 1.5, makes = {item = "mcl_farming:potato_item_baked", from = 1}},
+		product = "mcl_farming:potato_item", net = 1.5, sown = true, makes = {item = "mcl_farming:potato_item_baked", from = 1}},
 	{id = "carrot", mature = "mcl_farming:carrot", seed = "mcl_farming:carrot_item", prefix = "mcl_farming:carrot_", first = 1, last = 7,
 		product = "mcl_farming:carrot_item", net = 1.8},
 	{id = "beetroot", mature = "mcl_farming:beetroot", seed = "mcl_farming:beetroot_seeds", prefix = "mcl_farming:beetroot_", first = 0, last = 2,
 		product = "mcl_farming:beetroot_item", net = 1},
 }
 
-
 local mature_crops, growing_crops, seed_crops = {}, {}, {}
 local mature_names, growing_names = {}, {}
 for _, crop in ipairs(CROPS) do
 	crop.plant = crop.prefix .. crop.first
 	mature_crops[crop.mature] = crop
-	seed_crops[crop.seed] = crop
+	if crop.sown then seed_crops[crop.seed] = crop end
 	table.insert(mature_names, crop.mature)
 	for stage = crop.first, crop.last do
 		local name = crop.prefix .. stage
@@ -43,7 +49,12 @@ for _, crop in ipairs(CROPS) do
 	end
 end
 
-local M = {RADIUS = FARM_RADIUS, HEIGHT = FARM_HEIGHT, CROPS = CROPS}
+local SOWN = {}
+for _, crop in ipairs(CROPS) do
+	if crop.sown then SOWN[#SOWN + 1] = crop end
+end
+
+local M = {RADIUS = FARM_RADIUS, HEIGHT = FARM_HEIGHT, CROPS = CROPS, SOWN = SOWN}
 
 local function crop_of(name)
 	if mature_crops[name] then return mature_crops[name] end
@@ -194,7 +205,8 @@ function M.harvest(pos, yield)
 	for _, drop in ipairs(core.get_node_drops(node, "")) do drops[#drops + 1] = drop end
 	core.remove_node(pos)
 	node_sound(pos, node.name, "dug")
-	if yield and yield > 1 then
+	yield = (yield or 1) * (crop.yield or 1)
+	if yield > 1 then
 		local count = 0
 		for _, drop in ipairs(drops) do
 			local name, n = drop:match("^(%S+)%s*(%d*)")
@@ -202,7 +214,7 @@ function M.harvest(pos, yield)
 		end
 		local extra = count * (yield - 1)
 		local whole = math.floor(extra)
-		if math.random() < extra - whole then whole = whole + 1 end
+		if extra > whole and math.random() < extra - whole then whole = whole + 1 end
 		if whole > 0 then table.insert(drops, crop.product .. " " .. whole) end
 	end
 	return drops
@@ -249,7 +261,7 @@ end
 -- what it makes, per product it takes.
 function M.harvest_worth(price)
 	local worth = {}
-	for _, crop in ipairs(CROPS) do
+	for _, crop in ipairs(M.SOWN) do
 		local each = price(crop.product) or 0
 		if crop.makes then each = math.max(each, (price(crop.makes.item) or 0) / crop.makes.from) end
 		worth[crop.seed] = crop.net * each
@@ -263,7 +275,7 @@ end
 -- of a crop with the same crop on both axes. Nil if the pouch has no seeds.
 function M.choose_seed(pos, count_of, worth)
 	local seeds = {}
-	for _, crop in ipairs(CROPS) do
+	for _, crop in ipairs(M.SOWN) do
 		local count = count_of(crop.seed)
 		if count > 0 then table.insert(seeds, {crop = crop, count = count, worth = worth and worth[crop.seed] or 0}) end
 	end

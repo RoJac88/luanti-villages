@@ -42,7 +42,7 @@ do
 	local farmer = villager({_profession = "farmer"})
 	local targets, worth = wants.targets(farmer)
 	assert(targets[HOE] == 1 and not targets[AXE])
-	assert(worth[HOE] == 64 * ledger.price("mcl_farming:wheat_item") * 0.5, worth[HOE])
+	assert(worth[HOE] == 64 * 2 * ledger.price("mcl_farming:wheat_item") * 0.5, worth[HOE])
 	targets = wants.targets(villager({_villages_labour = {day = 3, activity = "woodcutter"}}))
 	assert(targets[AXE] == 1 and not targets[HOE])
 	targets = wants.targets(villager({_villages_labour = {day = 3, activity = "quarrier"}}))
