@@ -53,6 +53,25 @@ With the Builder short of something on sale (a lamp's sea lantern, a farm's wate
 - Walk more than 10 nodes away and press Buy: the window says you are too far.
 - Things it does not need, and items never on sale, have no button. Buying doesn't change `Gossip`.
 
+## Other woods, colours and stones
+
+With a stock building waiting for materials (`builder_families.lua`):
+
+- Rows another of the kind will do for end in ` *`, and hovering over the name says so. Oak stairs, red beds,
+  purple carpets, cobble and potted flowers all have one. Clear glass, carved stone bricks and torches don't.
+- Put birch planks in the chest for an oak-planks row: `In chests` counts them and `Missing` drops. Put red
+  carpets in for a building that wants red and purple ones: each row counts its own colour first, and no carpet
+  is counted twice.
+- It builds: stairs, slabs, doors (both halves), trapdoors, fence gates and pressure plates come out in the wood
+  you gave, turned the way the schematic has them. Once it has used a substitute it keeps to it while the
+  chest holds some, so a wall isn't half one wood and half another.
+- Break a birch stair it laid: it puts back a birch stair if it has one, and never takes a birch block it laid
+  for something in the way.
+- A player's order (the bench's Select schematic tab) has no ` *` rows: deepslate does not count for its cobble.
+- With the economy on, short of planks it posts logs of any species (inspector line `Builder wants: N logs
+  (any)`). Logs it buys turn into four planks each in its pouch, and a porter it hires leaves planks in the
+  chest. Logs you put in the chest stay logs.
+
 ## No site
 
 Keep it from finding one, by building all around the village or with a very low
