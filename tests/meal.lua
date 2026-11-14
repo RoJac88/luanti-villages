@@ -206,13 +206,13 @@ assert(particles > 0 and sounds > 0, "eats: particles and the bite sound")
 local bob = villager("bob", {x = 3, y = -0.49, z = 1})
 def.do_custom(bob, 0.1)
 assert(bob._villages_seated and vector.equals(bob._villages_seat.chair, east))
-now = now + 3
+now = now + 2
 def.do_custom(bob, 0.1)
 assert(not bob._villages_meal, "one meal per plate")
 
--- The keeper leaves mid-meal: alice finishes hers.
+-- The keeper leaves mid-meal: alice finishes hers (a meal lasts 6 s).
 keeper_object.get_pos = function() return {x = 30, y = 0, z = 30} end
-now = now + 3
+now = now + 2
 def.do_custom(alice, 0.1)
 assert(alice._villages_meal, "finishes the meal")
 
@@ -360,7 +360,7 @@ assert(not eating() and meals_shown() == 0, "not before the wait")
 step(2)
 assert(eating() and meals_shown() == 1, "served after the wait")
 assert(stacks[key(plate)] == nil, "nothing written to the plate")
-assert(hunger.pat >= 10 and hunger.pat < 12, "credited by bites so far")
+assert(hunger.pat >= 10 and hunger.pat < 13, "credited by bites so far, not yet in full")
 step(14)
 assert(hunger.pat == 13, "3 hunger points in all: " .. hunger.pat)
 assert(math.abs(saturation.pat - 1.5) < 0.2, "a little saturation " .. saturation.pat)
@@ -400,7 +400,7 @@ step(1)
 sit("pat", west)
 step(3.6)
 assert(eating())
-step(3)
+step(1.2)
 stand_up("pat")
 step(0.4)
 local got = hunger.pat
@@ -686,6 +686,33 @@ assert(vera._villages_meal and vera._villages_meal.item == "mcl_farming:bread" a
 now = now + 20
 meal.tick(vera, 0.1, jukebox)
 pantry_items["mcl_farming:carrot_item"] = nil
+-- Broke (2026-11-13): short of a dinner's price, a raw plate of carrots or beetroot for
+-- one emerald, dish or no dish in the pantry; with no emerald, nothing, and no seat.
+day = day + 1
+pantry_items["mcl_core:emerald"] = nil
+pantry_items["mcl_farming:bread"] = 1
+pantry_items["mcl_farming:beetroot_item"] = 5
+local bo = {_id = "bo", _villages_seat = {table = tabletop}, _villages_food = 0,
+	_villages_belongings = {["mcl_core:emerald"] = 3}}
+bo.object = {get_pos = function() return {x = 2, y = 0, z = 0} end}
+assert(meal.would_serve(bo, jukebox), "it would be served: a seat for it")
+now = now + 10
+meal.tick(bo, 0.1, jukebox)
+now = now + 5
+meal.tick(bo, 0.1, jukebox)
+assert(bo._villages_meal and bo._villages_meal.item == "mcl_farming:beetroot_item", "a raw plate, not the loaf")
+assert(pantry_items["mcl_farming:beetroot_item"] == 1 and pantry_items["mcl_farming:bread"] == 1 and bo._villages_food == 4)
+assert(bo._villages_belongings["mcl_core:emerald"] == 2 and pantry_items["mcl_core:emerald"] == 1, "one emerald")
+now = now + 20
+meal.tick(bo, 0.1, jukebox)
+day = day + 1
+bo._villages_food, bo._villages_belongings["mcl_core:emerald"] = 0, 0
+pantry_items["mcl_farming:beetroot_item"] = 8
+assert(not meal.would_serve(bo, jukebox), "no emerald: no seat")
+assert(meal.explain(bo, jukebox):find("cannot pay"))
+-- One that can pay but is not hungry takes no seat either.
+assert(not meal.would_serve({_id = "fed", _villages_food = 12, _villages_belongings = {["mcl_core:emerald"] = 99}}, jukebox))
+pantry_items["mcl_farming:beetroot_item"], pantry_items["mcl_farming:bread"] = nil, nil
 pantry_items["mcl_core:emerald"] = 18
 -- The keeper's household eats free: a bed in the keeper's house.
 day = day + 1

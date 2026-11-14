@@ -71,68 +71,73 @@ local function check(name, got, want)
 end
 
 -- Work stage, 60 nodes from the bed, jobsite claimed: vanilla goes on to the stage.
-local v = villager(60)
+local v = villager(70)
 check("far worker works", run(v), "work")
 check("bed is back", v._bed, bed)
 
 -- Within 50 nodes nothing changes.
 check("near worker", run(villager(30)), "work")
 
+-- Up to 64 from its bed anyone may wander by day, errand or not (2026-11-13: towns are
+-- larger than vanilla's 50); a child keeps vanilla's leash.
+check("wanderer within 64", run(villager(60, {_jobsite = false})), "none")
+check("child within 64", run(villager(60, {_jobsite = false, child = true})), "go_home")
+
 -- No claimed jobsite: vanilla's walk home stays.
-check("no jobsite", run(villager(60, {_jobsite = false})), "go_home")
+check("no jobsite", run(villager(70, {_jobsite = false})), "go_home")
 claims[key(jobsite)] = "someone else"
-check("jobsite lost", run(villager(60)), "go_home")
+check("jobsite lost", run(villager(70)), "go_home")
 claims[key(jobsite)] = "v1"
 
 -- A child has no errand.
-check("child", run(villager(60, {child = true})), "go_home")
+check("child", run(villager(70, {child = true})), "go_home")
 
 -- Putter stage and the free morning: vanilla's rule stands.
 ticks = 6800
-check("putter", run(villager(60)), "go_home")
+check("putter", run(villager(70)), "go_home")
 -- The morning at the bell (#329) once it has found one.
-check("putter, morning bell", run(villager(60, {_villages_bell_hangout = {}})), "none")
+check("putter, morning bell", run(villager(70, {_villages_bell_hangout = {}})), "none")
 -- A trade trip or a rent errand runs in the putter stage too.
-check("putter, trade trip", run(villager(60, {_villages_trade_trip = {}})), "none")
-check("putter, rent errand", run(villager(60, {_villages_rent_errand = {}})), "none")
+check("putter, trade trip", run(villager(70, {_villages_trade_trip = {}})), "none")
+check("putter, rent errand", run(villager(70, {_villages_rent_errand = {}})), "none")
 ticks = 9600
 
 -- A keeper's free hours: vanilla's walk home, unless it is fetching for its pantry.
-check("keeper free", run(villager(60, {_villages_keeper = true, _jobsite = false})), "go_home")
-check("keeper fetching", run(villager(60, {_villages_keeper = true, _jobsite = false, _villages_supply_target = {}})), "none")
+check("keeper free", run(villager(70, {_villages_keeper = true, _jobsite = false})), "go_home")
+check("keeper fetching", run(villager(70, {_villages_keeper = true, _jobsite = false, _villages_supply_target = {}})), "none")
 
 -- Home and sleep stages, and a thunderstorm, send everyone home as ever.
 ticks = 18000
-check("home stage", run(villager(60)), "go_home")
+check("home stage", run(villager(70)), "go_home")
 ticks = 20000
-check("sleep stage", run(villager(60)), "go_home")
+check("sleep stage", run(villager(70)), "go_home")
 ticks = 9600
 weather = "thunder"
-check("thunder", run(villager(60)), "go_home")
+check("thunder", run(villager(70)), "go_home")
 weather = "none"
 
 -- Evening at the tavern: only with a target.
 ticks = 16000
-check("tavern, no target", run(villager(60)), "go_home")
-check("tavern target", run(villager(60, {_villages_tavern_target = {x = 55, y = 0, z = 0}})), "none")
+check("tavern, no target", run(villager(70)), "go_home")
+check("tavern target", run(villager(70, {_villages_tavern_target = {x = 55, y = 0, z = 0}})), "none")
 
 -- Holiday church and bell: an errand only once the villager has found a pulpit
 -- or bell (church.lua and bell.lua record it); with none in reach it is a lost
 -- villager and goes home.
 holiday = true
 ticks = 8000
-check("church, no pulpit", run(villager(60)), "go_home")
-check("church", run(villager(60, {_villages_church = {role = "member"}})), "none")
+check("church, no pulpit", run(villager(70)), "go_home")
+check("church", run(villager(70, {_villages_church = {role = "member"}})), "none")
 ticks = 11000
-check("bell, no bell", run(villager(60)), "go_home")
-check("bell", run(villager(60, {_villages_bell = {}})), "none")
-check("bell stage ignores a church target", run(villager(60, {_villages_church = {}})), "go_home")
+check("bell, no bell", run(villager(70)), "go_home")
+check("bell", run(villager(70, {_villages_bell = {}})), "none")
+check("bell stage ignores a church target", run(villager(70, {_villages_church = {}})), "go_home")
 -- The social stage (#327) keeps villagers about the church, which is out of the bed's reach.
 ticks = 10300
-check("social, no church kept", run(villager(60)), "go_home")
-check("social, kept about the church", run(villager(60, {_villages_social = {}})), "none")
+check("social, no church kept", run(villager(70)), "go_home")
+check("social, kept about the church", run(villager(70, {_villages_social = {}})), "none")
 ticks = 11000
-check("bell stage drops the social hold", run(villager(60, {_villages_social = {}})), "go_home")
+check("bell stage drops the social hold", run(villager(70, {_villages_social = {}})), "go_home")
 holiday = false
 ticks = 9600
 
@@ -144,7 +149,7 @@ ticks = 15000
 local function keeper(extra)
 	local t = {_villages_keeper = true, _jobsite = juke}
 	for k, v in pairs(extra or {}) do t[k] = v end
-	return villager(60, t)
+	return villager(70, t)
 end
 check("keeper staffs", run(keeper()), "work")
 check("keeper without claim", run(keeper({_id = "v2"})), "go_home")
@@ -152,13 +157,13 @@ check("keeper not marked", run(keeper({_villages_keeper = false})), "go_home")
 ticks = 9600
 
 -- An error in vanilla still gives the bed back.
-local broken = villager(60)
+local broken = villager(70)
 local ok = pcall(far.call, broken, function() error("boom") end)
 check("error propagates", ok, false)
 check("bed back after error", broken._bed, bed)
 
 -- A bed vanilla set during the call is kept.
-local rebedded = villager(60)
+local rebedded = villager(70)
 local other = {x = 5, y = 0, z = 0}
 far.call(rebedded, function(self) self._bed = other end, rebedded)
 check("new bed kept", rebedded._bed, other)
