@@ -315,6 +315,27 @@ function M.make(self, recipe)
 end
 
 -- Whether it is at work by its jobsite now.
+-- Idle crafters (ticket 19b). A crafter that can make nothing when its work day starts,
+-- for want of inputs or because it holds all its goods will sell, labours that day as a
+-- nitwit does (labour.lua), keeping its profession and jobsite. Asked again each day in
+-- the work stage, so goods that came in overnight bring it back to its jobsite.
+-- `_villages_idle` holds the day and the answer.
+function M.idle_today(self)
+	if self.child or not self._id or not self._jobsite or self._villages_woodcutter then return false end
+	if self._profession == "nitwit" or self._profession == "unemployed" or not M.recipes(self) then return false end
+	local day = core.get_day_count()
+	local idle = self._villages_idle
+	if idle and idle.day == day then return idle.idle end
+	if common.schedule_stage(nil, self) ~= "work" then return false end
+	local nothing = M.choose(self) == nil
+	self._villages_idle = {day = day, idle = nothing}
+	if nothing then
+		core.log("action", string.format("[living_villages] production: villager %s (%s) has nothing to make today and labours",
+			short_id(self), tostring(self._profession)))
+	end
+	return nothing
+end
+
 function M.at_work(self)
 	local jobsite = self._jobsite
 	local pos = self.object and self.object:get_pos()

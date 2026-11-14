@@ -83,6 +83,7 @@ local tally = dofile(core.get_modpath("living_villages") .. "/economy_tally.lua"
 local wants = dofile(core.get_modpath("living_villages") .. "/wants.lua")
 local goods = dofile(core.get_modpath("living_villages") .. "/goods.lua")
 local recipes = dofile(core.get_modpath("living_villages") .. "/recipes.lua")
+local production = dofile(core.get_modpath("living_villages") .. "/production.lua")
 
 local TICK_SECONDS = 2
 local RETRY_SECONDS = 60
@@ -242,7 +243,20 @@ end
 
 function M.eligible(self)
 	if self.child or not self._id or not clock.enabled() or self._villages_keeper then return false end
-	return self._profession == "nitwit" or (self._profession == "unemployed" and not self._jobsite)
+	if self._profession == "nitwit" or (self._profession == "unemployed" and not self._jobsite) then return true end
+	-- A crafter with nothing to make today (ticket 19b).
+	return production.idle_today(self)
+end
+
+-- common.activity_override: an idle crafter labouring is not called back to its jobsite
+-- ("putter" is no order to vanilla).
+function M.activity_override(villager, stage)
+	if stage == "work" and villager._jobsite and not villager._villages_woodcutter
+		and villager._villages_idle and villager._villages_idle.idle
+		and villager._villages_idle.day == core.get_day_count() then
+		return "putter"
+	end
+	return nil
 end
 
 -- Whether it has heard of a trade waiting: an item one villager needs and another has.

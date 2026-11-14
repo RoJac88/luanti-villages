@@ -127,6 +127,22 @@ assert(labour.eligible(villager({_profession = "unemployed"})))
 assert(not labour.eligible(villager({_profession = "unemployed", _jobsite = {x = 1, y = 1, z = 1}})))
 assert(not labour.eligible(villager({child = true})))
 assert(not labour.eligible(villager({_profession = "farmer"})))
+-- A crafter with nothing to make labours for the day, and is not called back to its
+-- jobsite (ticket 19b); one with something to make, or on another day, works its trade.
+do
+	local jobsite = {x = 3, y = 1, z = 0}
+	local smithy = villager({_id = "tilly", _profession = "tool_smith", _jobsite = jobsite})
+	assert(labour.eligible(smithy) and smithy._villages_idle.idle == true)
+	assert(labour.activity_override(smithy, "work") == "putter")
+	assert(labour.activity_override(smithy, "home") == nil)
+	day = day + 1
+	assert(labour.activity_override(smithy, "work") == nil, "only the day it was idle")
+	possessions.add(smithy, "mcl_core:cobble", 3)
+	possessions.add(smithy, "mcl_core:stick", 2)
+	assert(not labour.eligible(smithy), "with goods to craft it works its trade")
+	day = day - 1
+	assert(labour.activity_override(villager({_jobsite = jobsite}), "work") == nil)
+end
 
 -- The choice: the best heard income, yesterday's counted a little over; at random
 -- with no prices heard; never an activity with no site.
