@@ -237,6 +237,25 @@ assert(supply.source(jukebox, chests, function(pos) return vector.equals(pos, fa
 	"the farm passed over: none")
 nodes[key(barrel)] = nil
 
+-- Of two farms, the chest with the most meals, though further: the nearest one had all
+-- the tavern's money while the other's potatoes piled up (ColonyFood, 2026-11-14).
+local far_composter, far_chest = {x = -30, y = 0, z = 0}, {x = -31, y = 0, z = 0}
+nodes[key(far_composter)] = "mcl_composters:composter"
+nodes[key(far_chest)] = "mcl_chests:chest_small"
+metas[key(far_composter)] = {villager = "hal"}
+local near_food = inventories[key(farm_chest)]
+inventories[key(farm_chest)] = {["mcl_farming:bread"] = 4, ["mcl_farming:potato_item"] = 10}
+inventories[key(far_chest)] = {["mcl_farming:potato_item"] = 300}
+assert(vector.equals(supply.source(jukebox, chests), far_chest), "the fullest farm")
+-- Carrots count a quarter of a meal each.
+inventories[key(far_chest)] = {["mcl_farming:carrot_item"] = 40}
+assert(vector.equals(supply.source(jukebox, chests), farm_chest), "40 carrots are 10 meals, under 14")
+-- Equal: the nearer.
+inventories[key(far_chest)] = {["mcl_farming:potato_item"] = 14}
+assert(vector.equals(supply.source(jukebox, chests), farm_chest), "the nearer of equals")
+nodes[key(far_composter)], nodes[key(far_chest)] = nil, nil
+inventories[key(farm_chest)] = near_food
+
 -- A farm with nothing to fetch: no trip, and it checks again later.
 inventories[key(farm_chest)] = {["mcl_farming:wheat_item"] = 40}
 kate._villages_supply_next = nil
