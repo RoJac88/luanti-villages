@@ -520,6 +520,43 @@ do
 	assert(hoe_trip and hoe_trip.item == HOE and hoe_trip.who == "tess-smith", "a trip for the hoe")
 end
 
+-- Planks any wood will do for, it buys as logs of any species, a quarter of them, and splits
+-- what it gets into planks; a porter delivering logs to it hands over the planks.
+do
+	local OAK_PLANKS, BIRCH_LOG, BIRCH_PLANKS = "mcl_core:wood", "mcl_core:birchtree", "mcl_core:birchwood"
+	local bo = villager("bo-builder", {x = 0, y = 1, z = 0},
+		{_profession = "mason", _villages_builder = true, _jobsite = {x = 0, y = 1, z = 1},
+			_villages_belongings = {[EMERALD] = 320}})
+	local function planks_report(exact)
+		return {
+			rows = {{item = OAK_PLANKS, need = 10, in_chests = 0, carried = stock.count(bo, OAK_PLANKS)
+				+ stock.count(bo, BIRCH_PLANKS), missing = 10, swaps = not exact or nil}},
+			short = true, chests = {bench_chest},
+		}
+	end
+	market.update(bo, planks_report())
+	assert(bo._villages_builder_logs == 3 and bo._villages_builder_wants == nil, "three logs, no planks")
+	assert(market.status(bo) == "3 logs (any)", market.status(bo))
+	local view = possessions.assess(bo)
+	assert(view.needs[BIRCH_LOG] == 3 and view.needs["mcl_core:tree"] == 3 and view.group[BIRCH_LOG] == "log")
+	-- A birch log bought becomes four birch planks, which stand in for oak.
+	bo._villages_belongings[BIRCH_LOG] = 2
+	market.update(bo, planks_report())
+	assert(count(bo, BIRCH_LOG) == 0 and stock.count(bo, BIRCH_PLANKS) == 8)
+	assert(bo._villages_builder_logs == 1, "two planks still missing: one log")
+	assert(table.concat(logs, "\n"):find("split 2 mcl_core:birchtree into 8 mcl_core:birchwood"))
+	-- A player's order wants its very planks.
+	market.update(bo, planks_report(true))
+	assert(bo._villages_builder_logs == nil and bo._villages_builder_wants[OAK_PLANKS] == 10)
+
+	-- The porter's delivery.
+	local drop = chest({x = 0, y = 1, z = 4})
+	local po = villager("po-porter", {x = 0, y = 1, z = 3}, {_villages_belongings = {[BIRCH_LOG] = 3, [EMERALD] = 10}})
+	trips.deliver(po, {item = BIRCH_LOG, bought = 3, spent = 0,
+		client = {id = "bo-builder", deliver = drop, purse = 10, fee = 2, split = true}})
+	assert(chest_count(drop, BIRCH_PLANKS) == 12 and chest_count(drop, BIRCH_LOG) == 0 and count(po, BIRCH_LOG) == 0)
+end
+
 -- Off with the economy: no hire.
 settings.living_villages_economy = false
 assert(#trips.hire({}) == 0)

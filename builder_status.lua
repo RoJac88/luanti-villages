@@ -128,7 +128,14 @@ function M.formspec(report, notice)
 		for i, row in ipairs(rows) do
 			local top = (i - 1) * ROW
 			parts[#parts + 1] = ("item_image[0,%.2f;0.7,0.7;%s]"):format(top, escape(row.item))
-			parts[#parts + 1] = ("label[0.85,%.2f;%s]"):format(top + 0.35, escape(item_label(row.item)))
+			local label = item_label(row.item)
+			-- Another of its family will do (builder_families.lua): any wood, colour or stone of the kind.
+			if row.swaps then
+				label = label .. " *"
+				parts[#parts + 1] = ("tooltip[0,%.2f;4.5,0.7;%s]"):format(top,
+					escape(S("Any of the same kind will do: another wood, colour or stone.")))
+			end
+			parts[#parts + 1] = ("label[0.85,%.2f;%s]"):format(top + 0.35, escape(label))
 			parts[#parts + 1] = ("label[4.6,%.2f;%d]"):format(top + 0.35, row.need)
 			parts[#parts + 1] = ("label[5.7,%.2f;%d]"):format(top + 0.35, row.in_chests)
 			parts[#parts + 1] = ("label[6.9,%.2f;%d]"):format(top + 0.35, row.carried)

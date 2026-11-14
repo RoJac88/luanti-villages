@@ -41,6 +41,7 @@ local food = dofile(core.get_modpath("living_villages") .. "/food.lua")
 local market = dofile(core.get_modpath("living_villages") .. "/builder_market.lua")
 local rent = dofile(core.get_modpath("living_villages") .. "/rent.lua")
 local materials = dofile(core.get_modpath("living_villages") .. "/builder_materials.lua")
+local families = dofile(core.get_modpath("living_villages") .. "/builder_families.lua")
 local site_finder = dofile(core.get_modpath("living_villages") .. "/builder_site.lua")
 local stock = dofile(core.get_modpath("living_villages") .. "/farm_stock.lua")
 local template = dofile(core.get_modpath("living_villages") .. "/building_template.lua")
@@ -109,6 +110,16 @@ local function session_of(self)
 		sessions[self] = session
 	end
 	return session
+end
+
+-- A family's first substitute is kept with the project (`swaps`, family -> item), for the
+-- rest of it and a successor; this says whether a step changed them, so they are saved.
+local function swaps_key(project)
+	project.swaps = project.swaps or {}
+	local parts = {}
+	for family, item in pairs(project.swaps) do parts[#parts + 1] = family .. "=" .. item end
+	table.sort(parts)
+	return table.concat(parts, ",")
 end
 
 local function pos_key(pos)
@@ -359,20 +370,33 @@ local function name_at(pos)
 end
 
 -- What the project still needs, against what the chests and the pouch hold. `rows` is one
--- per item, sorted: {item, need, in_chests, carried, missing}.
+-- per item, sorted: {item, need, in_chests, carried, missing, swaps}. An item another of its
+-- family may stand in for (`swaps`, builder_families.lua) counts those too: the pouch first,
+-- then the chests, each item its own before its family's, so two items of one family never
+-- count the same block.
 function M.materials_report(self, bench, project)
 	local plan = plan_of(bench, project)
 	if not plan then return nil end
 	local missing_steps, blocked = template.compare(plan, name_at)
 	local chests = stock.find_chests(bench, chest_radius())
+	local bill, swappable = template.bill(missing_steps), template.swappable(missing_steps)
+	local carried_have, chest_have = {}, {}
+	for item in pairs(families.related(bill, swappable)) do
+		carried_have[item] = stock.count(self, item)
+		local held = 0
+		for _, chest in ipairs(chests) do held = held + stock.chest_count(chest, item) end
+		chest_have[item] = held
+	end
+	local carried = families.cover(bill, swappable, carried_have, project.swaps)
+	local rest = {}
+	for item, need in pairs(bill) do rest[item] = need - carried[item] end
+	local in_chests = families.cover(rest, swappable, chest_have, project.swaps)
 	local rows, short = {}, false
-	for item, need in pairs(template.bill(missing_steps)) do
-		local in_chests = 0
-		for _, chest in ipairs(chests) do in_chests = in_chests + stock.chest_count(chest, item) end
-		local carried = stock.count(self, item)
-		local missing = math.max(0, need - in_chests - carried)
+	for item, need in pairs(bill) do
+		local missing = math.max(0, need - in_chests[item] - carried[item])
 		short = short or missing > 0
-		rows[#rows + 1] = {item = item, need = need, in_chests = in_chests, carried = carried, missing = missing}
+		rows[#rows + 1] = {item = item, need = need, in_chests = in_chests[item], carried = carried[item],
+			missing = missing, swaps = swappable[item]}
 	end
 	table.sort(rows, function(a, b) return a.item < b.item end)
 	return {
@@ -1094,18 +1118,28 @@ local function occupied(pos)
 	return false
 end
 
--- What the next steps call for that the pouch does not hold, and the batch itself.
-local function wanted_for(self, missing)
+-- What the next steps call for that the pouch does not hold, what of the pouch the batch
+-- will use (its family standing in where it may), and which items may be swapped.
+local function wanted_for(self, missing, prefer)
 	local batch = template.next_batch(missing, setting_number("living_villages_builder_capacity", DEFAULT_CAPACITY))
+	local swappable = template.swappable(missing)
+	local have = {}
+	for item in pairs(families.related(batch, swappable)) do have[item] = stock.count(self, item) end
+	local covered, used = families.cover(batch, swappable, have, prefer)
 	local wanted, any = {}, false
 	for item, count in pairs(batch) do
-		local short = count - stock.count(self, item)
+		local short = count - covered[item]
 		if short > 0 then
 			wanted[item] = short
 			any = true
 		end
 	end
-	return wanted, any, batch
+	return wanted, any, used, swappable
+end
+
+-- What a chest may give for a wanted item: the item, or any of its family where it may be swapped.
+local function candidates(item, swappable)
+	return swappable[item] and families.members(item) or {item}
 end
 
 local function chest_sound(pos)
@@ -1121,7 +1155,7 @@ local function deposit(self, chest, keep)
 end
 
 local function collect(self, session, bench, project, now)
-	local wanted, any, batch = wanted_for(self, session.queue)
+	local wanted, any, used, swappable = wanted_for(self, session.queue, project.swaps)
 	if not any then
 		session.stuck = nil
 		set_state(bench, project, "building")
@@ -1132,7 +1166,9 @@ local function collect(self, session, bench, project, now)
 	for _, chest in ipairs(stock.find_chests(bench, chest_radius())) do
 		local holds = false
 		for item in pairs(wanted) do
-			if stock.chest_count(chest, item) > 0 then holds = true end
+			for _, other in ipairs(candidates(item, swappable)) do
+				if stock.chest_count(chest, other) > 0 then holds = true end
+			end
 		end
 		if holds and (session.skip[pos_key(chest)] or 0) > now then
 			out_of_reach = true
@@ -1149,8 +1185,15 @@ local function collect(self, session, bench, project, now)
 		return
 	end
 	if best_distance <= CHEST_REACH then
-		deposit(self, best, batch)
-		for item, count in pairs(wanted) do stock.take_from_chest(self, best, item, count) end
+		deposit(self, best, used)
+		for item, count in pairs(wanted) do
+			local order = swappable[item] and families.order(item, project.swaps,
+				function(other) return stock.chest_count(best, other) end) or {item}
+			for _, other in ipairs(order) do
+				if count <= 0 then break end
+				count = count - stock.take_from_chest(self, best, other, count)
+			end
+		end
 		chest_sound(best)
 		session.hold_until = now + HOLD_SECONDS
 		return
@@ -1229,8 +1272,46 @@ local function return_leftovers(self, session, bench, now)
 	end
 end
 
--- `quiet` for the blocks of its time away, which go in many at once.
-local function make_step(self, step, plan, quiet)
+-- What a step takes from the pouch, as item -> count, and the node and top half to set: of
+-- the item wanted, or, for the item another of its family may stand in for (step.swap), of
+-- the first of the family it takes. Nil when the pouch is short.
+local function supply(self, step, prefer)
+	local take, node, top = {}, step.node, step.top and step.top.node
+	for item, count in pairs(step.cost or {}) do
+		if step.swap == item then
+			local order = families.order(item, prefer, function(other) return stock.count(self, other) end)
+			local named = false
+			for _, other in ipairs(order) do
+				if count <= 0 then break end
+				local n = math.min(count, stock.count(self, other))
+				if n > 0 and not named and other ~= item then
+					local name = materials.variant(step.node.name, other, core)
+					if name then
+						node = {name = name, param2 = step.node.param2}
+						if top then top = {name = materials.variant(top.name, other, core) or top.name, param2 = top.param2} end
+						take.chosen = other
+					else
+						n = 0
+					end
+				end
+				if n > 0 then
+					named = true
+					take[other] = (take[other] or 0) + n
+					count = count - n
+				end
+			end
+			if count > 0 then return nil end
+		else
+			if stock.count(self, item) < count then return nil end
+			take[item] = (take[item] or 0) + count
+		end
+	end
+	return take, node, top
+end
+
+-- `quiet` for the blocks of its time away, which go in many at once. `prefer` is the
+-- project's swaps (family -> item), which the first substitute of a family is noted in.
+local function make_step(self, step, plan, quiet, prefer)
 	if step.kind == "cut" or step.kind == "clear" then
 		core.remove_node(step.pos)
 		if not quiet then
@@ -1238,20 +1319,25 @@ local function make_step(self, step, plan, quiet)
 		end
 		return true
 	end
-	for item, count in pairs(step.cost or {}) do
-		if stock.count(self, item) < count then return false end
+	local take, node, top = supply(self, step, prefer)
+	if not take then return false end
+	local chosen = take.chosen
+	take.chosen = nil
+	for item, count in pairs(take) do stock.take(self, item, count) end
+	if chosen and prefer then
+		local family = families.member(chosen).family
+		prefer[family] = prefer[family] or chosen
 	end
-	for item, count in pairs(step.cost or {}) do stock.take(self, item, count) end
-	core.set_node(step.pos, step.node)
+	core.set_node(step.pos, node)
 	if step.top then
 		local top_missing = template.compare({
-			steps = {{kind = "place", pos = step.top.pos, node = step.top.node}},
+			steps = {{kind = "place", pos = step.top.pos, node = top, custom = step.custom}},
 			surface_mat = plan.surface_mat, cut_at = plan.cut_at,
 		}, name_at)
-		if #top_missing > 0 then core.set_node(step.top.pos, step.top.node) end
+		if #top_missing > 0 then core.set_node(step.top.pos, top) end
 	end
 	for item, count in pairs(step.returns or {}) do stock.add(self, item, count) end
-	local def = core.registered_nodes[step.node.name]
+	local def = core.registered_nodes[node.name]
 	local sound = not quiet and def and def.sounds and def.sounds.place
 	if sound then core.sound_play(sound, {pos = step.pos, max_hear_distance = 16}, true) end
 	return true
@@ -1314,10 +1400,12 @@ local function place_step(self, session, bench, project, plan, step, now)
 		session.deferred[pos_key(step.pos)] = now + DEFER_SECONDS
 		return
 	end
-	if not make_step(self, step, plan) then
+	local known = swaps_key(project)
+	if not make_step(self, step, plan, false, project.swaps) then
 		set_state(bench, project, "collecting")
 		return
 	end
+	if swaps_key(project) ~= known then save_project(bench, project) end
 	drop_from_queue(session, step)
 	session.stuck = nil
 	away.add_placed(session.live, is_high(project, step))
@@ -1399,7 +1487,7 @@ end
 local function build_high(self, session, bench, project, step, box, now)
 	-- Up there, running short means coming down for more, so it sets off with a full pouch; the
 	-- route puts what this column lays first in it.
-	local _, short = wanted_for(self, session.queue)
+	local _, short = wanted_for(self, session.queue, project.swaps)
 	if short then
 		set_state(bench, project, "collecting")
 		return
@@ -1528,14 +1616,23 @@ end
 -- or was blocked or stuck on, gets nothing: the player must be there to see it under way.
 local GETTING_ON = {collecting = true, building = true}
 
--- Takes from the chests what the step costs beyond what it carries. Returns whether it has it all.
-local function pay(self, job, step)
+-- Takes from the chests what the step costs beyond what it carries, its family standing in
+-- where it may. Returns whether it has it all.
+local function pay(self, job, step, prefer)
 	for item, count in pairs(step.cost or {}) do
-		local short = count - stock.count(self, item)
-		for _, chest in ipairs(job.chests) do
-			if short <= 0 then break end
-			local held = stock.chest_count(chest, item)
-			if held > 0 then short = short - stock.take_from_chest(self, chest, item, math.min(held, short)) end
+		local order = step.swap == item and families.order(item, prefer, function(other)
+			local held = stock.count(self, other)
+			for _, chest in ipairs(job.chests) do held = held + stock.chest_count(chest, other) end
+			return held
+		end) or {item}
+		local short = count
+		for _, other in ipairs(order) do short = short - stock.count(self, other) end
+		for _, other in ipairs(order) do
+			for _, chest in ipairs(job.chests) do
+				if short <= 0 then break end
+				local held = stock.chest_count(chest, other)
+				if held > 0 then short = short - stock.take_from_chest(self, chest, other, math.min(held, short)) end
+			end
 		end
 		if short > 0 then return false end
 	end
@@ -1607,6 +1704,7 @@ local function catch_up(self, session, bench)
 		return
 	end
 	local placed = 0
+	local known = swaps_key(project)
 	while job.at <= #job.steps and placed < AWAY_PER_STEP do
 		local step = job.steps[job.at]
 		if step.pass == template.PASS_LIQUID and job.passed then
@@ -1625,7 +1723,7 @@ local function catch_up(self, session, bench)
 		if #missing > 0 then
 			if step.node and is_solid_node(step.node.name) and occupied(step.pos) then
 				job.passed = true
-			elseif not pay(self, job, step) or not make_step(self, step, plan, true) then
+			elseif not pay(self, job, step, project.swaps) or not make_step(self, step, plan, true, project.swaps) then
 				-- The chests ran out: what it would have done next waits for the player.
 				return end_catch_up(self, session, bench, project, nil)
 			else
@@ -1636,7 +1734,8 @@ local function catch_up(self, session, bench)
 		end
 		job.at = job.at + 1
 	end
-	if job.at > #job.steps then end_catch_up(self, session, bench, project, nil) end
+	if job.at > #job.steps then return end_catch_up(self, session, bench, project, nil) end
+	if swaps_key(project) ~= known then save_project(bench, project) end
 end
 
 local function stamp(self, session, bench, now)
@@ -1676,7 +1775,7 @@ local function tick(self, session, bench, now)
 	elseif project.state == "requires_materials" then
 		check_materials(self, session, bench, project, now)
 	else
-		if self._villages_builder_wants then market.clear(self) end
+		if market.wanting(self) then market.clear(self) end
 		work(self, session, bench, project, now)
 	end
 	session.away = WORKING[(M.load_project(bench) or {}).state] == true

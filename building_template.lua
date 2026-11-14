@@ -14,6 +14,7 @@
 -- 6 job blocks and beds, which bring villagers in to claim them.
 local core = minetest
 local materials = dofile(core.get_modpath("living_villages") .. "/builder_materials.lua")
+local families = dofile(core.get_modpath("living_villages") .. "/builder_families.lua")
 
 local M = {}
 
@@ -222,6 +223,8 @@ function M.plan(cells, options, engine)
 				node = {name = materials.placed(name), param2 = pass == PASS_LIQUID and 0 or cell.param2},
 				cost = cost,
 				custom = custom,
+				-- The item of its cost another of its family may stand in for (builder_families.lua).
+				swap = not custom and materials.swap_item(name, cost) or nil,
 				returns = materials.returns(name),
 				on_floor = on_floor or nil,
 			}
@@ -265,6 +268,19 @@ function M.bill(steps)
 	return bill
 end
 
+-- The billed items another of their family may stand in for wherever they are billed, item
+-- -> true (builder_families.lua).
+function M.swappable(steps)
+	local swappable, fixed = {}, {}
+	for _, step in ipairs(steps) do
+		for item in pairs(step.cost or {}) do
+			if step.swap == item then swappable[item] = true else fixed[item] = true end
+		end
+	end
+	for item in pairs(fixed) do swappable[item] = nil end
+	return swappable
+end
+
 -- Plants and snow, which building simply replaces, and flowing liquid.
 local function is_open(name, engine)
 	if name == AIR then return true end
@@ -289,8 +305,8 @@ local function natural_ground(name, engine)
 		and (def.liquidtype or "none") == "none"
 end
 
-local function matches(wanted, found)
-	return materials.identity(wanted) == materials.identity(found)
+local function matches(wanted, found, exact)
+	return materials.same_built(wanted, found, exact)
 end
 
 local function same_cost(a, b)
@@ -307,7 +323,7 @@ end
 -- Whether a step's node stands here. A player's schematic can hold states the rule table has
 -- never met, a filling composter or a lit smoker: what costs the same is the same thing built.
 local function stands(step, found, engine)
-	if matches(step.node.name, found) then return true end
+	if matches(step.node.name, found, step.custom) then return true end
 	return step.custom and same_cost(step.cost, materials.custom_cost(found, engine)) or false
 end
 
@@ -370,11 +386,16 @@ function M.compare(plan, get_name, engine)
 					else
 						blocked[#blocked + 1] = step.pos
 					end
-				elseif step.top and top_found and not matches(step.top.node.name, top_found) then
-					-- Half a pair stands, already paid for.
+				elseif step.top and top_found and not matches(step.top.node.name, top_found, step.custom) then
+					-- Half a pair stands, already paid for: the other half of what stands, if it
+					-- is another of the family.
 					if is_open(top_found, engine) then
+						local node = step.top.node
+						local member = not step.custom and families.lookup(found)
+						local name = member and materials.variant(node.name, member.item, engine)
+						if name then node = {name = name, param2 = node.param2} end
 						missing[#missing + 1] = {
-							kind = "place", pos = step.top.pos, pass = step.pass, node = step.top.node,
+							kind = "place", pos = step.top.pos, pass = step.pass, node = node,
 						}
 					else
 						blocked[#blocked + 1] = step.top.pos

@@ -60,6 +60,9 @@ local news = dofile(core.get_modpath("living_villages") .. "/market_news.lua")
 local exchange = dofile(core.get_modpath("living_villages") .. "/exchange.lua")
 local stock = dofile(core.get_modpath("living_villages") .. "/farm_stock.lua")
 local cells = dofile(core.get_modpath("living_villages") .. "/cells.lua")
+local goods_mod = dofile(core.get_modpath("living_villages") .. "/goods.lua")
+-- As builder_market.lua splits them.
+local PLANKS_PER_LOG = 4
 
 local URGENT = 2
 local TRIP_RADIUS = 64
@@ -351,7 +354,16 @@ function M.deliver(self, trip)
 	local fee = (trip.bought or 0) > 0 and client.fee or 0
 	local back = math.max(client.purse - (trip.spent or 0) - fee, 0)
 	back = math.min(back, possessions.emeralds(self))
-	local left_goods = goods - put(client.deliver, trip.item, goods)
+	local planks = client.split and goods_mod.SPECIES[trip.item]
+	local left_goods
+	if planks then
+		-- Logs for a Builder go in as the planks they split into (builder_market.lua).
+		-- A chest with room for part of a log's planks takes that log whole.
+		local placed = put(client.deliver, planks, goods * PLANKS_PER_LOG)
+		left_goods = goods - math.ceil(placed / PLANKS_PER_LOG)
+	else
+		left_goods = goods - put(client.deliver, trip.item, goods)
+	end
 	possessions.take(self, trip.item, goods - left_goods)
 	local left_back = back - put(client.deliver, EMERALD, back)
 	possessions.take(self, EMERALD, back - left_back)
@@ -499,7 +511,7 @@ end
 local function may_travel(self, trip, stage)
 	if stage == "putter" then return true end
 	if stage ~= "work" then return false end
-	return trip ~= nil or self._villages_builder_wants ~= nil
+	return trip ~= nil or self._villages_builder_wants ~= nil or self._villages_builder_logs ~= nil
 end
 
 -- common.activity_override: a villager on a trip in its work stage is not called back to
@@ -603,6 +615,8 @@ function M.hire(members)
 						trip.client = {
 							id = client._id, deliver = deliver, purse = purse, fee = PORTER_FEE,
 							value = view.value(trip.item),
+							-- A Builder takes logs as planks.
+							split = client._villages_builder and true or nil,
 						}
 						porter._villages_trade_trip = trip
 						-- What portering pays, for its choice of work (labour.lua).
