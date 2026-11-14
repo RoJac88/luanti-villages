@@ -45,9 +45,10 @@
 -- porter with no trip is hired by a member that has a job (a jobsite, the keeper or the
 -- Builder), an urgent need with a known seller, somewhere to deliver to (its stash, or the
 -- Builder's bench chest) and at least PORTER_FEE + 1 emeralds: it hands the porter a purse
--- of up to PURSE emeralds. The porter makes the trip in its work stage, buying with the
--- purse at its client's value, then walks to the delivery chest and leaves the goods and
--- what is left of the purse less PORTER_FEE, which it keeps if it bought anything. A
+-- for the lot at its value for it and the fee, up to PURSE emeralds (M.purse_for), once a
+-- day. The porter makes the trip in its work stage, buying with the purse at its client's
+-- value, then walks to the delivery chest and leaves the goods and what is left of the
+-- purse less PORTER_FEE, which it keeps if it bought anything. A
 -- failed trip returns the whole purse.
 --
 -- With the economy off nothing happens.
@@ -155,7 +156,7 @@ local function log_short(self, entry, need, value)
 	seen[key] = today()
 	local seller = M.locate(entry.home, entry.who)
 	local now = seller and tostring(possessions.count(seller, entry.item)) or "unknown"
-	log("villager %s passes over %s's %s: heard %d spare (carries %s now), needs %d at %.2f each to its %.2f, %d emerald(s)",
+	log("villager %s passes over %s's %s: heard %d spare (carries %s now), needs %d, worth %.2f each to it, asked %.2f, has %d emerald(s)",
 		short_id(self._id), short_id(entry.who), entry.item, entry.count or 0, now, need, value, entry.price or 0,
 		possessions.emeralds(self))
 end
@@ -289,7 +290,7 @@ function M.buy_from_stash(self, trip, chest)
 	local held = chest_count(chest, trip.item)
 	local count, pay = M.terms(want, held, value, trip.price, budget)
 	if not count or possessions.emeralds(self) < pay then
-		return 0, string.format("stash holds %d, %d wanted at %.2f each to its %.2f, budget %d", held, want,
+		return 0, string.format("stash holds %d, %d wanted, worth %.2f each to it, asked %.2f, budget %d", held, want,
 			value, trip.price, budget)
 	end
 	local taken = take(chest, trip.item, count)
@@ -592,6 +593,14 @@ local function has_job(self)
 	return self._jobsite ~= nil or self._villages_keeper or self._villages_builder
 end
 
+-- The purse a client hands a porter for a trip: the lot at the client's value for it (the
+-- most the porter pays, buy_in_person), and the fee; at most PURSE. It used to be the
+-- whole PURSE: a farmer sent 512 for one poppy, and the rest came back into its stash,
+-- where nothing took it out (ColonyFood, 2026-11-14).
+function M.purse_for(trip, value)
+	return math.min(math.ceil((trip.want or 0) * (value or 0)) + PORTER_FEE, PURSE)
+end
+
 -- At the end of a conversation, each porter with no trip may be hired by another member.
 -- Returns the hires made.
 function M.hire(members)
@@ -601,17 +610,20 @@ function M.hire(members)
 	for _, porter in ipairs(members) do
 		if is_porter(porter) and not porter._villages_trade_trip then
 			for _, client in ipairs(members) do
+				-- One porter a day: with the purse no longer all it has, it could send a second
+				-- for the same need.
 				local deliver = client ~= porter and has_job(client) and not client._villages_trade_trip
-					and delivery(client)
+					and client._villages_porter_day ~= today() and delivery(client)
 				local emeralds = deliver and possessions.emeralds(client) or 0
 				if deliver and emeralds >= PORTER_FEE + 1 then
 					local view = possessions.assess(client)
 					local pos = client.object and client.object:get_pos()
 					local trip = M.plan(client, view, news.heard(client, now), client._bed or pos or deliver)
 					if trip then
-						local purse = math.min(emeralds, PURSE)
+						local purse = math.min(emeralds, M.purse_for(trip, view.value(trip.item)))
 						possessions.take(client, EMERALD, purse)
 						possessions.add(porter, EMERALD, purse)
+						client._villages_porter_day = today()
 						trip.client = {
 							id = client._id, deliver = deliver, purse = purse, fee = PORTER_FEE,
 							value = view.value(trip.item),

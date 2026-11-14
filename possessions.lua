@@ -328,6 +328,27 @@ local function stash_food(self, allowed)
 	return nil
 end
 
+-- Emeralds in its stash go into its belongings when it stands within STASH_REACH of it. A
+-- porter leaves what is left of its client's purse there (trade_trips.lua), and nothing
+-- took it out again: 495 of a farmer's emeralds sat in its chest, out of its budget and
+-- its donations (ColonyFood, 2026-11-14). Returns how many it took.
+function M.collect_stash_emeralds(self)
+	local stash = self._villages_stash
+	local pos = self.object and self.object:get_pos()
+	if not stash or not pos or vector.distance(pos, stash) > STASH_REACH or not owned_by(stash, self) then return 0 end
+	local taken = 0
+	for _, half in ipairs(halves(stash)) do
+		local inv = core.get_meta(half):get_inventory()
+		local here = 0
+		for _, item in ipairs(inv:get_list("main") or {}) do
+			if item:get_name() == EMERALD then here = here + item:get_count() end
+		end
+		if here > 0 then taken = taken + inv:remove_item("main", EMERALD .. " " .. here):get_count() end
+	end
+	if taken > 0 then M.add(self, EMERALD, taken) end
+	return taken
+end
+
 -- The villager's stage of the day; common.lua's, loaded when first asked (a test may set it).
 function M.stage_of(self)
 	M.common = M.common or dofile(core.get_modpath("living_villages") .. "/common.lua")
@@ -423,6 +444,7 @@ function M.step(self, now)
 	next_check[self] = now + CLAIM_SECONDS
 	M.endow(self)
 	M.claim_stash(self)
+	M.collect_stash_emeralds(self)
 	-- It takes up comforts it holds, and puts down those used up (comforts.lua).
 	comforts.update(self, M.emeralds(self), M.take, now)
 	-- Its asks for what it did not sell yesterday come down (asks.lua).

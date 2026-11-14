@@ -288,6 +288,16 @@ minetest.get_meta = function(pos)
 		meta.get_inventory = function()
 			return {
 				get_size = function() return 27 end,
+				get_list = function()
+					local list = {}
+					for name, n in pairs(larder) do
+						if n > 0 then
+							list[#list + 1] = {get_name = function() return name end, get_count = function() return n end,
+								is_empty = function() return false end}
+						end
+					end
+					return list
+				end,
 				remove_item = function(_, _, item)
 					local name, wanted = item:match("^(%S+)%s*(%d*)")
 					local n = math.min(larder[name] or 0, tonumber(wanted) or 1)
@@ -306,6 +316,16 @@ assert(#possessions.eat(kim) == 0 and larder["mcl_farming:bread"] == 3, "too far
 kim_at = {x = 501, y = 0, z = 0}
 possessions.eat(kim)
 assert(kim._villages_food == 12 and larder["mcl_farming:bread"] == 1)
+-- Emeralds a porter left in its stash go into its belongings once it is there
+-- (ColonyFood, 2026-11-14: 495 sat in a farmer's chest).
+larder["mcl_core:emerald"] = 30
+local kim_had = possessions.emeralds(kim)
+kim_at = {x = 520, y = 0, z = 0}
+assert(possessions.collect_stash_emeralds(kim) == 0, "too far")
+kim_at = {x = 501, y = 0, z = 0}
+assert(possessions.collect_stash_emeralds(kim) == 30 and larder["mcl_core:emerald"] == 0)
+assert(possessions.emeralds(kim) == kim_had + 30)
+assert(possessions.collect_stash_emeralds(kim) == 0, "nothing left")
 -- take_held: belongings first, then the stash from anywhere (production.lua).
 kim_at = {x = 600, y = 0, z = 0}
 larder["mcl_core:cobble"] = 5
