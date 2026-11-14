@@ -13,6 +13,10 @@
 --   fisherman_hut  a small hut with the fisherman's barrel, a chest and a bed
 --   woodcutter_shed  a shed with the woodcutter's chopping block, a chest and a bed
 --   tower_house  a stone house with a bed and two chests
+--   quarry      a cobblestone generator (water, the cell, lava) under glass, reached
+--               down a corridor that ends at the cell, where a quarrier stands
+--               (labour.lua). Never generated (max_num 0): a Builder puts one up when
+--               the village is short of cobble and has none (builder_needs.lua)
 --
 -- They are exported with schemedit as built, so each is fitted to the generator's
 -- conventions as it is read (`prepare`):
@@ -51,6 +55,7 @@ M.BUILDINGS = {
 	{name = "fisherman_hut", max_num = 0.05, hsize = 12},
 	{name = "woodcutter_shed", max_num = 0.05, hsize = 12},
 	{name = "tower_house", max_num = 0.08, hsize = 12},
+	{name = "quarry", max_num = 0, hsize = 10},
 }
 
 local DIRT = "mcl_core:dirt"

@@ -1689,6 +1689,11 @@ anywhere open beside it. Now:
   showed) over the pick's rate after a block, the cell turns to what the lava would cool
   it to, unless it refilled by then or someone stands in it. So a pick speeds both the
   mining and the generator; by hand the generator keeps its own pace, which is logged.
+- A Builder builds a quarry (`schematics/quarry.mts`, from the user's first generator at
+  ColonyFood: water, the cell and lava in a row, under glass, reached down a corridor that
+  ends at the cell) when the village is short of cobble or stone and has no generator. It
+  is never generated with a village. Its lava and water come in buckets, so a player
+  supplies the lava bucket.
 - A block takes 8 seconds by hand. A pickaxe divides that: wood by 2, stone by 3, and
   iron, gold and diamond by 4, past which a generator could not keep up. The tool smith
   also makes wooden picks and hoes from planks, so the first picks need no cobble. Picks

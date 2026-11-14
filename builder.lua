@@ -434,6 +434,20 @@ local function skip_need(bench, need, now)
 	meta:set_string(SKIP_NEEDS, core.serialize(skip))
 end
 
+-- Whether the village is short of what a quarry makes: in the news its Builder heard, or
+-- in the Builder's own wants.
+local function stone_short(report, villagers)
+	for _, row in ipairs(report and report.shortages or {}) do
+		if needs.STONE[row.item] then return true end
+	end
+	for _, villager in ipairs(villagers) do
+		for item in pairs(villager._villages_builder_wants or {}) do
+			if needs.STONE[item] then return true end
+		end
+	end
+	return false
+end
+
 -- What the village around a bench needs built next (builder_needs.lua), or nil. The survey
 -- reads a wide box of nodes, so one is kept a while per bench: a Builder with nothing to
 -- build asks every tick.
@@ -449,10 +463,12 @@ local function next_need(bench)
 		survey = cached.survey
 	else
 		local report = M.economy(bench)
+		local villagers = economy_report.around(bench, VILLAGE_RADIUS)
 		survey = needs.survey(core, bench, {
 			radius = VILLAGE_RADIUS, height = SURVEY_HEIGHT, range = site_finder.config.range,
-			villagers = economy_report.around(bench, VILLAGE_RADIUS), common = common,
+			villagers = villagers, common = common,
 			food = economy_clock.enabled() and food or nil, gap = worst_gap(report),
+			stone_short = economy_clock.enabled() and stone_short(report, villagers),
 		})
 		surveys[key] = {at = now, survey = survey}
 	end
