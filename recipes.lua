@@ -18,8 +18,8 @@
 --
 -- Left out, so they restock as vanilla does: the farmer, fisherman and shepherd, whose
 -- work loops make their goods; the cleric, whose goods have no recipe. The cartographer
--- makes only banners (ticket 12), for stalls (market_stall.lua): its map needs a compass
--- a village cannot make. Fletching flint from
+-- makes banners (ticket 12), for stalls (market_stall.lua), and the paper its trade
+-- table buys: its map needs a compass a village cannot make. Fletching flint from
 -- gravel is one for one, where a player digging gets flint one time in ten: the
 -- fletcher's table sells it that way.
 local COBBLE, STICK = "mcl_core:cobble", "mcl_core:stick"
@@ -54,7 +54,11 @@ return {
 		{makes = "mcl_fishing:salmon_cooked", count = 1, tier = 1, from = {{"mcl_fishing:salmon_raw", 1}}, fuel = 1},
 	},
 	-- White wool from the shepherd, sticks of its own (mcl_banners' recipe: six wool, a stick).
+	-- Paper from cane, as the librarian's: the paper it wants (its trade table buys it)
+	-- was the librarian's to make, and the librarian bound it all into books, so a
+	-- forager's cane found no buyer the cartographer could pay (ColonyFood, day 113).
 	cartographer = {
+		{makes = "mcl_core:paper", count = 3, tier = 1, from = {{"mcl_core:reeds", 3}}},
 		{makes = "mcl_banners:banner_item_white", count = 1, tier = 4, from = {{"mcl_wool:white", 6}, {STICK, 1}}},
 		{makes = STICK, count = 4, tier = 1, from = {{"mcl_core:wood", 2}}},
 		{makes = "mcl_core:wood", count = 4, tier = 1, from = {{"mcl_core:tree", 1}}},
