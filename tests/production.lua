@@ -291,4 +291,32 @@ local plain = off.do_custom
 production.install(off)
 assert(off.do_custom == plain)
 
+-- Idle crafters (ticket 19b): with nothing it can make when its work day starts, a
+-- crafter labours that day; asked once a day, in the work stage.
+do
+	local saved = time
+	local bare = smith({_id = "ida-idle"})
+	time = 2000 / 24000
+	assert(production.idle_today(bare) == false and bare._villages_idle == nil, "not asked outside the work stage")
+	time = 9000 / 24000
+	assert(production.idle_today(bare) == true and bare._villages_idle.day == day)
+	assert(logs[#logs]:find("ida%-id %(tool_smith%) has nothing to make today and labours"), logs[#logs])
+	-- Cobble that comes in later the same day changes nothing until tomorrow.
+	possessions.add(bare, "mcl_core:cobble", 3)
+	possessions.add(bare, "mcl_core:stick", 2)
+	assert(production.idle_today(bare) == true, "settled for the day")
+	day = day + 1
+	assert(production.idle_today(bare) == false, "back to its jobsite the next day")
+	day = day - 1
+	-- Never a nitwit, an unemployed villager, one with no jobsite, a woodcutter, a child,
+	-- or a profession with no recipes.
+	assert(production.idle_today(smith({_id = "n1", _profession = "nitwit"})) == false)
+	assert(production.idle_today(smith({_id = "u1", _profession = "unemployed"})) == false)
+	assert(production.idle_today(smith({_id = "j1", _jobsite = false})) == false)
+	assert(production.idle_today(smith({_id = "w1", _villages_woodcutter = true})) == false)
+	assert(production.idle_today(smith({_id = "c1", child = true})) == false)
+	assert(production.idle_today(smith({_id = "f1", _profession = "farmer"})) == false)
+	time = saved
+end
+
 print("production.lua: ok")

@@ -603,7 +603,8 @@ core.register_on_mods_loaded(function()
 	keeper.install(def)
 	dofile(core.get_modpath("living_villages") .. "/keeper_supply.lua").install(def)
 	dofile(core.get_modpath("living_villages") .. "/possessions.lua").install(def)
-	dofile(core.get_modpath("living_villages") .. "/labour.lua").install(def)
+	local labour = dofile(core.get_modpath("living_villages") .. "/labour.lua")
+	labour.install(def)
 	dofile(core.get_modpath("living_villages") .. "/production.lua").install(def)
 	-- The leatherworker's cow herd (herd.lua, ticket 11e): leather and beef.
 	dofile(core.get_modpath("living_villages") .. "/herd.lua").install(def)
@@ -649,7 +650,7 @@ core.register_on_mods_loaded(function()
 		return trade_trips.activity_override(villager, stage)
 			or flock.activity_override(villager, stage) or farmer.activity_override(villager, stage)
 			or fisherman_override(villager, stage) or (builder and builder.activity_override(villager, stage))
-			or woodcutter.activity_override(villager, stage)
+			or woodcutter.activity_override(villager, stage) or labour.activity_override(villager, stage)
 	end
 	dofile(core.get_modpath("living_villages") .. "/well.lua").install(def)
 	-- The morning at the bell (#329), the well's visit at the bell; one of the two a morning.
