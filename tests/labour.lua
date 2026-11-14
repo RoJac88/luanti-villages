@@ -30,9 +30,13 @@ local GROUPS = {
 	["mcl_core:tree"] = {tree = 1},
 }
 
+-- "name count wear"; a stack whose text is in `named` has that metadata.
+local named = {}
 ItemStack = function(text)
-	local name, count = text:match("^(%S+)%s*(%d*)")
-	return {get_name = function() return name end, get_count = function() return tonumber(count) or 1 end}
+	local name, count, wear = text:match("^(%S+)%s*(%d*)%s*(%d*)")
+	return {get_name = function() return name end, get_count = function() return tonumber(count) or 1 end,
+		get_wear = function() return tonumber(wear) or 0 end,
+		get_meta = function() return {to_table = function() return {fields = named[text] or {}} end} end}
 end
 
 local function name_at(pos) return nodes[key(pos)] or "air" end
@@ -216,6 +220,42 @@ assert(berries >= 2 and berries <= 3)
 assert(count(nina, "mcl_core:reeds") == 2 and nodes[key({x = 6, y = 1, z = 0})] == "mcl_core:reeds"
 	and not nodes[key({x = 6, y = 2, z = 0})], "the bottom block stays")
 assert(count(nina, "mcl_core:apple") == 2 and apple.removed)
+-- Dropped goods: anything priced, plain, picked up first, since it would despawn; dirt,
+-- a worn tool and a named item are left.
+do
+	local function drop(x, text)
+		local object = {removed = false, get_pos = function() return {x = x, y = 1, z = 5} end,
+			get_luaentity = function() return {name = "__builtin:item", itemstring = text} end}
+		object.remove = function(self) self.removed = true end
+		objects[#objects + 1] = object
+		return object
+	end
+	named["mcl_core:emerald 2"] = {description = "Lucky"}
+	local flesh = drop(20, "mcl_mobitems:rotten_flesh 3")
+	local dirt = drop(21, "mcl_core:dirt 5")
+	local worn = drop(22, "mcl_tools:pick_stone 1 300")
+	local lucky = drop(23, "mcl_core:emerald 2")
+	local finds = labour.forage_targets(villager({_id = "pip"}))
+	local pickups = {}
+	for _, target in ipairs(finds) do
+		if target.kind == "pickup" then pickups[#pickups + 1] = target end
+	end
+	assert(#pickups == 1 and pickups[1].object == flesh, "only the rotten flesh")
+	-- It goes to the drop first, past the nearer berries.
+	nodes[key({x = 1, y = 1, z = 0})] = "mcl_farming:sweet_berry_bush_3"
+	local pip = villager({_id = "pip"})
+	pip._villages_labour = {day = day, activity = "forager"}
+	labour.step(pip, now + 5000)
+	assert(#pip.walks == 1 and pip.walks[1].x == 20, "to the drop")
+	pip.arrive()
+	assert(count(pip, "mcl_mobitems:rotten_flesh") == 3 and flesh.removed)
+	assert(not pip._villages_gather_record or not pip._villages_gather_record.forager
+		or pip._villages_gather_record.forager.made == 0, "no gathering")
+	assert(not dirt.removed and not worn.removed and not lucky.removed)
+	nodes[key({x = 1, y = 1, z = 0})] = nil
+	for _, object in ipairs({dirt, worn, lucky}) do object.removed = true end
+	named["mcl_core:emerald 2"] = nil
+end
 -- A cane top stands in the air: it is reached from the ground beside the column's foot
 -- (ColonyFood, 2026-11-13: a forager walked to the top itself and found no way).
 do
