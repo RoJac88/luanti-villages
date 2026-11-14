@@ -503,6 +503,29 @@ local till = support.chest(world, {x = 2, y = 2, z = 0}, nil, {"mcl_core:emerald
 step(3)
 assert(belongings(farmer, "mcl_core:emerald") == 3 and till:get_stack("main", 1):get_name() ~= "mcl_core:emerald")
 
+-- At its chest it takes food for sale into its belongings: bread up to 16, then potatoes up
+-- to 16, from what the chest holds over 24 meals for the keeper (run of 2026-11-14: buyers
+-- found nothing spare beside a chest of 27 loaves and 299 potatoes).
+local function chest_holds(inv, name)
+	local n = 0
+	for i = 1, 8 do
+		local stack = inv:get_stack("main", i)
+		if not stack:is_empty() and stack:get_name() == name then n = n + stack:get_count() end
+	end
+	return n
+end
+setup({_villages_farm_pouch = {["mcl_bone_meal:bone_meal"] = 4, ["mcl_farming:carrot_item"] = 30}})
+local larder = support.chest(world, {x = 2, y = 2, z = 0}, nil, {"mcl_farming:bread 30", "mcl_farming:potato_item 40"})
+step(3)
+assert(belongings(farmer, "mcl_farming:bread") == 16 and belongings(farmer, "mcl_farming:potato_item") == 16,
+	belongings(farmer, "mcl_farming:bread") .. " " .. belongings(farmer, "mcl_farming:potato_item"))
+assert(chest_holds(larder, "mcl_farming:bread") == 14 and chest_holds(larder, "mcl_farming:potato_item") == 24)
+-- Only what is over the keeper's 24.
+setup({_villages_farm_pouch = {["mcl_bone_meal:bone_meal"] = 4, ["mcl_farming:carrot_item"] = 30}})
+local small = support.chest(world, {x = 2, y = 2, z = 0}, nil, {"mcl_farming:bread 30"})
+step(3)
+assert(belongings(farmer, "mcl_farming:bread") == 6 and chest_holds(small, "mcl_farming:bread") == 24)
+
 -- Ticket 18. A hoe multiplies the harvest: with a stone one (×1.5), wheat's two (farm
 -- output, 2026-11-13) become three.
 do
