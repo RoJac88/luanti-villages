@@ -17,6 +17,7 @@ local defs = {
 		}},
 	},
 	["mcl_stairs:slab_cobble"] = {walkable = true, drawtype = "nodebox", node_box = box(0)},
+	["mcl_farming:soil"] = {walkable = true, drawtype = "nodebox", node_box = box(0.4375)},
 	["mcl_nether:soul_sand"] = {walkable = true, drawtype = "nodebox", node_box = box(0.375)},
 	["mcl_stairs:slab_wood"] = {walkable = true, drawtype = "nodebox", node_box = box(0)},
 	["mcl_stairs:slab_wood_top"] = {walkable = true, drawtype = "nodebox", node_box = {type = "fixed", fixed = {-0.5, 0, -0.5, 0.5, 0.5, 0.5}}},
@@ -282,5 +283,28 @@ assert(at.x == 5 and at.z == 5 and math.abs(at.y - 0.51) < 1e-9, "on the floor's
 put(5, 1, 5, "mcl_wool:carpet")
 at = cells.standing_position({x = 5, y = 1, z = 5})
 assert(math.abs(at.y - 0.5725) < 1e-9, "on the carpet's top: " .. at.y)
+
+-- The cell an entity stands in, from its position: the inverse of standing_position.
+-- On farmland (15/16 high) the position rounds into the soil; the cell is the one above
+-- (ColonyFood, 2026-11-14).
+world = {}
+put(5, 0, 5, "mcl_farming:soil")
+at = cells.standing_cell({x = 5.2, y = 0.4475, z = 4.8})
+assert(at.x == 5 and at.y == 1 and at.z == 5, "above the farmland: y " .. at.y)
+put(6, 0, 5, "mcl_core:stone")
+at = cells.standing_cell({x = 6, y = 0.51, z = 5})
+assert(at.y == 1, "above a full block: y " .. at.y)
+put(7, 0, 5, "mcl_stairs:slab_cobble")
+at = cells.standing_cell({x = 7, y = 0.01, z = 5})
+assert(at.y == 1, "over a lower slab: y " .. at.y)
+put(8, 0, 5, "mcl_core:stone"); put(8, 1, 5, "mcl_wool:carpet")
+at = cells.standing_cell({x = 8, y = 0.5725, z = 5})
+assert(at.y == 1, "on a carpet, in its cell: y " .. at.y)
+-- Mid-jump, a node up: the cell it can stand in, below.
+at = cells.standing_cell({x = 6, y = 1.3, z = 5})
+assert(at.y == 1, "mid-jump: y " .. at.y)
+-- Nowhere to stand near: half a node above its feet.
+at = cells.standing_cell({x = 20, y = 4.2, z = 20})
+assert(at.y == 5, "in the air: y " .. at.y)
 
 print("cells.lua: ok")

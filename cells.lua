@@ -109,6 +109,23 @@ function cells.standing_position(cell)
 	return {x = cell.x, y = floor_y - BODY_BOTTOM, z = cell.z}
 end
 
+-- The walk cell of an entity standing at `pos`, the inverse of standing_position:
+-- the cell half a node above its feet. Rounding the position itself is wrong on
+-- any floor whose top is below the node's top half: a villager on farmland
+-- (15/16 high) stands at y + 0.4475 and rounds into the soil, a cell no walk can
+-- end in, so every trade trip chasing a farmer in its field failed with "no way
+-- there" (ColonyFood, 2026-11-14). An entity mid-step or mid-jump may be a cell
+-- off, so the cell below and the one above are tried next; the first a villager
+-- can stand in wins, else the cell half a node above the feet.
+function cells.standing_cell(pos)
+	local cell = {x = round(pos.x), y = round(pos.y + 0.5), z = round(pos.z)}
+	for _, dy in ipairs({0, -1, 1}) do
+		local candidate = {x = cell.x, y = cell.y + dy, z = cell.z}
+		if cells.can_stand(candidate) then return candidate end
+	end
+	return cell
+end
+
 function cells.is_hazard(name, def)
 	if (def.damage_per_second or 0) > 0 then return true end
 	return core.get_item_group(name, "fire") > 0

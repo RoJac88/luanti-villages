@@ -23,8 +23,11 @@
 --   those values.
 -- * "deliver": only a porter's (below). A porter's trip is not dropped with the day: it
 --   goes on to deliver, so the purse goes back.
--- A walk is navigation.lua's gopath; one that ends short is tried again, and after
--- MAX_TRIES, or WALK_TIMEOUT with no end at all, the trip fails.
+-- A walk is navigation.lua's gopath; one that ends short is tried again. One that cannot
+-- start, or ends short MAX_TRIES times, or has no end at all after WALK_TIMEOUT, falls
+-- back: from the seller's home to the seller where it is, from there to its stash. Only
+-- a stash, or a porter's delivery, it cannot reach fails the trip. A seller is walked to
+-- at the cell it stands in (cells.standing_cell), not its rounded position.
 --
 -- When. Anyone plans its own trip in the putter stage, outside a conversation; the
 -- Builder, whose bench chests are short (builder_market.lua), also in its work stage. A
@@ -56,6 +59,7 @@ local ledger = dofile(core.get_modpath("living_villages") .. "/ledger.lua")
 local news = dofile(core.get_modpath("living_villages") .. "/market_news.lua")
 local exchange = dofile(core.get_modpath("living_villages") .. "/exchange.lua")
 local stock = dofile(core.get_modpath("living_villages") .. "/farm_stock.lua")
+local cells = dofile(core.get_modpath("living_villages") .. "/cells.lua")
 
 local URGENT = 2
 local TRIP_RADIUS = 64
@@ -384,9 +388,28 @@ local function done_buying(self, trip, now)
 	end
 end
 
+local LEG_NAMES = {seller = "home", chase = "whereabouts", stash = "stash", deliver = "delivery"}
+
+-- A leg it cannot walk is not the end of the trip: from the seller's home it goes after
+-- the seller where it is, and from there to the seller's stash. Only a stash or a
+-- porter's delivery it cannot reach ends the trip. In ColonyFood (2026-11-14) 78 food
+-- trips ended at the first walk that could not start, most of them chasing a farmer a
+-- few steps away in its field, with the farmer's stash never tried.
+local function fall_back(self, trip, why, now)
+	log("villager %s cannot reach %s's %s (%s)", short_id(self._id), short_id(trip.who),
+		LEG_NAMES[trip.leg] or tostring(trip.leg), why)
+	walking[self] = nil
+	if trip.leg == "seller" and M.locate(trip.home, trip.who) then
+		trip.leg, trip.tries, trip.chases = "chase", 0, 0
+		return M.advance(self, trip, now)
+	end
+	if trip.leg == "seller" or trip.leg == "chase" then return M.to_stash(self, trip, now, why) end
+	return fail(self, trip, why, now)
+end
+
 local function walk(self, trip, target, now)
 	trip.tries = (trip.tries or 0) + 1
-	if trip.tries > MAX_TRIES then return fail(self, trip, "could not get there", now) end
+	if trip.tries > MAX_TRIES then return fall_back(self, trip, "could not get there", now) end
 	walking[self], trip.target = now, target
 	-- A lost walk is walked again on the next step, as long as the tries last.
 	local started = self:gopath(target, {
@@ -400,7 +423,7 @@ local function walk(self, trip, target, now)
 	}, true)
 	if started == false then
 		walking[self] = nil
-		fail(self, trip, trip.lost and ("no way there; the last walk was " .. trip.lost) or "no way there", now)
+		fall_back(self, trip, trip.lost and ("no way there; the last walk was " .. trip.lost) or "no way there", now)
 	end
 end
 
@@ -457,7 +480,8 @@ function M.advance(self, trip, now)
 		trip.chases = (trip.chases or 0) + 1
 		if trip.chases > CHASES then return M.to_stash(self, trip, now, "could not catch the seller") end
 		trip.tries = 0
-		return walk(self, trip, vector.round(at), now)
+		-- The cell it stands in, not its rounded position: on farmland that is the soil.
+		return walk(self, trip, cells.standing_cell(at), now)
 	elseif trip.leg == "stash" then
 		if vector.distance(pos, trip.stash) > REACH then return walk(self, trip, trip.stash, now) end
 		local bought, why = M.buy_from_stash(self, trip, trip.stash)
@@ -520,7 +544,7 @@ function M.step(self, now)
 			end
 			if now - walking[self] < WALK_TIMEOUT then return end
 			walking[self] = nil
-			return fail(self, trip, "the walk never ended", now)
+			return fall_back(self, trip, "the walk never ended", now)
 		end
 		walking[self] = nil
 	end

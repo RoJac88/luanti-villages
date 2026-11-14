@@ -26,6 +26,7 @@ local possessions = dofile(core.get_modpath("living_villages") .. "/possessions.
 local wants = dofile(core.get_modpath("living_villages") .. "/wants.lua")
 local news = dofile(core.get_modpath("living_villages") .. "/market_news.lua")
 local ledger = dofile(core.get_modpath("living_villages") .. "/ledger.lua")
+local cells = dofile(core.get_modpath("living_villages") .. "/cells.lua")
 
 -- Farm output (ticket 18). VoxeLibre's crops take some 2800 s of loaded time to ripen
 -- beside their own kind, so a farmer mostly waits on its field. In the work stage, with
@@ -520,7 +521,8 @@ local function hungry_villagers(self, session, now)
 		local other = object:get_luaentity()
 		local at = other and other ~= self and other.name == "mobs_mc:villager" and object:get_pos()
 		if at and other._id and food.wants(other) and worth_seeking(self, other, session) then
-			local cell = vector.round(at)
+			-- The cell it stands in: rounded, a villager in the field is in the soil.
+			local cell = cells.standing_cell(at)
 			table.insert(positions, cell)
 			by_cell[key(cell)] = other
 		end
