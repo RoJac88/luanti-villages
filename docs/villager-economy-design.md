@@ -1685,8 +1685,8 @@ anywhere open beside it. Now:
 - At the generator it is held on its standing cell, as a fisherman is at the water. A
   mined cell is open, and often has a floor: at ColonyFood's first generator a quarrier
   stepped into it and burned when the lava flowed back.
-- With a pick the lava flows back faster: REGEN_SECONDS (3, about what a player's digs
-  showed) over the pick's rate after a block, the cell turns to what the lava would cool
+- With a pick the lava flows back faster: REGEN_SECONDS (1, what a quarrier by hand
+  measured at ColonyFood) over the pick's rate after a block, the cell turns to what the lava would cool
   it to, unless it refilled by then or someone stands in it. So a pick speeds both the
   mining and the generator; by hand the generator keeps its own pace, which is logged.
 - A Builder builds a quarry (`schematics/quarry.mts`, from the user's first generator at

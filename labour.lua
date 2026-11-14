@@ -144,9 +144,10 @@ local QUARRY_RADIUS, QUARRY_HEIGHT = 64, 8
 local MINE_SECONDS = 8
 -- Between checks of an empty cell it waits at.
 local WAIT_SECONDS = 1
--- About how long a generator takes to refill on its own (a player's digs at ColonyFood's
--- first generator came 2 to 3 s apart); with a pick it refills this over the pick's rate.
-local REGEN_SECONDS = 3
+-- About how long a generator takes to refill on its own: ColonyFood's first, mined by a
+-- villager by hand, refilled in 1 s (once 2) every time; with a pick it refills this over
+-- the pick's rate. Longer than nature's, a hastened refill would never come first.
+local REGEN_SECONDS = 1
 local CLAIM_SECONDS = 30
 -- A Builder wants cobble by the hundred, so a quarrier keeps more of it.
 local QUARRY_KEEP = 64
