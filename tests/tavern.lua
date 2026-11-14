@@ -71,7 +71,8 @@ local gopaths = {}
 local def = {
 	on_activate = function() end,
 	do_custom = function() end,
-	get_staticdata = function() return "" end,
+	-- What mcl_mobs would serialize: whether a route was still on it.
+	get_staticdata = function(self) return self._villages_tavern_route and "route" or "" end,
 	set_animation = function() end,
 	gopath = function(self, target, callback)
 		table.insert(gopaths, {self = self, target = target, callback = callback})
@@ -132,6 +133,14 @@ local carol = villager("carol", {x = 39, y = 0, z = 0}, {
 def.do_custom(carol, 0.1)
 assert(carol._villages_tavern_arrived and not carol._villages_keeper and carol._profession == "mason")
 assert((metas[key(empty)] or {}).villager == nil)
+
+-- Its route (with an arrival callback core.serialize would dump) is left out of the
+-- save and kept on the live villager.
+local trip_route = {status = "travelling", callback = function() end}
+carol._villages_tavern_route = trip_route
+assert(def.get_staticdata(carol) == "", "no route in the save")
+assert(carol._villages_tavern_route == trip_route, "still walking")
+carol._villages_tavern_route = nil
 
 -- Unloaded and reloaded on the way (a player walked out of range): the
 -- villager resumes the same trip instead of idling until Home.

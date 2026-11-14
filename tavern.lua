@@ -157,12 +157,15 @@ return function(def, shared_meal, shared_seat)
 		return result
 	end
 
-	-- The meal holds its entity, which cannot be serialized.
+	-- The meal holds its entity, which cannot be serialized. The route holds its arrival
+	-- callback, which core.serialize dumps with a deprecation warning (and will one day
+	-- refuse, losing the whole save); on_activate drops it anyway. navigation.lua leaves
+	-- out the routes it owns the same way.
 	def.get_staticdata = function(self)
-		local current, seated_at = self._villages_meal, self._villages_seated_at
-		self._villages_meal, self._villages_seated_at = nil, nil
+		local current, seated_at, route = self._villages_meal, self._villages_seated_at, self._villages_tavern_route
+		self._villages_meal, self._villages_seated_at, self._villages_tavern_route = nil, nil, nil
 		local saved = original_staticdata(self)
-		self._villages_meal, self._villages_seated_at = current, seated_at
+		self._villages_meal, self._villages_seated_at, self._villages_tavern_route = current, seated_at, route
 		return saved
 	end
 
