@@ -48,18 +48,21 @@ local news = dofile(core.get_modpath("living_villages") .. "/market_news.lua")
 local ENTITY = "living_villages:meal"
 local PLATE = "mcl_itemframes:plate"
 -- A guest waits this long after sitting down before it is served.
-local WAIT_SECONDS = 3
+local WAIT_SECONDS = 2
 -- A keeper serves one plate at a time, this often.
-local SERVE_SECONDS = 3
+local SERVE_SECONDS = 2
 -- How long a meal lasts, and how often the guest takes a bite.
-local EAT_SECONDS = 12
-local BITE_SECONDS = 0.8
+local EAT_SECONDS = 6
+local BITE_SECONDS = 0.4
 -- A plate hold lapses unless renewed, so one left by a guest that unloaded
 -- frees itself.
 local HOLD_SECONDS = 5
--- A last resort (2026-11-13): with no dish in the pantry, a villager guest is served a
--- plate of raw carrots, as many as make about a loaf's points, at dinner's price.
-local LAST_RESORT, LAST_RESORT_PORTION = "mcl_farming:carrot_item", 4
+-- A raw plate (2026-11-13): raw carrots or beetroot, as many as make about a loaf's
+-- points. A villager guest who can pay a dinner gets one at dinner's price when the
+-- pantry holds no dish; one who cannot gets only this, for BROKE_PRICE, and one with no
+-- emerald at all gets nothing (and takes no seat, tavern.lua).
+local RAW_PLATES, RAW_PORTION = {"mcl_farming:carrot_item", "mcl_farming:beetroot_item"}, 4
+local BROKE_PRICE = 1
 -- How far from the jukebox its keeper is looked for: keeper.lua's staffing
 -- distance, with room to spare.
 local KEEPER_RADIUS = 4
@@ -160,9 +163,45 @@ local function has_room(self)
 	return not is_villager(self) or food.points(self) <= possessions.EAT_AT
 end
 
--- Whether the pantry holds a last-resort plate.
-local function last_resort(chests)
-	return pantry.count(chests, LAST_RESORT) >= LAST_RESORT_PORTION
+-- A raw plate the pantry holds, or nil.
+local function raw_plate(chests)
+	for _, item in ipairs(RAW_PLATES) do
+		if pantry.count(chests, item) >= RAW_PORTION then return item end
+	end
+	return nil
+end
+
+-- What a guest at a tavern with a pantry would be served: the item, how many, the price
+-- and how it pays (nil for free); or nil and why not. `choose` picks the dish at random,
+-- as serving does; without it the first will do, to ask whether there is one.
+local function order(self, jukebox, chests, choose)
+	local price, can_pay, pay = terms(self, jukebox)
+	local dishes = pantry.available(chests, menu())
+	if #dishes == 0 and not (is_villager(self) and raw_plate(chests)) then return nil, "the pantry is empty" end
+	if price == 0 or can_pay() then
+		if #dishes > 0 then return dishes[choose and math.random(#dishes) or 1], 1, price, pay end
+		local raw = is_villager(self) and raw_plate(chests)
+		if raw then return raw, RAW_PORTION, price, pay end
+		return nil, "the pantry is empty"
+	end
+	if not is_villager(self) or possessions.emeralds(self) < BROKE_PRICE then
+		return nil, "the diner cannot pay " .. price .. " emerald(s)"
+	end
+	local raw = raw_plate(chests)
+	if not raw then return nil, "the diner cannot pay " .. price .. " emerald(s), and there is no raw plate" end
+	return raw, RAW_PORTION, BROKE_PRICE, function() possessions.take(self, possessions.EMERALD, BROKE_PRICE) end
+end
+
+-- Whether a guest should take a seat at this tavern: it would be served there tonight
+-- (2026-11-13: guests who could not pay sat at full tables while others went without).
+-- With no pantry the meal is a display, served to anyone.
+local function would_serve(self, jukebox)
+	if not jukebox then return false end
+	local chests = pantry.chests(jukebox)
+	if not chests then return true end
+	if not has_room(self) then return false end
+	local item = order(self, jukebox, chests)
+	return item ~= nil
 end
 
 -- A display whose guest no longer holds its plate: the guest unloaded, or
@@ -228,6 +267,7 @@ local function bite(self, item)
 end
 
 local M = {}
+M.would_serve = would_serve
 
 -- Clear the meal and let the plate go. Safe to call on a guest with none.
 function M.finish(self)
@@ -255,12 +295,9 @@ function M.explain(self, jukebox)
 	if #menu() == 0 then return "the menu is empty" end
 	local chests = pantry.chests(jukebox)
 	if chests then
-		if #pantry.available(chests, menu()) == 0 and not (is_villager(self) and last_resort(chests)) then
-			return "the pantry is empty"
-		end
 		if not has_room(self) then return "the diner is not hungry" end
-		local price, can_pay = terms(self, jukebox)
-		if price > 0 and not can_pay() then return "the diner cannot pay " .. price .. " emerald(s)" end
+		local item, price = order(self, jukebox, chests)
+		if not item then return price end
 		if price > 0 and not pantry.has_room(chests, pantry.EMERALD, price) then return "the pantry has no room for the payment" end
 	end
 	return "ready to serve"
@@ -268,12 +305,8 @@ end
 
 -- Takes the meal out of the pantry and the payment into it. False if either fails,
 -- having changed nothing.
-local function settle(self, jukebox, chests, item, portion)
-	portion = portion or 1
-	local price, can_pay, pay = terms(self, jukebox)
-	if price > 0 and (not can_pay() or not pantry.has_room(chests, pantry.EMERALD, price)) then
-		return false
-	end
+local function settle(self, jukebox, chests, item, portion, price, pay)
+	if price > 0 and not pantry.has_room(chests, pantry.EMERALD, price) then return false end
 	if pantry.count(chests, item) < portion then return false end
 	for _ = 1, portion do pantry.take(chests, item) end
 	if price > 0 then
@@ -295,13 +328,15 @@ local function serve(self, jukebox)
 	if not keeper_on_duty(jukebox) then return end
 	local chests = pantry.chests(jukebox)
 	if chests and not has_room(self) then return end
-	local items = chests and pantry.available(chests, menu()) or menu()
-	local portion = 1
-	if #items == 0 and chests and is_villager(self) and last_resort(chests) then
-		items, portion = {LAST_RESORT}, LAST_RESORT_PORTION
+	local item, portion, price, pay
+	if chests then
+		item, portion, price, pay = order(self, jukebox, chests, true)
+		if not item then return end
+	else
+		local items = menu()
+		if #items == 0 then return end
+		item, portion = items[math.random(#items)], 1
 	end
-	if #items == 0 then return end
-	local item = items[math.random(#items)]
 	clear_orphans(pos)
 	hold(self, pos)
 	local object = show(self, pos, node, item)
@@ -309,7 +344,7 @@ local function serve(self, jukebox)
 		plates[key(pos)] = nil
 		return
 	end
-	if chests and not settle(self, jukebox, chests, item, portion) then
+	if chests and not settle(self, jukebox, chests, item, portion, price, pay) then
 		object:remove()
 		plates[key(pos)] = nil
 		return

@@ -8,10 +8,11 @@ local common = dofile(core.get_modpath("living_villages") .. "/common.lua")
 local keeper = dofile(core.get_modpath("living_villages") .. "/keeper.lua")
 local seat
 local JUKEBOX = "mcl_jukebox:jukebox"
--- How far from its bed a villager looks for a tavern: its own village, not
--- the next one over, and inside vanilla's 50-node leash, past which
--- do_activity walks a villager straight home (villager.lua wandered_too_far).
-local SEARCH_RADIUS = 48
+-- How far from its bed a villager looks for a tavern: its own village, not the next
+-- one over (2026-11-13: 48 left eight of Colony's villagers, 52 to 60 from theirs,
+-- with no tavern). Past vanilla's 50-node leash far_trips.lua hides the bed from
+-- do_activity while the villager is on its way to dinner.
+local SEARCH_RADIUS = 64
 local SEARCH_HEIGHT = 16
 -- A villager this close to the jukebox is inside the tavern.
 local ARRIVE_DISTANCE = 4
@@ -77,8 +78,9 @@ visit = function(self)
 			if not self._villages_tavern_arrived then arrive(self) end
 			-- A keeper stays on its feet; everyone else looks for a seat,
 			-- and stands if there is none.
-			-- A guest that has eaten does not take a chair again (#115).
-			if not self._villages_keeper and self._villages_meal_day ~= day
+			-- A guest that has eaten does not take a chair again (#115), nor one that
+			-- would not be served: full, or unable to pay (meal.would_serve).
+			if not self._villages_keeper and self._villages_meal_day ~= day and meal.would_serve(self, jukebox)
 				and seat.reserve(self, jukebox) and seat.approach_seat(self) then
 				return
 			end
@@ -176,8 +178,10 @@ return function(def, shared_meal, shared_seat)
 			if dining(self) and seat.hold_seat(self) then
 				self.order = "stand"
 				meal.tick(self, dtime, self._villages_tavern_target)
-				-- Done eating: give the chair to a guest still waiting (#115).
-				if self._villages_meal or self._villages_meal_day ~= core.get_day_count() then
+				-- Done eating: give the chair to a guest still waiting (#115). So does one
+				-- that will not be served after all: the pantry ran short, or it cannot pay.
+				if self._villages_meal or (self._villages_meal_day ~= core.get_day_count()
+					and meal.would_serve(self, self._villages_tavern_target)) then
 					return false
 				end
 			end

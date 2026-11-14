@@ -238,7 +238,7 @@ assert(supply.source(jukebox, chests, function(pos) return vector.equals(pos, fa
 nodes[key(barrel)] = nil
 
 -- A farm with nothing to fetch: no trip, and it checks again later.
-inventories[key(farm_chest)] = {["mcl_farming:beetroot_item"] = 40}
+inventories[key(farm_chest)] = {["mcl_farming:wheat_item"] = 40}
 kate._villages_supply_next = nil
 supply.step(kate, now)
 assert(not trip and kate._villages_supply_next == now + supply.RETRY_SECONDS)
@@ -255,6 +255,7 @@ inventories[key(pantry_chest)] = {["mcl_farming:wheat_item"] = 4, ["mcl_farming:
 	["mcl_fishing:fish_raw"] = 2}
 time = 15000 / 24000
 kate.order = "work"
+kate._villages_food = 12 -- fed: the keeper's own dinner is tested below
 supply.step(kate, now)
 assert(inventories[key(pantry_chest)]["mcl_farming:potato_item_baked"] == 1)
 assert(inventories[key(pantry_chest)]["mcl_farming:potato_item"] == 1)
@@ -318,6 +319,28 @@ do
 	assert(supply.float(purse, chests) == supply.FLOAT - 10 and possessions.emeralds(purse) == supply.FLOAT)
 	assert(pantry.count(chests, "mcl_core:emerald") == had + 600 - (supply.FLOAT - 10))
 	assert(supply.float(purse, chests) == 0, "already full")
+end
+
+-- The keeper eats from its own pantry, free, once a day when hungry (2026-11-13: it
+-- never sat down to dinner and starved all run): dishes first, raw food only starving.
+do
+	inventories[key(pantry_chest)] = {["mcl_farming:potato_item_baked"] = 3, ["mcl_farming:carrot_item"] = 8}
+	local cook = {_id = "cook", _villages_food = 2}
+	local eaten = supply.feed_keeper(cook, chests)
+	assert(#eaten == 2 and cook._villages_food == 10 and cook._villages_dined_day == day, "two baked potatoes")
+	assert(inventories[key(pantry_chest)]["mcl_farming:potato_item_baked"] == 1 and inventories[key(pantry_chest)]["mcl_farming:carrot_item"] == 8)
+	cook._villages_food = 0
+	assert(#supply.feed_keeper(cook, chests) == 0, "once a day")
+	day = day + 1
+	inventories[key(pantry_chest)] = {["mcl_farming:carrot_item"] = 8}
+	cook._villages_food = 6
+	assert(#supply.feed_keeper(cook, chests) == 0, "no dish, and hungry is not starving")
+	cook._villages_food = 0
+	eaten = supply.feed_keeper(cook, chests)
+	assert(#eaten == 8 and cook._villages_food == 8, "starving: all eight carrots, short of above EAT_AT")
+	day = day + 1
+	cook._villages_food = 12
+	assert(#supply.feed_keeper(cook, chests) == 0, "fed")
 end
 
 print("keeper_supply.lua: ok")

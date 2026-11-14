@@ -18,13 +18,16 @@
 -- or the bell on a holiday (once they have found a pulpit or bell), or the
 -- morning at the bell (bell_hangout.lua, #329), or a keeper's trip for its pantry
 -- (keeper_supply.lua), or a trade trip (trade_trips.lua) or rent errand (rent.lua), in
--- any stage. Anyone else far from home, a lost putterer or an unemployed villager, still
+-- any stage. Anyone else may wander up to WANDER from its bed (2026-11-13: a town
+-- spreads past vanilla's 50); further, a lost putterer or an unemployed villager still
 -- gets vanilla's walk back.
 local core = minetest
 local common = dofile(core.get_modpath("living_villages") .. "/common.lua")
 
 -- Vanilla's limit in do_activity.
 local RANGE = 50
+-- How far anyone may wander from its bed by day before vanilla walks it home.
+local WANDER = 64
 
 local JUKEBOX = "mcl_jukebox:jukebox"
 
@@ -70,8 +73,10 @@ end
 -- Whether vanilla's wandered_too_far test should find nothing to measure.
 local function holds(self)
 	local bed, pos = self._bed, self.object:get_pos()
-	if not bed or not pos or vector.distance(pos, bed) <= RANGE then return false end
-	return by_day() and has_errand(self)
+	if not bed or not pos then return false end
+	local distance = vector.distance(pos, bed)
+	if distance <= RANGE then return false end
+	return by_day() and (distance <= WANDER and not self.child or has_errand(self))
 end
 
 -- Runs fn(...) with the bed out of vanilla's sight when holds(self) says so.
@@ -93,4 +98,4 @@ local function call(self, fn, ...)
 	return result
 end
 
-return {call = call, holds = holds, RANGE = RANGE}
+return {call = call, holds = holds, RANGE = RANGE, WANDER = WANDER}

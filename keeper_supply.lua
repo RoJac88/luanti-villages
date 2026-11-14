@@ -44,6 +44,7 @@ local pantry = dofile(core.get_modpath("living_villages") .. "/tavern_pantry.lua
 local stock = dofile(core.get_modpath("living_villages") .. "/farm_stock.lua")
 local keeper = dofile(core.get_modpath("living_villages") .. "/keeper.lua")
 local possessions = dofile(core.get_modpath("living_villages") .. "/possessions.lua")
+local food = dofile(core.get_modpath("living_villages") .. "/food.lua")
 
 local SUPPLY_RADIUS = 48
 local COMPOSTER_HEIGHT = 8
@@ -72,18 +73,20 @@ local REACH = 3
 
 local BREAD = "mcl_farming:bread"
 local POTATO = "mcl_farming:potato_item"
--- Carrots are a last resort (meal.lua serves a plate of them only with no dish in the
--- pantry), fetched after the rest, and they count toward no meal the pantry holds.
+-- Carrots and beetroot are a last resort (meal.lua serves a raw plate of them with no
+-- dish in the pantry, or to a guest who cannot pay a dinner), fetched after the rest, and
+-- they count toward no meal the pantry holds.
 local CARROT = "mcl_farming:carrot_item"
 local CARROTS_PER_MEAL = 4
 -- What it fetches, most wanted first.
-local SUPPLIES = {BREAD, POTATO, CARROT}
+local BEETROOT = "mcl_farming:beetroot_item"
+local SUPPLIES = {BREAD, POTATO, CARROT, BEETROOT}
 local RECIPES = {
 	{from = POTATO, count = 1, to = "mcl_farming:potato_item_baked"},
 }
 local STARTING_STOCK = {{BREAD, 9}, {POTATO, 6}}
 -- Dinners each supply makes.
-local MEALS = {[BREAD] = 1, [POTATO] = 1, [CARROT] = 1 / CARROTS_PER_MEAL}
+local MEALS = {[BREAD] = 1, [POTATO] = 1, [CARROT] = 1 / CARROTS_PER_MEAL, [BEETROOT] = 1 / CARROTS_PER_MEAL}
 
 local COMPOSTERS = {"mcl_composters:composter", "mcl_composters:composter_ready"}
 for level = 1, 7 do COMPOSTERS[#COMPOSTERS + 1] = "mcl_composters:composter_" .. level end
@@ -335,6 +338,31 @@ function M.float(self, chests)
 	return taken
 end
 
+-- The keeper eats from its own pantry, free (2026-11-13: behind the bar, it never sat
+-- down to dinner and starved all run). Once a day, at or below possessions.EAT_AT, the
+-- dishes first, until above it; a starving keeper takes raw food too if there is no dish.
+function M.feed_keeper(self, chests)
+	local today = core.get_day_count()
+	if self._villages_dined_day == today or food.points(self) > possessions.EAT_AT then return {} end
+	local eaten = {}
+	local function eat_from(items)
+		for _, item in ipairs(items) do
+			while food.points(self) <= possessions.EAT_AT and pantry.take(chests, item) do
+				food.receive(self, item)
+				eaten[#eaten + 1] = item
+			end
+		end
+	end
+	eat_from(menu_items())
+	if food.points(self) <= 0 then eat_from({CARROT, BEETROOT, POTATO}) end
+	if #eaten > 0 then
+		self._villages_dined_day = today
+		core.log("action", string.format("[living_villages] keeper %s ate %d from its pantry",
+			tostring(self._id):sub(1, 6), #eaten))
+	end
+	return eaten
+end
+
 local function cook_tick(self, jukebox, now)
 	if self.order ~= "work" or now < (self._villages_cook_next or 0) then return end
 	self._villages_cook_next = now + COOK_SECONDS
@@ -343,6 +371,7 @@ local function cook_tick(self, jukebox, now)
 		M.float(self, chests)
 		M.shelve(self, chests)
 		M.cook(chests)
+		M.feed_keeper(self, chests)
 	end
 end
 
