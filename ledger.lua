@@ -63,6 +63,9 @@ local HAND_PRICES = {
 	["mcl_core:sapling"] = 0.05,
 	-- A little under stone, which the mason buys at 20 for one.
 	["mcl_core:cobble"] = 0.04,
+	-- Wooden tools (ticket 19d): their planks and sticks.
+	["mcl_tools:pick_wood"] = 0.25,
+	["mcl_farming:hoe_wood"] = 0.1875,
 	-- Coal's price: the smiths take it in coal's place.
 	["mcl_core:charcoal_lump"] = 1 / 15,
 	-- Sugar cane makes paper one for one (the librarian buys 24 paper for one).

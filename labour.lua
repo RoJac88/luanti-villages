@@ -34,12 +34,21 @@
 --   one lump of the charcoal as fuel, as a furnace would, burned in a clamp by the
 --   grove. Charcoal stands in for coal (ledger.lua), so the smiths' fuel can come from
 --   the village (production.lua).
--- * quarrier (ticket 11): mines the cobble a player's cobblestone generator makes,
---   within QUARRY_RADIUS of its bed, up to QUARRY_KEEP. A generator's cobble is told
---   from terrain by what made it: VoxeLibre's "Lava cooling" ABM (mcl_core/functions.lua)
---   turns flowing lava into cobble where water touches it from the side or above, so a
---   cobble node with lava and water both beside or above it is one; taken, the lava
---   flows back and cools again. Terrain is never dug.
+-- * quarrier (ticket 11, 19d): works the generators players build, within QUARRY_RADIUS
+--   of its bed, up to QUARRY_KEEP cobble. VoxeLibre's "Lava cooling" ABM
+--   (mcl_core/functions.lua) turns flowing lava into cobble where water touches it from
+--   the side or above, and water into stone under lava; so a generator's cell is cobble
+--   or stone with lava and water both beside or above it (M.is_generator). Terrain is
+--   never dug. Generators are found once a day by looking around the lava near its bed
+--   and remembered (`_villages_quarries`, {day, home, cells}); a remembered cell keeps
+--   counting while it holds air or a flowing liquid, between one block and the next, so
+--   long as lava and water still touch it. It mines the cell when cobble or stone is in
+--   it (stone drops cobble, as in vanilla) and otherwise waits beside it. It stands on
+--   any dry, unburning cell beside it, level, a step down or a step up (cells.can_stand):
+--   the build need not be safe beyond that. One quarrier works a cell at a time
+--   (an in-memory claim for CLAIM_SECONDS, renewed while it works). A block takes
+--   MINE_SECONDS by hand; a pickaxe divides that by its rate (wants.lua), so a stone
+--   pick about keeps up with a generator.
 -- * porter (ticket 11): carries goods for others on trade trips (trade_trips.lua), hired
 --   at the end of a conversation; labour.lua only chooses it. Its site is the market: it
 --   is open when the villager has heard of an item one villager needs and another has
@@ -84,6 +93,7 @@ local wants = dofile(core.get_modpath("living_villages") .. "/wants.lua")
 local goods = dofile(core.get_modpath("living_villages") .. "/goods.lua")
 local recipes = dofile(core.get_modpath("living_villages") .. "/recipes.lua")
 local production = dofile(core.get_modpath("living_villages") .. "/production.lua")
+local cells = dofile(core.get_modpath("living_villages") .. "/cells.lua")
 
 local TICK_SECONDS = 2
 local RETRY_SECONDS = 60
@@ -111,7 +121,14 @@ local BRANCH_RADIUS, TRUNK_MAX = 3, 12
 local CHARCOAL = "mcl_core:charcoal_lump"
 local CHARCOAL_KEEP, CHARCOAL_LOGS, CHARCOAL_MAKES = 16, 8, 7
 local COBBLE = "mcl_core:cobble"
-local QUARRY_RADIUS, QUARRY_HEIGHT = 32, 8
+local STONE = "mcl_core:stone"
+-- A town's width, as foraging: a generator is often built at the edge of town.
+local QUARRY_RADIUS, QUARRY_HEIGHT = 64, 8
+-- By hand; a pickaxe divides it (wants.lua). A generator makes a block in two or three.
+local MINE_SECONDS = 8
+-- Between checks of an empty cell it waits at.
+local WAIT_SECONDS = 1
+local CLAIM_SECONDS = 30
 -- A Builder wants cobble by the hundred, so a quarrier keeps more of it.
 local QUARRY_KEEP = 64
 local BELL = "mcl_bells:bell"
@@ -121,7 +138,7 @@ local PEDDLE_MAX = 16
 local BID_SHARE = 1 / 3
 local PEDDLE_BUY_DAYS = 1
 local PEDDLE_DAYS = 4
--- Where lava or water may touch a generator's cobble from: the four sides and above.
+-- Where lava or water may touch a generator's cell from: the four sides and above.
 local TOUCHING = {{1, 0, 0}, {-1, 0, 0}, {0, 0, 1}, {0, 0, -1}, {0, 1, 0}}
 
 -- Trees that grow from one sapling: log, sapling and leaves.
@@ -166,6 +183,7 @@ local NAMES = {"forager", "woodcutter", "quarrier", "porter", "peddler"}
 local M = {
 	ACTIVITIES = ACTIVITIES, YESTERDAY_BIAS = YESTERDAY_BIAS, GROVE_MAX = GROVE_MAX,
 	KEEP_GATHERED = KEEP_GATHERED, CHARCOAL_KEEP = CHARCOAL_KEEP, QUARRY_KEEP = QUARRY_KEEP,
+	QUARRY_RADIUS = QUARRY_RADIUS, MINE_SECONDS = MINE_SECONDS,
 	PEDDLE_MARGIN = PEDDLE_MARGIN, PEDDLE_MAX = PEDDLE_MAX, BID_SHARE = BID_SHARE,
 	PEDDLE_BUY_DAYS = PEDDLE_BUY_DAYS, PEDDLE_DAYS = PEDDLE_DAYS,
 }
@@ -686,29 +704,128 @@ local function touched_by(pos, group)
 	return false
 end
 
--- Whether the cobble at pos is a generator's: lava and water both beside or above it.
-function M.is_generated(pos)
-	local node = core.get_node_or_nil(pos)
-	return node ~= nil and node.name == COBBLE and touched_by(pos, "lava") and touched_by(pos, "water")
+local function flowing(name)
+	local def = core.registered_nodes and core.registered_nodes[name]
+	return def ~= nil and def.liquidtype == "flowing"
 end
 
--- Every generator cobble within reach of its bed, as {pos, kind = "cobble"}.
+-- Whether pos is a generator's cell: cobble or stone with lava and water both beside or
+-- above it. A `known` cell also counts while it holds air or a flowing liquid, as it
+-- does between one block and the next.
+function M.is_generator(pos, known)
+	local node = core.get_node_or_nil(pos)
+	if not node then return false end
+	local name = node.name
+	local filled = name == COBBLE or name == STONE
+	if not filled and not (known and (name == "air" or flowing(name))) then return false end
+	return touched_by(pos, "lava") and touched_by(pos, "water")
+end
+
+-- Whether a generator's cell holds a block to mine now.
+function M.is_generated(pos)
+	local node = core.get_node_or_nil(pos)
+	return node ~= nil and (node.name == COBBLE or node.name == STONE) and M.is_generator(pos)
+end
+
+-- Finds the generators within reach of `center`: cells lava touches from the side or
+-- above that are generators. Lava is rare near a village, so this looks at little.
+function M.find_quarries(center)
+	local minp, maxp = area(center, QUARRY_RADIUS, QUARRY_HEIGHT)
+	local found, seen = {}, {}
+	for _, lava in ipairs(core.find_nodes_in_area(minp, maxp, {"group:lava"})) do
+		for _, offset in ipairs(TOUCHING) do
+			-- The cell the lava touches: beside it, or under it.
+			local cell = {x = lava.x - offset[1], y = lava.y - offset[2], z = lava.z - offset[3]}
+			local k = key(cell)
+			if not seen[k] then
+				seen[k] = true
+				if M.is_generator(cell) then found[#found + 1] = cell end
+			end
+		end
+	end
+	table.sort(found, function(a, b) return key(a) < key(b) end)
+	return found
+end
+
+-- Its generators: found afresh once a day or when its home moves, else the remembered
+-- ones that still are.
+local function quarries(self, bed)
+	local day = core.get_day_count()
+	local known = self._villages_quarries
+	if not known or known.day ~= day or known.home ~= key(bed) then
+		local found = M.find_quarries(bed)
+		-- One remembered, empty now, is still one.
+		local have = {}
+		for _, cell in ipairs(found) do have[key(cell)] = true end
+		for _, cell in ipairs(known and known.cells or {}) do
+			if not have[key(cell)] and vector.distance(cell, bed) <= QUARRY_RADIUS * 1.5
+				and M.is_generator(cell, true) then
+				found[#found + 1] = vector.new(cell)
+			end
+		end
+		if #found ~= #(known and known.cells or {}) then
+			core.log("action", string.format("[living_villages] villager %s knows %d quarr%s near %s",
+				short_id(self), #found, #found == 1 and "y" or "ies", core.pos_to_string(bed)))
+		end
+		known = {day = day, home = key(bed), cells = found}
+		self._villages_quarries = known
+		return found
+	end
+	local still = {}
+	for _, cell in ipairs(known.cells) do
+		if M.is_generator(cell, true) then still[#still + 1] = cell end
+	end
+	known.cells = still
+	return still
+end
+
+-- Which villager works each generator cell, until when. Not saved.
+local claims = {}
+
+local function claimed_by_other(self, pos)
+	local claim = claims[key(pos)]
+	return claim ~= nil and claim.id ~= self._id and claim.expires > core.get_gametime()
+end
+
+local function claim(self, pos)
+	claims[key(pos)] = {id = self._id, expires = core.get_gametime() + CLAIM_SECONDS}
+end
+
+-- Every generator cell within reach of its home that no other quarrier works, as
+-- {pos, kind = "cobble", ready}: ready when there is a block in it.
 function M.quarry_targets(self)
 	local bed = home(self)
 	local targets = {}
 	if not bed or possessions.count(self, COBBLE) >= QUARRY_KEEP then return targets end
-	local minp, maxp = area(bed, QUARRY_RADIUS, QUARRY_HEIGHT)
-	for _, pos in ipairs(core.find_nodes_in_area(minp, maxp, {COBBLE})) do
-		if M.is_generated(pos) then targets[#targets + 1] = {pos = pos, kind = "cobble"} end
+	for _, cell in ipairs(quarries(self, bed)) do
+		if not claimed_by_other(self, cell) then
+			targets[#targets + 1] = {pos = cell, kind = "cobble", ready = M.is_generated(cell),
+				mine = claims[key(cell)] ~= nil and claims[key(cell)].id == self._id}
+		end
 	end
 	return targets
 end
 
--- Mines one generator cobble. Returns the item and how many, or nil.
+-- A cell to stand in to work a generator's cell: beside it, level, a step down (the
+-- cell at head height) or a step up. Any a villager can stand in will do (cells.lua):
+-- never in lava, water or fire, but no safer build is asked for.
+function M.stand_by(pos)
+	for _, dy in ipairs({0, -1, 1}) do
+		for _, offset in ipairs({{1, 0}, {-1, 0}, {0, 1}, {0, -1}}) do
+			local cell = {x = pos.x + offset[1], y = pos.y + dy, z = pos.z + offset[2]}
+			if cells.can_stand(cell) then return cell end
+		end
+	end
+	return nil
+end
+
+-- Mines one generator block; stone drops cobble, as in vanilla. Returns the item and
+-- how many, or nil.
 function M.quarry(self, target)
 	if not M.is_generated(target.pos) then return nil end
 	core.remove_node(target.pos)
 	possessions.add(self, COBBLE, 1)
+	claim(self, target.pos)
 	if core.sound_play then
 		core.sound_play("default_dig_cracky", {pos = target.pos, gain = 0.5, max_hear_distance = 16}, true)
 	end
@@ -908,7 +1025,8 @@ local function work(self, activity, target)
 		local use = (target.kind == "fell" and "fell") or (target.kind == "cobble" and "mine") or nil
 		if use then
 			local now = core.get_gametime()
-			self._villages_labour_next = now + TICK_SECONDS / wants.use(self, use, possessions.take_held, now)
+			local seconds = use == "mine" and MINE_SECONDS or TICK_SECONDS
+			self._villages_labour_next = now + seconds / wants.use(self, use, possessions.take_held, now)
 		end
 		tally.note(self, {[item] = count})
 		-- Saplings and charcoal are not what the rate counts.
@@ -952,6 +1070,20 @@ function M.step(self, now)
 			if not is_skipped(self, candidate.pos) then open[#open + 1] = candidate end
 		end
 		target, distance = nearest(pos, open)
+		-- A quarrier keeps to the generator it works, and goes first to one ready.
+		if activity == "quarrier" and target and not target.mine then
+			local mine, ready = {}, {}
+			for _, candidate in ipairs(open) do
+				if candidate.mine then mine[#mine + 1] = candidate end
+				if candidate.ready then ready[#ready + 1] = candidate end
+			end
+			if #mine > 0 then
+				target, distance = nearest(pos, mine)
+			elseif #ready > 0 then
+				target, distance = nearest(pos, ready)
+			end
+		end
+		if activity == "quarrier" and target then claim(self, target.pos) end
 	else
 		target = M.wood_target(self)
 		if target and is_skipped(self, target.pos) then target = nil end
@@ -961,7 +1093,14 @@ function M.step(self, now)
 		self._villages_labour_next = now + RETRY_SECONDS
 		return
 	end
-	if distance <= REACH then return work(self, activity, target) end
+	if distance <= REACH then
+		-- At a generator between blocks: wait for the next.
+		if target.kind == "cobble" and not target.ready then
+			self._villages_labour_next = now + WAIT_SECONDS
+			return
+		end
+		return work(self, activity, target)
+	end
 	-- Trunks are solid: stand beside one.
 	local goal = target.pos
 	-- A sapling is planted from beside its spot, not standing on it: a tree that grows
@@ -969,9 +1108,13 @@ function M.step(self, now)
 	if target.kind == "sapling" or target.kind == "fell" or target.kind == "plant" or target.kind == "replant" then
 		goal = beside(target.pos)
 	end
-	-- A generator's cobble is solid too: beside it, or a step lower with it at head height.
+	-- A generator's cell: somewhere beside it to stand (M.stand_by).
 	if target.kind == "cobble" then
-		goal = beside(target.pos) or beside({x = target.pos.x, y = target.pos.y - 1, z = target.pos.z})
+		goal = M.stand_by(target.pos)
+		if not goal then
+			core.log("action", string.format("[living_villages] villager %s finds nowhere to stand by the quarry at %s",
+				short_id(self), core.pos_to_string(target.pos)))
+		end
 	end
 	-- A cane top stands in the air above its column: beside the column's foot, where
 	-- there is ground, or a step up (it was walked to itself, and never reached).

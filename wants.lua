@@ -43,8 +43,18 @@ M.GOODS = {
 		}},
 	{key = "axe", item = "mcl_tools:axe_stone", activities = {woodcutter = true}, use = "fell",
 		uses = 32, rate = 1.5, yields = {["mcl_core:tree"] = 5}},
+	-- Mining by hand is slow (labour.lua's MINE_SECONDS), so a pick pays (ticket 19d): a
+	-- stone one about keeps up with a generator, and a better one wears slower. Past what
+	-- a generator makes, a faster pick only waits, so no tier goes above 4.
 	{key = "pickaxe", item = "mcl_tools:pick_stone", activities = {quarrier = true}, use = "mine",
-		uses = 64, rate = 1.5, yields = {["mcl_core:cobble"] = 1}},
+		uses = 64, rate = 3, yields = {["mcl_core:cobble"] = 1},
+		tiers = {
+			{item = "mcl_tools:pick_diamond", uses = 512, rate = 4},
+			{item = "mcl_tools:pick_iron", uses = 128, rate = 4},
+			{item = "mcl_tools:pick_gold", uses = 16, rate = 4},
+			{item = "mcl_tools:pick_stone", uses = 64, rate = 3},
+			{item = "mcl_tools:pick_wood", uses = 30, rate = 2},
+		}},
 }
 M.BOOK = {key = "book", item = "mcl_books:book", days = 3, rate = 1.2}
 -- Game seconds in a day at the default time_speed (72).
@@ -65,7 +75,10 @@ local function wanted_by(self, good)
 	if good.professions and good.professions[self._profession] then return true end
 	-- A labour activity counts only while it labours: one that took a job that day still
 	-- carries the morning's `_villages_labour` (run 45, a tool smith wanting an axe).
+	-- So does a crafter labouring with nothing to make today (production.lua, ticket 19b).
+	local idle = self._villages_idle
 	local labours = self._profession == "nitwit" or (self._profession == "unemployed" and not self._jobsite)
+		or (idle ~= nil and idle.idle and idle.day == core.get_day_count())
 	local labour = self._villages_labour
 	return labours and good.activities ~= nil and labour ~= nil and good.activities[labour.activity] == true
 end

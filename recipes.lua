@@ -31,6 +31,9 @@ return {
 		{makes = "mcl_tools:axe_stone", count = 1, tier = 1, from = {{COBBLE, 3}, {STICK, 2}}},
 		{makes = "mcl_tools:shovel_stone", count = 1, tier = 1, from = {{COBBLE, 1}, {STICK, 2}}},
 		{makes = "mcl_farming:hoe_stone", count = 1, tier = 1, from = {{COBBLE, 2}, {STICK, 2}}},
+		-- Wooden ones, while no quarrier sells cobble (ticket 19d): its first picks start one.
+		{makes = "mcl_tools:pick_wood", count = 1, tier = 1, from = {{"mcl_core:wood", 3}, {STICK, 2}}},
+		{makes = "mcl_farming:hoe_wood", count = 1, tier = 1, from = {{"mcl_core:wood", 2}, {STICK, 2}}},
 		-- Its own sticks, from a woodcutter's logs (ticket 11d): no villager sells sticks.
 		{makes = STICK, count = 4, tier = 1, from = {{"mcl_core:wood", 2}}},
 		{makes = "mcl_core:wood", count = 4, tier = 1, from = {{"mcl_core:tree", 1}}},
@@ -81,6 +84,8 @@ return {
 	-- (32) back from them, and its player trades need no stock.
 	mason = {
 		{makes = "mcl_core:brick", count = 1, tier = 1, from = {{"mcl_core:clay_lump", 1}}, fuel = 1},
+		-- Smelted from a quarrier's cobble (ticket 19d), for its carved stone and to sell.
+		{makes = "mcl_core:stone", count = 1, tier = 1, from = {{"mcl_core:cobble", 1}}, fuel = 1},
 		{makes = "mcl_core:stonebrickcarved", count = 1, tier = 2, from = {{"mcl_core:stone", 1}}},
 		{makes = "mcl_core:andesite_smooth", count = 4, tier = 3, from = {{"mcl_core:andesite", 4}}},
 		{makes = "mcl_core:granite_smooth", count = 4, tier = 3, from = {{"mcl_core:granite", 4}}},
