@@ -12,6 +12,7 @@
 -- few awkward items can be bought from the Builder (SALES), only as a project needs them.
 local core = minetest
 local common = dofile(core.get_modpath("living_villages") .. "/common.lua")
+local families = dofile(core.get_modpath("living_villages") .. "/builder_families.lua")
 
 local M = {}
 
@@ -102,17 +103,18 @@ local function base_item(name)
 
 	local door = name:match("^([%w_]+:.*_door)_[bt]_%d$")
 	if door then return door end
-	local trapdoor = name:match("^(mcl_doors:.*trapdoor)_open$")
+	local trapdoor = name:match("^([%w_]+:.*trapdoor)_open$")
 	if trapdoor then return trapdoor end
 	local stair = name:match("^(mcl_stairs:stair_.*)_outer$") or name:match("^(mcl_stairs:stair_.*)_inner$")
 	if stair then return stair end
 	local slab = name:match("^(mcl_stairs:slab_.*)_top$") or name:match("^(mcl_stairs:slab_.*)_double$")
 	if slab then return slab end
-	local wall = name:match("^(mcl_walls:.*)_%d+$")
+	local wall = name:match("^(mcl_walls:.*)_%d+$") or name:match("^(mcl_deepslate:deepslate%a+wall)_%d+$")
 	if wall then return wall end
-	local gate = name:match("^(mcl_fences:.*gate)_open$")
+	local gate = name:match("^([%w_]+:.*fence_gate)_open$")
 	if gate then return gate end
-	local plate = name:match("^(mesecons_pressureplates:pressure_plate_.*)_on$")
+	-- Several mods register plates (mcl_cherry_blossom, mcl_bamboo); buttons are mesecons'.
+	local plate = name:match("^([%w_]+:pressure_plate_.*)_on$") or name:match("^(mesecons_button:button_.*)_on$")
 	if plate then return plate .. "_off" end
 
 	if name == "mcl_torches:torch_wall" then return "mcl_torches:torch" end
@@ -139,6 +141,30 @@ function M.identity(name)
 	-- A door's two halves share an item but are not the same cell.
 	if M.is_door_half(name, "t") then return base_item(name) .. ":top" end
 	return base_item(name)
+end
+
+-- Whether a node found stands for the one wanted. In a stock building one made of another
+-- member of its family will do (builder_families.lua); `exact` (a player's order) wants the
+-- very thing.
+function M.same_built(wanted, found, exact)
+	local a, b = M.identity(wanted), M.identity(found)
+	if a == b then return true end
+	return not exact and families.kind(a) == families.kind(b)
+end
+
+-- The one item of a node's cost that another of its family may stand in for, or nil: the
+-- item whose stem the node's name starts with, so a potted allium takes any flower but its
+-- pot is a pot, and kelp's sand stays sand, the node being named for it.
+function M.swap_item(name, cost)
+	if not cost then return nil end
+	local member = families.lookup(M.identity(name))
+	if member and cost[member.item] then return member.item end
+	return nil
+end
+
+-- The node to set for a node wanted, made of `supplied` instead, or nil if there is none.
+function M.variant(name, supplied, engine)
+	return families.variant(name, supplied, engine)
 end
 
 -- Kelp and seagrass are no blocks of their own: placed under water, either turns the block it

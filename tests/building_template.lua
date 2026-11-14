@@ -771,6 +771,43 @@ do
 	assert(#blocked == 1)
 end
 
+-- Families (builder_families.lua): in a stock building another wood stands for oak and may pay
+-- for it; a player's order wants exactly what it drew. Half a door standing in birch gets a
+-- birch top.
+do
+	local BIRCH_STAIR, BIRCH_DOOR = "mcl_stairs:stair_birchwood_outer", "mcl_doors:birch_door_b_1"
+	local engine = {
+		registered_nodes = {
+			["mcl_stairs:stair_wood_outer"] = {groups = {}}, [BIRCH_STAIR] = {groups = {}},
+			["mcl_doors:wooden_door_b_1"] = {groups = {}}, ["mcl_doors:wooden_door_t_1"] = {groups = {}},
+			[BIRCH_DOOR] = {groups = {}}, ["mcl_doors:birch_door_t_1"] = {groups = {}},
+			air = {buildable_to = true, groups = {}},
+		},
+		registered_items = {["mcl_stairs:stair_wood"] = {groups = {}}, ["mcl_doors:wooden_door"] = {groups = {}}},
+		get_item_group = function() return 0 end,
+	}
+	local cells = {
+		{pos = {x = 0, y = 1, z = 0}, name = "mcl_stairs:stair_wood_outer", param2 = 0},
+		{pos = {x = 2, y = 1, z = 0}, name = "mcl_doors:wooden_door_b_1", param2 = 0},
+		{pos = {x = 2, y = 2, z = 0}, name = "mcl_doors:wooden_door_t_1", param2 = 0},
+	}
+	local found = {["0,1,0"] = BIRCH_STAIR, ["2,1,0"] = BIRCH_DOOR, ["2,2,0"] = "air"}
+	local function get(pos) return found[pos.x .. "," .. pos.y .. "," .. pos.z] or "air" end
+	for _, custom in ipairs({false, true}) do
+		local plan = template.plan(cells, {floor_y = 0, surface_mat = "mcl_core:dirt_with_grass", custom = custom or nil},
+			engine)
+		local swappable = template.swappable(plan.steps)
+		assert((swappable["mcl_stairs:stair_wood"] == true) == not custom)
+		local missing, blocked = template.compare(plan, get, engine)
+		if custom then
+			assert(#missing == 0 and #blocked == 2, "an order's oak is oak")
+		else
+			assert(#blocked == 0 and #missing == 1, "birch stands for oak")
+			assert(missing[1].node.name == "mcl_doors:birch_door_t_1", missing[1].node.name)
+		end
+	end
+end
+
 -- Kelp on sand is one node, and drops off out of water: planted after the water is in, put
 -- back on the sand it left.
 do

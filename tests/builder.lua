@@ -717,6 +717,35 @@ do
 	world.settings.living_villages_builder_capacity = nil
 end
 
+-- Deepslate cobble for cobble (builder_families.lua): counted, carried and placed as itself,
+-- cobble first, and what stands counts as built.
+local DEEPSLATE = "mcl_deepslate:deepslate_cobbled"
+world.defs[DEEPSLATE] = {groups = {}}
+local function walls_of(name)
+	local count = 0
+	for z = 0, 4 do
+		for y = 1, 2 do
+			for x = 0, 4 do
+				if world.name({x = SITE.x + x, y = y, z = SITE.z + z}) == name then count = count + 1 end
+			end
+		end
+	end
+	return count
+end
+do
+	local entity = prepared()
+	local chest = {x = 0, y = 1, z = 6}
+	support.chest(world, chest, CHEST, {COBBLE .. " 20", DEEPSLATE .. " 20", BUCKET})
+	advance(entity, 11)
+	local report = builder.report(entity)
+	local rows = {}
+	for _, row in ipairs(report.rows or {}) do rows[row.item] = row end
+	assert(rows[COBBLE] == nil or rows[COBBLE].missing == 0, "deepslate makes up the cobble")
+	assert(run_until(entity, project_gone_or("returning"), 900))
+	assert(walls_of(COBBLE) == 20 and walls_of(DEEPSLATE) == 12, walls_of(COBBLE) .. " " .. walls_of(DEEPSLATE))
+	assert(stock.chest_count(chest, DEEPSLATE) + stock.count(entity, DEEPSLATE) == 8, "the rest is left")
+end
+
 -- With a short reach it does what it can from where it stands before walking on, and every
 -- layer still finishes before the one above it starts.
 do
@@ -1133,6 +1162,14 @@ do
 	local project = builder.load_project(BENCH_POS)
 	assert(walls_built() == 10 and project.away_built == 10)
 	assert(project.away_credit == nil and project.state == "building")
+end
+
+-- Away, deepslate pays for the cobble the chest runs out of.
+do
+	local back = away_scene({stock = {COBBLE .. " 10", DEEPSLATE .. " 30", BUCKET}, gap = 1200})
+	def.do_custom(back, 1)
+	assert(walls_built() == 10 and walls_of(DEEPSLATE) == 22 and water_in())
+	assert(builder.load_project(BENCH_POS).swaps.cobble == DEEPSLATE, "the project keeps its choice")
 end
 
 -- A foreign node anywhere in it: as watched, it does nothing, and says where.
