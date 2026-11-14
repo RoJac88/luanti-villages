@@ -32,21 +32,27 @@ local possessions = dofile("possessions.lua")
 local tables = dofile("trade_tables.lua")
 local recipes = dofile("recipes.lua")
 
--- Every output is sold by its profession, goes into another of its own recipes, or is
--- what the keeper buys for the tavern (the butcher's cooked beef, ticket 11e), or is food.
-local keeper_buys = dofile("ledger.lua").inputs("keeper", 1)
+-- Every output is sold by its profession, goes into another of its own recipes, is what
+-- its trade table buys (the cartographer's paper), or is what the keeper buys for the
+-- tavern (the butcher's cooked beef, ticket 11e), or is food.
+local ledger_inputs = dofile("ledger.lua").inputs
+local keeper_buys = ledger_inputs("keeper", 1)
 local foods = dofile("food.lua").POINTS
 for profession, list in pairs(recipes) do
 	local entry = tables.professions[profession]
 	assert(entry, profession .. " has a trade table")
 	local sold, used = {}, {}
-	for _, trade in ipairs(entry.trades) do sold[trade.offered[1].item] = true end
+	local bought = {}
+	for _, trade in ipairs(entry.trades) do
+		sold[trade.offered[1].item] = true
+		if #trade.wanted == 1 then bought[trade.wanted[1].item] = true end
+	end
 	for _, recipe in ipairs(list) do
 		for _, input in ipairs(recipe.from) do used[input[1]] = true end
 	end
 	for _, recipe in ipairs(list) do
 		-- Food sells to any hungry villager (goods.lua's food category, ticket 15).
-		assert(sold[recipe.makes] or used[recipe.makes] or keeper_buys[recipe.makes] or foods[recipe.makes],
+		assert(sold[recipe.makes] or used[recipe.makes] or bought[recipe.makes] or keeper_buys[recipe.makes] or foods[recipe.makes],
 			profession .. " neither sells nor uses " .. recipe.makes)
 		assert(recipe.count >= 1 and #recipe.from >= 1 and recipe.tier >= 1)
 	end
@@ -143,6 +149,17 @@ do
 	assert(logs[#logs - 3]:find("made 4 mcl_core:birchwood"), "birch planks, not oak")
 	-- A spruce plank is planks: the bookshelf recipe's oak planks take it.
 	assert(production.have("mcl_core:wood", function(i) return ({["mcl_core:sprucewood"] = 6})[i] end) == 6)
+end
+-- A cartographer makes its own paper from a forager's cane (ColonyFood, day 113), and so
+-- wants the cane.
+do
+	local carto = smith({_id = "carto2", _profession = "cartographer", _villages_food = 20})
+	assert((ledger_inputs("cartographer")["mcl_core:reeds"] or 0) > 0, "it wants cane")
+	possessions.add(carto, "mcl_core:reeds", 3)
+	local recipe = production.choose(carto)
+	assert(recipe and recipe.makes == "mcl_core:paper", "paper from cane")
+	assert(production.make(carto, recipe))
+	assert(count(carto, "mcl_core:paper") == 3 and count(carto, "mcl_core:reeds") == 0)
 end
 -- No fuel and no lump: raw meat stays raw.
 local cold = smith({_id = "cold", _profession = "butcher"})
