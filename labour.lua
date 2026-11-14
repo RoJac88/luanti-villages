@@ -22,6 +22,12 @@
 --   back once picked, so they are not dug: of a poppy or dandelion it picks the bloom
 --   (ticket 19c, for comforts.lua), and leaves the plant to bloom again BLOOM_DAYS
 --   later (the day in its node meta, `living_villages_picked`), up to FLOWER_KEEP.
+--   It also picks up whatever else lies dropped on the ground that the economy prices
+--   (ledger.price): a dead player's goods, a zombie's rotten flesh, before they
+--   despawn, so it goes to those first. It leaves what is priced at nothing (dirt,
+--   saplings' sticks of no use) and any stack with wear or metadata (an enchanted or
+--   used tool, a named item), which belongings could not keep. A pickup is no gathering:
+--   it counts nowhere in the forager's learnt rate.
 -- * woodcutter: a grove of its own, at most GROVE_MAX saplings it planted (GROVE_MAX_JOB
 --   for a woodcutter by trade, woodcutter.lua, whose grove is around its chopping block)
 --   (`_villages_grove`), on open grass GROVE_MIN to GROVE_RADIUS from its bed with a
@@ -95,6 +101,7 @@ local wants = dofile(core.get_modpath("living_villages") .. "/wants.lua")
 local goods = dofile(core.get_modpath("living_villages") .. "/goods.lua")
 local recipes = dofile(core.get_modpath("living_villages") .. "/recipes.lua")
 local production = dofile(core.get_modpath("living_villages") .. "/production.lua")
+local ledger = dofile(core.get_modpath("living_villages") .. "/ledger.lua")
 local cells = dofile(core.get_modpath("living_villages") .. "/cells.lua")
 
 local TICK_SECONDS = 2
@@ -509,15 +516,34 @@ local function cane_tops(bed)
 	return found
 end
 
-local function fallen(bed, items)
+-- Dropped stacks within reach of bed that `wanted(stack)` takes, as {pos, object, stack}.
+local function fallen(bed, wanted)
 	local found = {}
 	for _, object in ipairs(core.get_objects_inside_radius(bed, FORAGE_RADIUS)) do
 		local entity = object:get_luaentity()
-		local name = entity and entity.name == "__builtin:item" and ItemStack(entity.itemstring):get_name()
-		if name and items[name] then found[#found + 1] = {pos = vector.round(object:get_pos()), object = object} end
+		local stack = entity and entity.name == "__builtin:item" and entity.itemstring
+			and entity.itemstring ~= "" and ItemStack(entity.itemstring)
+		if stack and wanted(stack) then
+			found[#found + 1] = {pos = vector.round(object:get_pos()), object = object, stack = stack}
+		end
 	end
 	return found
 end
+
+-- Whether a dropped stack is worth picking up: something priced (not an apple, which is
+-- gathered as such), plain, with no wear or metadata that belongings would lose.
+function M.worth_picking(stack)
+	local name = stack:get_name()
+	if name == "" or name == APPLE or not ledger.price(name) then return false end
+	if stack.get_wear and stack:get_wear() > 0 then return false end
+	if stack.get_meta then
+		local data = stack:get_meta():to_table()
+		if data and data.fields and next(data.fields) then return false end
+	end
+	return true
+end
+
+local function is_apple(stack) return stack:get_name() == APPLE end
 
 -- Every forager target, as {pos, kind, object}.
 function M.forage_targets(self)
@@ -531,9 +557,12 @@ function M.forage_targets(self)
 		for _, pos in ipairs(cane_tops(bed)) do targets[#targets + 1] = {pos = pos, kind = "cane"} end
 	end
 	if possessions.count(self, APPLE) < KEEP_GATHERED then
-		for _, item in ipairs(fallen(bed, {[APPLE] = true})) do
+		for _, item in ipairs(fallen(bed, is_apple)) do
 			targets[#targets + 1] = {pos = item.pos, kind = "apple", object = item.object}
 		end
+	end
+	for _, item in ipairs(fallen(bed, M.worth_picking)) do
+		targets[#targets + 1] = {pos = item.pos, kind = "pickup", object = item.object}
 	end
 	for _, pos in ipairs(blooms(self, bed)) do targets[#targets + 1] = {pos = pos, kind = "flower"} end
 	return targets
@@ -571,11 +600,12 @@ function M.forage(self, target)
 		core.get_meta(target.pos):set_int(PICKED_META, core.get_day_count() + 1)
 		possessions.add(self, flower, 1)
 		return flower, 1
-	elseif target.kind == "apple" then
+	elseif target.kind == "apple" or target.kind == "pickup" then
 		local object = target.object
 		local entity = object and object:get_luaentity()
-		if not entity or not entity.itemstring then return nil end
+		if not entity or not entity.itemstring or entity.itemstring == "" then return nil end
 		local stack = ItemStack(entity.itemstring)
+		if target.kind == "pickup" and not M.worth_picking(stack) then return nil end
 		object:remove()
 		possessions.add(self, stack:get_name(), stack:get_count())
 		return stack:get_name(), stack:get_count()
@@ -1071,7 +1101,7 @@ local function work(self, activity, target)
 		-- Saplings and charcoal are not what the rate counts.
 		local labour = self._villages_labour
 		local record = labour and self._villages_gather_record and self._villages_gather_record[labour.activity]
-		if record and not item:find("sapling") then record.made = record.made + count end
+		if record and not item:find("sapling") and target.kind ~= "pickup" then record.made = record.made + count end
 		core.log("action", string.format("[living_villages] villager %s gathered %d %s", short_id(self), count, item))
 	elseif target.kind == "plant" or target.kind == "replant" then
 		core.log("action", string.format("[living_villages] villager %s tended its grove at %s (%d trees)",
@@ -1109,6 +1139,14 @@ function M.step(self, now)
 			if not is_skipped(self, candidate.pos) then open[#open + 1] = candidate end
 		end
 		target, distance = nearest(pos, open)
+		-- Dropped goods despawn: a forager goes to them first.
+		if activity == "forager" and target and target.kind ~= "pickup" then
+			local drops = {}
+			for _, candidate in ipairs(open) do
+				if candidate.kind == "pickup" then drops[#drops + 1] = candidate end
+			end
+			if #drops > 0 then target, distance = nearest(pos, drops) end
+		end
 		-- A quarrier keeps to the generator it works, and goes first to one ready.
 		if activity == "quarrier" and target and not target.mine then
 			local mine, ready = {}, {}
