@@ -359,8 +359,13 @@ local function nearest_walk_position(pos)
 	return best
 end
 
+local function sapling_at(pos)
+	local node = core.get_node_or_nil(pos)
+	return node ~= nil and core.get_item_group(node.name, "sapling") > 0
+end
+
 -- `avoid` lists positions (a villager that was in the way) whose cells the
--- route may not use.
+-- route may not use, and no cell holding a sapling is used but a target.
 local function plan_stair_route(self, candidates, avoid, on_progress)
 	local start = self.object:get_pos()
 	start = start and nearest_walk_position(start)
@@ -389,6 +394,10 @@ local function plan_stair_route(self, candidates, avoid, on_progress)
 		return best
 	end
 	local function can_stand(pos)
+		-- A sapling is stepped around, unless it is where the walk ends: a tree that grows
+		-- with a villager standing in it suffocates it, as one may have killed a forager
+		-- tending its grove (ColonyFood, 2026-11-13).
+		if not targets[pos.x .. ":" .. pos.y .. ":" .. pos.z] and sapling_at(pos) then return false end
 		for _, spot in ipairs(avoid or {}) do
 			if math.floor(spot.x + 0.5) == pos.x and math.floor(spot.z + 0.5) == pos.z
 				and math.abs(math.floor(spot.y + 0.5) - pos.y) <= 1 then
