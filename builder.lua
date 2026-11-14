@@ -1775,7 +1775,7 @@ local function tick(self, session, bench, now)
 	elseif project.state == "requires_materials" then
 		check_materials(self, session, bench, project, now)
 	else
-		if self._villages_builder_wants then market.clear(self) end
+		if market.wanting(self) then market.clear(self) end
 		work(self, session, bench, project, now)
 	end
 	session.away = WORKING[(M.load_project(bench) or {}).state] == true

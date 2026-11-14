@@ -274,7 +274,8 @@ end
 
 -- input: {id, profession, max_tier, held = {item = count}, food_points, hunger_per_day,
 -- foods = {item = points} (food.POINTS), extra = {item = count} (a Builder's missing
--- materials, goods that wear out), worth = {item = emeralds} (the most an item is worth
+-- materials, goods that wear out), extra_categories = {category = amount} (a Builder's
+-- logs, in logs), worth = {item = emeralds} (the most an item is worth
 -- to it whatever its need: what a good that wears out brings over its life, wants.lua),
 -- least = {item = emeralds} (the least it will take for an item: a peddler's stock is
 -- worth what it paid, labour.lua, ticket 12), prices = {item = factor} (its own
@@ -305,6 +306,8 @@ function M.assess(input)
 		if category then want_category(category, batch * goods.units(category, item)) else want(item, batch) end
 	end
 	for item, count in pairs(input.extra or {}) do targets[item] = (targets[item] or 0) + count end
+	-- A category wanted beyond the job's (a Builder's logs for planks, builder_market.lua).
+	for category, amount in pairs(input.extra_categories or {}) do want_category(category, amount) end
 
 	local raw = input.held or {}
 	-- The category an item counts toward: none when it is wanted for itself.
