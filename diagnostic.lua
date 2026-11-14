@@ -19,6 +19,7 @@ local market_news = dofile(core.get_modpath("living_villages") .. "/market_news.
 local prices = dofile(core.get_modpath("living_villages") .. "/prices.lua")
 local labour = dofile(core.get_modpath("living_villages") .. "/labour.lua")
 local wants = dofile(core.get_modpath("living_villages") .. "/wants.lua")
+local comforts = dofile(core.get_modpath("living_villages") .. "/comforts.lua")
 local production = dofile(core.get_modpath("living_villages") .. "/production.lua")
 local economy_tally = dofile(core.get_modpath("living_villages") .. "/economy_tally.lua")
 local trade_trips = dofile(core.get_modpath("living_villages") .. "/trade_trips.lua")
@@ -538,6 +539,7 @@ local function show(player, villager)
 		"Prices: " .. prices.describe(villager._villages_prices, 4),
 		"Labour: " .. labour.status(villager),
 		"Tools: " .. wants.status(villager),
+		"Comforts: " .. comforts.status(villager),
 		"Crafting: " .. production.status(villager),
 		"Trade tier: " .. production.tier_status(villager),
 		"Today: " .. economy_tally.status(villager),

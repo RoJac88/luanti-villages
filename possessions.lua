@@ -44,6 +44,7 @@ local stock = dofile(core.get_modpath("living_villages") .. "/farm_stock.lua")
 local ledger = dofile(core.get_modpath("living_villages") .. "/ledger.lua")
 local food = dofile(core.get_modpath("living_villages") .. "/food.lua")
 local wants = dofile(core.get_modpath("living_villages") .. "/wants.lua")
+local comforts = dofile(core.get_modpath("living_villages") .. "/comforts.lua")
 local tally = dofile(core.get_modpath("living_villages") .. "/economy_tally.lua")
 local asks = dofile(core.get_modpath("living_villages") .. "/asks.lua")
 
@@ -422,6 +423,8 @@ function M.step(self, now)
 	next_check[self] = now + CLAIM_SECONDS
 	M.endow(self)
 	M.claim_stash(self)
+	-- It takes up comforts it holds, and puts down those used up (comforts.lua).
+	comforts.update(self, M.emeralds(self), M.take, now)
 	-- Its asks for what it did not sell yesterday come down (asks.lua).
 	local day = today()
 	if self._villages_asks_day ~= day then asks.daily(self, M.assess(self).surplus, day) end
@@ -480,6 +483,10 @@ end
 -- A keeper by its role; a Builder (a mason to vanilla, builder.lua) has no trade of its own.
 function M.assess(self)
 	local extra, worth = wants.targets(self)
+	-- Comforts for its savings (comforts.lua, ticket 19).
+	local comfort, comfort_worth = comforts.targets(self, M.emeralds(self), core.get_gametime())
+	for item, count in pairs(comfort) do extra[item] = (extra[item] or 0) + count end
+	for item, value in pairs(comfort_worth) do worth[item] = math.max(worth[item] or 0, value) end
 	for item, count in pairs(self._villages_builder and self._villages_builder_wants or {}) do
 		extra[item] = (extra[item] or 0) + count
 	end

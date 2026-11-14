@@ -55,12 +55,6 @@ assert(ledger.urgency(12, 10) == 1, "within the reserve")
 assert(ledger.urgency(26, 10) < 1 and ledger.urgency(1000, 10) > 0.5)
 assert(ledger.urgency(0, 0) == 1 and near(ledger.urgency(4, 0), 0.5), "wanted not at all")
 
--- Preferences: one or two, always the same for a villager.
-local p1, p2 = ledger.preferences("abc"), ledger.preferences("abc")
-local n = 0
-for item, count in pairs(p1) do n = n + 1; assert(p2[item] == count and count >= 1) end
-assert(n == 1 or n == 2)
-
 -- One villager: a hungry toolsmith with a little coal and a lot of bread.
 local foods = {["mcl_farming:bread"] = 4, ["mcl_farming:carrot_item"] = 1}
 local smithy = ledger.assess({

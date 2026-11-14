@@ -7,15 +7,16 @@
 --
 -- Donating. Each villager there with more than SAVINGS emeralds gives a tenth of the
 -- excess, at least 1, once a holiday (`_villages_donated` holds the day). The cleric
--- keeps half, rounded down, in its belongings and puts the rest in its alms fund
+-- keeps KEEP_SHARE (a tenth, rounded down; half until ticket 19, when the cleric held a
+-- third of a village's money) in its belongings and puts the rest in its alms fund
 -- (`_villages_alms`). Every other villager there sees it and notes good gossip about the
 -- donor (gossip.lua, a villager subject): minor_positive, which spreads in conversation,
 -- and major_positive too for MAJOR or more, which as in Java is never passed on (its
 -- sharing cost is above its maximum). That standing moves the donor's prices with them
 -- (exchange.lua).
 --
--- Alms. Each villager there that cannot pay for a dinner (ledger.DINNER) is topped up to
--- two dinners' worth from the fund, as far as it goes, once a holiday
+-- Alms. Each villager there with less than two dinners' worth (ALMS_TO; one dinner until
+-- ticket 19) is topped up to it from the fund, as far as it goes, once a holiday
 -- (`_villages_alms_got`). Donations are taken first, so today's gifts can go out today;
 -- what is left waits for the next holiday.
 --
@@ -41,12 +42,13 @@ local DINNER = ledger.DINNER
 local SAVINGS = 8 * DINNER
 local MAJOR = 2 * DINNER
 local ALMS_TO = 2 * DINNER
+local KEEP_SHARE = 0.1
 -- church.lua's SOCIAL_RADIUS, which keeps the congregation this near the pulpit.
 local REACH = 12
 local RECHECK_SECONDS = 1
 local VILLAGER = "mobs_mc:villager"
 
-local M = {SAVINGS = SAVINGS, MAJOR = MAJOR, ALMS_TO = ALMS_TO, REACH = REACH}
+local M = {SAVINGS = SAVINGS, MAJOR = MAJOR, ALMS_TO = ALMS_TO, KEEP_SHARE = KEEP_SHARE, REACH = REACH}
 
 local function short_id(id)
 	return tostring(id):sub(1, 6)
@@ -65,7 +67,7 @@ function M.collect(priest, donor, witnesses, day, gossip)
 	local gift = M.donation(possessions.emeralds(donor))
 	if gift == 0 then return 0 end
 	possessions.take(donor, EMERALD, gift)
-	local kept = math.floor(gift / 2)
+	local kept = math.floor(gift * KEEP_SHARE)
 	if kept > 0 then possessions.add(priest, EMERALD, kept) end
 	priest._villages_alms = (priest._villages_alms or 0) + gift - kept
 	donor._villages_gave = {count = gift, day = day}
@@ -83,11 +85,11 @@ function M.collect(priest, donor, witnesses, day, gossip)
 	return gift
 end
 
--- Tops a villager that cannot pay for a dinner up to ALMS_TO, once today. Returns the alms.
+-- Tops a villager with less than ALMS_TO up to it, once today. Returns the alms.
 function M.give(priest, poor, day)
 	if poor == priest or poor._villages_alms_got == day then return 0 end
 	local has = possessions.emeralds(poor)
-	if has >= DINNER then return 0 end
+	if has >= ALMS_TO then return 0 end
 	local alms = math.min(ALMS_TO - has, priest._villages_alms or 0)
 	if alms <= 0 then return 0 end
 	poor._villages_alms_got = day

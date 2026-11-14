@@ -124,16 +124,13 @@ local ROLES = {
 	},
 }
 
--- Small wants a villager has for its own sake, one or two picked by its _id.
-local PREFERENCES = {
-	"mcl_flowers:poppy", "mcl_flowers:dandelion", "mcl_books:book", "mcl_cake:cake",
-	"mcl_core:apple", "mcl_farming:cookie", "mcl_wool:white", "mcl_mobitems:leather",
-}
+-- What a villager wants for its own sake comes from its savings (comforts.lua, ticket 19),
+-- by way of `extra`.
 
 local M = {
 	EMERALD = EMERALD, SCALE = SCALE, DINNER = DINNER, STOCK_DAYS = STOCK_DAYS, STOCK_MONEY = STOCK_MONEY,
 	STARVING_DAYS = STARVING_DAYS, MAX_URGENCY = MAX_URGENCY, MIN_URGENCY = MIN_URGENCY,
-	PREFERENCES = PREFERENCES, COAL = COAL, version = tables.version,
+	COAL = COAL, version = tables.version,
 }
 
 local function mean(spec) return (spec.min + spec.max) / 2 end
@@ -270,23 +267,6 @@ function M.urgency(held, target)
 	return MIN_URGENCY + (1 - MIN_URGENCY) * keep / held
 end
 
-local function roll(id, salt, n)
-	local text = tostring(id) .. salt
-	local sum = 0
-	for i = 1, #text do sum = sum + text:byte(i) * i end
-	return sum % n
-end
-
-function M.preferences(id)
-	local first = roll(id, "a", #PREFERENCES) + 1
-	local chosen = {[PREFERENCES[first]] = 1 + roll(id, "c", 2)}
-	if roll(id, "b", 2) == 1 then
-		local second = (first + roll(id, "d", #PREFERENCES - 1)) % #PREFERENCES + 1
-		chosen[PREFERENCES[second]] = 1
-	end
-	return chosen
-end
-
 -- input: {id, profession, max_tier, held = {item = count}, food_points, hunger_per_day,
 -- foods = {item = points} (food.POINTS), extra = {item = count} (a Builder's missing
 -- materials, goods that wear out), worth = {item = emeralds} (the most an item is worth
@@ -319,7 +299,6 @@ function M.assess(input)
 		local category = goods.target_category(item)
 		if category then want_category(category, batch * goods.units(category, item)) else want(item, batch) end
 	end
-	for item, count in pairs(M.preferences(input.id)) do want(item, count) end
 	for item, count in pairs(input.extra or {}) do targets[item] = (targets[item] or 0) + count end
 
 	local raw = input.held or {}

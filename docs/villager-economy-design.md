@@ -13,7 +13,7 @@ another.
 
 ## Goals
 
-- Every villager has needs (food, its work's inputs, a few preferences), belongings
+- Every villager has needs (food, its work's inputs, comforts for its savings), belongings
   (a pouch, a home chest, emeralds) and a sense of what things are worth to it.
 - Villagers learn what others need and have spare through the gossip they already
   exchange in conversations, and trade with each other when both gain.
@@ -536,9 +536,10 @@ Ticket 11c. A safety net for villagers who run out of money, and the cleric's in
 - **What standing buys.** In `exchange.lua`, a trader that thinks well of the other
   moves the price toward it, by up to a tenth: generous villagers trade a little
   cheaper, and the donation pays back over time.
-- **Alms.** The cleric keeps half of what it is given as its own. In the social stage
-  after the service, which keeps villagers about the pulpit, it tops up every villager
-  there that cannot pay for a dinner to two dinners' worth, from the rest. What is left
+- **Alms.** The cleric keeps a tenth of what it is given as its own (half until ticket
+  19). In the social stage after the service, which keeps villagers about the pulpit, it
+  tops up every villager there with less than two dinners' worth to two dinners, from
+  the rest. What is left
   waits for the next holiday.
 
 Money goes food producers → donations → cleric → alms → poor villagers → tavern → food
@@ -896,6 +897,9 @@ branch, and each leaves the game playable with `living_villages_economy` on or o
 | 14 | The mod's own trade window in place of vanilla's trades | 13 |
 | 15 | Needs by purpose (food, fuel, logs, planks), a few conversions at sale, the butcher cooks fish | 14 |
 | 16 | The woodcutter: a chopping block, generated and craftable, and a grove that grows | 15 |
+| 17 | The food loop: keeper's supply, food targets, the butcher's sales | 16 |
+| 18 | Farm output: hoes multiply the harvest, tending, sowing for the village | 17 |
+| 19 | Money that circulates: comforts for savings and the cleric's share (19a), idle crafters labour (19b), new goods from existing professions (19c) | 18 |
 
 ### 1. Clock, hunger and the tavern
 
@@ -1576,6 +1580,75 @@ still passing over a crop beside its own kind where another will do.
 **A second farmer's land** (`farm_field.is_own`). Where claimed composters' fields
 overlap, each counts and tills only the cells nearer its own composter, so a second
 farmer tills outward and adds land. Harvesting, sowing and tending stay shared.
+
+### 19. Money that circulates
+
+The ColonyFood run of 2026-11-14 (days 117 to 166): hunger rose while the pantry was
+never empty. Dinner costs 18 emeralds and 15 of 22 adults held under 20. The village's
+money (about 4,000, flat) had gathered where nothing spends it:
+
+| Flow | Emeralds |
+|---|---|
+| Dinners, through the keeper, into the farmers' chests | 5,438 |
+| The farmers' rent into the Builder's bench | 2,561 |
+| What the Builder took from its bench for cobble nobody sells | 1,177 |
+| Donations to the cleric; alms out of its fund | 2,508; 1,775 |
+| Every other sale between villagers | about 1,500 |
+
+The farmers had nothing to buy: the hoe, cookie and book they wanted were not for sale,
+and two of the ledger's preferences (cake, cookie) no village makes. The cleric kept half
+of every gift. More than half the village sold nothing again and again: the smiths and
+the armorer need iron, the tool smith had buyers for hoes but no cobble, nobody buys from
+the fletcher, and the leatherworker's one buyer, the librarian, was broke.
+
+The aim: every villager that holds money has something to spend it on, and every
+profession something to sell from goods the village makes, with vanilla recipes and no
+new professions. The alchemist, which would turn goods into iron, stays out of scope, and
+so does cobble until the village has a quarry. Three parts, one PR each.
+
+**19a. Comforts for savings** (`comforts.lua`). The ledger's fixed preferences go. A
+villager has a slot for a comfort for every 4 dinners' emeralds (72) it holds over its
+savings (8 dinners, as alms counts them), up to 6, and none below them. Each villager has
+three tastes from the comforts, picked by its id; the slots go round them in turn. A
+comfort held in its belongings fills a free slot and is used up some days later, so the
+want comes back. The ledger wants one for each slot free or nearly done, worth at most
+twice its base price.
+
+| Comfort | Made by | Days |
+|---|---|---|
+| White banner | Cartographer | 6 |
+| Bookshelf | Librarian | 8 |
+| Apple | Forager | 2 |
+| Poppy, dandelion | (foragers, 19c) | 2 |
+| White wool | Shepherd (until carpets, 19c) | 4 |
+| Leather | Leatherworker (until item frames, 19c) | 4 |
+
+A villager that grows poorer keeps what it uses until it is used up, and wants no more.
+The book stays a good that wears out for everyone (ticket 11e). Inspector line `Comforts`.
+
+**The cleric's share** (`alms.lua`). The cleric keeps a tenth of each gift, not half, and
+the rest goes to the alms fund. Alms top up anyone there with less than two dinners'
+worth to two dinners (before, only one who could not pay one dinner).
+
+**19b. Idle crafters labour** (`production.idle_today`, `labour.lua`). A crafter that can
+make nothing when its work stage starts, for want of inputs or because it holds all of
+its goods that will sell, does that day's labour as a nitwit does (forager, woodcutter,
+porter, peddler; quarrier once there is a quarry), keeping its profession and jobsite.
+It is asked each work day, not judged on what it made yesterday: away from its jobsite it
+makes nothing, and would never come back. Its labour answers `putter` to vanilla, so it is
+not called back to its jobsite. The smiths and the armorer, waiting on iron, earn their
+dinners, and a trade short of goods gathers them.
+
+**19c. New goods from existing professions**, each a vanilla recipe from village goods:
+
+| Profession | Good | Recipe | Buyer |
+|---|---|---|---|
+| Fletcher | Fishing rod | 3 sticks, 2 string | Fishermen: a rod wears out (`wants.lua`) |
+| Cartographer | Item frame | 8 sticks, 1 leather | Comfort; leather's second buyer |
+| Mason | Flower pot | 3 bricks, from its clay | Comfort |
+| Shepherd | Carpet | 2 wool make 3 | Comfort |
+| Librarian | Glass bottle | 3 glass, from sand | The cleric, as vanilla's buys |
+| Foragers | Poppy, dandelion | picked | Comfort |
 
 ## Open questions
 
