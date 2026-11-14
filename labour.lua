@@ -57,6 +57,13 @@
 --   (an in-memory claim for CLAIM_SECONDS, renewed while it works). A block takes
 --   MINE_SECONDS by hand; a pickaxe divides that by its rate (wants.lua), so a stone
 --   pick about keeps up with a generator.
+--   At the generator it is held on its standing cell (`_villages_quarry_hold`, M.hold,
+--   re-pinned every tick as fisherman.lua holds its fisher): a mined cell is open and
+--   often floored, and a quarrier that stepped into it burned when the lava flowed back
+--   (ColonyFood, 2026-11-14). With a pick the generator refills faster too: REGEN_SECONDS
+--   over the pick's rate after a block is mined, the cell turns to what the lava would
+--   cool it to (cobble, or stone under lava), unless it has refilled by then or someone
+--   stands in it. By hand it refills at VoxeLibre's own pace, which it logs.
 -- * porter (ticket 11): carries goods for others on trade trips (trade_trips.lua), hired
 --   at the end of a conversation; labour.lua only chooses it. Its site is the market: it
 --   is open when the villager has heard of an item one villager needs and another has
@@ -137,6 +144,9 @@ local QUARRY_RADIUS, QUARRY_HEIGHT = 64, 8
 local MINE_SECONDS = 8
 -- Between checks of an empty cell it waits at.
 local WAIT_SECONDS = 1
+-- About how long a generator takes to refill on its own (a player's digs at ColonyFood's
+-- first generator came 2 to 3 s apart); with a pick it refills this over the pick's rate.
+local REGEN_SECONDS = 3
 local CLAIM_SECONDS = 30
 -- A Builder wants cobble by the hundred, so a quarrier keeps more of it.
 local QUARRY_KEEP = 64
@@ -196,7 +206,7 @@ local NAMES = {"forager", "woodcutter", "quarrier", "porter", "peddler"}
 local M = {
 	ACTIVITIES = ACTIVITIES, YESTERDAY_BIAS = YESTERDAY_BIAS, GROVE_MAX = GROVE_MAX,
 	KEEP_GATHERED = KEEP_GATHERED, CHARCOAL_KEEP = CHARCOAL_KEEP, QUARRY_KEEP = QUARRY_KEEP,
-	QUARRY_RADIUS = QUARRY_RADIUS, MINE_SECONDS = MINE_SECONDS,
+	QUARRY_RADIUS = QUARRY_RADIUS, MINE_SECONDS = MINE_SECONDS, REGEN_SECONDS = REGEN_SECONDS,
 	PEDDLE_MARGIN = PEDDLE_MARGIN, PEDDLE_MAX = PEDDLE_MAX, BID_SHARE = BID_SHARE,
 	PEDDLE_BUY_DAYS = PEDDLE_BUY_DAYS, PEDDLE_DAYS = PEDDLE_DAYS,
 }
@@ -888,13 +898,71 @@ function M.stand_by(pos)
 	return nil
 end
 
--- Mines one generator block; stone drops cobble, as in vanilla. Returns the item and
+-- How long a generator takes to refill on its own, logged to tune REGEN_SECONDS by:
+-- looked at every half second for up to 30 s after a block mined by hand.
+local function time_refill(pos, since)
+	local node = core.get_node_or_nil(pos)
+	local waited = core.get_gametime() - since
+	if node and (node.name == COBBLE or node.name == STONE) then
+		core.log("action", string.format("[living_villages] quarry at %s refilled by itself in %.1f s",
+			core.pos_to_string(pos), waited))
+	elseif waited < 30 then
+		core.after(0.5, time_refill, pos, since)
+	end
+end
+
+local function someone_in(pos)
+	if not core.get_objects_inside_radius then return false end
+	for _, object in ipairs(core.get_objects_inside_radius(pos, 0.9)) do
+		local at = object:get_pos()
+		local entity = object.get_luaentity and object:get_luaentity()
+		local item = entity and entity.name == "__builtin:item"
+		if at and not item and math.abs(at.x - pos.x) < 0.8 and math.abs(at.z - pos.z) < 0.8
+			and at.y > pos.y - 1.5 and at.y < pos.y + 0.5 then
+			return true
+		end
+	end
+	return false
+end
+
+-- Refills a mined generator cell as its lava would: cobble where lava touches it from
+-- the side, stone under lava with water beside. Only an empty cell (air or a flowing
+-- liquid) of a generator still, with nobody in it. Returns the block, or nil.
+function M.refill(pos)
+	local node = core.get_node_or_nil(pos)
+	if not node or node.name == COBBLE or node.name == STONE then return nil end
+	if not M.is_generator(pos, true) or someone_in(pos) then return nil end
+	local side = false
+	for i = 1, 4 do
+		local offset = TOUCHING[i]
+		local beside_node = core.get_node_or_nil({x = pos.x + offset[1], y = pos.y, z = pos.z + offset[3]})
+		if beside_node and core.get_item_group(beside_node.name, "lava") > 0 then side = true end
+	end
+	local block = side and COBBLE or STONE
+	core.set_node(pos, {name = block})
+	if core.sound_play then
+		core.sound_play("fire_extinguish_flame", {pos = pos, gain = 0.25, max_hear_distance = 16}, true)
+	end
+	return block
+end
+
+-- Mines one generator block; stone drops cobble, as in vanilla. With a pick the lava
+-- comes back faster (M.refill after REGEN_SECONDS over its rate). Returns the item and
 -- how many, or nil.
 function M.quarry(self, target)
 	if not M.is_generated(target.pos) then return nil end
 	core.remove_node(target.pos)
 	possessions.add(self, COBBLE, 1)
 	claim(self, target.pos)
+	local rate = wants.tool_rate(self, "mine")
+	local pos = vector.new(target.pos)
+	if core.after then
+		if rate > 1 then
+			core.after(REGEN_SECONDS / rate, M.refill, pos)
+		else
+			core.after(0.5, time_refill, pos, core.get_gametime())
+		end
+	end
 	if core.sound_play then
 		core.sound_play("default_dig_cracky", {pos = target.pos, gain = 0.5, max_hear_distance = 16}, true)
 	end
@@ -1109,6 +1177,54 @@ local function work(self, activity, target)
 	end
 end
 
+-- Pins a quarrier to its standing cell at the generator, facing it: vanilla's stand
+-- state rolls a walk every second unless its order is "stand", and a mined cell is an
+-- open dead end to walk into.
+function M.hold(self)
+	local hold = self._villages_quarry_hold
+	if not hold or not self.object then return end
+	if self.order ~= "stand" then
+		hold.previous_order = hold.previous_order or self.order
+		self.order = "stand"
+	end
+	self.state = "stand"
+	self.object:set_velocity({x = 0, y = 0, z = 0})
+	local pos = self.object:get_pos()
+	if not pos then return end
+	local at = cells.standing_cell(pos)
+	if not vector.equals(at, hold.stand) or math.abs(pos.x - hold.stand.x) > 0.45
+		or math.abs(pos.z - hold.stand.z) > 0.45 then
+		self.object:set_pos(cells.standing_position(hold.stand))
+	end
+	local dx, dz = hold.cell.x - hold.stand.x, hold.cell.z - hold.stand.z
+	if dx ~= 0 or dz ~= 0 then
+		local set_yaw = self.set_yaw or (mcl_mobs and mcl_mobs.mob_class and mcl_mobs.mob_class.set_yaw)
+		if set_yaw then set_yaw(self, math.atan2(-dx, dz)) end
+	end
+end
+
+-- Lets it go, giving back the order it had if nothing has changed it since.
+function M.release(self)
+	local hold = self._villages_quarry_hold
+	if not hold then return end
+	if self.order == "stand" and hold.previous_order then self.order = hold.previous_order end
+	self._villages_quarry_hold = nil
+end
+
+-- Starts holding it at the generator `cell`: where it stands, unless that is the cell
+-- itself or no place to stand, then the nearest place beside it.
+local function hold_at(self, cell)
+	local hold = self._villages_quarry_hold
+	if hold and vector.equals(hold.cell, cell) then return end
+	M.release(self)
+	local pos = self.object:get_pos()
+	local stand = pos and cells.standing_cell(pos)
+	if not stand or vector.equals(stand, cell) or not cells.can_stand(stand) then stand = M.stand_by(cell) end
+	if not stand then return end
+	self._villages_quarry_hold = {cell = vector.new(cell), stand = stand}
+	M.hold(self)
+end
+
 -- One tick of the work stage.
 function M.step(self, now)
 	if self._villages_labour_target then
@@ -1130,6 +1246,7 @@ function M.step(self, now)
 		return
 	end
 	-- A porter's work is its trips (trade_trips.lua).
+	if activity ~= "quarrier" then M.release(self) end
 	if not activity or not pos or activity == "porter" then return end
 	local target, distance
 	if activity == "forager" or activity == "quarrier" then
@@ -1167,15 +1284,19 @@ function M.step(self, now)
 		distance = target and vector.distance(pos, target.pos)
 	end
 	if not target then
+		M.release(self)
 		self._villages_labour_next = now + RETRY_SECONDS
 		return
 	end
+	if target.kind == "cobble" and distance <= REACH then hold_at(self, target.pos)
+	elseif target.kind == "cobble" then M.release(self) end
 	if distance <= REACH then
 		-- At a generator between blocks: wait for the next.
 		if target.kind == "cobble" and not target.ready then
 			self._villages_labour_next = now + WAIT_SECONDS
 			return
 		end
+
 		return work(self, activity, target)
 	end
 	-- Trunks are solid: stand beside one.
@@ -1205,6 +1326,7 @@ function M.step(self, now)
 		entity._villages_labour_target = nil
 		local at = entity.object:get_pos()
 		if at and vector.distance(at, target.pos) <= REACH + 1 then
+			if target.kind == "cobble" then hold_at(entity, target.pos) end
 			work(entity, activity, target)
 		else
 			skip(entity, target.pos)
@@ -1227,12 +1349,17 @@ function M.install(def)
 	local original = def.do_custom
 	def.do_custom = function(self, dtime)
 		local result = original(self, dtime)
-		if result == false or not M.eligible(self) then return result end
+		if result == false or not M.eligible(self) then
+			if self._villages_quarry_hold and result ~= false then M.release(self) end
+			return result
+		end
 		if common.schedule_stage(nil, self) ~= "work" then
 			self._villages_labour_target = nil
+			M.release(self)
 			return result
 		end
 		if not busy(self) then M.step(self, core.get_gametime()) end
+		if self._villages_quarry_hold then M.hold(self) end
 		return result
 	end
 end
