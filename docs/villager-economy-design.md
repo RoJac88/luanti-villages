@@ -1422,6 +1422,12 @@ goods it trades, so no villager could buy wheat and the leatherworker's herd nev
 With the economy on, a farmer keeps up to 8 wheat over its keep in its belongings when it
 deposits, for sale (`farmer.lua`).
 
+**Bread for sale** (run of 2026-11-14). Buyers reached both farmers once trips fell back
+to the seller's stash, and found nothing spare, while one farm chest held 27 loaves and
+299 potatoes that only the keeper took. At its own chest a farmer now takes bread up to
+16 and then potatoes up to 16 into its belongings, for sale, from what the chest holds
+over 24 meals (the keeper's carry), so food reaches villagers who buy it themselves.
+
 **The herd stays home.** A herd cow past 10 blocks from the leatherworker's jobsite walks
 back; past 20, unseen, it is set down beside it. Only a herd down to fewer than two takes
 on wild cows that come within 16, until it has two: a player can lead cows in to restart

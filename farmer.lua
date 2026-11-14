@@ -12,7 +12,8 @@
 -- household too, eat their dinner at the tavern or from what they own (possessions.lua),
 -- and one with no money relies on alms (alms.lua). Its bread goes to its work chest past
 -- BREAD_KEEP in the pouch, for the keeper to fetch and pay for (keeper_supply.lua); up to
--- OWN_BREAD loaves go in its belongings first, for its own dinner and to sell. The keeper's
+-- OWN_BREAD loaves go in its belongings first, for its own dinner and to sell, and at its
+-- chest it takes more bread and potatoes to sell (SALE_BREAD, SALE_POTATO). The keeper's
 -- emeralds left in its chest go in its belongings when it next stores its surplus. With
 -- the economy off it feeds everyone free, as it always did.
 local core = minetest
@@ -54,6 +55,7 @@ local HOLD_SECONDS = 2
 
 local WHEAT = "mcl_farming:wheat_item"
 local BREAD = "mcl_farming:bread"
+local POTATO = "mcl_farming:potato_item"
 local BONE_MEAL = compost.BONE_MEAL
 -- Three wheat to the loaf, as in the crafting recipe. A farmer stops baking at this
 -- many loaves, as it has nobody to give them to.
@@ -93,6 +95,14 @@ local OWN_BREAD = 4
 -- sale to villagers (a leatherworker breeds its herd on it, herd.lua), before the rest
 -- goes in the chest: the pouch and the chest are not goods it trades.
 local SALE_WHEAT = 8
+-- With the economy on, at its own chest it also takes food for sale into its belongings:
+-- bread up to SALE_BREAD there, then potatoes up to SALE_POTATO, from what the chest holds
+-- over KEEPER_RESERVE meals (keeper_supply.lua's CARRY, a loaf or a potato each) for the
+-- keeper's pantry. Run of 2026-11-14: buyers walked to both farmers and found nothing
+-- spare, while one farm chest held 27 loaves and 299 potatoes, which only the keeper took.
+local SALE_BREAD = 16
+local SALE_POTATO = 16
+local KEEPER_RESERVE = 24
 -- A trip to a chest waits for this much over the keep, unless the pouch is full.
 local DEPOSIT_TRIGGER = 8
 -- Food is worth a trip sooner: past the keep, bread is for its own dinners and the
@@ -322,8 +332,35 @@ local function collect_pay(self, pos)
 	return moved
 end
 
+-- Takes food for sale from its chest into its belongings (SALE_BREAD, SALE_POTATO), leaving
+-- the keeper KEEPER_RESERVE meals. Returns how many it took.
+local function stock_for_sale(self, pos)
+	local inv = core.get_meta(pos):get_inventory()
+	local spare = stock.chest_count(pos, BREAD) + stock.chest_count(pos, POTATO) - KEEPER_RESERVE
+	local taken = 0
+	for _, entry in ipairs({{BREAD, SALE_BREAD}, {POTATO, SALE_POTATO}}) do
+		local item, cap = entry[1], entry[2]
+		local want = math.min(cap - possessions.count(self, item), spare - taken)
+		if want > 0 then
+			local moved = inv:remove_item("main", item .. " " .. want):get_count()
+			if moved > 0 then
+				possessions.add(self, item, moved)
+				taken = taken + moved
+			end
+		end
+	end
+	if taken > 0 then
+		core.log("action", string.format("[living_villages] farmer %s took %d food from its chest at (%d,%d,%d) to sell",
+			tostring(self._id):sub(1, 6), taken, pos.x, pos.y, pos.z))
+	end
+	return taken
+end
+
 local function deposit(self, pos, session, now)
-	if clock.enabled() then collect_pay(self, pos) end
+	if clock.enabled() then
+		collect_pay(self, pos)
+		stock_for_sale(self, pos)
+	end
 	local item, extra = excess_item(self)
 	if not item then return end
 	local own = clock.enabled() and ({[WHEAT] = SALE_WHEAT, [BREAD] = OWN_BREAD})[item]
@@ -379,6 +416,7 @@ end
 
 local function withdraw_wheat(self, pos)
 	stock.take_from_chest(self, pos, WHEAT, WITHDRAW_WHEAT - stock.count(self, WHEAT))
+	if clock.enabled() then stock_for_sale(self, pos) end
 end
 
 local function withdraw_seeds(self, pos)
