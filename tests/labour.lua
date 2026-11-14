@@ -157,6 +157,22 @@ end
 local before, after = wood_share(0.5), wood_share(0.05)
 assert(before == 20 and after == 0, before .. " then " .. after)
 
+-- Cane is worth the paper it makes: a need for paper alone sends it foraging, and
+-- above a little wood (ColonyFood, day 108: two wanted paper, no one asked for cane).
+assert(labour.prices({asks("mcl_core:paper", 40)})["mcl_core:reeds"] == 40, "three cane, three paper")
+assert(labour.prices({asks("mcl_core:paper", 40), asks("mcl_core:reeds", 55)})["mcl_core:reeds"] == 55,
+	"its own price when higher")
+assert(labour.choose({asks("mcl_core:paper", 40), asks("mcl_core:acaciatree", 2)}, both, "woodcutter", 0)
+	== "forager")
+-- A pile it has not sold is worth less, and nothing at KEEP_GATHERED: seventy logs no one
+-- bought turn it to other work.
+local pile = {["mcl_core:acaciatree"] = 70}
+assert(labour.unsold_share(0, 32) == 1 and labour.unsold_share(16, 32) == 0.5 and labour.unsold_share(70, 32) == 0)
+assert(labour.incomes({asks("mcl_core:acaciatree", 2)}, 0, nil, nil, pile).woodcutter == 0)
+assert(labour.choose({asks("mcl_core:acaciatree", 2)}, both, "woodcutter", 0) == "woodcutter")
+assert(labour.choose({asks("mcl_core:acaciatree", 2), asks("mcl_farming:sweet_berry", 0.01)}, both, "woodcutter", 0,
+	0, nil, nil, pile) == "forager")
+
 -- Foraging: ripe berries, leaving the bush to grow back; cane above its bottom block;
 -- apples on the ground.
 local nina = villager()

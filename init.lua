@@ -6,6 +6,7 @@ local is_sleep_time = common.is_sleep_time
 local is_standing_space = common.is_standing_space
 local is_suffocating = common.is_suffocating
 local far_trips = dofile(core.get_modpath("living_villages") .. "/far_trips.lua")
+local death_log = dofile(core.get_modpath("living_villages") .. "/death_log.lua")
 local builder_climb = dofile(core.get_modpath("living_villages") .. "/builder_climb.lua")
 -- core.register_entity requires the loading mod's own name-prefix context
 -- (register.lua's check_modname_prefix reads core.get_current_modname()),
@@ -474,11 +475,13 @@ core.register_on_mods_loaded(function()
 			since_load = string.format(", activated at %s (%.1f below)",
 				pos_string(loaded), loaded.y - died_at.y)
 		end
+		-- What it was doing (death_log.lua); never in the way of dying.
+		local ok, context = pcall(death_log.context, self, died_at)
 		core.log("action", string.format(
-			"[living_villages] villager %s died at %s: %s%s (standing in %s, order %s%s%s)",
+			"[living_villages] villager %s died at %s: %s%s (standing in %s, order %s%s%s%s)",
 			tostring(self._id), pos_string(died_at), tostring(cause),
 			detail, tostring(self.standing_in), tostring(self.order),
-			self._villages_sleeping and ", asleep" or "", since_load))
+			self._villages_sleeping and ", asleep" or "", since_load, ok and context or ""))
 		if original_die then return original_die(self, pos, cmi_cause) end
 	end
 
