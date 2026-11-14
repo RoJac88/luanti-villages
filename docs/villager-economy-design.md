@@ -1718,6 +1718,25 @@ anywhere open beside it. Now:
   also counts the food in its work chest over the keeper's 24 meals as supply
   (`farm_stock.food_for_sale`).
 
+**19f. A stake for broke craftsmen, and asks that follow a glut** (ColonyFood,
+2026-11-14). A tool smith with one emerald could not buy cobble and sticks for the stone
+hoe a farmer wanted, and a butcher with one or two could not buy beef. Meanwhile the
+leatherworker starved holding 26 raw beef, so no cooked beef reached the keeper, who
+wanted it.
+
+- The cleric's alms give a craftsman, one with a recipe at its tier (not the keeper or a
+  Builder), a stake on top of two dinners: the price of four crafts of its cheapest
+  recipe, fuel included, at base prices, at most three dinners (`alms.stake`; about 30 for
+  most trades). Everyone's two dinners come first, the stakes after. With the fund short
+  the cleric gives from its own emeralds over its savings: it held 610 it had no use for.
+- A seller's ask fell only on a day it sold nothing. A leatherworker selling the butcher
+  2 beef now and then kept asking near twice the base price. Now it falls on any day the
+  seller sells less than a quarter of its spare (`asks.daily`).
+- Price beliefs can fall to an eighth of base in a glut, and the beef beliefs had. An ask
+  could not go below half, so buyers who believed the glut never met it. A seller that
+  believes an item worth less than its base price now asks that much less (`asks.ask`). A
+  belief over 1 leaves the ask to its sales, so demand is not counted twice.
+
 ## Open questions
 
 - Pacing: hunger rate, craft time, starting stock and rent all need probe runs on
