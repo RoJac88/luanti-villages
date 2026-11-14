@@ -30,8 +30,19 @@ assert(not goods.fills({item = "mcl_core:apple", group = "food"}, "mcl_core:ston
 
 -- Conversions, a short list a job: none for food.
 local shepherd = goods.conversions({_profession = "shepherd"})
-assert(#shepherd == 16)
-for _, c in ipairs(shepherd) do assert(c.to == goods.STRING and c.ratio == 4) end
+-- Each wool colour to string, four a wool, and to its carpet, three for two (ticket 19c).
+assert(#shepherd == 32)
+local strings, carpets = 0, 0
+for _, c in ipairs(shepherd) do
+	if c.to == goods.STRING then
+		assert(c.ratio == 4 and not c.takes)
+		strings = strings + 1
+	else
+		assert(c.to == c.from .. "_carpet" and c.ratio == 1.5 and c.takes == 2)
+		carpets = carpets + 1
+	end
+end
+assert(strings == 16 and carpets == 16)
 local woodcutter = goods.conversions({_profession = "nitwit", _villages_labour = {activity = "woodcutter"}})
 assert(#woodcutter == 8 and woodcutter[1].ratio == 4)
 assert(#goods.conversions({_profession = "mason"}) == 1)

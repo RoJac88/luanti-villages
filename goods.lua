@@ -15,7 +15,8 @@
 -- Conversions. When a villager sells to a villager (exchange.lua), a job can hand over a
 -- good it makes from its spare stock on the spot: instantly and for free, and sparingly,
 -- a short list a job. None is for food: the butcher cooks (recipes.lua). Player trades
--- convert nothing.
+-- convert nothing. Each gives `ratio` of its product per source, `takes` sources at a
+-- time (1 unless set): two wool make three carpets.
 local core = minetest
 local food = dofile(core.get_modpath("living_villages") .. "/food.lua")
 
@@ -55,6 +56,9 @@ local conversions = {
 }
 for _, colour in ipairs(WOOL_COLOURS) do
 	table.insert(conversions.shepherd, {from = "mcl_wool:" .. colour, to = STRING, ratio = 4})
+	-- Two wool make three carpets (ticket 19c): `takes` sources at a time.
+	table.insert(conversions.shepherd, {from = "mcl_wool:" .. colour, to = "mcl_wool:" .. colour .. "_carpet",
+		ratio = 1.5, takes = 2})
 end
 for log, planks in pairs(SPECIES) do table.insert(conversions.woodcutter, {from = log, to = planks, ratio = 4}) end
 for _, list in pairs(conversions) do

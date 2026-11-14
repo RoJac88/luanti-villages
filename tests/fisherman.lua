@@ -1424,24 +1424,37 @@ do
 		if n then return roll end
 		return roll
 	end
-	rolls = {2}
+	rolls = {0.5}
 	assert(catch.land_catch(finn) == nil, "three cycles in four land nothing")
 	held["mcl_core:emerald"] = 3
 	held["mcl_fishing:fish_raw"] = 2
-	rolls = {1, 0.1}
+	rolls = {0, 0.1}
 	local fish, where = catch.land_catch(finn)
 	assert(fish == "mcl_fishing:fish_raw" and where == "belongings")
 	assert(count("mcl_fishing:fish_raw") == 0 and finn._villages_belongings[fish] == 3, "barrel cod comes back")
 	assert(count("mcl_core:emerald") == 0 and finn._villages_belongings["mcl_core:emerald"] == 3, "collects its pay")
-	rolls = {1, 0.7}
+	rolls = {0, 0.7}
 	fish, where = catch.land_catch(finn)
 	assert(fish == "mcl_fishing:salmon_raw" and where == "belongings" and finn._villages_belongings[fish] == 1)
 	finn._villages_belongings["mcl_fishing:fish_raw"] = catch.KEEP_COD
 	held["mcl_fishing:fish_raw"] = 5
-	rolls = {1, 0.1}
+	rolls = {0, 0.1}
 	assert(catch.land_catch(finn) == nil and finn._villages_belongings["mcl_fishing:fish_raw"] == catch.KEEP_COD,
 		"its cod is full")
 	assert(count("mcl_fishing:fish_raw") == 5, "and the barrel's waits")
+	-- A rod (ticket 19c) makes a catch likelier, and wears with every cycle.
+	finn._villages_belongings["mcl_fishing:fish_raw"] = 0
+	held["mcl_fishing:fish_raw"] = 0
+	rolls = {0.3}
+	assert(catch.land_catch(finn) == nil, "by hand, one in four")
+	finn._profession = "fisherman"
+	local plain_log = minetest.log
+	minetest.log = minetest.log or function() end
+	finn._villages_belongings["mcl_fishing:fishing_rod"] = 1
+	rolls = {0.3, 0.1}
+	assert(catch.land_catch(finn) == "mcl_fishing:fish_raw", "with a rod, one and a half in four")
+	assert(finn._villages_wants.rod.item == "mcl_fishing:fishing_rod" and finn._villages_wants.rod.left == 31)
+	minetest.log = plain_log
 	math.random = real_random
 	minetest.get_meta = plain_meta
 end

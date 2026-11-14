@@ -19,7 +19,9 @@
 -- * forager: within FORAGE_RADIUS of its bed, sweet berry bushes at their last two
 --   stages (left at the first, as a player's picking leaves them), sugar cane above its
 --   bottom block, and apples lying on the ground. Flowers and mushrooms do not come
---   back once picked, so they are left.
+--   back once picked, so they are not dug: of a poppy or dandelion it picks the bloom
+--   (ticket 19c, for comforts.lua), and leaves the plant to bloom again BLOOM_DAYS
+--   later (the day in its node meta, `living_villages_picked`), up to FLOWER_KEEP.
 -- * woodcutter: a grove of its own, at most GROVE_MAX saplings it planted (GROVE_MAX_JOB
 --   for a woodcutter by trade, woodcutter.lua, whose grove is around its chopping block)
 --   (`_villages_grove`), on open grass GROVE_MIN to GROVE_RADIUS from its bed with a
@@ -157,6 +159,9 @@ end
 local BERRY = "mcl_farming:sweet_berry"
 local CANE = "mcl_core:reeds"
 local APPLE = "mcl_core:apple"
+local FLOWERS = {"mcl_flowers:poppy", "mcl_flowers:dandelion"}
+local FLOWER_KEEP, BLOOM_DAYS = 8, 3
+local PICKED_META = "living_villages_picked"
 local RIPE_BUSHES = {["mcl_farming:sweet_berry_bush_2"] = {1, 2}, ["mcl_farming:sweet_berry_bush_3"] = {2, 3}}
 local PICKED_BUSH = "mcl_farming:sweet_berry_bush_1"
 local GRASS = {"mcl_core:dirt_with_grass"}
@@ -165,7 +170,8 @@ local OPEN = {"air", "group:plant", "group:flower", "group:grass"}
 
 -- Rates in goods per work stage, for the choice; the goods and their shares.
 local ACTIVITIES = {
-	forager = {rate = 12, goods = {[BERRY] = 0.5, [APPLE] = 0.25, [CANE] = 0.25}},
+	forager = {rate = 12, goods = {[BERRY] = 0.45, [APPLE] = 0.2, [CANE] = 0.25,
+		[FLOWERS[1]] = 0.05, [FLOWERS[2]] = 0.05}},
 	woodcutter = {rate = 10, goods = {}},
 	quarrier = {rate = 32, goods = {[COBBLE] = 1}},
 	porter = {rate = 0, goods = {}},
@@ -382,6 +388,7 @@ end
 M.unsold_share = unsold_share
 
 local function keep_of(item)
+	if item == FLOWERS[1] or item == FLOWERS[2] then return FLOWER_KEEP end
 	return item == COBBLE and QUARRY_KEEP or KEEP_GATHERED
 end
 
@@ -455,6 +462,28 @@ local function ripe_bushes(bed)
 	return in_reach(bed, core.find_nodes_in_area(minp, maxp, names))
 end
 
+-- Whether the flower at pos has a bloom to pick: not picked in the last BLOOM_DAYS.
+local function in_bloom(pos)
+	-- The day after the one it was picked on, so 0 is never.
+	local picked = core.get_meta(pos):get_int(PICKED_META)
+	return picked == 0 or core.get_day_count() - (picked - 1) >= BLOOM_DAYS
+end
+
+-- The flowers in bloom of the kinds it holds fewer than FLOWER_KEEP of.
+local function blooms(self, bed)
+	local names = {}
+	for _, flower in ipairs(FLOWERS) do
+		if possessions.count(self, flower) < FLOWER_KEEP then names[#names + 1] = flower end
+	end
+	if #names == 0 then return {} end
+	local minp, maxp = area(bed, FORAGE_RADIUS, FORAGE_HEIGHT)
+	local found = {}
+	for _, pos in ipairs(in_reach(bed, core.find_nodes_in_area(minp, maxp, names))) do
+		if in_bloom(pos) then found[#found + 1] = pos end
+	end
+	return found
+end
+
 -- Where to stand to cut the cane whose top is at pos: beside its column's foot, or
 -- beside the block above it. Nil if neither has room and a floor.
 local function beside_cane(pos)
@@ -506,6 +535,7 @@ function M.forage_targets(self)
 			targets[#targets + 1] = {pos = item.pos, kind = "apple", object = item.object}
 		end
 	end
+	for _, pos in ipairs(blooms(self, bed)) do targets[#targets + 1] = {pos = pos, kind = "flower"} end
 	return targets
 end
 
@@ -532,6 +562,15 @@ function M.forage(self, target)
 		if count == 0 then return nil end
 		possessions.add(self, CANE, count)
 		return CANE, count
+	elseif target.kind == "flower" then
+		-- Its bloom: the plant stays, to bloom again.
+		local node = core.get_node_or_nil(target.pos)
+		if not node or not in_bloom(target.pos) then return nil end
+		local flower = (node.name == FLOWERS[1] or node.name == FLOWERS[2]) and node.name or nil
+		if not flower or possessions.count(self, flower) >= FLOWER_KEEP then return nil end
+		core.get_meta(target.pos):set_int(PICKED_META, core.get_day_count() + 1)
+		possessions.add(self, flower, 1)
+		return flower, 1
 	elseif target.kind == "apple" then
 		local object = target.object
 		local entity = object and object:get_luaentity()

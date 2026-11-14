@@ -165,6 +165,16 @@ do
 	-- A nitwit converts nothing.
 	local nitwit = villager("nw", {["mcl_wool:grey"] = 10})
 	assert(not exchange.offer(nitwit, seller_view, weaver, buyer_view))
+	-- Carpets (ticket 19c): two wool make three, so wool goes two at a time.
+	local carpet = "mcl_wool:grey_carpet"
+	local rug_view = view({[carpet] = 4}, {}, {[carpet] = 40})
+	local homely = villager("ho", {["mcl_core:emerald"] = 400})
+	offer = exchange.offer(shepherd, seller_view, homely, rug_view)
+	assert(offer and offer.item == carpet and offer.from == "mcl_wool:grey")
+	assert(offer.from_count == 4 and offer.count == 6, offer.from_count .. " " .. offer.count)
+	-- One spare wool makes no carpet.
+	local lone = view({}, {["mcl_wool:grey"] = 1}, {["mcl_wool:grey"] = 0.4})
+	assert(not exchange.offer(shepherd, lone, homely, rug_view))
 end
 
 print("exchange.lua: ok")
