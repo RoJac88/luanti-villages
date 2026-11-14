@@ -1,6 +1,6 @@
 -- Run with: lua tests/trade_trips.lua
 local now, day, time = 1000, 3, 6000 / 24000
-local settings, logs, objects, chests = {}, {}, {}, {}
+local settings, logs, objects, chests, nodes = {}, {}, {}, {}, {}
 local function key(pos) return pos.x .. "," .. pos.y .. "," .. pos.z end
 
 vector = {
@@ -79,11 +79,21 @@ minetest = {
 	log = function(_, message) logs[#logs + 1] = message end,
 	pos_to_string = function(p) return "(" .. key(p) .. ")" end,
 	registered_items = {},
+	-- Ground at y 0 and below; farmland (15/16 high, mcl_farming) where a test puts it.
+	registered_nodes = {
+		air = {walkable = false},
+		["mcl_core:stone"] = {walkable = true},
+		["mcl_farming:soil"] = {walkable = true, drawtype = "nodebox",
+			node_box = {type = "fixed", fixed = {{-0.5, -0.5, -0.5, 0.5, 0.4375, 0.5}}}},
+		["mcl_chests:chest_small"] = {walkable = true},
+	},
+	get_item_group = function() return 0 end,
 	add_particle = function() end,
 	sound_play = function() end,
 	get_node_or_nil = function(pos)
 		if chests[key(pos)] then return {name = "mcl_chests:chest_small"} end
-		return {name = "air"}
+		if nodes[key(pos)] then return {name = nodes[key(pos)]} end
+		return {name = pos.y <= 0 and "mcl_core:stone" or "air"}
 	end,
 	get_meta = function(pos)
 		local c = chests[key(pos)] or {inv = inventory({})}
@@ -132,6 +142,7 @@ local function villager(id, at, fields)
 	v.object = {get_pos = function() return pos end, get_luaentity = function() return v end}
 	v.gopath = function(self, target, callbacks)
 		self.walks[#self.walks + 1] = vector.new(target)
+		if self.refuse and self.refuse(target) then return false end
 		self.arrive = function()
 			pos = vector.new(target)
 			callbacks.arrived(self)
@@ -305,6 +316,72 @@ do
 	trips.step(bob, now + 4)
 	assert(count(bob, COBBLE) > before and bob._villages_trade_trip == nil, "caught and bought")
 	assert(count(roy, COBBLE) < 64)
+end
+
+-- A seller in its field stands on farmland, 15/16 high: it is walked to at the cell it
+-- stands in, not into the soil its rounded position is in (ColonyFood, 2026-11-14: every
+-- chase after a farmer failed "no way there").
+do
+	local fay = villager("fay-farmer", {x = 50, y = 1, z = 0}, {_villages_belongings = {[COBBLE] = 64}})
+	nodes[key({x = 50, y = 1, z = 20})] = "mcl_farming:soil"
+	fay.teleport({x = 50, y = 1.4475, z = 20})
+	possessions.add(bob, EMERALD, 3 * 64)
+	bob._villages_builder_wants = {[COBBLE] = count(bob, COBBLE) + 1000}
+	bob._villages_market_news = {has_news("fay-farmer", COBBLE, {x = 50, y = 1, z = 0}, 0.03)}
+	bob.walks = {}
+	now = now + 100
+	trips.step(bob, now)
+	bob.arrive()
+	trips.step(bob, now + 2)
+	local aim = bob.walks[2]
+	assert(bob._villages_trade_trip.leg == "chase" and aim.x == 50 and aim.z == 20, "after it in its field")
+	assert(aim.y == 2, "at the cell above the soil, not the soil: y " .. aim.y)
+	bob.arrive()
+	trips.step(bob, now + 4)
+	assert(bob._villages_trade_trip == nil and count(fay, COBBLE) < 64, "caught and bought")
+end
+
+-- A walk that cannot start is not the end of the trip: from the seller's home it goes
+-- after the seller, and from there to its stash. Only a stash it cannot reach ends it.
+do
+	local function plan_to(who, home)
+		bob._villages_builder_wants = {[COBBLE] = count(bob, COBBLE) + 1000}
+		bob._villages_market_news = {has_news(who, COBBLE, home, 0.03)}
+		possessions.add(bob, EMERALD, 3 * 64)
+		bob.walks = {}
+		now = now + 100
+	end
+	-- Its home walled in: it goes after the seller where it is, and buys there.
+	local hal = villager("hal-walled", {x = 30, y = 1, z = -30}, {_villages_belongings = {[COBBLE] = 64}})
+	hal.teleport({x = 30, y = 1, z = -15})
+	plan_to("hal-walled", {x = 30, y = 1, z = -30})
+	bob.refuse = function(target) return target.z == -30 end
+	trips.step(bob, now)
+	assert(bob._villages_trade_trip.leg == "chase" and bob.walks[2].z == -15, "no way home: after the seller")
+	assert(table.concat(logs, "\n"):find("cannot reach hal%-wa's home %(no way there%)"))
+	bob.arrive()
+	trips.step(bob, now + 2)
+	assert(bob._villages_trade_trip == nil and count(hal, COBBLE) < 64, "caught and bought")
+	-- Neither the seller's home nor the seller reachable: on to its stash.
+	local ivy = villager("ivy-island", {x = -30, y = 1, z = -30})
+	ivy.teleport({x = -30, y = 1, z = -15})
+	local stash = chest({x = -26, y = 1, z = -28}, "ivy-island", {{name = COBBLE, count = 50}})
+	plan_to("ivy-island", {x = -30, y = 1, z = -30})
+	bob.refuse = function(target) return target.x == -30 end
+	trips.step(bob, now)
+	assert(bob._villages_trade_trip.leg == "stash" and bob.walks[3].x == -26, "on to the stash")
+	bob.arrive()
+	trips.step(bob, now + 2)
+	assert(bob._villages_trade_trip == nil and chest_count(stash, COBBLE) < 50, "bought from the stash")
+	-- Not even the stash: the trip is over, and that seller passed over for a while.
+	local jo = villager("jo-nowhere", {x = 0, y = 1, z = -50})
+	jo.teleport({x = 400, y = 1, z = 0})
+	chest({x = 4, y = 1, z = -48}, "jo-nowhere", {{name = COBBLE, count = 50}})
+	plan_to("jo-nowhere", {x = 0, y = 1, z = -50})
+	bob.refuse = function(target) return target.z <= -48 end
+	trips.step(bob, now)
+	assert(bob._villages_trade_trip == nil and logs[#logs]:find("gave up on mcl_core:cobble from jo%-now"), logs[#logs])
+	bob.refuse = nil
 end
 
 -- An empty stash or none: it gives up and passes that seller over for a while.
