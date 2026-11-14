@@ -57,7 +57,7 @@ assert(alms.donation(alms.SAVINGS) == 0)
 assert(alms.donation(alms.SAVINGS + 1) == 1)
 assert(alms.donation(alms.SAVINGS + 150) == 15)
 
--- The service: a rich farmer donates, the cleric keeps half and funds the rest, a broke
+-- The service: a rich farmer donates, the cleric keeps a tenth and funds the rest, a broke
 -- villager is topped up to two dinners from it, and those there note the donor.
 local priest = villager("cleric1", 0, {_profession = "cleric"})
 local rich = villager("farmer1", alms.SAVINGS + 800, {_profession = "farmer"})
@@ -66,9 +66,9 @@ local middling = villager("mid1", 100)
 alms.hold(priest, {broke, priest, rich, middling}, day, gossip)
 local gift = alms.donation(alms.SAVINGS + 800)
 assert(gift == 80 and emeralds(rich) == alms.SAVINGS + 800 - gift)
-assert(emeralds(priest) == 40, "keeps half")
+assert(emeralds(priest) == 8, "keeps a tenth")
 assert(emeralds(broke) == alms.ALMS_TO, "topped up to two dinners")
-assert(priest._villages_alms == 40 - (alms.ALMS_TO - 3))
+assert(priest._villages_alms == 72 - (alms.ALMS_TO - 3))
 assert(emeralds(middling) == 100, "neither gives nor gets")
 assert(logged("alms: villager farmer gave 80") and logged("alms: cleric cleric gave 33 emerald(s) to villager broke1"))
 -- 80 is two dinners or more: minor and major. The donor does not gossip about itself.
@@ -76,7 +76,7 @@ local subject = gossip.villager_subject("farmer1")
 assert(gossip.reputation(middling, subject) == 125 and gossip.reputation(broke, subject) == 125)
 assert(gossip.reputation(rich, subject) == 0)
 assert(alms.status(rich) == "gave 80 on day 8" and alms.status(broke) == "alms on day 8")
-assert(alms.status(priest):find("alms fund 7", 1, true))
+assert(alms.status(priest):find("alms fund 39", 1, true))
 
 -- Each one there swapped market news with the cleric, once this holiday.
 assert(rich._villages_church_news == day and broke._villages_church_news == day and not priest._villages_church_news)
@@ -90,7 +90,7 @@ rich._villages_church_news = day
 
 -- Once a holiday: a second look the same day changes nothing.
 alms.hold(priest, {broke, priest, rich, middling}, day, gossip)
-assert(emeralds(rich) == alms.SAVINGS + 800 - gift and emeralds(priest) == 40)
+assert(emeralds(rich) == alms.SAVINGS + 800 - gift and emeralds(priest) == 8)
 -- The next holiday it gives again.
 alms.hold(priest, {priest, rich}, day + 4, gossip)
 assert(emeralds(rich) == alms.SAVINGS + 800 - gift - alms.donation(alms.SAVINGS + 800 - gift))
@@ -101,6 +101,14 @@ local waiting = villager("waiting", 0)
 assert(alms.give(poor_priest, waiting, day) == 0 and waiting._villages_alms_got == nil)
 poor_priest._villages_alms = 5
 assert(alms.give(poor_priest, waiting, day) == 5 and poor_priest._villages_alms == nil)
+
+-- One that can pay one dinner but not two is topped up too (ticket 19).
+do
+	local fund = villager("cleric4", 0, {_profession = "cleric", _villages_alms = 100})
+	local short = villager("short", ledger.DINNER + 2)
+	assert(alms.give(fund, short, day) == alms.ALMS_TO - ledger.DINNER - 2 and emeralds(short) == alms.ALMS_TO)
+	assert(alms.give(fund, villager("enough", alms.ALMS_TO), day) == 0, "two dinners is enough")
+end
 
 -- A small gift is minor gossip.
 local modest = villager("modest", alms.SAVINGS + 20)
