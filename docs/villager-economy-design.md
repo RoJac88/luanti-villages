@@ -1630,11 +1630,14 @@ The book stays a good that wears out for everyone (ticket 11e). Inspector line `
 the rest goes to the alms fund. Alms top up anyone there with less than two dinners'
 worth to two dinners (before, only one who could not pay one dinner).
 
-**19b. Idle crafters labour.** A crafter that made nothing it could sell yesterday, for
-want of inputs or buyers, does a day's labour as a nitwit does (forager, woodcutter,
-porter; quarrier once there is a quarry), keeping its profession and jobsite. The smiths
-and the armorer, waiting on iron, earn their dinners, and a trade short of goods gathers
-them: a tool smith that forages and fells may make its own sticks.
+**19b. Idle crafters labour** (`production.idle_today`, `labour.lua`). A crafter that can
+make nothing when its work stage starts, for want of inputs or because it holds all of
+its goods that will sell, does that day's labour as a nitwit does (forager, woodcutter,
+porter, peddler; quarrier once there is a quarry), keeping its profession and jobsite.
+It is asked each work day, not judged on what it made yesterday: away from its jobsite it
+makes nothing, and would never come back. Its labour answers `putter` to vanilla, so it is
+not called back to its jobsite. The smiths and the armorer, waiting on iron, earn their
+dinners, and a trade short of goods gathers them.
 
 **19c. New goods from existing professions**, each a vanilla recipe from village goods:
 
