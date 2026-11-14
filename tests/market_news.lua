@@ -221,6 +221,26 @@ do
 	assert(has <= news.OWN_ITEMS, has)
 end
 
+-- A butcher tells of the beef it cooks, though vanilla trade wants nobody here makes
+-- outrank it (ColonyFood, 2026-11-14: it never told of beef, never heard of the
+-- leatherworker's 29, and laboured instead).
+do
+	local butcher = villager("butch", {["mcl_core:emerald"] = 40}, {_profession = "butcher"})
+	local view = possessions.assess(butcher)
+	assert(view.needs["mcl_mobitems:beef"], "beef is a need")
+	local told, needs = false, 0
+	for _, entry in ipairs(news.own(butcher, view, now)) do
+		if entry.kind == "needs" then
+			needs = needs + 1
+			if entry.item == "mcl_mobitems:beef" then told = true end
+		end
+	end
+	assert(told, "its recipe's beef is news")
+	assert(needs <= 2 * news.OWN_ITEMS, needs)
+	assert(news.recipe_inputs({_profession = "butcher", _villages_keeper = true})["mcl_mobitems:beef"] == nil,
+		"the keeper makes nothing of the butcher's")
+end
+
 settings.living_villages_economy = false
 local hal, ivy = villager("hal", {["mcl_core:coal_lump"] = 40}), villager("ivy", {})
 assert(news.exchange({hal, ivy}) == 0 and ivy._villages_market_news == nil)
