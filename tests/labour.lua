@@ -233,6 +233,8 @@ do
 	end
 	named["mcl_core:emerald 2"] = {description = "Lucky"}
 	local flesh = drop(20, "mcl_mobitems:rotten_flesh 3")
+	-- A skeleton's bone is priced, so picked up too (19h: it sells as bone meal or dye).
+	assert(labour.worth_picking(ItemStack("mcl_mobitems:bone 2")), "a bone")
 	local dirt = drop(21, "mcl_core:dirt 5")
 	local worn = drop(22, "mcl_tools:pick_stone 1 300")
 	local lucky = drop(23, "mcl_core:emerald 2")

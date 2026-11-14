@@ -1776,6 +1776,10 @@ only demand told them apart.
   into white dye one for one too, and is priced as one. A farmer with a chest moves bone
   meal over its keep of 4 to its belongings, up to 8, as it does wheat, and anyone
   selling it hands it over as white dye.
+- Bones too: priced at the three bone meal a bone crafts into (a quarter of a vanilla
+  emerald), so a forager picks up a skeleton's as it picks up rotten flesh. Anyone
+  selling a bone hands over three bone meal or three white dye, whichever the buyer
+  needs; the exchange already chooses among a good's conversions by the buyer's needs.
 - Only grey for now, the colour that piled up. Silver wool's base price is 64, and as a
   recipe input it would put silver among the shepherd's top needs.
 

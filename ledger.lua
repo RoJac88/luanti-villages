@@ -95,6 +95,8 @@ local HAND_PRICES = {
 	["mcl_flowers:lily_of_the_valley"] = 1 / 12,
 	-- Bone meal crafts into a white dye, so it is worth one (19h).
 	["mcl_bone_meal:bone_meal"] = 1 / 12,
+	-- A bone crafts into three bone meal; priced, a forager picks one up (labour.lua).
+	["mcl_mobitems:bone"] = 1 / 4,
 }
 -- Every single-trunk species' logs and saplings at oak's prices (labour.lua grows them).
 for _, species in ipairs({"acacia", "spruce", "birch", "jungle"}) do

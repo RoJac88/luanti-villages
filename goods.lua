@@ -18,7 +18,8 @@
 -- good it makes from its spare stock on the spot: instantly and for free, and sparingly,
 -- a short list a job. A few are anyone's (ANYONE): a lily of the valley or bone meal (a
 -- farmer's spare, farmer.lua) sells as the white dye it crafts into, one for one, for the
--- shepherd to dye grey wool white (19h). None is for food: the butcher cooks (recipes.lua). Player trades
+-- shepherd to dye grey wool white (19h); a bone (a forager picks up a skeleton's) as the
+-- three bone meal or three white dye it makes, whichever the buyer wants. None is for food: the butcher cooks (recipes.lua). Player trades
 -- convert nothing. Each gives `ratio` of its product per source, `takes` sources at a
 -- time (1 unless set): two wool make three carpets.
 local core = minetest
@@ -68,6 +69,8 @@ end
 for log, planks in pairs(SPECIES) do table.insert(conversions.woodcutter, {from = log, to = planks, ratio = 4}) end
 local ANYONE = {
 	{from = "mcl_bone_meal:bone_meal", to = "mcl_dye:white", ratio = 1},
+	{from = "mcl_mobitems:bone", to = "mcl_bone_meal:bone_meal", ratio = 3},
+	{from = "mcl_mobitems:bone", to = "mcl_dye:white", ratio = 3},
 	{from = "mcl_flowers:lily_of_the_valley", to = "mcl_dye:white", ratio = 1},
 }
 for _, list in pairs(conversions) do
