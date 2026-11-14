@@ -20,6 +20,15 @@
 -- (`_villages_alms_got`). Donations are taken first, so today's gifts can go out today;
 -- what is left waits for the next holiday.
 --
+-- A craftsman's stake (ColonyFood, 2026-11-14). A tool smith with one emerald could not
+-- buy the cobble and sticks for the stone hoe a farmer wanted, nor a butcher the beef
+-- piling up at the leatherworker's, so they made nothing and starved. One with a recipe at
+-- its tier (recipes.lua; not the keeper or a Builder, who have the tavern's and the
+-- bench's money) is topped up past ALMS_TO by the price of CRAFT_BATCH crafts of its
+-- cheapest recipe, fuel too, at base prices (ledger.price), at most STAKE_CAP. Everyone's
+-- ALMS_TO is given first, the stakes after. When the fund runs short the cleric gives from
+-- its own emeralds over SAVINGS: it held 610 it had no use for.
+--
 -- News. Each villager there also swaps market news with the cleric once a holiday
 -- (`_villages_church_news`), as diners do with the keeper (meal.lua): the service is no
 -- time for conversations, and the social stage after it lasts seconds, so the cleric
@@ -47,8 +56,13 @@ local KEEP_SHARE = 0.1
 local REACH = 12
 local RECHECK_SECONDS = 1
 local VILLAGER = "mobs_mc:villager"
+local CRAFT_BATCH = 4
+local STAKE_CAP = 3 * DINNER
+local COAL = "mcl_core:coal_lump"
+local recipes = dofile(core.get_modpath("living_villages") .. "/recipes.lua")
 
-local M = {SAVINGS = SAVINGS, MAJOR = MAJOR, ALMS_TO = ALMS_TO, KEEP_SHARE = KEEP_SHARE, REACH = REACH}
+local M = {SAVINGS = SAVINGS, MAJOR = MAJOR, ALMS_TO = ALMS_TO, KEEP_SHARE = KEEP_SHARE, REACH = REACH,
+	CRAFT_BATCH = CRAFT_BATCH, STAKE_CAP = STAKE_CAP}
 
 local function short_id(id)
 	return tostring(id):sub(1, 6)
@@ -85,16 +99,51 @@ function M.collect(priest, donor, witnesses, day, gossip)
 	return gift
 end
 
--- Tops a villager with less than ALMS_TO up to it, once today. Returns the alms.
-function M.give(priest, poor, day)
-	if poor == priest or poor._villages_alms_got == day then return 0 end
-	local has = possessions.emeralds(poor)
-	if has >= ALMS_TO then return 0 end
-	local alms = math.min(ALMS_TO - has, priest._villages_alms or 0)
-	if alms <= 0 then return 0 end
-	poor._villages_alms_got = day
-	priest._villages_alms = priest._villages_alms - alms
+-- A craftsman's stake (see above): 0 for one with no recipe to make.
+function M.stake(villager)
+	if villager.child or villager._villages_keeper or villager._villages_builder then return 0 end
+	local tier = villager._max_trade_tier or 1
+	local cheapest
+	for _, recipe in ipairs(recipes[villager._profession] or {}) do
+		if (recipe.tier or 1) <= tier then
+			local cost = recipe.fuel and (ledger.price(COAL) or 0) * recipe.fuel or 0
+			for _, input in ipairs(recipe.from) do
+				local price = ledger.price(input[1])
+				if not price then cost = nil; break end
+				cost = cost + price * input[2]
+			end
+			if cost and (not cheapest or cost < cheapest) then cheapest = cost end
+		end
+	end
+	if not cheapest then return 0 end
+	return math.min(math.ceil(cheapest * CRAFT_BATCH), STAKE_CAP)
+end
+
+-- What the cleric can give: its fund, then its own emeralds over SAVINGS.
+local function can_give(priest)
+	return (priest._villages_alms or 0) + math.max(possessions.emeralds(priest) - SAVINGS, 0)
+end
+
+local function pay_out(priest, amount)
+	local from_fund = math.min(amount, priest._villages_alms or 0)
+	priest._villages_alms = (priest._villages_alms or 0) - from_fund
 	if priest._villages_alms <= 0 then priest._villages_alms = nil end
+	if amount > from_fund then possessions.take(priest, EMERALD, amount - from_fund) end
+end
+
+-- Tops a villager up to `upto` (ALMS_TO, or with its stake, M.stake), once today for each
+-- level. Returns the alms.
+function M.give(priest, poor, day, upto)
+	upto = upto or ALMS_TO
+	if poor == priest or (poor._villages_alms_got == day and (poor._villages_alms_upto or ALMS_TO) >= upto) then
+		return 0
+	end
+	local has = possessions.emeralds(poor)
+	if has >= upto then return 0 end
+	local alms = math.min(upto - has, can_give(priest))
+	if alms <= 0 then return 0 end
+	poor._villages_alms_got, poor._villages_alms_upto = day, upto
+	pay_out(priest, alms)
 	possessions.add(poor, EMERALD, alms)
 	core.log("action", string.format("[living_villages] alms: cleric %s gave %d emerald(s) to villager %s (had %d, fund %d)",
 		short_id(priest._id), alms, short_id(poor._id), has, priest._villages_alms or 0))
@@ -126,6 +175,10 @@ function M.hold(priest, list, day, gossip)
 		if villager ~= priest then M.collect(priest, villager, list, day, gossip) end
 	end
 	for _, villager in ipairs(list) do M.give(priest, villager, day) end
+	for _, villager in ipairs(list) do
+		local stake = M.stake(villager)
+		if stake > 0 then M.give(priest, villager, day, ALMS_TO + stake) end
+	end
 	for _, villager in ipairs(list) do M.church_news(priest, villager, day) end
 end
 

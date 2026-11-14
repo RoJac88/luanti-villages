@@ -110,6 +110,41 @@ do
 	assert(alms.give(fund, villager("enough", alms.ALMS_TO), day) == 0, "two dinners is enough")
 end
 
+-- A broke craftsman gets a stake past two dinners, the price of four crafts of its
+-- cheapest recipe, fuel too (ColonyFood, 2026-11-14: a butcher with one emerald could not
+-- buy the beef piling up at the leatherworker's). No recipe, no stake; nor for the keeper
+-- or a Builder.
+do
+	local stake = alms.stake({_profession = "butcher"})
+	local beef = ledger.price("mcl_mobitems:beef") + ledger.price("mcl_core:coal_lump")
+	assert(stake > 0 and stake <= math.min(math.ceil(beef * alms.CRAFT_BATCH), alms.STAKE_CAP), "beef, or cheaper")
+	assert(alms.stake({_profession = "nitwit"}) == 0 and alms.stake({_profession = "farmer"}) == 0)
+	assert(alms.stake({_profession = "butcher", _villages_keeper = true}) == 0)
+	assert(alms.stake({_profession = "mason", _villages_builder = true}) == 0)
+	assert(alms.stake({_profession = "weapon_smith"}) == alms.STAKE_CAP, "capped")
+
+	-- Two dinners for everyone first, then the stakes; a small fund runs out on the stake.
+	local fund = villager("cleric5", 0, {_profession = "cleric", _villages_alms = alms.ALMS_TO * 2 + 10})
+	local butcher = villager("butch", 0, {_profession = "butcher"})
+	local idle = villager("idle", 0)
+	alms.hold(fund, {butcher, fund, idle}, day, nil)
+	assert(emeralds(idle) == alms.ALMS_TO, "food money first")
+	assert(emeralds(butcher) == alms.ALMS_TO + 10 and fund._villages_alms == nil, "the stake takes what is left")
+	-- With the fund empty, the cleric gives from its own emeralds over its savings.
+	local rich_priest = villager("cleric6", alms.SAVINGS + 100, {_profession = "cleric"})
+	local smith = villager("smith", 0, {_profession = "tool_smith"})
+	alms.hold(rich_priest, {smith}, day, nil)
+	local want = alms.ALMS_TO + alms.stake(smith)
+	assert(emeralds(smith) == want and emeralds(rich_priest) == alms.SAVINGS + 100 - want)
+	-- Once a holiday: nothing more today, even after spending it.
+	possessions.take(smith, EMERALD, want)
+	alms.hold(rich_priest, {smith}, day, nil)
+	assert(emeralds(smith) == 0)
+	-- Never below its savings.
+	local thrifty = villager("cleric7", alms.SAVINGS, {_profession = "cleric"})
+	assert(alms.give(thrifty, villager("x", 0), day) == 0 and emeralds(thrifty) == alms.SAVINGS)
+end
+
 -- A small gift is minor gossip.
 local modest = villager("modest", alms.SAVINGS + 20)
 local seen_by = villager("seen", 50)

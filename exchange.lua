@@ -210,7 +210,7 @@ function M.settle(trade)
 		price = trade.goods_count .. " " .. trade.goods
 	end
 	local made = trade.from and string.format(" (from %d %s)", from_count, from) or ""
-	asks.sold(seller, trade.item, core.get_day_count and core.get_day_count() or 0)
+	asks.sold(seller, trade.item, core.get_day_count and core.get_day_count() or 0, trade.count)
 	core.log("action", string.format("[living_villages] trade: villager %s sold %d %s%s to %s for %s",
 		short_id(seller), trade.count, trade.item, made, short_id(buyer), price))
 	return true

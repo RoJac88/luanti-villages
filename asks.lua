@@ -12,20 +12,30 @@
 -- item at least that much pays it. The factor moves with how the item sells:
 --
 -- * each sale raises it by MARKUP (M.sold);
--- * each game day the seller held some spare and sold none of it, it falls by MARKDOWN
---   (M.daily, from possessions.lua's step);
+-- * each game day the seller held some spare and sold less than SLOW_SHARE of it, it falls
+--   by MARKDOWN (M.daily, from possessions.lua's step). It used to fall only on a day with
+--   no sale at all: a leatherworker that sold the butcher 2 beef now and then kept asking
+--   near MAX while 26 more piled up (ColonyFood, 2026-11-14);
 -- * it stays within MIN and MAX.
+--
+-- A seller that believes an item worth less than its base price (its price multiplier
+-- under 1, prices.lua) asks that much less: a market that heard of a glut valued beef at
+-- an eighth of its price while the leatherworker asked near twice it, so the butcher
+-- bought none and the beef piled up (ColonyFood, 2026-11-14). A belief over 1 leaves the
+-- ask to its sales, so demand is not counted twice.
 --
 -- A peddler (labour.lua) never asks less than it paid for its lot. An item with no base
 -- price has no ask: exchange.lua falls back to the midpoint for it.
 local core = minetest
 local ledger = dofile(core.get_modpath("living_villages") .. "/ledger.lua")
+local prices = dofile(core.get_modpath("living_villages") .. "/prices.lua")
 
 local MIN, MAX = 0.5, 2
 local MARKUP, MARKDOWN = 1.05, 0.9
+local SLOW_SHARE = 0.25
 local NEAR_ONE = 0.01
 
-local M = {MIN = MIN, MAX = MAX, MARKUP = MARKUP, MARKDOWN = MARKDOWN}
+local M = {MIN = MIN, MAX = MAX, MARKUP = MARKUP, MARKDOWN = MARKDOWN, SLOW_SHARE = SLOW_SHARE}
 
 local function clamp(factor)
 	return math.min(MAX, math.max(MIN, factor))
@@ -48,22 +58,31 @@ end
 function M.ask(seller, item)
 	local base = ledger.price(item)
 	if not base or base <= 0 then return nil end
-	local ask = base * M.factor(seller, item)
+	local ask = base * M.factor(seller, item) * math.min(prices.factor(seller._villages_prices, item), 1)
 	local peddle = seller._villages_peddle
 	if peddle and peddle.item == item and not peddle.buying and peddle.bid then ask = math.max(ask, peddle.bid) end
 	return ask
 end
 
--- A sale of the item on `day`: the ask rises.
-function M.sold(seller, item, day)
+-- `_villages_ask_sold` is {[item] = {day, count}}: the last day it sold the item, and how
+-- many since its last daily look. A bare day is a save from before counts were kept.
+local function sale(sold, item)
+	local entry = sold[item]
+	if type(entry) == "number" then return {day = entry, count = math.huge} end
+	return entry
+end
+
+-- A sale of count (1 if not given) of the item on `day`: the ask rises.
+function M.sold(seller, item, day, count)
 	set_factor(seller, item, M.factor(seller, item) * MARKUP)
 	local sold = seller._villages_ask_sold or {}
-	sold[item] = day
+	local entry = sale(sold, item) or {count = 0}
+	sold[item] = {day = day, count = entry.count + (count or 1)}
 	seller._villages_ask_sold = sold
 end
 
--- Once a game day: every item of `surplus` (item -> count) it sold none of since the last
--- time is asked for less. Returns whether it ran today.
+-- Once a game day: every item of `surplus` (item -> count) it sold less than SLOW_SHARE of
+-- since the last time is asked for less. Returns whether it ran today.
 function M.daily(seller, surplus, day)
 	if not day or seller._villages_asks_day == day then return false end
 	local since = seller._villages_asks_day
@@ -71,15 +90,19 @@ function M.daily(seller, surplus, day)
 	if not since then return true end
 	local sold = seller._villages_ask_sold or {}
 	for item, count in pairs(surplus or {}) do
-		if count > 0 and ledger.price(item) and (sold[item] or -math.huge) < since then
+		local entry = sale(sold, item)
+		local moved = entry and entry.day >= since and entry.count or 0
+		if count > 0 and ledger.price(item) and moved < count * SLOW_SHARE then
 			set_factor(seller, item, M.factor(seller, item) * MARKDOWN)
 		end
 	end
-	-- What sold before the last day is forgotten; only the day matters.
-	for item, at in pairs(sold) do
-		if at < since then sold[item] = nil end
+	-- Each day's count starts afresh; what sold before the last day is forgotten.
+	local kept = {}
+	for item in pairs(sold) do
+		local entry = sale(sold, item)
+		if entry.day >= since then kept[item] = {day = entry.day, count = 0} end
 	end
-	seller._villages_ask_sold = next(sold) and sold or nil
+	seller._villages_ask_sold = next(kept) and kept or nil
 	return true
 end
 
