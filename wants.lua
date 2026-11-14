@@ -55,6 +55,10 @@ M.GOODS = {
 			{item = "mcl_tools:pick_stone", uses = 64, rate = 3},
 			{item = "mcl_tools:pick_wood", uses = 30, rate = 2},
 		}},
+	-- A rod (ticket 19c) makes a catch likelier, not quicker (fisherman.lua): one cast in
+	-- four lands a fish by hand. About half VoxeLibre's 65 uses.
+	{key = "rod", item = "mcl_fishing:fishing_rod", professions = {fisherman = true}, use = "fish",
+		uses = 32, rate = 1.5, yields = {["mcl_fishing:fish_raw"] = 0.25}, effect = "yield"},
 }
 M.BOOK = {key = "book", item = "mcl_books:book", days = 3, rate = 1.2}
 -- Game seconds in a day at the default time_speed (72).

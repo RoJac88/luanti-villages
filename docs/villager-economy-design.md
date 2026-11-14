@@ -1625,9 +1625,9 @@ twice its base price.
 | White banner | Cartographer | 6 |
 | Bookshelf | Librarian | 8 |
 | Apple | Forager | 2 |
-| Poppy, dandelion | (foragers, 19c) | 2 |
-| White wool | Shepherd (until carpets, 19c) | 4 |
-| Leather | Leatherworker (until item frames, 19c) | 4 |
+| Poppy, dandelion | Foragers (19c) | 2 |
+| White carpet | Shepherd (19c) | 4 |
+| Item frame | Cartographer (19c) | 8 |
 
 A villager that grows poorer keeps what it uses until it is used up, and wants no more.
 The book stays a good that wears out for everyone (ticket 11e). Inspector line `Comforts`.
@@ -1649,12 +1649,20 @@ dinners, and a trade short of goods gathers them.
 
 | Profession | Good | Recipe | Buyer |
 |---|---|---|---|
-| Fletcher | Fishing rod | 3 sticks, 2 string | Fishermen: a rod wears out (`wants.lua`) |
-| Cartographer | Item frame | 8 sticks, 1 leather | Comfort; leather's second buyer |
-| Mason | Flower pot | 3 bricks, from its clay | Comfort |
-| Shepherd | Carpet | 2 wool make 3 | Comfort |
-| Librarian | Glass bottle | 3 glass, from sand | The cleric, as vanilla's buys |
-| Foragers | Poppy, dandelion | picked | Comfort |
+| Fletcher | Fishing rod | 3 sticks, 2 string; its own sticks from logs | Fishermen: a rod wears out (`wants.lua`) |
+| Cartographer | Item frame | 8 sticks, 1 leather | Comfort, for the richest (vanilla's 7 emeralds); leather's second buyer |
+| Shepherd | Carpet | 2 wool make 3, at sale (a conversion that `takes` 2) | Comfort |
+| Foragers | Poppy, dandelion | the bloom: the plant stays and blooms again 3 days later | Comfort |
+
+A fishing rod makes a catch likelier, not quicker: one cast in four lands a fish by hand,
+one and a half in four with a rod, which lasts 32 casts (half VoxeLibre's). A flower is
+never dug, as before: the forager takes the bloom and leaves the plant, so the
+"take only what comes back" rule holds.
+
+Left out: the mason's flower pot (its bricks need clay, which no villager supplies) and
+the librarian's glass bottle (its glass needs sand). Wants no village fills, such as the
+cleric's rotten flesh, stay: a need is also how a player sells to a villager
+(`trade_window.lua`), and Principle 1 makes the player the open edge.
 
 **19d. Quarries players build** (`labour.lua`, `wants.lua`). An audit of every want on
 2026-11-14 found cobble and stone behind most of the ones no villager can fill: the tool

@@ -3,6 +3,7 @@ local now, day, time = 1000, 5, 9000 / 24000
 local settings = {}
 local nodes, objects, logs = {}, {}, {}
 local player_leaves = {}
+local metas = {}
 local function key(pos) return pos.x .. "," .. pos.y .. "," .. pos.z end
 local function parse(k)
 	local x, y, z = k:match("(-?%d+),(-?%d+),(-?%d+)")
@@ -51,7 +52,13 @@ minetest = {
 	get_item_group = function(name, group) return GROUPS[name] and GROUPS[name][group] or 0 end,
 	registered_nodes = {},
 	get_meta = function(pos)
-		return {get_int = function(_, field) return field == "player_leaves" and player_leaves[key(pos)] or 0 end}
+		return {
+			get_int = function(_, field)
+				if field == "player_leaves" then return player_leaves[key(pos)] or 0 end
+				return metas[key(pos) .. field] or 0
+			end,
+			set_int = function(_, field, value) metas[key(pos) .. field] = value end,
+		}
 	end,
 	settings = {
 		get = function(_, name) return settings[name] end,
@@ -501,6 +508,31 @@ do
 		"mcl_core:water_source", "mcl_core:water_flowing"}) do
 		defs[name] = nil
 	end
+	for k in pairs(nodes) do nodes[k] = nil end
+	for k, v in pairs(saved) do nodes[k] = v end
+end
+
+-- Flowers (ticket 19c): a forager picks a poppy's or dandelion's bloom and leaves the
+-- plant, which blooms again some days later.
+do
+	settings.living_villages_economy = nil
+	local saved = {}
+	for k, v in pairs(nodes) do saved[k] = v end
+	for k in pairs(nodes) do nodes[k] = nil end
+	local poppy = {x = 4, y = 1, z = 4}
+	nodes[key(poppy)] = "mcl_flowers:poppy"
+	nodes[key({x = -4, y = 1, z = 4})] = "mcl_flowers:tulip_red"
+	local flo = villager({_id = "flo"})
+	local targets = labour.forage_targets(flo)
+	assert(#targets == 1 and targets[1].kind == "flower" and targets[1].pos.x == 4, "poppies and dandelions only")
+	assert(labour.forage(flo, targets[1]) == "mcl_flowers:poppy" and count(flo, "mcl_flowers:poppy") == 1)
+	assert(nodes[key(poppy)] == "mcl_flowers:poppy", "the plant stays")
+	assert(#labour.forage_targets(flo) == 0 and labour.forage(flo, targets[1]) == nil, "picked today")
+	day = day + 3
+	assert(#labour.forage_targets(flo) == 1, "in bloom again")
+	possessions.add(flo, "mcl_flowers:poppy", 7)
+	assert(#labour.forage_targets(flo) == 0, "it keeps eight")
+	day = day - 3
 	for k in pairs(nodes) do nodes[k] = nil end
 	for k, v in pairs(saved) do nodes[k] = v end
 end
