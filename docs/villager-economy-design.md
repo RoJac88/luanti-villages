@@ -1682,6 +1682,18 @@ anywhere open beside it. Now:
 - It stays at the generator between blocks, and one quarrier works a cell at a time.
 - Mining stone drops cobble, as in vanilla. The mason smelts cobble into stone (one
   fuel each), for its carved stone and to sell.
+- At the generator it is held on its standing cell, as a fisherman is at the water. A
+  mined cell is open, and often has a floor: at ColonyFood's first generator a quarrier
+  stepped into it and burned when the lava flowed back.
+- With a pick the lava flows back faster: REGEN_SECONDS (1, what a quarrier by hand
+  measured at ColonyFood) over the pick's rate after a block, the cell turns to what the lava would cool
+  it to, unless it refilled by then or someone stands in it. So a pick speeds both the
+  mining and the generator; by hand the generator keeps its own pace, which is logged.
+- A Builder builds a quarry (`schematics/quarry.mts`, from the user's first generator at
+  ColonyFood: water, the cell and lava in a row, under glass, reached down a corridor that
+  ends at the cell) when the village is short of cobble or stone and has no generator. It
+  is never generated with a village. Its lava and water come in buckets, so a player
+  supplies the lava bucket.
 - A block takes 8 seconds by hand. A pickaxe divides that: wood by 2, stone by 3, and
   iron, gold and diamond by 4, past which a generator could not keep up. The tool smith
   also makes wooden picks and hoes from planks, so the first picks need no cobble. Picks

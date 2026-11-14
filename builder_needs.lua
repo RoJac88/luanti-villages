@@ -15,7 +15,11 @@
 --   5. goods     The worst gap (economy_report.lua): a building holding the jobsite of a
 --                profession that makes what the village is short of, unless such a
 --                jobsite already stands free, when it lacks people, not buildings.
---   6. jobs      More unemployed adults than free job blocks: a workplace.
+--   6. stone     The village is short of cobble or stone (its news, or the Builder's own
+--                wants) and no generator stands near (lava with water two cells or less
+--                from it): a quarry (village_buildings.lua), for its quarriers (labour.lua).
+--                Named here, not picked: it is never generated, so has no share.
+--   6b. jobs     More unemployed adults than free job blocks: a workplace.
 --   7. mix       Nothing pressing: the mix the village generated with (village_census.lua),
 --                the worst gap's buildings counting double, as before. A lamp only comes
 --                this way, and goes up no nearer than SPREAD.lamp to another lamp, so they
@@ -36,6 +40,9 @@ M.WORKPLACES = {
 	butcher = true, woodcutter_shed = true,
 }
 M.FOOD = {"greenhouse", "farm"}
+M.QUARRY = "quarry"
+-- What a quarry answers.
+M.STONE = {["mcl_core:cobble"] = true, ["mcl_core:stone"] = true}
 -- reach: how far from a bed a villager looks for one (tavern.lua, bell_hangout.lua, church.lua).
 M.CIVIC = {
 	{need = "tavern", building = "tavern", reach = 48},
@@ -132,7 +139,7 @@ end
 --            civic = {tavern = {pos}, bell = {pos}, church = {pos}}, civic_beds = {{pos}},
 --            gap = {profession, items, buildings = set} or nil, idle, free_jobs,
 --            free_by_profession = {profession = n}, spread = {building = {pos}},
---            skip = {need or building = true}}
+--            stone_short, generators, skip = {need or building = true}}
 --   record, schematic_table, block_totals: as village_census.pick takes them.
 function M.decide(survey, record, schematic_table, block_totals, census)
 	local skip = survey.skip or {}
@@ -198,6 +205,11 @@ function M.decide(survey, record, schematic_table, block_totals, census)
 		if found then return found end
 	end
 
+	if survey.stone_short and (survey.generators or 0) == 0 and not skip.stone
+		and listed(schematic_table, M.QUARRY) then
+		return answer(M.QUARRY, "stone", "the village is short of cobble and has no quarry")
+	end
+
 	local idle, open = survey.idle or 0, survey.free_jobs or 0
 	if idle > open then
 		local found = answer(census.pick_among(record, schematic_table, M.WORKPLACES, block_totals, favoured), "jobs",
@@ -240,7 +252,7 @@ end
 -- `radius` (horizontally) and `height`; only beds within `range` (the Builder's site range)
 -- count for the civic needs, since a building can only go up that near.
 --   opts: {radius, height, range, villagers, food (module or nil with the economy off),
---          common, gap, skip}
+--          common, gap, skip, stone_short}
 function M.survey(core, bench, opts)
 	local minp = {x = bench.x - opts.radius, y = bench.y - opts.height, z = bench.z - opts.radius}
 	local maxp = {x = bench.x + opts.radius, y = bench.y + opts.height, z = bench.z + opts.radius}
@@ -254,15 +266,22 @@ function M.survey(core, bench, opts)
 	for _, name in ipairs(common.workstation_search_nodes()) do names[#names + 1] = name end
 	for level = 1, 7 do names[#names + 1] = "mcl_composters:composter_" .. level end
 	names[#names + 1] = "mcl_composters:composter_ready"
+	names[#names + 1] = "group:lava"
 
 	local survey = {
 		beds = {}, civic_beds = {}, civic = {tavern = {}, bell = {}, church = {}},
 		free_jobs = 0, free_by_profession = {}, spread = {}, bedless = 0, idle = 0, gap = opts.gap, skip = opts.skip,
+		stone_short = opts.stone_short, generators = 0,
 	}
 	for _, pos in ipairs(find(core, minp, maxp, names)) do
 		local node = core.get_node_or_nil(pos)
 		local name = node and node.name or ""
-		if spread_of[name] then
+		if core.get_item_group(name, "lava") > 0 then
+			-- A generator: water near the lava, with no more than the cell between.
+			local near = core.find_nodes_in_area({x = pos.x - 2, y = pos.y - 1, z = pos.z - 2},
+				{x = pos.x + 2, y = pos.y + 1, z = pos.z + 2}, {"group:water"})
+			if #near > 0 then survey.generators = survey.generators + 1 end
+		elseif spread_of[name] then
 			local list = survey.spread[spread_of[name]] or {}
 			survey.spread[spread_of[name]] = list
 			list[#list + 1] = pos

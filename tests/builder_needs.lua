@@ -12,6 +12,7 @@ local TABLE = {
 	{name = "fisherman_hut", max_num = 0.05},
 	{name = "tavern", max_num = 0.05}, {name = "church", max_num = 0.04},
 	{name = "belltower", max_num = 0}, {name = "lamp", max_num = 0.1},
+	{name = "quarry", max_num = 0},
 }
 
 local function village(counts)
@@ -134,6 +135,19 @@ do
 	gap = {profession = "fisherman", items = {"mcl_fishing:fish_raw"}, buildings = {fisherman_hut = true, medium_house = true}}
 	found = decide(survey({gap = gap}))
 	assert(found.building == "fisherman_hut" or found.building == "medium_house")
+end
+
+-- Short of cobble with no generator near: a quarry, named though it has no share; with
+-- a generator, not short, or given up on for now, the next need.
+do
+	local found = decide(survey({stone_short = true, generators = 0, idle = 2, free_jobs = 1}))
+	assert(found.need == "stone" and found.building == "quarry", found.need)
+	assert(found.reason == "the village is short of cobble and has no quarry")
+	assert(decide(survey({stone_short = true, generators = 1})).need ~= "stone")
+	assert(decide(survey({stone_short = false, generators = 0})).need ~= "stone")
+	assert(decide(survey({stone_short = true, generators = 0, skip = {stone = true}})).need ~= "stone")
+	-- The mix never picks it.
+	for _ = 1, 50 do assert(census.pick(RECORD, TABLE) ~= "quarry") end
 end
 
 -- More unemployed than free job blocks: a workplace.

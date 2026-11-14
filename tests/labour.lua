@@ -119,7 +119,8 @@ local function villager(fields)
 	local pos = {x = 0, y = 1, z = 0}
 	local v = {_id = "nina", _profession = "nitwit", _bed = {x = 0, y = 1, z = 0}, state = "stand", walks = {}}
 	for k, value in pairs(fields or {}) do v[k] = value end
-	v.object = {get_pos = function() return pos end}
+	v.object = {get_pos = function() return pos end, set_velocity = function() end,
+		set_pos = function(_, p) pos = {x = p.x, y = p.y, z = p.z} end}
 	v.move_to = function(p) pos = {x = p.x, y = p.y, z = p.z} end
 	v.gopath = function(self, target, arrived)
 		self.walks[#self.walks + 1] = target
@@ -550,6 +551,64 @@ do
 	end
 	for k in pairs(nodes) do nodes[k] = nil end
 	for k, v in pairs(saved) do nodes[k] = v end
+end
+
+-- ColonyFood's first generator (2026-11-14): water, cell, lava in a row, walled, reached
+-- down a one-wide corridor that ends at the cell, which has a floor. A quarrier stepped
+-- into the mined cell and burned; now it is held where it stands, facing the cell.
+do
+	settings.living_villages_economy = nil
+	local function at(x, y, z) return {x = x, y = y, z = z} end
+	local defs = minetest.registered_nodes
+	defs.air = {walkable = false}
+	defs["mcl_core:stone"], defs["mcl_core:cobble"] = {walkable = true}, {walkable = true}
+	defs["mcl_core:lava_source"] = {walkable = false, liquidtype = "source", damage_per_second = 4}
+	defs["mcl_core:lava_flowing"] = {walkable = false, liquidtype = "flowing", damage_per_second = 4}
+	defs["mcl_core:water_source"] = {walkable = false, liquidtype = "source"}
+	local saved = {}
+	for k, v in pairs(nodes) do saved[k] = v end
+	for k in pairs(nodes) do nodes[k] = nil end
+	for x = -2, 2 do for z = -3, 1 do nodes[key(at(x, 0, z))] = "mcl_core:stone" end end
+	nodes[key(at(-1, 1, 0))] = "mcl_core:water_source"
+	nodes[key(at(0, 1, 0))] = "mcl_core:cobble"
+	nodes[key(at(1, 1, 0))] = "mcl_core:lava_source"
+	for _, x in ipairs({-2, -1, 1, 2}) do nodes[key(at(x, 1, -1))] = "mcl_core:stone" end
+	for x = -2, 2 do nodes[key(at(x, 1, 1))] = "mcl_core:stone" end
+	-- The corridor is (0, 1, -1) and (0, 1, -2); its end, the cell, is (0, 1, 0).
+	local cole = villager({_id = "cole", _bed = at(0, 1, -10)})
+	cole._villages_labour = {day = day, activity = "quarrier"}
+	cole.order = "work"
+	cole.move_to(at(0, 1, -1))
+	labour.step(cole, now + 3000)
+	assert(cole._villages_quarry_hold and vector.equals(cole._villages_quarry_hold.stand, at(0, 1, -1)))
+	assert(cole.order == "stand" and cole.state == "stand")
+	assert(count(cole, "mcl_core:cobble") == 1 and nodes[key(at(0, 1, 0))] == nil)
+	-- Pushed into the open cell, it is put back.
+	cole.move_to(at(0, 0.5, 0))
+	labour.hold(cole)
+	local pos = cole.object:get_pos()
+	assert(pos.x == 0 and pos.z == -1, "back on its cell")
+	-- The refill: cobble where the lava is beside the cell, never on someone in it.
+	cole.move_to(at(0, 0.5, 0))
+	objects[#objects + 1] = cole.object
+	assert(labour.refill(at(0, 1, 0)) == nil and nodes[key(at(0, 1, 0))] == nil, "not on a villager")
+	table.remove(objects)
+	assert(labour.refill(at(0, 1, 0)) == "mcl_core:cobble" and nodes[key(at(0, 1, 0))] == "mcl_core:cobble")
+	assert(labour.refill(at(0, 1, 0)) == nil, "already full")
+	-- Stone under lava: lava above the cell, water beside it.
+	nodes[key(at(0, 1, 0))] = nil
+	nodes[key(at(1, 1, 0))] = "mcl_core:stone"
+	nodes[key(at(0, 2, 0))] = "mcl_core:lava_source"
+	assert(labour.refill(at(0, 1, 0)) == "mcl_core:stone")
+	-- Off work, it is let go with its order back.
+	labour.release(cole)
+	assert(cole._villages_quarry_hold == nil and cole.order == "work")
+	for k in pairs(nodes) do nodes[k] = nil end
+	for k, v in pairs(saved) do nodes[k] = v end
+	for _, name in ipairs({"air", "mcl_core:stone", "mcl_core:cobble", "mcl_core:lava_source", "mcl_core:lava_flowing",
+		"mcl_core:water_source"}) do
+		defs[name] = nil
+	end
 end
 
 -- Flowers (ticket 19c): a forager picks a poppy's or dandelion's bloom and leaves the
