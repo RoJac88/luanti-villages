@@ -887,7 +887,11 @@ function M.step(self, now)
 	if distance <= REACH then return work(self, activity, target) end
 	-- Trunks are solid: stand beside one.
 	local goal = target.pos
-	if target.kind == "sapling" or target.kind == "fell" then goal = beside(target.pos) end
+	-- A sapling is planted from beside its spot, not standing on it: a tree that grows
+	-- around a villager suffocates it.
+	if target.kind == "sapling" or target.kind == "fell" or target.kind == "plant" or target.kind == "replant" then
+		goal = beside(target.pos)
+	end
 	-- A generator's cobble is solid too: beside it, or a step lower with it at head height.
 	if target.kind == "cobble" then
 		goal = beside(target.pos) or beside({x = target.pos.x, y = target.pos.y - 1, z = target.pos.z})

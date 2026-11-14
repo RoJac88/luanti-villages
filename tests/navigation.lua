@@ -30,6 +30,7 @@ local function settle()
 	end
 end
 
+local sapling_cells = {}
 minetest = {
 	registered_nodes = {
 		["air"] = {walkable = false, liquidtype = "none"},
@@ -44,6 +45,7 @@ minetest = {
 		["test:fence"] = {walkable = true},
 		["test:trapdoor"] = {walkable = true},
 		["test:cactus"] = {walkable = true},
+		["mcl_core:sapling"] = {walkable = false, liquidtype = "none"},
 		["mcl_core:water_source"] = {liquidtype = "source"},
 		["mcl_core:water_flowing"] = {liquidtype = "flowing"},
 	},
@@ -74,6 +76,7 @@ minetest = {
 		if wooden_door and pos.x == 1 and pos.y == 0 and pos.z == 0 then
 			return {name = door_name, param2 = door_param2}
 		end
+		if sapling_cells[pos.x .. ":" .. pos.y .. ":" .. pos.z] then return {name = "mcl_core:sapling"} end
 		local water_node = water_source_nodes[pos.x .. ":" .. pos.y .. ":" .. pos.z]
 		if water_node then return {name = water_node} end
 		local shore_node = raised_shore_nodes[pos.x .. ":" .. pos.y .. ":" .. pos.z]
@@ -110,7 +113,8 @@ minetest = {
 			or group == "fence" and name == "test:fence" and 1
 			or group == "slab" and name == "test:low_slab" and 1
 			or group == "trapdoor" and name == "test:trapdoor" and 1
-			or group == "cactus" and name == "test:cactus" and 1 or 0
+			or group == "cactus" and name == "test:cactus" and 1
+			or group == "sapling" and name == "mcl_core:sapling" and 1 or 0
 	end,
 	get_objects_inside_radius = function() return nearby_objects end,
 	hash_node_position = function(pos) return pos.x .. ":" .. pos.y .. ":" .. pos.z end,
@@ -228,6 +232,38 @@ assert(detour_arrivals == 1, "and its own arrival callback")
 for _, waypoint in ipairs(detour_entity.waypoints) do
 	assert(not (waypoint.pos.x == 1 and waypoint.pos.z == 0), "the detour keeps clear of the overhang")
 end
+-- A sapling is stepped around (a tree grown around a villager suffocates it), unless
+-- the walk ends on it.
+sapling_cells["3:0:0"] = true
+local sapling_entity = {
+	_jobsite = {x = 50, y = 0, z = 0}, state = "stand",
+	object = {
+		get_pos = function() return {x = 5, y = 0.5, z = 0} end,
+		set_velocity = function() end,
+	},
+}
+timeofday = 0.3
+assert(overhang_def.gopath(sapling_entity, {x = -2, y = 0, z = 0}, nil, true))
+settle()
+timeofday = 0.8
+assert(sapling_entity.state == "gowp")
+for _, waypoint in ipairs(sapling_entity.waypoints) do
+	assert(not (waypoint.pos.x == 3 and waypoint.pos.z == 0), "around the sapling")
+end
+local onto_entity = {
+	_jobsite = {x = 50, y = 0, z = 0}, state = "stand",
+	object = {
+		get_pos = function() return {x = 5, y = 0.5, z = 2} end,
+		set_velocity = function() end,
+	},
+}
+timeofday = 0.3
+assert(overhang_def.gopath(onto_entity, {x = 3, y = 0, z = 0}, nil, true))
+settle()
+timeofday = 0.8
+assert(onto_entity.state == "gowp" and onto_entity._target.x == 3, "a sapling it walks to is reached")
+sapling_cells["3:0:0"] = nil
+
 -- When no route exists, the failure is recorded so that vanilla's
 -- ready_to_path holds off the next attempt.
 support_available = false

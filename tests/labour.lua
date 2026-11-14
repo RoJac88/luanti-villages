@@ -335,6 +335,26 @@ assert(logs[#logs]:find("did not reach"))
 local second = labour.wood_target(tess)
 assert(second and not (second.pos.x == first.x and second.pos.z == first.z), "the other tree next")
 
+-- A sapling is planted from beside its spot: a tree grown around a villager standing
+-- on it would suffocate it.
+do
+	local pia = villager({_id = "pia"})
+	possessions.add(pia, "mcl_core:sapling", 1)
+	labour.today(pia)
+	pia._villages_labour.activity = "woodcutter"
+	pia._villages_grove = {}
+	local plant = labour.wood_target(pia)
+	if plant.kind == "plant" then
+		labour.step(pia, now + 200)
+		local at = pia.walks[#pia.walks]
+		assert(at and vector.distance(at, plant.pos) == 1, "beside the spot")
+		pia.arrive()
+		assert(nodes[key(plant.pos)] == "mcl_core:sapling", "planted from beside")
+	else
+		error("expected a plant job, got " .. tostring(plant.kind))
+	end
+end
+
 -- Prices it has heard for acacia count for woodcutting.
 assert(labour.choose({asks("mcl_core:acaciatree", 0.5)}, both, nil, 0) == "woodcutter")
 
