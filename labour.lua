@@ -70,8 +70,8 @@
 -- of where it stands when it chooses its day, or with none from that spot
 -- (`_villages_labour_home`, chosen afresh each day, so a bed claimed later takes over).
 --
--- Trips are planned walks (navigation.lua's gopath), within 50 of the bed, so vanilla
--- never calls the villager home mid-trip. A trunk is solid, so a trip to a tree ends on
+-- Trips are planned walks (navigation.lua's gopath); one under way is an errand to
+-- far_trips.lua, so vanilla never calls the villager home mid-trip. A trunk is solid, so a trip to a tree ends on
 -- an open cell beside it. A target it could not reach is passed over for SKIP_SECONDS
 -- (kept in memory only). With the economy off nothing happens.
 local core = minetest
@@ -91,9 +91,11 @@ local REACH = 2.5
 local YESTERDAY_BIAS = 1.25
 -- Of one gathered good, it keeps no more than this; past it, that good is left.
 local KEEP_GATHERED = 32
--- Within far_trips.lua's WANDER (64) of the bed, with room to stand beside a target:
--- a town spreads past 32, and cane planted across it was out of every forager's reach.
-local FORAGE_RADIUS, FORAGE_HEIGHT = 60, 8
+-- A town's width, as the tavern's search (tavern.lua): cane planted across a town was
+-- out of every forager's reach at 32, and 60.04 from the unemployed's beds (ColonyFood,
+-- day 112). A trip past far_trips.lua's WANDER is an errand there, so vanilla does not
+-- call it home.
+local FORAGE_RADIUS, FORAGE_HEIGHT = 64, 8
 local GROVE_MAX = 8
 -- A woodcutter with a chopping block (woodcutter.lua, ticket 16): woodcutting is its job.
 local GROVE_MAX_JOB = 12
@@ -404,8 +406,8 @@ end
 
 -- Forager sites.
 
--- Within FORAGE_RADIUS of the bed, not just inside the box around it: a box's corners
--- lie past far_trips.lua's WANDER.
+-- Within FORAGE_RADIUS of the bed, not just inside the box around it, whose corners lie
+-- half as far again.
 local function in_reach(bed, found)
 	local kept = {}
 	for _, pos in ipairs(found) do

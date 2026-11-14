@@ -85,6 +85,8 @@ check("child within 64", run(villager(60, {_jobsite = false, child = true})), "g
 
 -- No claimed jobsite: vanilla's walk home stays.
 check("no jobsite", run(villager(70, {_jobsite = false})), "go_home")
+-- A labourer's trip to what it gathers (labour.lua) is its work-stage errand.
+check("labour trip", run(villager(70, {_jobsite = false, _villages_labour_target = {x = 70, y = 0, z = 0}})), "none")
 claims[key(jobsite)] = "someone else"
 check("jobsite lost", run(villager(70)), "go_home")
 claims[key(jobsite)] = "v1"
