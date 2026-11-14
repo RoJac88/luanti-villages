@@ -9,6 +9,9 @@
 -- each activity's expected income, the best price the villager has heard asked for its
 -- goods (market news, market_news.lua) times the rate it gathers them, with yesterday's
 -- choice counted YESTERDAY_BIAS times over so a village does not all switch at once.
+-- A good is also worth what a single-input recipe makes of it (cane, the paper it
+-- becomes: M.prices), and a good worth less the more of it the villager holds unsold,
+-- nothing at KEEP_GATHERED (M.unsold_share): a pile no one buys turns it to other work.
 -- With no price heard for any, it picks at random among the activities it has a site
 -- for. An activity with no site is never chosen.
 --
@@ -67,8 +70,8 @@
 -- of where it stands when it chooses its day, or with none from that spot
 -- (`_villages_labour_home`, chosen afresh each day, so a bed claimed later takes over).
 --
--- Trips are planned walks (navigation.lua's gopath), within 50 of the bed, so vanilla
--- never calls the villager home mid-trip. A trunk is solid, so a trip to a tree ends on
+-- Trips are planned walks (navigation.lua's gopath); one under way is an errand to
+-- far_trips.lua, so vanilla never calls the villager home mid-trip. A trunk is solid, so a trip to a tree ends on
 -- an open cell beside it. A target it could not reach is passed over for SKIP_SECONDS
 -- (kept in memory only). With the economy off nothing happens.
 local core = minetest
@@ -79,6 +82,7 @@ local news = dofile(core.get_modpath("living_villages") .. "/market_news.lua")
 local tally = dofile(core.get_modpath("living_villages") .. "/economy_tally.lua")
 local wants = dofile(core.get_modpath("living_villages") .. "/wants.lua")
 local goods = dofile(core.get_modpath("living_villages") .. "/goods.lua")
+local recipes = dofile(core.get_modpath("living_villages") .. "/recipes.lua")
 
 local TICK_SECONDS = 2
 local RETRY_SECONDS = 60
@@ -87,7 +91,11 @@ local REACH = 2.5
 local YESTERDAY_BIAS = 1.25
 -- Of one gathered good, it keeps no more than this; past it, that good is left.
 local KEEP_GATHERED = 32
-local FORAGE_RADIUS, FORAGE_HEIGHT = 32, 8
+-- A town's width, as the tavern's search (tavern.lua): cane planted across a town was
+-- out of every forager's reach at 32, and 60.04 from the unemployed's beds (ColonyFood,
+-- day 112). A trip past far_trips.lua's WANDER is an errand there, so vanilla does not
+-- call it home.
+local FORAGE_RADIUS, FORAGE_HEIGHT = 64, 8
 local GROVE_MAX = 8
 -- A woodcutter with a chopping block (woodcutter.lua, ticket 16): woodcutting is its job.
 local GROVE_MAX_JOB = 12
@@ -299,8 +307,6 @@ function M.porter_income(record)
 	return PORTER_FEE * ((record.hires or 0) + 1) / ((record.days or 0) + 2)
 end
 
--- Expected income of each activity from what it has heard, with `emeralds` to buy with
--- and its portering `record`.
 -- The share of an activity's full rate it has found it gathers, from its `yields`
 -- record, counted from one day at the full rate.
 function M.yield_share(activity, yields)
@@ -310,8 +316,49 @@ function M.yield_share(activity, yields)
 	return math.min(1, ((record.made or 0) + rate) / (((record.days or 0) + 1) * rate))
 end
 
-function M.incomes(heard, emeralds, record, yields)
+-- What a gathered good fetches, from what it has heard asked: its own price, or what one
+-- of a profession's single-input recipes makes of it (sugar cane into paper, three for
+-- three), at the product's price per input. A librarian tells the paper it needs, not
+-- the cane it would make it from; with no forager left, cane went unasked and no one
+-- picked it while two villagers wanted paper (ColonyFood, day 108).
+local DERIVED = {}
+for _, list in pairs(recipes) do
+	for _, recipe in ipairs(list) do
+		if #recipe.from == 1 and not recipe.fuel then
+			local input = recipe.from[1]
+			DERIVED[#DERIVED + 1] = {item = input[1], makes = recipe.makes, per = recipe.count / input[2]}
+		end
+	end
+end
+
+function M.prices(heard)
 	local prices = news.asking(heard)
+	for _, derived in ipairs(DERIVED) do
+		local worth = (prices[derived.makes] or 0) * derived.per
+		if worth > (prices[derived.item] or 0) then prices[derived.item] = worth end
+	end
+	return prices
+end
+
+-- How much of its full rate a gathered good is worth to one holding `held` of it: none
+-- once it holds `keep` (it gathers no more, and the pile says no one is buying), and
+-- less as the pile grows. Unemployed villagers held seventy acacia logs each, unsold,
+-- and went on cutting (ColonyFood, day 108).
+local function unsold_share(held, keep)
+	return math.max(0, 1 - (held or 0) / keep)
+end
+M.unsold_share = unsold_share
+
+local function keep_of(item)
+	return item == COBBLE and QUARRY_KEEP or KEEP_GATHERED
+end
+
+-- Expected income of each activity from what it has heard, with `emeralds` to buy with,
+-- its portering `record`, its gathering `yields` and `held` (item -> count) of what it
+-- has gathered and not sold.
+function M.incomes(heard, emeralds, record, yields, held)
+	local prices = M.prices(heard)
+	held = held or {}
 	local incomes = {}
 	for name, activity in pairs(ACTIVITIES) do
 		local income = 0
@@ -323,10 +370,12 @@ function M.incomes(heard, emeralds, record, yields)
 		elseif name == "woodcutter" then
 			for _, species in ipairs(SPECIES) do
 				local here = activity.rate * (0.9 * (prices[species.log] or 0) + 0.1 * (prices[species.sapling] or 0))
-				income = math.max(income, here)
+				income = math.max(income, here * unsold_share(held[species.log], KEEP_GATHERED))
 			end
 		else
-			for item, share in pairs(activity.goods) do income = income + activity.rate * share * (prices[item] or 0) end
+			for item, share in pairs(activity.goods) do
+				income = income + activity.rate * share * (prices[item] or 0) * unsold_share(held[item], keep_of(item))
+			end
 		end
 		incomes[name] = income * M.yield_share(name, yields)
 	end
@@ -334,8 +383,8 @@ function M.incomes(heard, emeralds, record, yields)
 end
 
 -- The day's activity among `available` (a set of names), or nil if none. roll is in [0, 1).
-function M.choose(heard, available, yesterday, roll, emeralds, record, yields)
-	local incomes = M.incomes(heard, emeralds, record, yields)
+function M.choose(heard, available, yesterday, roll, emeralds, record, yields, held)
+	local incomes = M.incomes(heard, emeralds, record, yields, held)
 	local best, best_score
 	local open = {}
 	for _, name in ipairs(NAMES) do
@@ -357,11 +406,21 @@ end
 
 -- Forager sites.
 
+-- Within FORAGE_RADIUS of the bed, not just inside the box around it, whose corners lie
+-- half as far again.
+local function in_reach(bed, found)
+	local kept = {}
+	for _, pos in ipairs(found) do
+		if vector.distance(bed, pos) <= FORAGE_RADIUS then kept[#kept + 1] = pos end
+	end
+	return kept
+end
+
 local function ripe_bushes(bed)
 	local names = {}
 	for name in pairs(RIPE_BUSHES) do names[#names + 1] = name end
 	local minp, maxp = area(bed, FORAGE_RADIUS, FORAGE_HEIGHT)
-	return core.find_nodes_in_area(minp, maxp, names)
+	return in_reach(bed, core.find_nodes_in_area(minp, maxp, names))
 end
 
 -- Where to stand to cut the cane whose top is at pos: beside its column's foot, or
@@ -381,7 +440,7 @@ M.beside_cane = beside_cane
 local function cane_tops(bed)
 	local found = {}
 	local minp, maxp = area(bed, FORAGE_RADIUS, FORAGE_HEIGHT)
-	for _, pos in ipairs(core.find_nodes_in_area(minp, maxp, {CANE})) do
+	for _, pos in ipairs(in_reach(bed, core.find_nodes_in_area(minp, maxp, {CANE}))) do
 		local below = core.get_node_or_nil({x = pos.x, y = pos.y - 1, z = pos.z})
 		local above = core.get_node_or_nil({x = pos.x, y = pos.y + 1, z = pos.z})
 		if below and below.name == CANE and not (above and above.name == CANE) then found[#found + 1] = pos end
@@ -762,8 +821,12 @@ function M.today(self)
 	M.peddle_tick(self, day)
 	M.choose_home(self)
 	local heard = news.heard(self)
+	local held = {}
+	for _, activity in pairs(ACTIVITIES) do
+		for item in pairs(activity.goods) do held[item] = possessions.count(self, item) end
+	end
 	local activity = M.choose(heard, available(self), yesterday, math.random(), possessions.emeralds(self),
-		self._villages_porter_record, self._villages_gather_record)
+		self._villages_porter_record, self._villages_gather_record, held)
 	-- A peddle under way goes on: what it bought is still to sell.
 	if self._villages_peddle and activity ~= "peddler" then activity = "peddler" end
 	if activity == "peddler" and not self._villages_peddle and not M.start_peddle(self, heard, day) then

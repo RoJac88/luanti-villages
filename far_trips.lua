@@ -14,7 +14,7 @@
 --
 -- Only in daylight (vanilla's night branch re-validates the bed and would take
 -- another), only past 50 nodes, and only while the villager has an errand:
--- a claimed jobsite at the work stage, the dinner at the tavern, the service
+-- a claimed jobsite or a labourer's trip (labour.lua) at the work stage, the dinner at the tavern, the service
 -- or the bell on a holiday (once they have found a pulpit or bell), or the
 -- morning at the bell (bell_hangout.lua, #329), or a keeper's trip for its pantry
 -- (keeper_supply.lua), or a trade trip (trade_trips.lua) or rent errand (rent.lua), in
@@ -54,7 +54,8 @@ local function has_errand(self)
 	-- A trade trip (trade_trips.lua) or a rent errand (rent.lua), in whatever stage it runs.
 	if self._villages_trade_trip or self._villages_rent_errand then return true end
 	local stage = common.schedule_stage(nil, self)
-	if stage == "work" then return common.has_claimed_jobsite(self) end
+	-- Work: a claimed jobsite, or a labourer's trip to what it gathers (labour.lua).
+	if stage == "work" then return common.has_claimed_jobsite(self) or self._villages_labour_target ~= nil end
 	if stage == "staff" then return self._villages_keeper == true and has_claimed_jukebox(self) end
 	if stage == "tavern" then return self._villages_tavern_target ~= nil end
 	if stage == "bell" then return self._villages_bell ~= nil end
