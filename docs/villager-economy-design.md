@@ -1772,6 +1772,10 @@ only demand told them apart.
   a vanilla emerald). Foragers pick the bloom as they pick poppies and dandelions, eight
   kept. Anyone selling a lily hands it over as white dye, one for one, VoxeLibre's recipe
   (`goods.conversions`, the first conversion that is not a job's).
+- Bone meal is the other source, since no lily grew within 80 of ColonyFood. It crafts
+  into white dye one for one too, and is priced as one. A farmer with a chest moves bone
+  meal over its keep of 4 to its belongings, up to 8, as it does wheat, and anyone
+  selling it hands it over as white dye.
 - Only grey for now, the colour that piled up. Silver wool's base price is 64, and as a
   recipe input it would put silver among the shepherd's top needs.
 

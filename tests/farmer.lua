@@ -435,6 +435,13 @@ step()
 assert(farmer._villages_belongings and farmer._villages_belongings["mcl_farming:wheat_item"] == 8)
 assert(pouch("mcl_farming:wheat_item") == 3)
 assert(world.meta({x = 2, y = 2, z = 0}).inv:get_stack("main", 1):to_string() == "mcl_farming:wheat_item 19")
+-- Bone meal over its keep of four too, up to eight, to sell as white dye (19h).
+setup({_villages_farm_pouch = {["mcl_bone_meal:bone_meal"] = 14}})
+local meal_chest = support.chest(world, {x = 2, y = 2, z = 0})
+step()
+assert(farmer._villages_belongings and farmer._villages_belongings["mcl_bone_meal:bone_meal"] == 8)
+assert(pouch("mcl_bone_meal:bone_meal") == 4)
+assert(meal_chest:get_stack("main", 1):to_string() == "mcl_bone_meal:bone_meal 2")
 
 -- Spare bread is worth a trip well short of the usual eight over the keep: its own
 -- dinners and the keeper's fetches both wait on it (run of 2026-11-13).

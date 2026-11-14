@@ -30,7 +30,7 @@ return {
 	-- The shepherd dyes its grey wool white (19h): nobody bought grey, and three shepherds
 	-- starved holding it while the cartographer wanted 14 white for banners (ColonyFood,
 	-- 2026-11-14). VoxeLibre dyes only white wool; Minecraft dyes any, as here. Its white
-	-- dye comes from a lily of the valley (goods.lua's conversions).
+	-- dye comes from a lily of the valley or a farmer's bone meal (goods.lua's conversions).
 	shepherd = {
 		{makes = "mcl_wool:white", count = 1, tier = 1, from = {{"mcl_wool:grey", 1}, {"mcl_dye:white", 1}}},
 	},

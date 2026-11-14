@@ -95,6 +95,9 @@ local OWN_BREAD = 4
 -- sale to villagers (a leatherworker breeds its herd on it, herd.lua), before the rest
 -- goes in the chest: the pouch and the chest are not goods it trades.
 local SALE_WHEAT = 8
+-- Bone meal over its keep goes to its belongings too, up to this much, for sale as white
+-- dye (goods.lua, 19h): the shepherd dyes grey wool white with it.
+local SALE_BONE_MEAL = 8
 -- With the economy on, at its own chest it also takes food for sale into its belongings:
 -- bread up to SALE_BREAD there, then potatoes up to SALE_POTATO, from what the chest holds
 -- over KEEPER_RESERVE meals (keeper_supply.lua's CARRY, a loaf or a potato each) for the
@@ -363,7 +366,7 @@ local function deposit(self, pos, session, now)
 	end
 	local item, extra = excess_item(self)
 	if not item then return end
-	local own = clock.enabled() and ({[WHEAT] = SALE_WHEAT, [BREAD] = OWN_BREAD})[item]
+	local own = clock.enabled() and ({[WHEAT] = SALE_WHEAT, [BREAD] = OWN_BREAD, [BONE_MEAL] = SALE_BONE_MEAL})[item]
 	if own then
 		local room = own - possessions.count(self, item)
 		local moved = room > 0 and stock.take(self, item, math.min(room, extra)) or 0
