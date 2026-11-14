@@ -17,6 +17,14 @@
 --   units and all move with its imbalance, so food in short supply dears every food. At
 --   full imbalance that is RATE_DAY times a day, so a good nobody makes reaches MAX in
 --   about five days;
+-- * a need counts only as far as its villager can pay for it at its own value: a need
+--   heard carries the needer's emeralds (`budget`, market_news.lua), and its own needs
+--   are held to its own emeralds. Hungry villagers with an emerald each kept bread at
+--   MAX, eight times its price, so farmers asked some 250 a loaf (ColonyFood,
+--   2026-11-14). Since the value includes the multiplier, a price that runs ahead of
+--   what buyers have cuts its own demand;
+-- * a farmer counts the food in its work chest past the keeper's reserve as its supply
+--   too (farm_stock.food_for_sale): it takes it to sell any day;
 -- * an item it heard nothing of drifts back toward 1 (its multiplier to the power
 --   FORGET), so a shortage that ended is forgotten;
 -- * every multiplier stays within MIN and MAX.
@@ -74,7 +82,15 @@ local function category_of(item)
 	return nil
 end
 
-function M.balance(heard, view)
+-- How much of a need of count it can pay for at price each with budget emeralds: all of
+-- it when either is not known (news from before budgets were told).
+local function affordable(count, price, budget)
+	if not budget or not price or price <= 0 then return count end
+	return math.min(count, budget / price)
+end
+
+-- own, optional: {budget = its emeralds, stock = {item = count} more it can sell}.
+function M.balance(heard, view, own)
 	local buckets = {}
 	local function add(key, side, amount)
 		if not amount or amount <= 0 then return end
@@ -89,17 +105,31 @@ function M.balance(heard, view)
 		if units then add("group:" .. category, side, count * units) else add(item, side, count) end
 	end
 	for _, entry in ipairs(heard or {}) do
-		if entry.kind == "needs" then add_item(entry.item, "demand", entry.count, entry.group)
+		if entry.kind == "needs" then
+			add_item(entry.item, "demand", affordable(entry.count, entry.price, entry.budget), entry.group)
 		elseif entry.kind == "has" then add_item(entry.item, "supply", entry.count) end
 	end
+	local budget = own and own.budget
+	local value = view and view.value
 	local group = view and view.group or {}
 	for item, count in pairs(view and view.needs or {}) do
-		if not group[item] then add_item(item, "demand", count) end
+		if not group[item] then add_item(item, "demand", affordable(count, value and value(item), budget)) end
+	end
+	-- A category's need at the cheapest member per unit.
+	local per_unit = {}
+	for item, category in pairs(group) do
+		local price = value and value(item)
+		local units = goods.units(category, item)
+		if price and units and units > 0 then
+			local per = price / units
+			if not per_unit[category] or per < per_unit[category] then per_unit[category] = per end
+		end
 	end
 	for category, state in pairs(view and view.categories or {}) do
-		add("group:" .. category, "demand", state.short)
+		add("group:" .. category, "demand", affordable(state.short, per_unit[category], budget))
 	end
 	for item, count in pairs(view and view.surplus or {}) do add_item(item, "supply", count) end
+	for item, count in pairs(own and own.stock or {}) do add_item(item, "supply", count) end
 	local out = {}
 	for key, entry in pairs(buckets) do
 		local category = key:match("^group:(.+)$")
@@ -150,10 +180,10 @@ end
 
 -- The day's move for a villager, once a day: from what it heard and its view. Returns
 -- whether it moved.
-function M.daily(self, heard, view, day)
+function M.daily(self, heard, view, day, own)
 	if self._villages_prices_day == day then return false end
 	self._villages_prices_day = day
-	self._villages_prices = M.drift(self._villages_prices, M.balance(heard, view))
+	self._villages_prices = M.drift(self._villages_prices, M.balance(heard, view, own))
 	return true
 end
 

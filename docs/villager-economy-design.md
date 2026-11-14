@@ -1699,6 +1699,25 @@ anywhere open beside it. Now:
   also makes wooden picks and hoes from planks, so the first picks need no cobble. Picks
   are wanted by quarriers, idle crafters among them.
 
+**19e. Every farm paid, and prices buyers can pay** (ColonyFood, 2026-11-14, days
+202-205). Six villagers held 98% of some 3,400 emeralds. Two reasons stood out:
+
+- The keeper always fetched from the nearest farm chest, so one farmer took every
+  dinner's money (1169 emeralds, rising some 90 a day) while the other's chest held 345
+  potatoes nobody fetched. The keeper now fetches from the chest with the most meals
+  (a loaf or potato one, a carrot or beetroot a quarter), the nearest of equals
+  (`keeper_supply.source`).
+- Most villagers believed bread was worth eight times its price, the most a multiplier
+  can be. Hungry villagers with an emerald each counted as demand, and a farm chest's
+  food never counted as supply, so farmers asked some 250 a loaf and 55 a potato on trade
+  trips, and buyers passed them over 243 times. Now a need counts only as far as its
+  villager can pay at its own value (`prices.balance`): a need heard carries the needer's
+  emeralds (`budget` in market news), and a villager's own needs are held to its own. A
+  category's shortfall is priced at its cheapest member per unit. As the value includes
+  the multiplier, a price that runs ahead of buyers' money cuts its own demand. A farmer
+  also counts the food in its work chest over the keeper's 24 meals as supply
+  (`farm_stock.food_for_sale`).
+
 ## Open questions
 
 - Pacing: hunger rate, craft time, starting stock and rent all need probe runs on

@@ -11,7 +11,8 @@
 -- `_villages_market_news`, a list of at most NEWS_ENTRIES entries:
 --
 --   {item, who = <villager _id>, kind = "has" | "needs", count, price = <in emeralds: what
---    who asks for one it has (asks.lua), or its value to who of one it needs>, home =
+--    who asks for one it has (asks.lua), or its value to who of one it needs>, budget =
+--    <who's emeralds, for a need: prices.lua counts it only as far as who can pay>, home =
 --    <who's bed>, heard = <game time it was first told>, hops}
 --
 -- In a finished conversation each member tells each other up to NEWS_SHARE entries,
@@ -34,6 +35,7 @@ local ledger = dofile(core.get_modpath("living_villages") .. "/ledger.lua")
 local prices = dofile(core.get_modpath("living_villages") .. "/prices.lua")
 local asks = dofile(core.get_modpath("living_villages") .. "/asks.lua")
 local goods = dofile(core.get_modpath("living_villages") .. "/goods.lua")
+local stock = dofile(core.get_modpath("living_villages") .. "/farm_stock.lua")
 
 local NEWS_ENTRIES = 24
 local NEWS_SHARE = 6
@@ -171,6 +173,8 @@ function M.own(self, view, now)
 				item = item, who = self._id, kind = kind, count = count,
 				price = price or view.value(item), home = home, heard = now, hops = 0,
 				group = kind == "needs" and view.group and view.group[item] or nil,
+				-- What it has to pay with, so a need counts only as far as it can pay (prices.lua).
+				budget = kind == "needs" and possessions.emeralds(self) or nil,
 			}
 		end
 		for _, top in ipairs(ledger.top(list, view.value, OWN_ITEMS)) do add(top.item, top.count) end
@@ -276,7 +280,8 @@ end
 local function price_day(member, now)
 	local day = core.get_day_count and core.get_day_count()
 	if not day or member._villages_prices_day == day then return end
-	prices.daily(member, M.heard(member, now), possessions.assess(member), day)
+	prices.daily(member, M.heard(member, now), possessions.assess(member), day,
+		{budget = possessions.emeralds(member), stock = stock.food_for_sale(member)})
 	core.log("action", string.format("[living_villages] prices: villager %s, day %d: %s",
 		short_id(member._id), day, prices.describe(member._villages_prices, 4)))
 end
