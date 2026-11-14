@@ -3,6 +3,7 @@ local now, day, time = 1000, 5, 9000 / 24000
 local settings = {}
 local nodes, objects, logs = {}, {}, {}
 local player_leaves = {}
+local metas = {}
 local function key(pos) return pos.x .. "," .. pos.y .. "," .. pos.z end
 local function parse(k)
 	local x, y, z = k:match("(-?%d+),(-?%d+),(-?%d+)")
@@ -51,7 +52,13 @@ minetest = {
 	get_item_group = function(name, group) return GROUPS[name] and GROUPS[name][group] or 0 end,
 	registered_nodes = {},
 	get_meta = function(pos)
-		return {get_int = function(_, field) return field == "player_leaves" and player_leaves[key(pos)] or 0 end}
+		return {
+			get_int = function(_, field)
+				if field == "player_leaves" then return player_leaves[key(pos)] or 0 end
+				return metas[key(pos) .. field] or 0
+			end,
+			set_int = function(_, field, value) metas[key(pos) .. field] = value end,
+		}
 	end,
 	settings = {
 		get = function(_, name) return settings[name] end,
@@ -416,6 +423,13 @@ assert(def.do_custom == before_custom)
 do
 	settings.living_villages_economy = nil
 	local function at(x, y, z) return {x = x, y = y, z = z} end
+	local defs = minetest.registered_nodes
+	defs.air = {walkable = false}
+	defs["mcl_core:stone"], defs["mcl_core:cobble"] = {walkable = true}, {walkable = true}
+	defs["mcl_core:lava_source"] = {walkable = false, liquidtype = "source", damage_per_second = 4}
+	defs["mcl_core:lava_flowing"] = {walkable = false, liquidtype = "flowing", damage_per_second = 4}
+	defs["mcl_core:water_source"] = {walkable = false, liquidtype = "source"}
+	defs["mcl_core:water_flowing"] = {walkable = false, liquidtype = "flowing"}
 	local saved = {}
 	for k, v in pairs(nodes) do saved[k] = v end
 	for k in pairs(nodes) do nodes[k] = nil end
@@ -448,10 +462,77 @@ do
 	quinn.arrive()
 	assert(count(quinn, "mcl_core:cobble") == 1 and nodes[key(at(6, 1, 0))] == nil, "mined, the lava will flow back")
 	assert(quinn._villages_tally.made["mcl_core:cobble"] == 1)
+	-- By hand a block takes MINE_SECONDS (a pickaxe divides it, wants.lua).
+	assert(quinn._villages_labour_next == now + labour.MINE_SECONDS)
+	-- Empty, the cell is still its generator: it waits beside it rather than going off.
+	targets = labour.quarry_targets(quinn)
+	assert(#targets == 1 and targets[1].ready == false and targets[1].mine == true)
+	labour.step(quinn, now + 1100)
+	assert(#quinn.walks == 1 and quinn._villages_labour_next == now + 1101, "waits a second at it")
+	-- Another quarrier leaves the cell it works alone.
+	local rhea = villager({_id = "rhea"})
+	assert(#labour.quarry_targets(rhea) == 0)
+	-- The lava flows back and cools: it mines again where it stands.
+	nodes[key(at(6, 1, 0))] = "mcl_core:lava_flowing"
+	assert(#labour.quarry_targets(quinn) == 1, "a flowing liquid in it, still the generator")
+	nodes[key(at(6, 1, 0))] = "mcl_core:cobble"
+	labour.step(quinn, now + 1200)
+	assert(count(quinn, "mcl_core:cobble") == 2 and nodes[key(at(6, 1, 0))] == nil)
+	-- With the water gone it is no generator; empty, it is forgotten.
+	nodes[key(at(7, 1, 0))] = nil
+	assert(#labour.quarry_targets(quinn) == 0)
+	nodes[key(at(7, 1, 0))] = "mcl_core:water_flowing"
+	-- A stone generator: lava over the cell and water beside it; stone drops cobble.
+	nodes[key(at(6, 1, 0))] = nil
+	nodes[key(at(0, 1, -6))] = "mcl_core:stone"
+	nodes[key(at(0, 2, -6))] = "mcl_core:lava_source"
+	nodes[key(at(1, 1, -6))] = "mcl_core:water_flowing"
+	nodes[key(at(-1, 0, -6))] = "mcl_core:stone"
+	local sid = villager({_id = "sid"})
+	targets = labour.quarry_targets(sid)
+	assert(#targets == 1 and targets[1].pos.z == -6 and targets[1].ready)
+	sid._villages_labour = {day = day, activity = "quarrier"}
+	labour.step(sid, now + 2000)
+	assert(sid.walks[1].x == -1 and sid.walks[1].z == -6, "stands where there is floor")
+	sid.arrive()
+	assert(count(sid, "mcl_core:cobble") == 1 and nodes[key(at(0, 1, -6))] == nil)
+	-- Nowhere dry to stand: not walked to.
+	nodes[key(at(-1, 0, -6))] = nil
+	nodes[key(at(0, 1, -6))] = "mcl_core:stone"
+	assert(labour.stand_by(at(0, 1, -6)) == nil)
 	-- Full, it stops.
 	possessions.add(quinn, "mcl_core:cobble", labour.QUARRY_KEEP)
 	nodes[key(at(6, 1, 0))] = "mcl_core:cobble"
 	assert(#labour.quarry_targets(quinn) == 0)
+	for _, name in ipairs({"air", "mcl_core:stone", "mcl_core:cobble", "mcl_core:lava_source", "mcl_core:lava_flowing",
+		"mcl_core:water_source", "mcl_core:water_flowing"}) do
+		defs[name] = nil
+	end
+	for k in pairs(nodes) do nodes[k] = nil end
+	for k, v in pairs(saved) do nodes[k] = v end
+end
+
+-- Flowers (ticket 19c): a forager picks a poppy's or dandelion's bloom and leaves the
+-- plant, which blooms again some days later.
+do
+	settings.living_villages_economy = nil
+	local saved = {}
+	for k, v in pairs(nodes) do saved[k] = v end
+	for k in pairs(nodes) do nodes[k] = nil end
+	local poppy = {x = 4, y = 1, z = 4}
+	nodes[key(poppy)] = "mcl_flowers:poppy"
+	nodes[key({x = -4, y = 1, z = 4})] = "mcl_flowers:tulip_red"
+	local flo = villager({_id = "flo"})
+	local targets = labour.forage_targets(flo)
+	assert(#targets == 1 and targets[1].kind == "flower" and targets[1].pos.x == 4, "poppies and dandelions only")
+	assert(labour.forage(flo, targets[1]) == "mcl_flowers:poppy" and count(flo, "mcl_flowers:poppy") == 1)
+	assert(nodes[key(poppy)] == "mcl_flowers:poppy", "the plant stays")
+	assert(#labour.forage_targets(flo) == 0 and labour.forage(flo, targets[1]) == nil, "picked today")
+	day = day + 3
+	assert(#labour.forage_targets(flo) == 1, "in bloom again")
+	possessions.add(flo, "mcl_flowers:poppy", 7)
+	assert(#labour.forage_targets(flo) == 0, "it keeps eight")
+	day = day - 3
 	for k in pairs(nodes) do nodes[k] = nil end
 	for k, v in pairs(saved) do nodes[k] = v end
 end

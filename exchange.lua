@@ -27,7 +27,8 @@
 -- Conversions (ticket 15, goods.lua): a seller whose job turns a good into another
 -- (a shepherd's wool into string) can sell what the buyer needs from its spare stock of
 -- the other, on the spot and for free. It values each made item at the source's value
--- over the ratio, and hands over whole sources' worth: one wool gives four string.
+-- over the ratio, and hands over whole sources' worth: one wool gives four string, two
+-- wool three carpets.
 --
 -- Goods pass from belongings to belongings (possessions.lua) with food.show_handover's
 -- item across. With the economy off nothing is traded.
@@ -120,7 +121,8 @@ function M.offer(seller, seller_view, buyer, buyer_view, only)
 				end
 			end
 			for _, source in ipairs(sources) do
-				local trade = M.quote(seller, seller_view, buyer, buyer_view, item, wanted, source.from, source.ratio)
+				local trade = M.quote(seller, seller_view, buyer, buyer_view, item, wanted, source.from, source.ratio,
+					source.takes)
 				if trade and (not best or trade.gain > best.gain or (trade.gain == best.gain and item < best.item)) then
 					best = trade
 				end
@@ -130,8 +132,10 @@ function M.offer(seller, seller_view, buyer, buyer_view, only)
 	return best
 end
 
--- One candidate sale of `item` made from `from` (itself when ratio is 1), or nil.
-function M.quote(seller, seller_view, buyer, buyer_view, item, wanted, from, ratio)
+-- One candidate sale of `item` made from `from` (itself when ratio is 1), or nil. A
+-- conversion hands over `takes` sources at a time (goods.lua), 1 if nil.
+function M.quote(seller, seller_view, buyer, buyer_view, item, wanted, from, ratio, takes)
+	takes = takes or 1
 	local stock = spare(seller, seller_view, from)
 	local to_buyer = buyer_view.value(item)
 	local source_value = seller_view.value(from)
@@ -146,14 +150,15 @@ function M.quote(seller, seller_view, buyer, buyer_view, item, wanted, from, rat
 	else
 		unit = M.unit_price(seller, buyer, to_seller, to_buyer)
 	end
-	local available = stock * ratio
+	local available = math.floor(stock / takes) * takes * ratio
 	local count = math.min(wanted, available)
 	-- No more than its emeralds pay for (unless it barters, below, for the whole lot).
 	local affordable = math.floor(possessions.emeralds(buyer) / unit)
 	if affordable >= 1 and count * unit > possessions.emeralds(buyer) then count = affordable end
 	if count * unit < MIN_SALE then count = math.min(math.ceil(MIN_SALE / unit), available) end
-	-- A converted sale hands over whole sources.
-	local from_count = math.ceil(count / ratio)
+	if available < 1 then return nil end
+	-- A converted sale hands over whole sources, `takes` at a time.
+	local from_count = math.ceil(count / (takes * ratio)) * takes
 	count = from_count * ratio
 	local value = count * unit
 	local worth_to_buyer = count * to_buyer

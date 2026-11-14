@@ -6,7 +6,8 @@
 --
 -- * makes, count: the item and how many one craft gives. Every output is something the
 --   profession sells in VoxeLibre 0.92.3's trade table (trade_tables.lua), or an input
---   of one of its own recipes (paper, books, planks for the librarian): a test checks it.
+--   of one of its own recipes (paper, books, planks for the librarian), or a good that
+--   wears out (wants.lua: picks, hoes, fishing rods): a test checks it.
 -- * from: {item, count} pairs, from the real crafting recipe (mcl_core/crafting.lua,
 --   mcl_tools, mcl_armor, mcl_bows, mcl_books, mcl_stonecutter's registrations).
 -- * fuel: furnace smelts it takes, where the real item is smelted (bricks, glass, cooked
@@ -31,6 +32,9 @@ return {
 		{makes = "mcl_tools:axe_stone", count = 1, tier = 1, from = {{COBBLE, 3}, {STICK, 2}}},
 		{makes = "mcl_tools:shovel_stone", count = 1, tier = 1, from = {{COBBLE, 1}, {STICK, 2}}},
 		{makes = "mcl_farming:hoe_stone", count = 1, tier = 1, from = {{COBBLE, 2}, {STICK, 2}}},
+		-- Wooden ones, while no quarrier sells cobble (ticket 19d): its first picks start one.
+		{makes = "mcl_tools:pick_wood", count = 1, tier = 1, from = {{"mcl_core:wood", 3}, {STICK, 2}}},
+		{makes = "mcl_farming:hoe_wood", count = 1, tier = 1, from = {{"mcl_core:wood", 2}, {STICK, 2}}},
 		-- Its own sticks, from a woodcutter's logs (ticket 11d): no villager sells sticks.
 		{makes = STICK, count = 4, tier = 1, from = {{"mcl_core:wood", 2}}},
 		{makes = "mcl_core:wood", count = 4, tier = 1, from = {{"mcl_core:tree", 1}}},
@@ -60,6 +64,8 @@ return {
 	cartographer = {
 		{makes = "mcl_core:paper", count = 3, tier = 1, from = {{"mcl_core:reeds", 3}}},
 		{makes = "mcl_banners:banner_item_white", count = 1, tier = 4, from = {{"mcl_wool:white", 6}, {STICK, 1}}},
+		-- A comfort (ticket 19c), and a second buyer for the leatherworker's leather.
+		{makes = "mcl_itemframes:frame", count = 1, tier = 4, from = {{STICK, 8}, {LEATHER, 1}}},
 		{makes = STICK, count = 4, tier = 1, from = {{"mcl_core:wood", 2}}},
 		{makes = "mcl_core:wood", count = 4, tier = 1, from = {{"mcl_core:tree", 1}}},
 	},
@@ -68,6 +74,11 @@ return {
 			from = {{"mcl_core:flint", 1}, {STICK, 1}, {"mcl_mobitems:feather", 1}}},
 		{makes = "mcl_core:flint", count = 1, tier = 1, from = {{"mcl_core:gravel", 1}}},
 		{makes = "mcl_bows:bow", count = 1, tier = 2, from = {{STICK, 3}, {"mcl_mobitems:string", 3}}},
+		-- For the fishermen, whose rods wear out (wants.lua, ticket 19c), from the shepherd's string.
+		{makes = "mcl_fishing:fishing_rod", count = 1, tier = 1, from = {{STICK, 3}, {"mcl_mobitems:string", 2}}},
+		-- Its own sticks, as the tool smith's: no villager sells sticks.
+		{makes = STICK, count = 4, tier = 1, from = {{"mcl_core:wood", 2}}},
+		{makes = "mcl_core:wood", count = 4, tier = 1, from = {{"mcl_core:tree", 1}}},
 	},
 	librarian = {
 		{makes = "mcl_core:paper", count = 3, tier = 1, from = {{"mcl_core:reeds", 3}}},
@@ -81,6 +92,8 @@ return {
 	-- (32) back from them, and its player trades need no stock.
 	mason = {
 		{makes = "mcl_core:brick", count = 1, tier = 1, from = {{"mcl_core:clay_lump", 1}}, fuel = 1},
+		-- Smelted from a quarrier's cobble (ticket 19d), for its carved stone and to sell.
+		{makes = "mcl_core:stone", count = 1, tier = 1, from = {{"mcl_core:cobble", 1}}, fuel = 1},
 		{makes = "mcl_core:stonebrickcarved", count = 1, tier = 2, from = {{"mcl_core:stone", 1}}},
 		{makes = "mcl_core:andesite_smooth", count = 4, tier = 3, from = {{"mcl_core:andesite", 4}}},
 		{makes = "mcl_core:granite_smooth", count = 4, tier = 3, from = {{"mcl_core:granite", 4}}},

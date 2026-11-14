@@ -195,8 +195,10 @@ function M.own(self, view, now)
 			for _, conversion in ipairs(goods.conversions(self)) do
 				local spare = list[conversion.from]
 				local value = view.value(conversion.from)
-				if spare and value and asked[conversion.to] and not told[conversion.to] then
-					add(conversion.to, spare * conversion.ratio, value / conversion.ratio)
+				local takes = conversion.takes or 1
+				local makes = spare and math.floor(spare / takes) * takes * conversion.ratio or 0
+				if makes >= 1 and value and asked[conversion.to] and not told[conversion.to] then
+					add(conversion.to, makes, value / conversion.ratio)
 				end
 			end
 		end

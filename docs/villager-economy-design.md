@@ -899,7 +899,7 @@ branch, and each leaves the game playable with `living_villages_economy` on or o
 | 16 | The woodcutter: a chopping block, generated and craftable, and a grove that grows | 15 |
 | 17 | The food loop: keeper's supply, food targets, the butcher's sales | 16 |
 | 18 | Farm output: hoes multiply the harvest, tending, sowing for the village | 17 |
-| 19 | Money that circulates: comforts for savings and the cleric's share (19a), idle crafters labour (19b), new goods from existing professions (19c) | 18 |
+| 19 | Money that circulates: comforts for savings and the cleric's share (19a), idle crafters labour (19b), new goods from existing professions (19c), quarries players build (19d) | 18 |
 
 ### 1. Clock, hunger and the tavern
 
@@ -1625,9 +1625,9 @@ twice its base price.
 | White banner | Cartographer | 6 |
 | Bookshelf | Librarian | 8 |
 | Apple | Forager | 2 |
-| Poppy, dandelion | (foragers, 19c) | 2 |
-| White wool | Shepherd (until carpets, 19c) | 4 |
-| Leather | Leatherworker (until item frames, 19c) | 4 |
+| Poppy, dandelion | Foragers (19c) | 2 |
+| White carpet | Shepherd (19c) | 4 |
+| Item frame | Cartographer (19c) | 8 |
 
 A villager that grows poorer keeps what it uses until it is used up, and wants no more.
 The book stays a good that wears out for everyone (ticket 11e). Inspector line `Comforts`.
@@ -1649,12 +1649,43 @@ dinners, and a trade short of goods gathers them.
 
 | Profession | Good | Recipe | Buyer |
 |---|---|---|---|
-| Fletcher | Fishing rod | 3 sticks, 2 string | Fishermen: a rod wears out (`wants.lua`) |
-| Cartographer | Item frame | 8 sticks, 1 leather | Comfort; leather's second buyer |
-| Mason | Flower pot | 3 bricks, from its clay | Comfort |
-| Shepherd | Carpet | 2 wool make 3 | Comfort |
-| Librarian | Glass bottle | 3 glass, from sand | The cleric, as vanilla's buys |
-| Foragers | Poppy, dandelion | picked | Comfort |
+| Fletcher | Fishing rod | 3 sticks, 2 string; its own sticks from logs | Fishermen: a rod wears out (`wants.lua`) |
+| Cartographer | Item frame | 8 sticks, 1 leather | Comfort, for the richest (vanilla's 7 emeralds); leather's second buyer |
+| Shepherd | Carpet | 2 wool make 3, at sale (a conversion that `takes` 2) | Comfort |
+| Foragers | Poppy, dandelion | the bloom: the plant stays and blooms again 3 days later | Comfort |
+
+A fishing rod makes a catch likelier, not quicker: one cast in four lands a fish by hand,
+one and a half in four with a rod, which lasts 32 casts (half VoxeLibre's). A flower is
+never dug, as before: the forager takes the bloom and leaves the plant, so the
+"take only what comes back" rule holds.
+
+Left out: the mason's flower pot (its bricks need clay, which no villager supplies) and
+the librarian's glass bottle (its glass needs sand). Wants no village fills, such as the
+cleric's rotten flesh, stay: a need is also how a player sells to a villager
+(`trade_window.lua`), and Principle 1 makes the player the open edge.
+
+**19d. Quarries players build** (`labour.lua`, `wants.lua`). An audit of every want on
+2026-11-14 found cobble and stone behind most of the ones no villager can fill: the tool
+smith's stone tools, the mason's stone and the Builder's cobble. A quarrier could mine
+only a generator's cobble while it happened to be cobble, within 32 of its bed, standing
+anywhere open beside it. Now:
+
+- A generator's cell is cobble or stone with lava and water both beside or above it
+  (VoxeLibre's Lava cooling: flowing lava cools to cobble where water touches it, water
+  under lava turns to stone). Generators are found within 64 of its bed once a day, by
+  looking around the lava there, and remembered (`_villages_quarries`). A remembered cell
+  still counts while it holds air or a flowing liquid, between one block and the next.
+- It stands on any cell a villager can stand on beside the cell, level, a step down or a
+  step up: never in lava, water or fire, and nothing more. A player may build a safe
+  quarry (a schematic with a safe spot, which the Builder could later build), but an
+  unsafe one is worked too.
+- It stays at the generator between blocks, and one quarrier works a cell at a time.
+- Mining stone drops cobble, as in vanilla. The mason smelts cobble into stone (one
+  fuel each), for its carved stone and to sell.
+- A block takes 8 seconds by hand. A pickaxe divides that: wood by 2, stone by 3, and
+  iron, gold and diamond by 4, past which a generator could not keep up. The tool smith
+  also makes wooden picks and hoes from planks, so the first picks need no cobble. Picks
+  are wanted by quarriers, idle crafters among them.
 
 ## Open questions
 

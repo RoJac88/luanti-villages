@@ -23,16 +23,16 @@ local wants = dofile(core.get_modpath("living_villages") .. "/wants.lua")
 local M = {}
 
 -- What the village makes that a villager may want for its own sake, and how many game
--- days each lasts. Raw wool and leather stand in until the shepherd's carpets and the
--- cartographer's item frames (ticket 19, part 3).
+-- days each lasts: the foragers' blooms, the shepherd's carpets (two wool make three, at
+-- sale) and the cartographer's item frames (ticket 19c), dear, for the richest.
 M.COMFORTS = {
 	{item = "mcl_banners:banner_item_white", days = 6},
 	{item = "mcl_books:bookshelf", days = 8},
 	{item = "mcl_core:apple", days = 2},
 	{item = "mcl_flowers:poppy", days = 2},
 	{item = "mcl_flowers:dandelion", days = 2},
-	{item = "mcl_wool:white", days = 4},
-	{item = "mcl_mobitems:leather", days = 4},
+	{item = "mcl_wool:white_carpet", days = 4},
+	{item = "mcl_itemframes:frame", days = 8},
 }
 M.TASTES = 3
 -- alms.lua's SAVINGS: what a villager keeps before it gives, or buys comforts.

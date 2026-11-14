@@ -10,7 +10,8 @@
 --
 -- With the economy on (ticket 4) a completed cycle lands a fish one time in
 -- CATCH_ONE_IN, of a kind by vanilla's fishing odds (mcl_fishing), into its belongings
--- (possessions.lua): cod up to KEEP_COD, anything else up to KEEP_OTHER of a kind. It
+-- (possessions.lua): cod up to KEEP_COD, anything else up to KEEP_OTHER of a kind. A
+-- fishing rod (wants.lua, ticket 19c), worn by every cycle, multiplies those odds. It
 -- sells them to the butcher, who cooks fish (recipes.lua). Cod an older barrel holds (it
 -- went there for the keeper, who no longer fetches it) comes back into its belongings as
 -- there is room, and emeralds left in the barrel go in its belongings too.
@@ -19,6 +20,7 @@ local common = dofile(core.get_modpath("living_villages") .. "/common.lua")
 local cells = dofile(core.get_modpath("living_villages") .. "/cells.lua")
 local clock = dofile(core.get_modpath("living_villages") .. "/economy_clock.lua")
 local possessions = dofile(core.get_modpath("living_villages") .. "/possessions.lua")
+local wants = dofile(core.get_modpath("living_villages") .. "/wants.lua")
 local CATCH_ONE_IN = 4
 local KEEP_OTHER = 8
 local KEEP_COD = 16
@@ -420,7 +422,9 @@ end
 
 -- One completed cycle's catch, if any. Returns the fish and where it went.
 local function land_catch(self)
-	if not clock.enabled() or math.random(CATCH_ONE_IN) ~= 1 then return nil end
+	if not clock.enabled() then return nil end
+	local rate = wants.tool_use(self, "fish", possessions.take_held, core.get_gametime())
+	if math.random() >= rate / CATCH_ONE_IN then return nil end
 	local fish = pick_catch(math.random())
 	local inv = barrel_inventory(self)
 	if inv then

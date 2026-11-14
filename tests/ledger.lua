@@ -89,12 +89,13 @@ local loaded = ledger.assess({id = "sam", profession = "nitwit", food_points = 2
 assert(not loaded.needs["mcl_core:apple"] and loaded.surplus["mcl_farming:bread"] == 3, "24 points, 8 wanted and a reserve of 3")
 -- A Builder's missing materials add to what it wants.
 local builder = ledger.assess({id = "bo", profession = "mason", max_tier = 1, extra = {["mcl_core:cobble"] = 40}, held = {}})
-assert(builder.needs["mcl_core:cobble"] == 40)
+local plain = ledger.assess({id = "bo", profession = "mason", max_tier = 1, held = {}})
+assert(builder.needs["mcl_core:cobble"] == 40 + (plain.needs["mcl_core:cobble"] or 0))
 -- top: the largest worth first.
 local top = ledger.top(smithy.needs, smithy.value, 1)
 -- Logs for its own sticks (ticket 11d) are the tool smith's dearest need, of any species.
 assert(#top == 1 and smithy.group[top[1].item] == "log", top[1].item)
-assert(smithy.needs["mcl_core:tree"] == 4 and smithy.needs["mcl_core:birchtree"] == 4 and smithy.needs["mcl_core:wood"] == 8)
+assert(smithy.needs["mcl_core:tree"] == 4 and smithy.needs["mcl_core:birchtree"] == 4 and smithy.needs["mcl_core:wood"] == 12, "four wooden picks' planks")
 -- Birch logs fill a need for logs; logs it needs are no fuel to it.
 local birch = ledger.assess({id = "sam", profession = "tool_smith", max_tier = 1,
 	held = {["mcl_core:birchtree"] = 4, ["mcl_core:coal_lump"] = 15}})
