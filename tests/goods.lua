@@ -28,13 +28,24 @@ assert(not goods.fills({item = "mcl_core:apple"}, "mcl_farming:bread"))
 assert(goods.fills({item = "mcl_core:apple", group = "food"}, "mcl_farming:bread"))
 assert(not goods.fills({item = "mcl_core:apple", group = "food"}, "mcl_core:stone"))
 
--- Conversions, a short list a job: none for food.
+-- Conversions, a short list a job: none for food. Everyone's (19h): a lily of the valley
+-- sells as white dye, one for one, for the shepherd's wool.
+local LILY, WHITE_DYE = "mcl_flowers:lily_of_the_valley", "mcl_dye:white"
+local function anyone(list)
+	local found
+	for _, c in ipairs(list) do if c.from == LILY then found = c end end
+	return found
+end
 local shepherd = goods.conversions({_profession = "shepherd"})
+local lily = anyone(shepherd)
+assert(lily and lily.to == WHITE_DYE and lily.ratio == 1, "anyone's")
 -- Each wool colour to string, four a wool, and to its carpet, three for two (ticket 19c).
-assert(#shepherd == 32)
+assert(#shepherd == 33)
 local strings, carpets = 0, 0
 for _, c in ipairs(shepherd) do
-	if c.to == goods.STRING then
+	if c.from == LILY then
+		-- anyone's, counted above
+	elseif c.to == goods.STRING then
 		assert(c.ratio == 4 and not c.takes)
 		strings = strings + 1
 	else
@@ -44,9 +55,11 @@ for _, c in ipairs(shepherd) do
 end
 assert(strings == 16 and carpets == 16)
 local woodcutter = goods.conversions({_profession = "nitwit", _villages_labour = {activity = "woodcutter"}})
-assert(#woodcutter == 8 and woodcutter[1].ratio == 4)
-assert(#goods.conversions({_profession = "mason"}) == 1)
-assert(#goods.conversions({_profession = "farmer"}) == 0)
+assert(#woodcutter == 9 and woodcutter[1].ratio == 4 and anyone(woodcutter))
+assert(#goods.conversions({_profession = "mason"}) == 2)
+local farmer = goods.conversions({_profession = "farmer"})
+assert(#farmer == 1 and anyone(farmer), "a farmer holding a lily sells it as dye too")
+assert(#goods.CONVERSIONS.shepherd == 32, "the job's own list is untouched")
 for _, list in pairs(goods.CONVERSIONS) do
 	for _, c in ipairs(list) do assert(not food.POINTS[c.to] and not food.POINTS[c.from], "no food conversions") end
 end

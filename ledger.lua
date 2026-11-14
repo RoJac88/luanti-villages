@@ -92,6 +92,7 @@ local HAND_PRICES = {
 	["mcl_flowers:tulip_white"] = 1 / 12,
 	["mcl_flowers:tulip_pink"] = 1 / 12,
 	["mcl_flowers:cornflower"] = 1 / 12,
+	["mcl_flowers:lily_of_the_valley"] = 1 / 12,
 }
 -- Every single-trunk species' logs and saplings at oak's prices (labour.lua grows them).
 for _, species in ipairs({"acacia", "spruce", "birch", "jungle"}) do

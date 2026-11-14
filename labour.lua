@@ -19,8 +19,8 @@
 -- * forager: within FORAGE_RADIUS of its bed, sweet berry bushes at their last two
 --   stages (left at the first, as a player's picking leaves them), sugar cane above its
 --   bottom block, and apples lying on the ground. Flowers and mushrooms do not come
---   back once picked, so they are not dug: of a poppy or dandelion it picks the bloom
---   (ticket 19c, for comforts.lua), and leaves the plant to bloom again BLOOM_DAYS
+--   back once picked, so they are not dug: of a poppy, dandelion or lily of the valley it
+--   picks the bloom (ticket 19c, for comforts.lua; the lily for white dye, 19h), and leaves the plant to bloom again BLOOM_DAYS
 --   later (the day in its node meta, `living_villages_picked`), up to FLOWER_KEEP.
 --   It also picks up whatever else lies dropped on the ground that the economy prices
 --   (ledger.price): a dead player's goods, a zombie's rotten flesh, before they
@@ -177,7 +177,10 @@ end
 local BERRY = "mcl_farming:sweet_berry"
 local CANE = "mcl_core:reeds"
 local APPLE = "mcl_core:apple"
-local FLOWERS = {"mcl_flowers:poppy", "mcl_flowers:dandelion"}
+-- Lily of the valley is the white dye the shepherd dyes its grey wool with (goods.lua).
+local FLOWERS = {"mcl_flowers:poppy", "mcl_flowers:dandelion", "mcl_flowers:lily_of_the_valley"}
+local IS_FLOWER = {}
+for _, flower in ipairs(FLOWERS) do IS_FLOWER[flower] = true end
 local FLOWER_KEEP, BLOOM_DAYS = 8, 3
 local PICKED_META = "living_villages_picked"
 local RIPE_BUSHES = {["mcl_farming:sweet_berry_bush_2"] = {1, 2}, ["mcl_farming:sweet_berry_bush_3"] = {2, 3}}
@@ -189,7 +192,7 @@ local OPEN = {"air", "group:plant", "group:flower", "group:grass"}
 -- Rates in goods per work stage, for the choice; the goods and their shares.
 local ACTIVITIES = {
 	forager = {rate = 12, goods = {[BERRY] = 0.45, [APPLE] = 0.2, [CANE] = 0.25,
-		[FLOWERS[1]] = 0.05, [FLOWERS[2]] = 0.05}},
+		[FLOWERS[1]] = 0.05, [FLOWERS[2]] = 0.05, [FLOWERS[3]] = 0.05}},
 	woodcutter = {rate = 10, goods = {}},
 	quarrier = {rate = 32, goods = {[COBBLE] = 1}},
 	porter = {rate = 0, goods = {}},
@@ -406,7 +409,7 @@ end
 M.unsold_share = unsold_share
 
 local function keep_of(item)
-	if item == FLOWERS[1] or item == FLOWERS[2] then return FLOWER_KEEP end
+	if IS_FLOWER[item] then return FLOWER_KEEP end
 	return item == COBBLE and QUARRY_KEEP or KEEP_GATHERED
 end
 
@@ -606,7 +609,7 @@ function M.forage(self, target)
 		-- Its bloom: the plant stays, to bloom again.
 		local node = core.get_node_or_nil(target.pos)
 		if not node or not in_bloom(target.pos) then return nil end
-		local flower = (node.name == FLOWERS[1] or node.name == FLOWERS[2]) and node.name or nil
+		local flower = IS_FLOWER[node.name] and node.name or nil
 		if not flower or possessions.count(self, flower) >= FLOWER_KEEP then return nil end
 		core.get_meta(target.pos):set_int(PICKED_META, core.get_day_count() + 1)
 		possessions.add(self, flower, 1)
