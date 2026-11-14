@@ -102,7 +102,7 @@ local SALE_WHEAT = 8
 -- spare, while one farm chest held 27 loaves and 299 potatoes, which only the keeper took.
 local SALE_BREAD = 16
 local SALE_POTATO = 16
-local KEEPER_RESERVE = 24
+local KEEPER_RESERVE = stock.KEEPER_RESERVE
 -- A trip to a chest waits for this much over the keep, unless the pouch is full.
 local DEPOSIT_TRIGGER = 8
 -- Food is worth a trip sooner: past the keep, bread is for its own dinners and the

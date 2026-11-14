@@ -156,6 +156,30 @@ function M.add_to_chest(pos, name)
 	return true
 end
 
+-- Meals a farmer leaves in its work chest for the keeper's next fetch (keeper_supply.lua's
+-- CARRY, a loaf or a potato each); what is over it the farmer takes to sell (farmer.lua).
+M.KEEPER_RESERVE = 24
+local SALE_FOODS = {"mcl_farming:bread", "mcl_farming:potato_item"}
+
+-- The food a farmer's work chest holds over KEEPER_RESERVE, bread first: {item = count}.
+-- Its prices count it as supply (prices.lua), as it can take it to sell any day.
+function M.food_for_sale(self)
+	local out = {}
+	if self._profession ~= "farmer" or not self._jobsite then return out end
+	local chest = M.find_chests(self._jobsite)[1]
+	if not chest then return out end
+	local over = -M.KEEPER_RESERVE
+	for _, item in ipairs(SALE_FOODS) do over = over + M.chest_count(chest, item) end
+	for _, item in ipairs(SALE_FOODS) do
+		local count = math.min(M.chest_count(chest, item), over)
+		if count > 0 then
+			out[item] = count
+			over = over - count
+		end
+	end
+	return out
+end
+
 -- How many of the item are in the chest.
 function M.chest_count(pos, name)
 	local inv = chest_inventory(pos)

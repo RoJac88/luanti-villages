@@ -120,24 +120,31 @@ local function is_pantry(chests, pos)
 	return false
 end
 
-local function supplies_in(pos)
-	for _, item in ipairs(SUPPLIES) do
-		if stock.chest_count(pos, item) > 0 then return true end
-	end
-	return false
+-- Dinners' worth of supplies in a chest (MEALS).
+local function meals_in(pos)
+	local total = 0
+	for _, item in ipairs(SUPPLIES) do total = total + stock.chest_count(pos, item) * MEALS[item] end
+	return total
 end
 
--- The nearest farmer's work chest with something to fetch, never a pantry chest, nor
--- one `skip(pos)` passes over.
+-- The farmer's work chest with the most meals to fetch, the nearest of equals, never a
+-- pantry chest, nor one `skip(pos)` passes over. The nearest one always had all the
+-- tavern's money: one farmer held 1169 emeralds while the other's chest held 345 potatoes
+-- nobody fetched (ColonyFood, 2026-11-14). Taking from the fullest pays each farm for
+-- what it grows.
 function M.source(jukebox, chests, skip)
 	local r = SUPPLY_RADIUS
 	local minp = {x = jukebox.x - r, y = jukebox.y - COMPOSTER_HEIGHT, z = jukebox.z - r}
 	local maxp = {x = jukebox.x + r, y = jukebox.y + COMPOSTER_HEIGHT, z = jukebox.z + r}
-	local best, best_distance
+	local best, best_meals, best_distance
 	local function consider(pos)
-		if pos and not is_pantry(chests, pos) and not (skip and skip(pos)) and supplies_in(pos) then
+		if not pos or is_pantry(chests, pos) or (skip and skip(pos)) then return end
+		local meals = meals_in(pos)
+		if meals > 0 then
 			local distance = vector.distance(pos, jukebox)
-			if not best or distance < best_distance then best, best_distance = pos, distance end
+			if not best or meals > best_meals or (meals == best_meals and distance < best_distance) then
+				best, best_meals, best_distance = pos, meals, distance
+			end
 		end
 	end
 	for _, composter in ipairs(core.find_nodes_in_area(minp, maxp, COMPOSTERS)) do

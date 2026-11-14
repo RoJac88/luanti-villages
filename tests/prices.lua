@@ -20,6 +20,27 @@ assert(balance["mcl_farming:bread"] == balance[APPLE], "one entry for every food
 assert(balance[FISH].supply == 16 and balance[FISH].demand == 0)
 assert(balance["mcl_core:emerald"] == nil)
 
+-- A need counts only as far as its villager can pay at its own value: heard needs carry
+-- the needer's emeralds, its own are held to its own (ColonyFood, 2026-11-14: bread at
+-- eight times its price on the wants of villagers with an emerald each).
+local BREAD = "mcl_farming:bread"
+local poor = prices.balance({
+	{kind = "needs", item = WOOL, count = 4, price = 10, budget = 20, who = "a"},
+	{kind = "needs", item = WOOL, count = 4, price = 10, who = "b"},
+	{kind = "needs", item = WOOL, count = 4, price = 10, budget = 0, who = "c"},
+}, {needs = {[WOOL] = 3}, value = function() return 10 end}, {budget = 15})
+assert(near(poor[WOOL].demand, 2 + 4 + 0 + 1.5), poor[WOOL].demand)
+-- A category's shortfall, at the cheapest member per unit: bread, 4 points at 40.
+local hungry = prices.balance({}, {
+	needs = {[BREAD] = 2, [APPLE] = 4}, group = {[BREAD] = "food", [APPLE] = "food"},
+	categories = {food = {target = 10, held = 0, short = 10}},
+	value = function(item) return item == BREAD and 40 or 60 end,
+}, {budget = 20})
+assert(near(hungry[BREAD].demand, 2), "20 emeralds buy 2 points at 10 each, not 10")
+-- What it can sell from elsewhere (a farmer's chest) is supply.
+local stocked = prices.balance({}, {}, {stock = {[WOOL] = 30}})
+assert(stocked[WOOL].supply == 30 and stocked[WOOL].demand == 0)
+
 -- A day: wanted and unmet rises, offered and unwanted falls, toward the full rate as
 -- the counts outgrow DAMP.
 local day1 = prices.drift(nil, balance)
