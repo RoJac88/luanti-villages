@@ -1899,6 +1899,29 @@ that needs food buys any food the player brings, at its price for that item, and
 window shows such a need as a category ("food, 24 points") with the player's matching
 items to sell.
 
+**Fix (2026-11-15): a product at its sources' price.** A conversion sells the product
+for what its sources are worth: an ingot for nine nuggets. This ticket priced a converted
+sale at the seller's value of the source over the ratio. Ticket 17 put asks first in
+`exchange.quote`, and for a converted sale it asked the product's own price, so the
+source path ran only for items with no base price. Seed prices hid it (an ingot's seed is
+nine nuggets'). Once 21b let prices learn, an alchemist that held nuggets unsold marked
+their ask down daily, while its ingot ask, for a good it never held or sold, stayed at
+the 115 seed; an armorer with 46 emeralds could buy none, and the alchemist went broke on
+19 nuggets. Now:
+- `asks.converted(seller, conversion, view)` is the product's ask capped at the source's
+  ask over the ratio (nine nuggets' ask for an ingot, a quarter of the wool's for string,
+  a glass's for a pane); the product's own ask stands only when lower.
+- `exchange.quote` asks it for every converted sale; `market_news` tells a converted `has`
+  at it; the alchemist's trade-window rows made by conversion are priced by it.
+- A converted sale is also recorded as a sale of the sources it used (`asks.sold`, in
+  `exchange.settle` and the window), so their ask, which now prices the product, rises on
+  the sale and stops falling.
+- Tests: `tests/alchemist_trade.lua` (nuggets marked down to MIN, the ingot ask at its
+  seed: an armorer with 46 emeralds buys at nine nuggets' ask, and the nuggets count as
+  sold), `tests/market_news.lua` (string told at a quarter of the wool's ask) and
+  `tests/trade_window.lua` (an ingot row at nine nuggets' price). The old test set both
+  factors to 0.5 together, so it never saw them apart.
+
 ### 16. The woodcutter
 
 Only a villager with no job cut wood (`labour.lua`), so a village's wood fell as its job

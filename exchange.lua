@@ -71,8 +71,10 @@ end
 
 -- What the seller asks this buyer for one of the item: its ask (no less than its own value,
 -- given its view), less for a buyer it thinks well of; nil for an item with no ask.
-function M.asking(seller, buyer, item, seller_view)
-	local ask = asks.ask(seller, item, seller_view)
+-- With `conversion` (goods.lua), the product's ask capped by its sources' (asks.converted).
+function M.asking(seller, buyer, item, seller_view, conversion)
+	local ask
+	if conversion then ask = asks.converted(seller, conversion, seller_view) else ask = asks.ask(seller, item, seller_view) end
 	if not ask then return nil end
 	return ask * (1 - STANDING_SHIFT * standing(seller, buyer))
 end
@@ -150,7 +152,8 @@ function M.quote(seller, seller_view, buyer, buyer_view, item, wanted, from, rat
 	local source_value = seller_view.value(from)
 	local to_seller = source_value and source_value / ratio
 	if stock <= 0 or not to_buyer then return nil end
-	local unit = M.asking(seller, buyer, item, seller_view)
+	local unit = M.asking(seller, buyer, item, seller_view,
+		from ~= item and {from = from, to = item, ratio = ratio} or nil)
 	local asked = unit ~= nil
 	-- Its value with no money in it: a buyer too poor to value the item at the ask in
 	-- emeralds may still swap goods for it (the money factor, ticket 21a).
@@ -229,7 +232,10 @@ function M.settle(trade)
 	local made = trade.from and string.format(" (from %d %s)", from_count, from) or ""
 	-- Both sides' reference prices learn the price paid (ticket 21b); a swap of goods has none.
 	local unit = trade.pay and trade.pay / trade.count
-	asks.sold(seller, trade.item, core.get_day_count and core.get_day_count() or 0, trade.count, unit)
+	local day = core.get_day_count and core.get_day_count() or 0
+	asks.sold(seller, trade.item, day, trade.count, unit)
+	-- Sold as its sources too: their ask, which prices the product, stops falling.
+	if trade.from then asks.sold(seller, trade.from, day, from_count, trade.pay and trade.pay / from_count) end
 	if unit then prices.learn(buyer, trade.item, unit) end
 	core.log("action", string.format("[living_villages] trade: villager %s sold %d %s%s to %s for %s",
 		short_id(seller), trade.count, trade.item, made, short_id(buyer), price))

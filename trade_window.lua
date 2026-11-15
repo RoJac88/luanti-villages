@@ -137,7 +137,7 @@ end
 -- The alchemist's rows for its own goods (see the header): sells, buys. `held` is what
 -- it holds, `share` reputation's share; a sell row made by conversion carries `held` (how
 -- many it holds as they are) and `conversion` (goods.lua) to make the rest.
-function M.alchemy_rows(view, held, emeralds, share, player_has, ask)
+function M.alchemy_rows(view, held, emeralds, share, player_has, ask, converted)
 	local sells, buys = {}, {}
 	local made = {}
 	for _, conversion in ipairs(goods.CONVERSIONS.alchemist) do
@@ -147,6 +147,8 @@ function M.alchemy_rows(view, held, emeralds, share, player_has, ask)
 	for item in pairs(alchemist.GOODS) do
 		local price = asking(view, ask, item)
 		local own, from = held[item] or 0, made[item]
+		-- Made by conversion: never dearer than its sources (asks.converted).
+		if from and converted then price = converted(from.conversion) or price end
 		local have = own + (from and from.count or 0)
 		if price and have > 0 then
 			local lot, lot_price = M.lot(price * (1 - share), true)
@@ -169,10 +171,10 @@ function M.alchemy_rows(view, held, emeralds, share, player_has, ask)
 	return sells, buys
 end
 
-function M.rows(view, held, emeralds, reputation, player_has, is_alchemist, ask)
+function M.rows(view, held, emeralds, reputation, player_has, is_alchemist, ask, converted)
 	local share = M.rep_share(reputation)
 	local sells, buys = {}, {}
-	if is_alchemist then sells, buys = M.alchemy_rows(view, held, emeralds, share, player_has, ask) end
+	if is_alchemist then sells, buys = M.alchemy_rows(view, held, emeralds, share, player_has, ask, converted) end
 	for item, spare in pairs(view.surplus or {}) do
 		local have = math.min(spare, held[item] or 0)
 		local unit = asking(view, ask, item)
@@ -259,8 +261,9 @@ function M.install(def, deps)
 	local function current_rows(villager, name)
 		local view = possessions.assess(villager)
 		local function ask(item) return asks.ask(villager, item, view) end
+		local function converted(conversion) return asks.converted(villager, conversion, view) end
 		return M.rows(view, possessions.held(villager), possessions.emeralds(villager), reputation(villager, name),
-			player_has(name), villager._villages_alchemist == true, ask), view
+			player_has(name), villager._villages_alchemist == true, ask, converted), view
 	end
 
 	local function form(villager, name)
@@ -371,7 +374,10 @@ function M.install(def, deps)
 		possessions.add(villager, EMERALD, pay)
 		inv:add_item("main", entry.item .. " " .. count)
 		-- A sale like any (ticket 21c): its reference price learns the price, its ask rises.
-		asks.sold(villager, entry.item, core.get_day_count and core.get_day_count() or 0, count, pay / count)
+		local day = core.get_day_count and core.get_day_count() or 0
+		asks.sold(villager, entry.item, day, count, pay / count)
+		-- What it made by conversion sold its sources too (asks.converted prices from them).
+		if from then asks.sold(villager, from, day, from_count, pay * (count - own) / count / from_count) end
 		if gossip then gossip.add(villager, name, "trading") end
 		log("%s bought %d %s from villager %s for %d emerald(s)%s", name, count, entry.item,
 			tostring(villager._id):sub(1, 6), pay, from and string.format(" (from %d %s)", from_count, from) or "")

@@ -185,6 +185,10 @@ do
 	assert(ingot.price == math.ceil(ledger.price(IRON)), ingot.price)
 	local cheap = window.rows(empty, held, 1000, 0, nil, true, function(item) return item == IRON and 50 or nil end)
 	assert(row(cheap.sells, IRON).price == 50, "at its ask")
+	-- Made from nuggets, never dearer than nine of them (asks.converted).
+	local by_nuggets = window.rows(empty, held, 1000, 0, nil, true, nil,
+		function(conversion) return conversion.from == NUGGET and 9 * 3 or nil end)
+	assert(row(by_nuggets.sells, IRON).price == 27, row(by_nuggets.sells, IRON).price)
 	assert(row(r.sells, NUGGET).lots == 50 and row(r.sells, PANE).lots == 3 and row(r.sells, GLASS).lots == 3)
 	assert(not row(r.sells, GOLD_NUGGET), "no gold under the reserve")
 	assert(row(window.rows(empty, {[NUGGET] = 126}, 0, 0, nil, true).sells, GOLD_NUGGET).lots == 1, "past it")
