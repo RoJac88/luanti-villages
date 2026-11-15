@@ -36,6 +36,8 @@ local prices = dofile(core.get_modpath("living_villages") .. "/prices.lua")
 local asks = dofile(core.get_modpath("living_villages") .. "/asks.lua")
 local goods = dofile(core.get_modpath("living_villages") .. "/goods.lua")
 local stock = dofile(core.get_modpath("living_villages") .. "/farm_stock.lua")
+local recipes = dofile(core.get_modpath("living_villages") .. "/recipes.lua")
+local COAL = "mcl_core:coal_lump"
 
 local NEWS_ENTRIES = 24
 local NEWS_SHARE = 6
@@ -141,8 +143,23 @@ function M.heard(self, now)
 	return kept
 end
 
--- Its own news, from its ledger view: its top OWN_ITEMS needs and surpluses, and any
--- other surplus it has heard someone needs. A single hoe a farmer is after is worth
+-- The inputs of the recipes it makes (recipes.lua), as a set: none for the keeper or a
+-- Builder, which make nothing of their trade's.
+-- A recipe's fuel counts, as coal, and a category's input (fuel, logs, planks) stands for
+-- its category: its need is told under the member cheapest per unit, as M.own does.
+function M.recipe_inputs(self)
+	local out = {}
+	if self._villages_keeper or self._villages_builder then return out end
+	for _, recipe in ipairs(recipes[self._profession] or {}) do
+		for _, input in ipairs(recipe.from) do out[input[1]] = true end
+		if recipe.fuel then out[COAL] = true end
+	end
+	return out
+end
+
+-- Its own news, from its ledger view: its top OWN_ITEMS needs and surpluses, its fuel and
+-- top OWN_ITEMS other needs among its recipes' inputs, and any other surplus it has heard
+-- someone needs. A single hoe a farmer is after is worth
 -- telling, though the tool smith's spare shovels outrank it (run 47).
 function M.own(self, view, now)
 	local entries = {}
@@ -178,6 +195,24 @@ function M.own(self, view, now)
 			}
 		end
 		for _, top in ipairs(ledger.top(list, view.value, OWN_ITEMS)) do add(top.item, top.count) end
+		if kind == "needs" then
+			-- What its recipes take (recipes.lua) is told too: the butcher's top needs were
+			-- vanilla trade wants nobody here makes (sweet berries, chicken, kelp blocks), so
+			-- it never told of the beef it cooks, never heard of the leatherworker's 29, and
+			-- laboured instead (ColonyFood, 2026-11-14).
+			-- Fuel, which every smelting recipe burns, is told whatever its rank: among the
+			-- butcher's seven inputs it came fourth.
+			local inputs, fuel = {}, nil
+			for item in pairs(M.recipe_inputs(self)) do
+				local category = goods.target_category(item)
+				local key = category and cheapest[category] and cheapest[category].item or item
+				if list[key] and not told[key] then
+					if category == "fuel" then fuel = key else inputs[key] = list[key] end
+				end
+			end
+			if fuel then add(fuel, list[fuel]) end
+			for _, top in ipairs(ledger.top(inputs, view.value, OWN_ITEMS)) do add(top.item, top.count) end
+		end
 		if kind == "has" then
 			-- What its trade makes (ledger.outputs) is told too, the most a buyer would pay at
 			-- its ask first: a seller values its own spare at next to nothing, so by its value

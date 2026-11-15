@@ -447,9 +447,14 @@ do
 	local idler = villager("ida", {x = 50, y = 1, z = 1}, {_villages_belongings = {[EMERALD] = 9 * 64}})
 	local hires = trips.hire({pat, sam, idler})
 	assert(#hires == 1 and hires[1].client == sam and pat._villages_trade_trip.client.id == "sam-smith")
-	local purse = pat._villages_trade_trip.client.purse
-	assert(purse == 384 and count(sam, EMERALD) == 0 and count(pat, EMERALD) == 384)
-	assert(logs[#logs]:find("hired porter pat%-po with 384 emerald"))
+	-- The purse is the lot at the client's value and the fee: not all it has (ColonyFood,
+	-- 2026-11-14: 512 sent for one poppy).
+	local trip = pat._villages_trade_trip
+	local purse = trip.client.purse
+	assert(purse == math.ceil(trip.want * trip.client.value) + trips.PORTER_FEE, purse)
+	assert(purse < 384 and count(sam, EMERALD) == 384 - purse and count(pat, EMERALD) == purse)
+	assert(logs[#logs]:find("hired porter pat%-po with " .. purse .. " emerald"))
+	assert(trips.purse_for({want = 1000}, 10) == trips.PURSE, "at most PURSE")
 	-- A second porter finds nobody left to hire it.
 	local pia = villager("pia", {x = 50, y = 1, z = 1}, {_villages_labour = {day = day, activity = "porter"}})
 	assert(#trips.hire({pia, sam}) == 0)

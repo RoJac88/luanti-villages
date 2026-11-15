@@ -221,6 +221,38 @@ do
 	assert(has <= news.OWN_ITEMS, has)
 end
 
+-- A butcher tells of the beef it cooks, though vanilla trade wants nobody here makes
+-- outrank it (ColonyFood, 2026-11-14: it never told of beef, never heard of the
+-- leatherworker's 29, and laboured instead).
+do
+	local butcher = villager("butch", {["mcl_core:emerald"] = 40}, {_profession = "butcher"})
+	local view = possessions.assess(butcher)
+	assert(view.needs["mcl_mobitems:beef"], "beef is a need")
+	local told, needs = false, 0
+	for _, entry in ipairs(news.own(butcher, view, now)) do
+		if entry.kind == "needs" then
+			needs = needs + 1
+			if entry.item == "mcl_mobitems:beef" then told = true end
+		end
+	end
+	assert(told, "its recipe's beef is news")
+	-- Its fuel too, under whichever member of fuel is cheapest per burn second; kelp blocks,
+	-- vanilla's butcher's want, are fuel, so charcoal fills them (ColonyFood, 2026-11-14).
+	local goods = dofile("goods.lua")
+	assert(view.group["mcl_core:charcoal_lump"] == "fuel", "a fuel need")
+	assert(not view.needs["mcl_ocean:dried_kelp_block"] or view.group["mcl_ocean:dried_kelp_block"] == "fuel",
+		"kelp blocks are wanted as fuel, not as themselves")
+	local fuel_told = false
+	for _, entry in ipairs(news.own(butcher, view, now)) do
+		if entry.kind == "needs" and entry.group == "fuel" then fuel_told = true end
+	end
+	assert(fuel_told, "its fuel is news")
+	assert(goods.fills({item = "mcl_ocean:dried_kelp_block", group = "fuel"}, "mcl_core:charcoal_lump"))
+	assert(needs <= 2 * news.OWN_ITEMS + 1, needs)
+	assert(news.recipe_inputs({_profession = "butcher", _villages_keeper = true})["mcl_mobitems:beef"] == nil,
+		"the keeper makes nothing of the butcher's")
+end
+
 settings.living_villages_economy = false
 local hal, ivy = villager("hal", {["mcl_core:coal_lump"] = 40}), villager("ivy", {})
 assert(news.exchange({hal, ivy}) == 0 and ivy._villages_market_news == nil)

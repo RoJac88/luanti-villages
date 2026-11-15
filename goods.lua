@@ -9,7 +9,9 @@
 -- own count, so a seller of any of them can fill it.
 --
 -- Every coal need today comes from smelting (recipes' fuel, the smiths' trade tables),
--- so coal and charcoal are fuel. Logs, planks and sticks burn too, but count as fuel only
+-- so coal and charcoal are fuel. So is the dried kelp block vanilla's butcher buys for its
+-- smoker: wanted as itself, nobody made it, and the butcher's 10 crowded its news while
+-- the unemployed held some 30 charcoal each (ColonyFood, 2026-11-14). Logs, planks and sticks burn too, but count as fuel only
 -- for a villager that does not need them as such (M.active).
 --
 -- Conversions. When a villager sells to a villager (exchange.lua), a job can hand over a
@@ -21,6 +23,7 @@ local core = minetest
 local food = dofile(core.get_modpath("living_villages") .. "/food.lua")
 
 local COAL, CHARCOAL, STICK = "mcl_core:coal_lump", "mcl_core:charcoal_lump", "mcl_core:stick"
+local KELP_BLOCK = "mcl_ocean:dried_kelp_block"
 local STRING = "mcl_mobitems:string"
 
 -- Log to the planks it splits into.
@@ -37,7 +40,7 @@ local SPECIES = {
 local WOOL_COLOURS = {"white", "grey", "silver", "black", "red", "yellow", "green", "cyan", "blue", "magenta",
 	"orange", "purple", "brown", "pink", "lime", "light_blue"}
 -- Burn seconds, as VoxeLibre's furnaces take them.
-local BURN = {[COAL] = 80, [CHARCOAL] = 80, [STICK] = 5}
+local BURN = {[COAL] = 80, [CHARCOAL] = 80, [STICK] = 5, [KELP_BLOCK] = 200}
 
 local categories = {food = {}, fuel = {}, log = {}, planks = {}}
 for item, points in pairs(food.POINTS) do categories.food[item] = points end
@@ -74,11 +77,11 @@ function M.units(category, item)
 	return members and members[item]
 end
 
--- The category a target item names, so a need for it is a need for the category: coal
--- and charcoal are fuel, any log or planks is logs or planks. Food targets are set as a
+-- The category a target item names, so a need for it is a need for the category: coal,
+-- charcoal and kelp blocks are fuel, any log or planks is logs or planks. Food targets are set as a
 -- category already (ledger.assess). Nil for an item wanted for itself.
 function M.target_category(item)
-	if item == COAL or item == CHARCOAL then return "fuel" end
+	if item == COAL or item == CHARCOAL or item == KELP_BLOCK then return "fuel" end
 	if categories.log[item] then return "log" end
 	if categories.planks[item] then return "planks" end
 	return nil

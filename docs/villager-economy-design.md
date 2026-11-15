@@ -1376,7 +1376,7 @@ it counts:
 | Category | Measured in | Members | Comes from |
 |---|---|---|---|
 | Food | food points | `food.POINTS` | hunger: a day's when starving, two days' when it holds over 5 dinners' emeralds (ticket 17) |
-| Fuel | burn seconds | coal 80, charcoal 80, any log 15, any planks 15, stick 5 | recipes that smelt (`fuel`) |
+| Fuel | burn seconds | coal 80, charcoal 80, dried kelp block 200, any log 15, any planks 15, stick 5 | recipes that smelt (`fuel`), the butcher's kelp blocks (19g) |
 | Logs | logs | any species | recipes, the Builder |
 | Planks | planks | any species | recipes, the Builder |
 | Wool | wool | any colour | anything but the cartographer's banner, which takes white |
@@ -1736,6 +1736,27 @@ wanted it.
   could not go below half, so buyers who believed the glut never met it. A seller that
   believes an item worth less than its base price now asks that much less (`asks.ask`). A
   belief over 1 leaves the ask to its sales, so demand is not counted twice.
+
+**19g. News of inputs, and money that comes back** (ColonyFood, 2026-11-14, days
+211-214, after 19e and 19f).
+
+- The butcher needed 10 beef and valued it at 23, and the leatherworker would sell 29
+  at 0.64, but the butcher had heard nothing of beef. Its top three needs, all that
+  market news told, were vanilla trade wants nobody in the village makes (sweet berries,
+  chicken, kelp blocks), so it never told of the beef it cooks. It laboured instead. A
+  villager now also tells its top three needs among its recipes' inputs
+  (`market_news.recipe_inputs`), as it already told its trade's outputs, and its fuel
+  need whatever its rank, since every smelting recipe burns it (it came fourth of the
+  butcher's seven inputs).
+- The butcher's vanilla trade wants 10 dried kelp blocks, which nobody makes, while the
+  unemployed held some 30 charcoal each at no value. Kelp blocks are now fuel (200 burn
+  seconds), so the want is for 2000 seconds of any fuel: about 25 charcoal.
+- A farmer hired a porter for one poppy and handed it its whole purse, 512. The porter
+  left the 495 change in the farmer's stash, and nothing took emeralds out of a stash:
+  they fell out of its budget, its donations and the village's money. A client now hands
+  a porter the lot at its own value plus the fee (`trade_trips.purse_for`), one hire a
+  day, and a villager takes the emeralds in its stash into its belongings whenever it
+  stands within reach of it (`possessions.collect_stash_emeralds`).
 
 ## Open questions
 
