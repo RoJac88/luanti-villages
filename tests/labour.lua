@@ -502,6 +502,7 @@ do
 	quinn._villages_labour = {day = day, activity = "quarrier"}
 	labour.step(quinn, now + 1000)
 	assert(#quinn.walks == 1 and quinn.walks[1].x == 6 and quinn.walks[1].z == 1, "stands in front of it")
+	assert(not labour.waiting(quinn), "setting off is no wait (ticket 23a)")
 	quinn.arrive()
 	assert(count(quinn, "mcl_core:cobble") == 1 and nodes[key(at(6, 1, 0))] == nil, "mined, the lava will flow back")
 	assert(quinn._villages_tally.made["mcl_core:cobble"] == 1)
@@ -512,6 +513,9 @@ do
 	assert(#targets == 1 and targets[1].ready == false and targets[1].mine == true)
 	labour.step(quinn, now + 1100)
 	assert(#quinn.walks == 1 and quinn._villages_labour_next == now + 1101, "waits a second at it")
+	assert(labour.waiting(quinn), "between blocks it waits, and crafts (ticket 23a)")
+	labour.step(quinn, now + 1100.5)
+	assert(labour.waiting(quinn), "between ticks as it was")
 	-- Another quarrier leaves the cell it works alone.
 	local rhea = villager({_id = "rhea"})
 	assert(#labour.quarry_targets(rhea) == 0)

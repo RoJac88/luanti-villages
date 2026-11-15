@@ -65,6 +65,8 @@ local wants = dofile(core.get_modpath("living_villages") .. "/wants.lua")
 local DEFAULT_CRAFT_SECONDS = 120
 local JOBSITE_REACH = 3
 local STEP_SECONDS = 5
+-- How often a labourer waiting looks again for the labour recipe to buy for.
+local PLAN_SECONDS = 60
 -- It stops making an output once it holds this many past its target, or one if
 -- no one asks for it and it has no target for it.
 local STOCK = 16
@@ -198,9 +200,10 @@ function M.gain(recipe, price_of, asks)
 	return ledger.margin(recipe, priced)
 end
 
--- The recipe it would make next, or nil. `held`, `view` and `asks` default to its own.
-function M.choose(self, held, view, asks)
-	local list = M.recipes(self)
+-- The recipe it would make next, or nil. `held`, `view` and `asks` default to its own,
+-- `list` to its recipes (M.recipes).
+function M.choose(self, held, view, asks, list)
+	list = list or M.recipes(self)
 	if not list then return nil end
 	held = held or possessions.held(self)
 	view = view or possessions.assess(self)
@@ -312,7 +315,8 @@ function M.count_supply(self)
 end
 
 -- Makes one craft of the recipe, if it still holds what it takes. Returns whether it did.
-function M.make(self, recipe)
+-- A labourer's craft (`labour`, ticket 23a) counts toward no tier.
+function M.make(self, recipe, labour)
 	if not M.can_make(self, recipe, possessions.held(self)) then return false end
 	local supplied = M.supplied(self, recipe)
 	local used = {}
@@ -353,7 +357,7 @@ function M.make(self, recipe)
 	tally.note(self, {[makes] = recipe.count}, used)
 	core.log("action", string.format("[living_villages] production: villager %s (%s) made %d %s",
 		short_id(self), trade_name(self), recipe.count, makes))
-	if supplied then M.count_supply(self) end
+	if supplied and not labour then M.count_supply(self) end
 	return true
 end
 
@@ -404,24 +408,105 @@ end
 local last_read = setmetatable({}, {__mode = "k"})
 local next_step = setmetatable({}, {__mode = "k"})
 
--- Banks the clock time since the last step, if it was at work, and makes what that
--- covers. Returns the crafts made.
-function M.work(self, elapsed)
-	local made = 0
-	local banked = (self._villages_craft or 0) + elapsed * rate(self)
+-- Banks `elapsed` in `field` and makes what that covers from `list` (nil: its own
+-- recipes). Returns the crafts made, and whether it found nothing to make.
+local function bank_and_make(self, elapsed, field, list, labour)
+	local made, nothing = 0, false
+	local banked = (self[field] or 0) + elapsed * rate(self)
 	while made < MAX_PER_STEP do
-		local recipe = M.choose(self)
+		local recipe = M.choose(self, nil, nil, nil, list)
 		if not recipe then
-			banked = 0
+			banked, nothing = 0, true
 			break
 		end
 		local cost = M.cost(self, recipe)
-		if banked < cost or not M.make(self, recipe) then break end
+		if banked < cost or not M.make(self, recipe, labour) then break end
 		banked = banked - cost
 		made = made + 1
 	end
-	self._villages_craft = banked > 0 and banked or nil
+	self[field] = banked > 0 and banked or nil
+	return made, nothing
+end
+
+-- Banks the clock time since the last step, if it was at work, and makes what that
+-- covers. Returns the crafts made.
+function M.work(self, elapsed)
+	return (bank_and_make(self, elapsed, "_villages_craft", nil, false))
+end
+
+-- Labourers' crafts (ticket 23a). A villager labouring (labour.lua) banks the work-stage
+-- time its activity has no job for (`waiting`: no tree ready, a generator between blocks,
+-- nothing in bloom, a porter not hired, no activity at all) in `_villages_labour_craft`,
+-- apart from a crafter's bank at its jobsite, at the same hunger rates, and makes from
+-- recipes.labour what pays best, at home, at no block. Time working its activity banks
+-- nothing, so crafting never takes it from its labour.
+--
+-- Its plan (`_villages_labour_plan`, {day, checked, index} into recipes.labour), looked
+-- for every PLAN_SECONDS while it waits: the labour recipe that would pay best had it the
+-- inputs, of the goods someone has asked for or it wants itself. possessions.assess wants that recipe's inputs, one craft's worth, so
+-- market news tells them and it buys them as a crafter buys its own.
+M.LABOUR = recipes.labour
+
+-- Returns the crafts made, and whether it found nothing to make.
+function M.labour_work(self, elapsed)
+	return bank_and_make(self, elapsed, "_villages_labour_craft", recipes.labour, true)
+end
+
+-- The labour recipe it would make were the inputs to hand, of the goods wanted; nil if
+-- none pays more than its inputs. `view` and `asks` default to its own.
+function M.labour_plan(self, view, asks)
+	view = view or possessions.assess(self)
+	asks = asks or news.asking(news.heard(self, core.get_gametime()))
+	local price_of = possessions.prices_of(self)
+	local held = possessions.held(self)
+	local best, best_rate
+	for _, recipe in ipairs(recipes.labour) do
+		local target = view.targets[recipe.makes] or 0
+		local wanted = target > 0 or (asks[recipe.makes] or 0) > 0
+		local stock_held = have(recipe.makes, function(item) return held[item] end)
+		if wanted and stock_held < target + STOCK then
+			local gain = M.gain(recipe, price_of, asks)
+			if gain and gain > 1e-6 then
+				local rate = gain / M.cost(self, recipe)
+				if not best or rate > best_rate or (rate == best_rate and recipe.makes < best.makes) then
+					best, best_rate = recipe, rate
+				end
+			end
+		end
+	end
+	return best
+end
+
+local labour_read = setmetatable({}, {__mode = "k"})
+local labour_next = setmetatable({}, {__mode = "k"})
+
+-- One step of a labourer in its work stage (labour.lua's do_custom). Returns the crafts made.
+function M.labour_step(self, now, waiting)
+	if now < (labour_next[self] or 0) then return 0 end
+	labour_next[self] = now + STEP_SECONDS
+	local reading = clock.read(self)
+	local last = labour_read[self]
+	labour_read[self] = reading
+	if not waiting or not last or reading <= last then return 0 end
+	local made = M.labour_work(self, reading - last)
+	local day = core.get_day_count()
+	local plan = self._villages_labour_plan
+	if not (plan and plan.day == day and now - (plan.checked or 0) < PLAN_SECONDS) then
+		local recipe = M.labour_plan(self)
+		self._villages_labour_plan = {day = day, checked = now, index = recipe and M.labour_index(recipe)}
+		if recipe then
+			core.log("action", string.format("[living_villages] production: villager %s (labourer) would make %s",
+				short_id(self), recipe.makes))
+		end
+	end
 	return made
+end
+
+-- A labour recipe's place in recipes.labour, which the plan keeps (two make torches).
+function M.labour_index(recipe)
+	for i, entry in ipairs(recipes.labour) do
+		if entry == recipe then return i end
+	end
 end
 
 function M.step(self, now)

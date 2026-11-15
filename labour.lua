@@ -1229,9 +1229,16 @@ local function hold_at(self, cell)
 	M.hold(self)
 end
 
+-- Whether its activity has nothing for it to do at its last tick (no activity, a porter
+-- not hired, no target, a generator between blocks), when it crafts (ticket 23a,
+-- production.labour_step). Not saved: the next tick sets it again.
+local waiting = setmetatable({}, {__mode = "k"})
+function M.waiting(self) return waiting[self] == true end
+
 -- One tick of the work stage.
 function M.step(self, now)
 	if self._villages_labour_target then
+		waiting[self] = false
 		-- A walk that ended without arriving: try again later.
 		core.log("action", string.format("[living_villages] villager %s did not reach %s",
 			short_id(self), core.pos_to_string(self._villages_labour_target)))
@@ -1240,8 +1247,10 @@ function M.step(self, now)
 		self._villages_labour_next = now + RETRY_SECONDS
 		return
 	end
+	-- Between ticks it is as it was at the last.
 	if now < (self._villages_labour_next or 0) then return end
 	self._villages_labour_next = now + TICK_SECONDS
+	waiting[self] = false
 	local activity = M.today(self)
 	local pos = self.object:get_pos()
 	-- A peddler's work is its trades: buying, then selling (M.peddle_tick).
@@ -1251,7 +1260,11 @@ function M.step(self, now)
 	end
 	-- A porter's work is its trips (trade_trips.lua).
 	if activity ~= "quarrier" then M.release(self) end
-	if not activity or not pos or activity == "porter" then return end
+	if not activity or activity == "porter" then
+		waiting[self] = not self._villages_trade_trip
+		return
+	end
+	if not pos then return end
 	local target, distance
 	if activity == "forager" or activity == "quarrier" then
 		local open = {}
@@ -1290,6 +1303,7 @@ function M.step(self, now)
 	if not target then
 		M.release(self)
 		self._villages_labour_next = now + RETRY_SECONDS
+		waiting[self] = true
 		return
 	end
 	if target.kind == "cobble" and distance <= REACH then hold_at(self, target.pos)
@@ -1298,6 +1312,7 @@ function M.step(self, now)
 		-- At a generator between blocks: wait for the next.
 		if target.kind == "cobble" and not target.ready then
 			self._villages_labour_next = now + WAIT_SECONDS
+			waiting[self] = true
 			return
 		end
 
@@ -1362,8 +1377,12 @@ function M.install(def)
 			M.release(self)
 			return result
 		end
-		if not busy(self) then M.step(self, core.get_gametime()) end
+		local now = core.get_gametime()
+		local walking = busy(self)
+		if not walking then M.step(self, now) end
 		if self._villages_quarry_hold then M.hold(self) end
+		-- Crafts while its activity waits (ticket 23a).
+		production.labour_step(self, now, not walking and waiting[self] == true)
 		return result
 	end
 end

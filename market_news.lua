@@ -154,6 +154,9 @@ function M.recipe_inputs(self)
 		for _, input in ipairs(recipe.from) do out[input[1]] = true end
 		if recipe.fuel then out[COAL] = true end
 	end
+	-- A labourer's plan (ticket 23a, possessions.labour_plan).
+	local plan = possessions.labour_plan(self)
+	for _, input in ipairs(plan and plan.from or {}) do out[input[1]] = true end
 	return out
 end
 

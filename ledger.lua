@@ -127,6 +127,7 @@ local STONE, LOG = "mcl_core:stone", "mcl_core:tree"
 local IRON_NUGGET, IRON = "mcl_core:iron_nugget", "mcl_core:iron_ingot"
 local GOLD_NUGGET, GOLD = "mcl_core:gold_nugget", "mcl_core:gold_ingot"
 local FLINT, GLASS, PANE = "mcl_core:flint", "mcl_core:glass", "xpanes:pane_natural_flat"
+local TORCH, STICK, CHARCOAL, PLANKS = "mcl_torches:torch", "mcl_core:stick", "mcl_core:charcoal_lump", "mcl_core:wood"
 local COST_PRICED = {
 	{IRON_NUGGET, {{STONE, 4}}},
 	{IRON, {{IRON_NUGGET, 9}}},
@@ -135,6 +136,14 @@ local COST_PRICED = {
 	{FLINT, {{LOG, 4}}},
 	{GLASS, {{STONE, 2}}},
 	{PANE, {{GLASS, 1}}},
+	-- The labourers' goods (ticket 23a) that no trade table prices, at their inputs: 4
+	-- torches from a stick and a lump of charcoal, a flower pot from 3 stone, a barrel from
+	-- 7 planks, an armor stand from 6 sticks and a stone. The cost floor below puts a pot of
+	-- planks at its planks, should they cost more.
+	{TORCH, {{STICK, 0.25}, {CHARCOAL, 0.25}}},
+	{"mcl_flowerpots:flower_pot", {{STONE, 3}}},
+	{"mcl_barrels:barrel_closed", {{PLANKS, 7}}},
+	{"mcl_armor_stand:armor_stand", {{STICK, 6}, {STONE, 1}}},
 }
 -- A good a profession's recipe makes from iron, gold or flint is priced at no less than its
 -- inputs and fuel at these prices times COST_FLOOR, so the smiths, the armorer and the

@@ -599,6 +599,20 @@ function M.recipes_of(self)
 	return recipes[self._profession]
 end
 
+-- Whether it labours today (labour.lua's `_villages_labour`), so crafts from
+-- recipes.labour while its activity waits (ticket 23a).
+function M.labouring(self)
+	local labour = self._villages_labour
+	return not self.child and labour ~= nil and core.get_day_count ~= nil and labour.day == core.get_day_count()
+end
+
+-- The labour recipe it plans to buy inputs for today (production.labour_step), or nil.
+function M.labour_plan(self)
+	local plan = self._villages_labour_plan
+	if not plan or not plan.index or not M.labouring(self) or plan.day ~= core.get_day_count() then return nil end
+	return recipes.labour[plan.index]
+end
+
 -- The ledger's view of this villager (ledger.lua): its targets, needs, surplus and values.
 -- A keeper by its role; a Builder or an alchemist has no vanilla trade of its own.
 function M.assess(self)
@@ -632,8 +646,29 @@ function M.assess(self)
 		end
 		least = {[peddle.item] = peddle.bid}
 	end
+	-- A labourer (ticket 23a) wants one craft's worth of its plan's inputs, a category's
+	-- (stone, wool, planks) as the category.
+	local labour_categories
+	local plan = M.labour_plan(self)
+	for _, input in ipairs(plan and plan.from or {}) do
+		local category = input[3] or goods.target_category(input[1])
+		if category == "log" or category == "planks" or input[3] then
+			labour_categories = labour_categories or {}
+			labour_categories[category] = math.max(labour_categories[category] or 0,
+				input[2] * (goods.units(category, input[1]) or 1))
+		else
+			extra[input[1]] = (extra[input[1]] or 0) + input[2]
+		end
+	end
 	-- Production by margin (ticket 21d): a recipe input is worth no more than what its best
 	-- recipe's output returns, and one only recipes that do not pay take is not wanted.
+	-- A labourer's plan caps its own inputs alike, and no others: its cobble and logs sell
+	-- at their own price.
+	if plan then
+		for item, cap in pairs(ledger.imputed({plan}, M.prices_of(self), 5)) do
+			worth[item] = math.min(worth[item] or math.huge, cap)
+		end
+	end
 	local list = not self.child and M.recipes_of(self)
 	local unpaid
 	if list then
@@ -657,6 +692,10 @@ function M.assess(self)
 		categories = alchemist.targets(M.held(self), paying)
 	elseif self._villages_builder and (self._villages_builder_logs or self._villages_builder_wool) then
 		categories = {log = self._villages_builder_logs, wool = self._villages_builder_wool}
+	end
+	for category, amount in pairs(labour_categories or {}) do
+		categories = categories or {}
+		categories[category] = math.max(categories[category] or 0, amount)
 	end
 	return ledger.assess({
 		id = self._id,
