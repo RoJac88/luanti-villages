@@ -30,10 +30,12 @@ another.
 - No starvation deaths, departures or collapse. An unbalanced village stagnates.
 - No village-wide store, bank or score. As with gossip, each villager knows only
   what it has seen or been told.
-- No new nodes. Every site is an ordinary VoxeLibre node; the pulpit and the
-  builder's bench stay the mod's only nodes.
-- No change to which professions exist, how jobsites are claimed, or how traded
-  villagers are locked into their profession.
+- Few new nodes. Every site is an ordinary VoxeLibre node except the mod's own job
+  blocks: the pulpit, the builder's bench, the chopping block and the alchemist's
+  stand (ticket 20).
+- No change to how jobsites are claimed or how traded villagers are locked into
+  their profession. The roles (keeper, Builder, alchemist) are the only professions
+  added, each over a vanilla one.
 - No villager takes from a player's inventory.
 
 ## Decisions
@@ -519,7 +521,8 @@ whoever sells food and every other profession lives on its starting emeralds (Pr
 | Fletcher | Bows, arrows | Warriors: arrows are spent, bows wear | To do (warriors) |
 | Cleric | Its blessing | Donations at the holiday service, which it passes on as alms | 11c |
 | Cartographer | Banners | Villagers decorating for the holiday market | 12 |
-| Weapon smith, armorer | Swords, axes; armor, shields | Warriors; no village source of iron yet | To do (warriors) |
+| Weapon smith, armorer | Swords, axes; armor, shields | Warriors; iron from the alchemist (20) | To do (warriors) |
+| Alchemist | Iron, flint, glass, gold | The smiths and the armorer (iron), the fletcher (flint), the Builder (glass); players | 20 |
 
 ## Donations and alms
 
@@ -609,6 +612,176 @@ because three professions' village demand depends on it (Principle 6).
   need a village source of iron.
 - **Open:** whether threats wake warriors at night or a watch keeps one awake; whether
   guards use the armor stand as their post.
+
+## The alchemist
+
+Ticket 20. Stone and logs have few buyers, and nobody in a village makes iron, flint,
+glass or gold. The alchemist turns the first two into the rest. No village is generated
+with one: a player crafts its stand. It neither eats nor wants comforts, and it works
+through the hours others spend at the tavern and the church, so what it earns goes back
+to the villagers who sell it stone and logs.
+
+### The stand
+
+- `living_villages:alchemy_stand`, "Alchemist's stand": the brewing stand's shape and
+  textures, recoloured (`mcl_brewing`'s stand mesh with a tint of its own). It has no
+  formspec and brews nothing. It is not an `mcl_brewing` node, so vanilla clerics never
+  look for it. It is the mod's fourth node: remove the mod and a placed stand becomes
+  an unknown node, and its alchemist loses its job, as with the bench and the pulpit.
+- Recipe, shaped, with the top of the grid read as north: a feather (air) north, a
+  nautilus shell (water) east, any stone-tier block (earth, `group:cobble`: cobble,
+  cobbled deepslate, blackstone, as stone tools take) south and a blaze rod (fire,
+  `mcl_mobitems:blaze_rod`, an alias of `flaming_rod`) west. The centre is empty.
+
+  ```
+  .            feather         .
+  blaze rod    .               nautilus shell
+  .            group:cobble    .
+  ```
+
+- Never generated. `village_staffing.lua` never places or hands one out. A placed stand
+  is a job block like any other (`job_blocks.lua` kind `alchemy`), so an adult out of
+  work takes the nearest free one (`job_seek.lua`).
+
+### The role
+
+A role over a vanilla cleric, as the Builder is over a mason and the keeper over a
+butcher. The brewing stand is the vanilla cleric's jobsite and its robe suits the role.
+The robe is tinted so an alchemist is told from a cleric at a glance. `alchemist.lua`
+claims the stand through the node's `villager` meta, which is all vanilla's
+`validate_jobsite` checks, and sets `_villages_alchemist`. It has no `_trades`. Every
+check for a cleric asks the flag first: `common.lua`'s `schedule_of`, `church.lua`,
+`alms.lua`, `cleric.lua`'s pulpit seek and `economy_report.lua`.
+
+- **Timetable.** Ordinary day: putter from 5500, work 7000 to 17500 (the others' work
+  and tavern hours), then home and sleep. Holiday: putter, work 7000 to 10500 (service
+  and social), bell 10500 to 15000, work 15000 to 17500. So it meets the village at the
+  morning bell and the well, and at the holiday bell, where it keeps a stall and may buy
+  a banner like any seller (`market_stall.lua`).
+- **No food.** Its food points never fall. It is never hungry or starving, so it always
+  works at full rate. It never eats, is never served and never wants food. Births treat
+  it as fed.
+- **No comforts or wants.** `comforts.lua` gives it no slots and `wants.lua` gives it no
+  goods that wear out (books, tools). Its ledger wants only its inputs and a banner for
+  its stall.
+- **No church.** It never attends, so it never donates and never gets alms or a stake.
+  `alms.lua` also skips it by the flag, in case it is standing near the pulpit.
+- **Everything else as usual.** Conversations, market news, trade trips in the putter
+  stage, hiring porters (it has a jobsite), rent if its bed is in a house the Builder
+  built, and its stash.
+
+### What it makes
+
+At its stand, within `production.lua`'s jobsite reach, from its belongings and then its
+stash. The times are shares of its work day, which is 10500 ticks: 525 s of economic
+clock at the default `time_speed` (72), worked out from `time_speed` and the timetable.
+
+| Makes | From | Share of a work day | Default | A whole day on it | Stops |
+|---|---|---|---|---|---|
+| Iron nugget | 4 stone or cobble | 1/18 | 29.2 s | 18 nuggets (72 stone) | Never |
+| Flint | 4 logs, any species | 1/6 | 87.5 s | 6 flint (24 logs) | At 32 flint |
+| Glass | 2 stone | 1/36 | 14.6 s | 36 glass (72 stone) | Past 12 glass |
+
+Glass takes stone at the nugget's pace. A holiday has 6000 work ticks, about 57% of a
+day. It picks by order, not by value: glass while it holds 12 or fewer, then flint while
+it holds fewer than 32 and has the logs, then nuggets. At cost-based prices the three
+recipes add about the same value, so a choice by value would be arbitrary. `production`'s
+stock cap (target plus `STOCK`) does not apply to the nuggets.
+
+### What it buys
+
+- **Logs**, while it holds fewer than 32 flint: 4 logs for each flint short, at most
+  `INPUT_CAP` (32) at a time, as the `log` category.
+- **Stone**, always: a new `stone` category (stone and cobble, one unit each) for the
+  nuggets, a day's 72 wanted. `prices.balance` already counts a need only as far as its
+  villager can pay, so it buys stone for as long as it has the money. Glass takes plain
+  stone only, so both the mason's smelted stone and the quarrier's cobble sell.
+- It values its inputs at their base price and never more: urgency for stone and logs is
+  held at 1 or under. So it never pays more for an input than the output returns, and a
+  seller whose ask has risen above base waits until the ask falls.
+
+### What it sells
+
+Its nuggets, flint and glass are all spare, since it targets none of them. A few more
+goods come from them at sale, through the conversions every job uses (`goods.lua`,
+ticket 15):
+
+| From | To | Takes | Gives | Only past |
+|---|---|---|---|---|
+| Iron nugget | Iron ingot | 9 | 1 | — |
+| Iron nugget | Gold nugget | 18 (2 ingots) | 1 | 108 nuggets |
+| Iron nugget | Gold ingot | 162 (9 gold nuggets) | 1 | 108 nuggets |
+| Glass | Glass pane | 1 | 1 | — |
+
+A conversion gets a new `reserve` field: it spends only the source held past that many.
+So gold shows in news, at its stall and in trades only while it holds more than 108
+nuggets (12 ingots' worth), and it is paid for from the excess alone: a gold ingot needs
+270 nuggets held. A pane counts as one glass, so both come from 2 stone. Its ask never
+falls below its reference value (below): `asks.lua`'s glut discount stops there.
+
+### Cost-based prices
+
+Its reference value for each output is what the inputs cost at base prices (stone 3.2,
+a log 16). These become the village's base prices too, so a smith values iron at a price
+the alchemist can sell at:
+
+| Item | Base price now | Cost-based |
+|---|---|---|
+| Iron nugget | — | 12.8 |
+| Iron ingot | 16 | 115.2 |
+| Gold nugget | — | 230.4 |
+| Gold ingot | 21.3 | 2073.6 |
+| Flint | 2.4 | 64 |
+| Glass | 16 | 6.4 |
+| Glass pane | 5.8 | 6.4 |
+
+A good made from iron, gold or flint (`recipes.lua`) is priced at no less than 1.25 times
+its inputs and fuel at these prices, so the smiths, the armorer and the fletcher still
+gain on each craft:
+
+| Item | Now | With the cost floor |
+|---|---|---|
+| Iron helmet | 320 | 724 |
+| Iron chestplate | 576 | 1158 |
+| Iron leggings | 448 | 1013 |
+| Iron boots | 256 | 579 |
+| Iron axe | 192 | 439 |
+| Arrow | 4 | 21.5 |
+
+What follows from this:
+
+- Players pay about twice as much for iron gear and about five times as much for arrows.
+- A player selling iron to a smith gets up to 0.9 × 115 an ingot, out of that smith's
+  emeralds.
+- Glass gets cheaper, and so do the Builder's houses.
+- The cleric's vanilla want for gold ingots is dropped from its ledger. At 2073 it would
+  pay players out of the alms fund.
+- The alchemist cannot lose money trading with villagers: it buys at base or below and
+  sells at base or above.
+
+### Trading with players
+
+It is the only villager whose player trades use conversions. In `trade_window.lua` it
+treats the player as it would a villager, with its own margins:
+
+- **It sells** at 1.5 times its reference value (others: 1.25 times their value). The
+  window lists what it holds spare and what its conversions can make: an iron ingot
+  while it holds 9 nuggets, gold only past the reserve, a pane for each glass. Buying an
+  ingot takes 9 nuggets from its pouch and puts the emeralds in it.
+- **It buys** iron and gold, as nuggets or ingots, at any time; flint while it holds
+  fewer than 32; and glass or panes while it holds 12 or fewer. It pays half its
+  reference value (others: 0.9), from the emeralds in its pouch. What it buys goes into
+  its belongings as it is, and it sells a held ingot before converting new nuggets.
+- Reputation moves both prices, as with everyone else.
+
+### Saved state and observability
+
+- `_villages_alchemist` on the villager, and the `villager` meta on its stand. Its craft
+  bank is the existing `_villages_craft`.
+- Logs: `became alchemist at the stand at <pos>`, each craft as `production.lua` logs
+  it, and conversions as `exchange.lua` logs them now.
+- Inspector line `Alchemy`: nuggets held (and whether gold is on sale), flint out of 32,
+  glass out of 12, and what it made today.
 
 ## Prices and the money supply
 
@@ -900,6 +1073,7 @@ branch, and each leaves the game playable with `living_villages_economy` on or o
 | 17 | The food loop: keeper's supply, food targets, the butcher's sales | 16 |
 | 18 | Farm output: hoes multiply the harvest, tending, sowing for the village | 17 |
 | 19 | Money that circulates: comforts for savings and the cleric's share (19a), idle crafters labour (19b), new goods from existing professions (19c), quarries players build (19d) | 18 |
+| 20 | The alchemist: its stand and role (20a), cost-based prices (20b), alchemy at the stand (20c), trades with players (20d) | 19 |
 
 ### 1. Clock, hunger and the tavern
 
@@ -1801,6 +1975,41 @@ also puts its money into wood, wool and flowers.
   holds all three past what the building needs of wool and planks itself, so a bed never
   takes the building's own (`builder_market.lua`, logged `made N red bed(s)`).
 
+### 20. The alchemist
+
+The design is in [The alchemist](#the-alchemist). After 19 the village still had no
+buyer for stone or wood beyond the Builder and the mason, and no source of iron, flint,
+glass or gold. The alchemist was set out on 2026-11-09 as the future source of iron. On
+2026-11-15 the user chose cost-based values, so the recipes keep their ratios and the
+prices follow from them. Four parts, one PR each:
+
+**20a. The stand and the role** (`alchemist.lua`, the stand's node and craft,
+`job_blocks.lua`, `common.lua`). Register the stand and its recipe. Claim it as a role
+over a cleric with `_villages_alchemist`, and give it a tinted robe and its own two
+timetables. Take it out of hunger, meals, the tavern, the church, donations, alms,
+comforts and wants. Village staffing leaves it out. Tests: the claim and its kind in
+`job_blocks`, both timetables, food that never falls, no comfort slots, no donation and
+no alms. A short headless check that a placed stand gets claimed and the alchemist
+spends a whole day at it.
+
+**20b. Cost-based prices** (`ledger.lua`, `goods.lua`). Add the base prices for the
+alchemist's outputs, the `stone` category, and the cost floor for goods made from iron,
+gold and flint. Drop the cleric's gold want. Tests: the prices in the tables above, and
+a check that every recipe that takes iron, gold or flint gains at base prices.
+
+**20c. Alchemy at the stand** (`recipes.lua`, `production.lua`, `goods.lua`,
+`asks.lua`). Add the three recipes with their shares of the work day, the order and the
+stops, and the input targets (logs while flint is short, stone always, values held at
+base). Add the conversions with `reserve` and the ask floor at its reference value.
+Tests: a day's output on each input, the stops at 12 glass and 32 flint, gold only past
+108 nuggets and paid from the excess, and no input bought above base. A short run with a
+quarrier and a smith, showing stone bought and iron sold.
+
+**20d. Trades with players** (`trade_window.lua`). Add the 1.5 and 0.5 margins,
+conversions in the window, the buying rules with their stops, and goods bought kept as
+they are. Tests: buying an ingot takes 9 nuggets and pays the pouch, gold is refused
+under the reserve, and selling flint is refused at 32.
+
 ## Open questions
 
 - Pacing: hunger rate, craft time, starting stock and rent all need probe runs on
@@ -1808,16 +2017,18 @@ also puts its money into wood, wool and flowers.
 - Whether the Builder becomes the next place money piles up, once the census has
   nothing left to build. If so, the Builder could spend its surplus on upkeep, or rent
   could fall with its savings.
-- Iron: no villager makes it, so the weapon smith's and the armorer's goods have no
-  village supply. A miner activity, or iron golems' drops, could supply it. Until
-  warriors exist (Warriors), the fletcher, the weapon smith and the armorer sell only
-  to players, against Principle 6.
+- Iron: the alchemist (ticket 20) is its village supply, but nobody in the village buys
+  iron goods. Until warriors exist (Warriors), the fletcher, the weapon smith and the
+  armorer sell only to players, against Principle 6.
+- The alchemist: whether the `stone` category should also take andesite, diorite,
+  granite and cobbled deepslate; and whether to keep the cost floor once probe runs show
+  what players will pay for iron gear at about twice vanilla's price.
 - Once the basic money loops work: whether the keeper should keep a margin, and what it
   would spend it on.
 - The Builder's other materials: a small house needs planks, logs, glass panes, carved
   stone brick and a bed besides cobble. The Builder buys logs for its planks, the mason
-  carves stone brick and the Builder makes its red beds (19i), but
-  nobody makes glass, so no Builder finishes a house without a player yet.
+  carves stone brick and the Builder makes its red beds (19i). Glass and panes come
+  from the alchemist (ticket 20), but only where a player has placed its stand.
 - Money piling up at the tavern: in run 32 the pantry held 15 of the village's 41
   emeralds by day 6, since dinners bring in more than the keeper pays for food.
 - After ticket 11h, prices relative to each other. A dinner first cost 64 while the
@@ -1835,7 +2046,7 @@ also puts its money into wood, wool and flowers.
     that sells wood also sells planks, taking the matching logs off its stock; the mason
     sells carved stone; and so on.
   - **Iron** comes from a future alchemist profession, which turns other raw materials
-    into iron.
+    into iron. Designed in ticket 20.
   - **Money piling up at the tavern** is answered with other expenses for the tavern.
 - Player stalls on market days (set on 2026-11-11, to refine later): villagers browse a
   player's stall as any other and buy by the same rule. Whether the player claims a
