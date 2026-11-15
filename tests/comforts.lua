@@ -49,7 +49,16 @@ assert(comforts.slots(0) == 0 and comforts.slots(comforts.SAVINGS) == 0)
 assert(comforts.slots(comforts.SAVINGS + comforts.STEP - 1) == 0)
 assert(comforts.slots(comforts.SAVINGS + comforts.STEP) == 1)
 assert(comforts.slots(comforts.SAVINGS + 3 * comforts.STEP) == 3)
-assert(comforts.slots(100000) == comforts.MAX_SLOTS)
+assert(comforts.slots(comforts.SAVINGS + 6 * comforts.STEP) == comforts.BASE_SLOTS)
+-- Past BASE_SLOTS each slot needs twice the span of the one before (ticket 23c): at a
+-- dinner of 18, 720, 1,008 and 1,584 emeralds for the 7th, 8th and 9th, 9,648 for the 12th.
+assert(comforts.SAVINGS == 144 and comforts.STEP == 72)
+assert(comforts.slots(719) == 6 and comforts.slots(720) == 7)
+assert(comforts.slots(1007) == 7 and comforts.slots(1008) == 8)
+assert(comforts.slots(1163) == 8, "farmer 84ebb7's 1,163")
+assert(comforts.slots(1584) == 9 and comforts.slots(2736) == 10 and comforts.slots(5040) == 11)
+assert(comforts.slots(9647) == 11 and comforts.slots(9648) == 12)
+assert(comforts.slots(1e9) == comforts.MAX_SLOTS and comforts.MAX_SLOTS == 12)
 
 -- A poor villager wants none; a rich one a comfort per slot, round its tastes, each worth
 -- at most WORTH times its price.
@@ -101,6 +110,15 @@ do
 	clock = clock + 10 * DAY
 	comforts.update(v, 0, take_from(held), clock)
 	assert(v._villages_comforts == nil)
+end
+
+-- Nine slots go round its tastes: the first is wanted once per round (ticket 23c).
+do
+	local nine = {_id = "nine"}
+	local list = comforts.tastes(nine._id)
+	local targets = comforts.targets(nine, 1584, clock)
+	assert(total(targets) == 9)
+	assert(targets[list[1].item] == math.ceil(9 / #list), tostring(targets[list[1].item]))
 end
 
 -- Every comfort has a price, so it is worth something, and lasts some days.
