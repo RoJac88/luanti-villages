@@ -190,7 +190,7 @@ local function order(self, jukebox, chests, choose)
 	-- A villager pays only what a meal is worth to it (dinner.lua, ticket 21e).
 	local willing = price == 0 or (can_pay() and (not villager or dinner.wants(self, price, day, possessions.assess)))
 	local keeper = villager and price > 0 and keeper_state(jukebox) or nil
-	if #dishes == 0 and willing then dinner.ran_out(keeper, day) end
+	if #dishes == 0 and willing then dinner.ran_out(keeper, day, self._id) end
 	if #dishes == 0 and not (villager and raw_plate(chests)) then return nil, "the pantry is empty" end
 	if willing then
 		if #dishes > 0 then return dishes[choose and math.random(#dishes) or 1], 1, price, pay end
@@ -371,6 +371,8 @@ local function serve(self, jukebox)
 		return
 	end
 	served[key(jukebox)] = now()
+	-- The evening's demand, which the keeper stocks the pantry to (ticket 22c).
+	if chests then dinner.served(keeper_on_duty(jukebox), core.get_day_count()) end
 	-- Counted from the moment it is served, so a meal cut short by standing
 	-- up, a reload or a player's item still spends the evening's meal.
 	self._villages_meal_day = core.get_day_count()

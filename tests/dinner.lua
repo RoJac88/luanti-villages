@@ -133,6 +133,22 @@ dinner.turned(floor_keeper, "bo", 2)
 dinner.settle(floor_keeper, nil, 3)
 assert(near(dinner.factor(floor_keeper), dinner.MARKDOWN))
 
+-- Demand (ticket 22c): meals served and guests it ran out on, each guest once, become
+-- the next day's demand; a day with none, 0.
+local busy = {_id = "busy", _villages_keeper = true}
+dinner.settle(busy, nil, 10)
+assert(dinner.demand(busy) == 0)
+for _ = 1, 20 do dinner.served(busy, 10) end
+for i = 1, 5 do dinner.ran_out(busy, 10, "g" .. i) end
+dinner.ran_out(busy, 10, "g1")
+dinner.ran_out(busy, 10)
+assert(dinner.demand(busy) == 0, "not before the day is out")
+dinner.settle(busy, nil, 11)
+assert(dinner.demand(busy) == 25)
+dinner.settle(busy, nil, 12)
+assert(dinner.demand(busy) == 0)
+dinner.served(nil, 12)
+
 -- Amounts counted in dinners follow its reference price for one.
 local cheap = villager("cheap", {[EMERALD] = 40}, {_villages_prices = {[dinner.ITEM] = 0.5}})
 assert(near(dinner.scale(cheap), 0.5) and near(possessions.in_dinners(cheap, 40), 80))

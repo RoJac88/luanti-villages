@@ -3,11 +3,16 @@
 -- behind the jukebox, filled with ordinary village loot. So that its dinners go on, the
 -- keeper supplies it:
 --
--- * In its free hours, while the pantry holds fewer than TARGET_MEALS, it walks to the
+-- * In its free hours, while the pantry holds fewer than its target, it walks to the
 --   nearest farmer's work chest with food within SUPPLY_RADIUS of the jukebox (the chest
 --   nearest a claimed composter, the one farmer.lua stores its surplus in). It takes up
---   to CARRY of bread, potatoes and then carrots and carries them back to its jukebox, from where it
+--   to its carry of bread, potatoes and then carrots and carries them back to its jukebox, from where it
 --   fills the pantry (a pantry chest behind the bar may have nowhere to stand by it).
+--   Stocked to demand (ticket 22c): the target is the last evening's demand (dinner.demand:
+--   meals served and guests it ran out on), at least TARGET_MEALS, and it carries that
+--   many, at least CARRY and at most CARRY_MAX. ColonyRich, 2026-11-15: at a fixed 12
+--   and 24, the tavern ran out most evenings, dinner rose to 13 and 352 potatoes sat in the
+--   farm chest. Now a dinner in demand draws more food out, and its price falls back.
 --   Only the farmer bakes bread, and only the butcher cooks meat and fish (recipes.lua):
 --   the keeper buys those ready made.
 -- * It buys what it takes (ticket 4): setting out, it takes up to PURSE emeralds from
@@ -51,6 +56,7 @@ local dinner = dofile(core.get_modpath("living_villages") .. "/dinner.lua")
 local SUPPLY_RADIUS = 48
 local COMPOSTER_HEIGHT = 8
 local CARRY = 24
+local CARRY_MAX = 64
 local TARGET_MEALS = 12
 local CHECK_SECONDS = 30
 local RETRY_SECONDS = 120
@@ -94,7 +100,7 @@ local COMPOSTERS = {"mcl_composters:composter", "mcl_composters:composter_ready"
 for level = 1, 7 do COMPOSTERS[#COMPOSTERS + 1] = "mcl_composters:composter_" .. level end
 
 local M = {
-	SUPPLY_RADIUS = SUPPLY_RADIUS, CARRY = CARRY, TARGET_MEALS = TARGET_MEALS,
+	SUPPLY_RADIUS = SUPPLY_RADIUS, CARRY = CARRY, CARRY_MAX = CARRY_MAX, TARGET_MEALS = TARGET_MEALS,
 	CHECK_SECONDS = CHECK_SECONDS, RETRY_SECONDS = RETRY_SECONDS, SKIP_SECONDS = SKIP_SECONDS, COOK_SECONDS = COOK_SECONDS,
 	STARTING_STOCK = STARTING_STOCK, PURSE = PURSE, DINNER = DINNER, TAB_CAP = TAB_CAP, TAB = TAB, FLOAT = FLOAT,
 }
@@ -161,6 +167,20 @@ local function carried(self)
 	return total
 end
 
+-- The meals it stocks the pantry to, and carries a trip (ticket 22c).
+function M.target(self)
+	return math.max(TARGET_MEALS, dinner.demand(self))
+end
+
+function M.carry(self)
+	return math.min(math.max(CARRY, M.target(self)), CARRY_MAX)
+end
+
+-- What it may owe a chest: TAB_CAP at TARGET_MEALS, more for a busier tavern.
+function M.tab_cap(self)
+	return TAB_CAP * M.target(self) / TARGET_MEALS
+end
+
 -- What the keeper pays for goods, in emeralds, fractions kept: a meal's food cost at its
 -- reference prices (dinner.food_cost) for each meal they make.
 function M.worth(goods, keeper_self)
@@ -189,10 +209,11 @@ function M.pay(self, chest, taken)
 	local due = M.tab(chest) + M.worth(taken, self)
 	local paid = stock.put_in_chest(self, chest, EMERALD, math.min(math.floor(due + EPSILON), stock.count(self, EMERALD)))
 	local owed = due - paid
-	if owed > TAB_CAP then
+	local cap = M.tab_cap(self)
+	if owed > cap then
 		core.log("action", string.format("[living_villages] keeper %s forgave %.2f emerald(s) owed at %s",
-			tostring(self._id), owed - TAB_CAP, core.pos_to_string(chest)))
-		owed = TAB_CAP
+			tostring(self._id), owed - cap, core.pos_to_string(chest)))
+		owed = cap
 	end
 	if owed < EPSILON then owed = 0 end
 	core.get_meta(chest):set_string(TAB, owed > 0 and string.format("%.4f", owed) or "")
@@ -200,7 +221,7 @@ function M.pay(self, chest, taken)
 end
 
 local function fetch(self, chest)
-	local room = CARRY - carried(self)
+	local room = M.carry(self) - carried(self)
 	local taken = {}
 	for _, item in ipairs(SUPPLIES) do
 		if room <= 0 then break end
@@ -312,7 +333,7 @@ local function supply(self, jukebox, now)
 	if carried(self) > 0 then
 		return go(self, jukebox, now, function(entity) deliver(entity, jukebox) end)
 	end
-	if M.meals(chests) >= TARGET_MEALS then return end
+	if M.meals(chests) >= M.target(self) then return end
 	local source = M.source(jukebox, chests, skipped(self, now))
 	if not source then
 		self._villages_supply_next = now + RETRY_SECONDS
