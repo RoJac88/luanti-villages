@@ -199,7 +199,12 @@ local function order(self, jukebox, chests, choose)
 		return nil, "the pantry is empty"
 	end
 	if #dishes > 0 then dinner.turned(keeper, self._id, day) end
-	if villager and can_pay() then return nil, "a dinner is not worth " .. price .. " emerald(s) to the diner" end
+	-- A starving guest that will not pay still gets the raw plate, as one that cannot does
+	-- (ticket 22b).
+	local starving = villager and food.state(self) == "starving"
+	if villager and can_pay() and not starving then
+		return nil, "a dinner is not worth " .. price .. " emerald(s) to the diner"
+	end
 	if not villager or possessions.emeralds(self) < BROKE_PRICE then
 		return nil, "the diner cannot pay " .. price .. " emerald(s)"
 	end

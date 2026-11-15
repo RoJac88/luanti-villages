@@ -109,6 +109,30 @@ local seen = villager("see", {})
 dinner.wants(seen, 9, 1, function() return {value = function() return 0 end} end)
 assert(dinner.reference(payer) < dinner.reference(seen) and dinner.reference(seen) < ledger.DINNER)
 
+-- Food first (ticket 22b): with food at x0.09 and 2 emeralds, a starving villager dines
+-- at 1; a fed one with the same purse and prices does not. Its other goods keep their λ.
+local cheap_food = {["group:food"] = 0.09}
+local starving = villager("st", {[EMERALD] = 2}, {_villages_food = 0, _villages_prices = cheap_food})
+local fed = villager("fd", {[EMERALD] = 2}, {_villages_food = 10, _villages_prices = cheap_food})
+assert(dinner.wants(starving, 1, 1, possessions.assess), "spends its last emeralds on food")
+assert(not dinner.wants(fed, 1, 1, possessions.assess))
+local view = possessions.assess(starving)
+local fv = possessions.assess(fed)
+assert(view.lambda > 1 and near(view.value("mcl_books:book") * view.lambda, fv.value("mcl_books:book") * fv.lambda), "a book keeps its λ")
+
+-- At the 1-emerald floor guests turned away leave the factor be (ticket 22b).
+local floor_keeper = {_id = "flo", _villages_keeper = true, _villages_prices = {["group:food"] = 0.05}}
+dinner.settle(floor_keeper, nil, 1)
+assert(dinner.price(floor_keeper) == 1)
+dinner.turned(floor_keeper, "bo", 1)
+dinner.settle(floor_keeper, nil, 2)
+assert(dinner.factor(floor_keeper) == 1, "held at the floor")
+-- Above it, the markdown as before.
+floor_keeper._villages_prices = nil
+dinner.turned(floor_keeper, "bo", 2)
+dinner.settle(floor_keeper, nil, 3)
+assert(near(dinner.factor(floor_keeper), dinner.MARKDOWN))
+
 -- Amounts counted in dinners follow its reference price for one.
 local cheap = villager("cheap", {[EMERALD] = 40}, {_villages_prices = {[dinner.ITEM] = 0.5}})
 assert(near(dinner.scale(cheap), 0.5) and near(possessions.in_dinners(cheap, 40), 80))

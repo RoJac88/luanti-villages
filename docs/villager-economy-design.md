@@ -2608,6 +2608,23 @@ Landed (`alms.lua`, `rent.lua`):
 - Tests: a starving villager with 2 emeralds dines at 1 at food ×0.09 and one fed does
   not; a starving refuser gets the raw plate; the factor stays when the price is 1.
 
+Landed (`ledger.lua`, `meal.lua`, `dinner.lua`):
+- **Food first.** In `ledger.assess`, with `food_points` at or under 0, a food-category
+  item's value is divided by min(λ, 1) instead of λ. Other goods keep λ, so a starving
+  villager still passes up a book. `real`, the value with no money in it for barter,
+  multiplies back by the same divisor. With 2 emeralds and food at ×0.09 a loaf is worth about
+  2.9 to it, not 0.5.
+- **The raw plate.** In `meal.lua`'s order, a starving villager guest that will not pay
+  falls through to the broke branch: the raw plate (four carrots or beetroot) at
+  BROKE_PRICE when the pantry holds one. It still counts as turned away.
+- **The floor.** `dinner.settle` marks down only while the keeper's price is over 1.
+- **Tests:** `tests/dinner.lua` (a starving villager dines at 1 and a fed one does not;
+  a book keeps its λ; the factor held at the floor and marked down above it) and
+  `tests/meal.lua` (a starving unwilling guest gets the raw plate for one emerald; a
+  hungry one is refused).
+  `tests/money.lua`'s rich-and-poor check moved from bread for the starving to coal for
+  two armorers, since a starving villager no longer shows λ on food.
+
 **22c. A tavern stocked to demand** (`keeper_supply.lua`, `dinner.lua`):
 - **The target from last night.** TARGET_MEALS becomes the meals the keeper served the
   evening before plus the guests it ran out on (a count kept in `_villages_dinner`), at

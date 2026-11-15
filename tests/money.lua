@@ -105,19 +105,24 @@ local function villager(id, held, fields)
 	for k, value in pairs(fields or {}) do v[k] = value end
 	return v
 end
-local poor = villager("poor", {[EMERALD] = 30}, {_villages_food = 0})
-local rich = villager("rich", {[EMERALD] = 3000}, {_villages_food = 0})
+-- Not food: a starving villager values food at a money factor of at most 1 (ticket 22b),
+-- so coal for two armorers shows it.
+local COAL = "mcl_core:coal_lump"
+local smith = {_profession = "armorer", _max_trade_tier = 1}
+local poor = villager("poor", {[EMERALD] = 30}, smith)
+local rich = villager("rich", {[EMERALD] = 3000}, smith)
 local poor_view, rich_view = possessions.assess(poor), possessions.assess(rich)
-assert(rich_view.value(BREAD) > poor_view.value(BREAD) * 4, "the rich pay more for the same need")
-assert(near(rich_view.real(BREAD), rich_view.value(BREAD) * rich_view.lambda))
+assert(rich_view.value(COAL) > poor_view.value(COAL) * 4, "the rich pay more for the same need")
+assert(near(rich_view.real(COAL), rich_view.value(COAL) * rich_view.lambda))
 -- The rich buy at an ask the poor pass up.
-local baker = villager("baker", {[BREAD] = 40})
-baker._villages_asks = {[BREAD] = 2}
-local ask = exchange.asking(baker, poor, BREAD)
-assert(poor_view.value(BREAD) < ask and rich_view.value(BREAD) >= ask, poor_view.value(BREAD) .. " " .. ask)
-assert(exchange.offer(baker, possessions.assess(baker), poor, poor_view) == nil, "too dear for the poor")
-local trade = exchange.offer(baker, possessions.assess(baker), rich, rich_view)
-assert(trade and trade.item == BREAD and trade.pay)
+local collier = villager("collier", {[COAL] = 40})
+local ask = math.sqrt(poor_view.value(COAL) * rich_view.value(COAL))
+collier._villages_asks = {[COAL] = ask / ledger.price(COAL)}
+ask = exchange.asking(collier, poor, COAL)
+assert(poor_view.value(COAL) < ask and rich_view.value(COAL) >= ask, poor_view.value(COAL) .. " " .. ask)
+assert(exchange.offer(collier, possessions.assess(collier), poor, poor_view) == nil, "too dear for the poor")
+local trade = exchange.offer(collier, possessions.assess(collier), rich, rich_view)
+assert(trade and trade.item == COAL and trade.pay)
 -- A porter's purse is its client's: the money factor leaves it out.
 local porter = villager("pat", {[EMERALD] = 300}, {_villages_trade_trip = {client = {purse = 280}, spent = 30}})
 assert(possessions.money(porter) == 50)
