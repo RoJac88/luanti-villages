@@ -46,10 +46,14 @@ local from_bone = {}
 for _, c in ipairs(shepherd) do if c.from == "mcl_mobitems:bone" then from_bone[c.to] = c.ratio end end
 assert(from_bone[BONE_MEAL] == 3 and from_bone[WHITE_DYE] == 3)
 -- Each wool colour to string, four a wool, and to its carpet, three for two (ticket 19c).
-assert(#shepherd == 36)
+-- A poppy or a red tulip sells as a red dye, for the Builder's red beds (19i).
+local reds = {}
+for _, c in ipairs(shepherd) do if c.to == "mcl_dye:red" then reds[c.from] = c.ratio end end
+assert(reds["mcl_flowers:poppy"] == 1 and reds["mcl_flowers:tulip_red"] == 1)
+assert(#shepherd == 38)
 local strings, carpets = 0, 0
 for _, c in ipairs(shepherd) do
-	if c.to == WHITE_DYE or c.to == BONE_MEAL then
+	if c.to == WHITE_DYE or c.to == BONE_MEAL or c.to == "mcl_dye:red" then
 		-- anyone's, counted above
 	elseif c.to == goods.STRING then
 		assert(c.ratio == 4 and not c.takes)
@@ -61,13 +65,19 @@ for _, c in ipairs(shepherd) do
 end
 assert(strings == 16 and carpets == 16)
 local woodcutter = goods.conversions({_profession = "nitwit", _villages_labour = {activity = "woodcutter"}})
-assert(#woodcutter == 12 and woodcutter[1].ratio == 4 and anyone(woodcutter))
-assert(#goods.conversions({_profession = "mason"}) == 5)
+assert(#woodcutter == 14 and woodcutter[1].ratio == 4 and anyone(woodcutter))
+assert(#goods.conversions({_profession = "mason"}) == 7)
 local farmer = goods.conversions({_profession = "farmer"})
-assert(#farmer == 4 and anyone(farmer) and anyone(farmer, BONE_MEAL), "a farmer sells its bone meal as dye")
+assert(#farmer == 6 and anyone(farmer) and anyone(farmer, BONE_MEAL), "a farmer sells its bone meal as dye")
 assert(#goods.CONVERSIONS.shepherd == 32, "the job's own list is untouched")
 for _, list in pairs(goods.CONVERSIONS) do
 	for _, c in ipairs(list) do assert(not food.POINTS[c.to] and not food.POINTS[c.from], "no food conversions") end
 end
 
+-- Wool of any colour is a category, one unit a wool (the Builder's beds, 19i); it is no
+-- job's target category, so the shepherd's grey and the cartographer's white stay their own.
+assert(goods.units("wool", "mcl_wool:grey") == 1 and goods.units("wool", "mcl_wool:light_blue") == 1)
+assert(not goods.units("wool", "mcl_wool:grey_carpet"))
+assert(goods.target_category("mcl_wool:white") == nil)
+assert(goods.active("mcl_wool:red", {wool = 3}) == "wool" and goods.active("mcl_wool:red", {}) == nil)
 print("goods.lua: ok")

@@ -513,6 +513,7 @@ local function may_travel(self, trip, stage)
 	if stage == "putter" then return true end
 	if stage ~= "work" then return false end
 	return trip ~= nil or self._villages_builder_wants ~= nil or self._villages_builder_logs ~= nil
+		or self._villages_builder_wool ~= nil
 end
 
 -- common.activity_override: a villager on a trip in its work stage is not called back to

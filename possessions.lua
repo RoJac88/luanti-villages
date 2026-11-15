@@ -544,9 +544,11 @@ function M.assess(self)
 		foods = food.POINTS,
 		-- What a Builder's chests are short of (builder_market.lua), and goods that wear out (wants.lua).
 		extra = extra,
-		-- Logs a Builder splits into the planks it is short of (builder_market.lua).
-		extra_categories = self._villages_builder and self._villages_builder_logs
-			and {log = self._villages_builder_logs} or nil,
+		-- Logs a Builder splits into the planks it is short of, and wool of any colour for
+		-- the red beds it makes (builder_market.lua).
+		extra_categories = self._villages_builder
+			and (self._villages_builder_logs or self._villages_builder_wool)
+			and {log = self._villages_builder_logs, wool = self._villages_builder_wool} or nil,
 		worth = worth,
 		least = least,
 		-- What it believes things are worth (prices.lua).
