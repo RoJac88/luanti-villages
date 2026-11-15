@@ -80,4 +80,10 @@ assert(goods.units("wool", "mcl_wool:grey") == 1 and goods.units("wool", "mcl_wo
 assert(not goods.units("wool", "mcl_wool:grey_carpet"))
 assert(goods.target_category("mcl_wool:white") == nil)
 assert(goods.active("mcl_wool:red", {wool = 3}) == "wool" and goods.active("mcl_wool:red", {}) == nil)
+-- Stone or cobble is a category, one unit each (the alchemist's nuggets, ticket 20); it is
+-- no job's target category, so a mason's stone and a tool smith's cobble stay their own.
+assert(goods.units("stone", "mcl_core:stone") == 1 and goods.units("stone", "mcl_core:cobble") == 1)
+assert(not goods.units("stone", "mcl_core:stonebrick"))
+assert(goods.target_category("mcl_core:stone") == nil and goods.target_category("mcl_core:cobble") == nil)
+assert(goods.active("mcl_core:cobble", {stone = 72}) == "stone" and goods.active("mcl_core:cobble", {}) == nil)
 print("goods.lua: ok")

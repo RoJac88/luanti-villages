@@ -71,6 +71,9 @@ do
 		total(comforts.targets({_id = "kid", child = true}, rich, clock)) == 0, "no child")
 end
 
+-- An alchemist (ticket 20) wants no comforts, however rich.
+assert(total(comforts.targets({_id = "alch", _villages_alchemist = true}, comforts.SAVINGS + 4 * comforts.STEP, clock)) == 0)
+
 -- It takes up what it holds into free slots, and wants only for the slots still free.
 do
 	local rich = comforts.SAVINGS + 2 * comforts.STEP

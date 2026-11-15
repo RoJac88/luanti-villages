@@ -102,7 +102,10 @@ local function digest(self)
 	self._villages_food = math.max(self._villages_food - rate * (now - since) / day, 0)
 end
 
+-- An alchemist (alchemist.lua, ticket 20) does not eat: it is always full, and its points
+-- never fall, so it is never hungry, never eats and never wants food.
 function M.points(self)
+	if self._villages_alchemist and not self.child then return FULL end
 	digest(self)
 	return self._villages_food or 0
 end

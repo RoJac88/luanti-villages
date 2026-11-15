@@ -83,7 +83,7 @@ function M.present(villagers)
 	local present = {}
 	for _, villager in ipairs(villagers) do
 		local name = (villager._villages_keeper and "keeper") or (villager._villages_builder and "builder")
-			or villager._profession
+			or (villager._villages_alchemist and "alchemist") or villager._profession
 		if name then present[name] = (present[name] or 0) + 1 end
 	end
 	return present

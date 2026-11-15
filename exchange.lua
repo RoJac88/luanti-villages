@@ -122,7 +122,7 @@ function M.offer(seller, seller_view, buyer, buyer_view, only)
 			end
 			for _, source in ipairs(sources) do
 				local trade = M.quote(seller, seller_view, buyer, buyer_view, item, wanted, source.from, source.ratio,
-					source.takes)
+					source.takes, source.reserve)
 				if trade and (not best or trade.gain > best.gain or (trade.gain == best.gain and item < best.item)) then
 					best = trade
 				end
@@ -133,10 +133,12 @@ function M.offer(seller, seller_view, buyer, buyer_view, only)
 end
 
 -- One candidate sale of `item` made from `from` (itself when ratio is 1), or nil. A
--- conversion hands over `takes` sources at a time (goods.lua), 1 if nil.
-function M.quote(seller, seller_view, buyer, buyer_view, item, wanted, from, ratio, takes)
-	takes = takes or 1
+-- conversion hands over `takes` sources at a time (goods.lua), 1 if nil, and spends none
+-- of the `reserve` it keeps (the alchemist's gold, ticket 20).
+function M.quote(seller, seller_view, buyer, buyer_view, item, wanted, from, ratio, takes, reserve)
+	local conversion = {ratio = ratio, takes = takes, reserve = reserve}
 	local stock = spare(seller, seller_view, from)
+	if reserve then stock = math.min(stock, possessions.count(seller, from) - reserve) end
 	local to_buyer = buyer_view.value(item)
 	local source_value = seller_view.value(from)
 	local to_seller = source_value and source_value / ratio
@@ -150,7 +152,7 @@ function M.quote(seller, seller_view, buyer, buyer_view, item, wanted, from, rat
 	else
 		unit = M.unit_price(seller, buyer, to_seller, to_buyer)
 	end
-	local available = math.floor(stock / takes) * takes * ratio
+	local available = goods_mod.yield({ratio = ratio, takes = takes}, math.max(stock, 0))
 	local count = math.min(wanted, available)
 	-- No more than its emeralds pay for (unless it barters, below, for the whole lot).
 	local affordable = math.floor(possessions.emeralds(buyer) / unit)
@@ -158,8 +160,8 @@ function M.quote(seller, seller_view, buyer, buyer_view, item, wanted, from, rat
 	if count * unit < MIN_SALE then count = math.min(math.ceil(MIN_SALE / unit), available) end
 	if available < 1 then return nil end
 	-- A converted sale hands over whole sources, `takes` at a time.
-	local from_count = math.ceil(count / (takes * ratio)) * takes
-	count = from_count * ratio
+	local from_count
+	from_count, count = goods_mod.sources_for(conversion, count)
 	local value = count * unit
 	local worth_to_buyer = count * to_buyer
 	-- At an ask the seller takes what it asked; at the midpoint, no less than its value.

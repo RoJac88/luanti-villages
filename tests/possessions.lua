@@ -357,6 +357,19 @@ do
 	assert(not possessions.assess(builder).needs["mcl_core:clay_lump"], "the Builder does not")
 end
 
+-- An alchemist is a cleric to vanilla, but wants none of the cleric's goods and no food,
+-- and counts as fed for a birth (ticket 20).
+do
+	local cleric = {_id = "cq", _profession = "cleric", _villages_food = 20}
+	local alch = {_id = "aq", _profession = "cleric", _villages_alchemist = true, _villages_food = 0}
+	assert(possessions.trade_key(alch) == "alchemist" and possessions.trade_key(cleric) == "cleric")
+	assert(next(possessions.assess(cleric).needs) ~= nil, "the cleric wants its trade's goods")
+	local needs = possessions.assess(alch).needs
+	assert(needs["mcl_core:cobble"] and needs["mcl_core:stone"] and needs["mcl_core:tree"], "stone and logs (20c)")
+	assert(not needs["mcl_mobitems:rotten_flesh"] and not needs["mcl_farming:bread"], "no cleric's goods, no food")
+	assert(possessions.can_parent(alch))
+end
+
 -- A parent owns two days of food; a birth takes none of it.
 do
 	local pat = {_id = "pat", _villages_belongings = {["mcl_farming:bread"] = 1, ["mcl_core:apple"] = 1}}

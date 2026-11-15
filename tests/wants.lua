@@ -47,6 +47,9 @@ do
 	assert(targets[AXE] == 1 and not targets[HOE])
 	targets = wants.targets(villager({_villages_labour = {day = 3, activity = "quarrier"}}))
 	assert(targets[PICK] == 1)
+	-- An alchemist (ticket 20) wants nothing that wears out, not even a book.
+	targets = wants.targets(villager({_profession = "cleric", _villages_alchemist = true}))
+	assert(next(targets) == nil)
 	-- One that took a job after the morning's choice is no longer a woodcutter.
 	assert(only_book((wants.targets(villager({_profession = "tool_smith", _jobsite = {x = 0, y = 0, z = 0},
 		_villages_labour = {day = 3, activity = "woodcutter"}})))))

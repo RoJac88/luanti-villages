@@ -21,7 +21,8 @@ local keeper = dofile(core.get_modpath("living_villages") .. "/keeper.lua")
 local cleric = dofile(core.get_modpath("living_villages") .. "/cleric.lua")
 -- The roles job_blocks.lua claims through; the Builder joins once it is installed.
 local woodcutter = dofile(core.get_modpath("living_villages") .. "/woodcutter.lua")
-local job_roles = {keeper = keeper, cleric = cleric, woodcutter = woodcutter}
+local alchemist = dofile(core.get_modpath("living_villages") .. "/alchemist.lua")
+local job_roles = {keeper = keeper, cleric = cleric, woodcutter = woodcutter, alchemist = alchemist}
 -- One copy: it holds back the villagers of a village still being placed.
 local village_staffing = dofile(core.get_modpath("living_villages") .. "/village_staffing.lua")
 -- Registers living_villages:meal, so it loads here for the same reason.
@@ -40,6 +41,8 @@ dofile(core.get_modpath("living_villages") .. "/farm_compost.lua")
 dofile(core.get_modpath("living_villages") .. "/pulpit.lua")
 -- Registers living_villages:chopping_block, the woodcutter's (ticket 16), likewise.
 dofile(core.get_modpath("living_villages") .. "/chopping_block.lua")
+-- Registers living_villages:alchemy_stand, the alchemist's (ticket 20), likewise.
+dofile(core.get_modpath("living_villages") .. "/alchemy_stand.lua")
 dofile(core.get_modpath("living_villages") .. "/builder_block.lua")
 local MODEL = "living_villages_villager.b3d"
 local BASE = "living_villages_villager_base.png^living_villages_villager_plains.png"
@@ -95,6 +98,11 @@ local function skin(self)
 	if self._villages_keeper and not self.child then
 		local tier = math.max(1, math.min(5, self._max_trade_tier or 1))
 		return texture .. "^" .. keeper.OVERLAY .. "^living_villages_villager_badge_" .. badges[tier] .. ".png"
+	end
+	-- An alchemist is a cleric underneath (alchemist.lua), in a robe of its own colour.
+	if self._villages_alchemist and not self.child then
+		local tier = math.max(1, math.min(5, self._max_trade_tier or 1))
+		return texture .. "^" .. alchemist.OVERLAY .. "^living_villages_villager_badge_" .. badges[tier] .. ".png"
 	end
 	local overlay = profession_overlay[self._profession]
 	if overlay then
@@ -610,6 +618,7 @@ core.register_on_mods_loaded(function()
 	dofile(core.get_modpath("living_villages") .. "/herd.lua").install(def)
 	cleric.install(def)
 	woodcutter.install(def)
+	alchemist.install(def)
 	-- Outside every job above, which it keeps from an unemployed villager with a block to go to.
 	dofile(core.get_modpath("living_villages") .. "/job_seek.lua").install(def, navigation_api, job_roles)
 	-- Outside job_seek, so that a Builder's house keeps its own villager.

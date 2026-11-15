@@ -44,7 +44,9 @@ for _, good in ipairs(dofile("wants.lua").GOODS) do
 	for _, tier in ipairs(good.tiers or {good}) do worn[tier.item] = true end
 end
 for profession, list in pairs(recipes) do
-	local entry = tables.professions[profession]
+	-- The alchemist is a role and makes no vanilla craft (ticket 20): tests/alchemist_trade.lua.
+	if profession == "alchemist" then list = {} end
+	local entry = tables.professions[profession] or (profession == "alchemist" and {trades = {}})
 	assert(entry, profession .. " has a trade table")
 	local sold, used = {}, {}
 	local bought = {}

@@ -73,8 +73,9 @@ local function in_use(self)
 	return self._villages_comforts or {}
 end
 
+-- Never an alchemist's, which wants nothing for itself (ticket 20).
 local function wanted(self)
-	return not self.child and self._id ~= nil
+	return not self.child and self._id ~= nil and not self._villages_alchemist
 end
 
 -- Drops the comforts used up by `now`, and fills free slots from what it holds, through

@@ -10,6 +10,7 @@ local is_home_time = common.is_home_time
 local is_workstation_node = common.is_workstation_node
 local keeper = dofile(core.get_modpath("living_villages") .. "/keeper.lua")
 local cleric = dofile(core.get_modpath("living_villages") .. "/cleric.lua")
+local alchemist = dofile(core.get_modpath("living_villages") .. "/alchemist.lua")
 -- Only for its status line: this copy's reservation table is never used.
 local seat = dofile(core.get_modpath("living_villages") .. "/seat.lua")
 local food = dofile(core.get_modpath("living_villages") .. "/food.lua")
@@ -94,11 +95,11 @@ local function claim_owner_entity(pos, kind)
 	return loaded_villager(owner, pos)
 end
 
--- A keeper's jukebox (keeper.lua) and a cleric's pulpit (cleric.lua) are
--- jobsites too, though not vanilla ones.
+-- A keeper's jukebox (keeper.lua), a cleric's pulpit (cleric.lua) and an alchemist's
+-- stand (alchemist.lua) are jobsites too, though not vanilla ones.
 local function is_jobsite_node(name)
 	return is_workstation_node(name) or name == "mcl_jukebox:jukebox"
-		or name == "living_villages:pulpit"
+		or name == "living_villages:pulpit" or name == alchemist.BLOCK
 end
 
 local function status_of_claim(pos, id, kind)
@@ -573,6 +574,7 @@ local function show(player, villager)
 			.. ", stage " .. common.schedule_stage(nil, villager),
 		"Keeper: " .. keeper.status(villager),
 		"Cleric: " .. cleric.status(villager),
+		"Alchemist: " .. alchemist.status(villager),
 		"Builder: " .. (builder and builder.status(villager) or "off"),
 		"Tavern visit: " .. (villager._villages_tavern_arrived and "at the tavern"
 			or villager._villages_tavern_target and ("heading to " .. pos_string(villager._villages_tavern_target))

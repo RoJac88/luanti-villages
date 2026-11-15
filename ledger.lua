@@ -104,6 +104,31 @@ for _, species in ipairs({"acacia", "spruce", "birch", "jungle"}) do
 	HAND_PRICES["mcl_core:" .. species .. "sapling"] = HAND_PRICES["mcl_core:sapling"]
 end
 
+-- The alchemist's goods (ticket 20), priced at what their inputs cost at base prices, in
+-- order, each from the ones before it: a nugget is four stone, an ingot nine nuggets, a
+-- gold nugget two ingots' nuggets, a gold ingot nine gold nuggets, a flint four logs, glass
+-- two stone and a pane one glass. These replace the trade tables' prices, so a smith values
+-- iron at what the alchemist can sell it for, and glass gets cheaper.
+local STONE, LOG = "mcl_core:stone", "mcl_core:tree"
+local IRON_NUGGET, IRON = "mcl_core:iron_nugget", "mcl_core:iron_ingot"
+local GOLD_NUGGET, GOLD = "mcl_core:gold_nugget", "mcl_core:gold_ingot"
+local FLINT, GLASS, PANE = "mcl_core:flint", "mcl_core:glass", "xpanes:pane_natural_flat"
+local COST_PRICED = {
+	{IRON_NUGGET, {{STONE, 4}}},
+	{IRON, {{IRON_NUGGET, 9}}},
+	{GOLD_NUGGET, {{IRON_NUGGET, 18}}},
+	{GOLD, {{GOLD_NUGGET, 9}}},
+	{FLINT, {{LOG, 4}}},
+	{GLASS, {{STONE, 2}}},
+	{PANE, {{GLASS, 1}}},
+}
+-- A good a profession's recipe makes from iron, gold or flint is priced at no less than its
+-- inputs and fuel at these prices times COST_FLOOR, so the smiths, the armorer and the
+-- fletcher still gain on each craft.
+local FLOORED_INPUTS = {[IRON] = true, [IRON_NUGGET] = true, [GOLD] = true, [GOLD_NUGGET] = true, [FLINT] = true}
+local COST_FLOOR = 1.25
+local SMELTS_PER_LUMP = 8
+
 -- What a profession makes for itself, so never needs to buy.
 local MAKES = {
 	farmer = {
@@ -132,6 +157,15 @@ local ROLES = {
 			["mcl_mushrooms:mushroom_stew"] = true, ["mcl_farming:pumpkin_pie"] = true,
 		},
 	},
+	-- The alchemist (ticket 20): its inputs change with what it holds (alchemist.targets,
+	-- by way of possessions.assess), so none is fixed here.
+	alchemist = {
+		inputs = {},
+		outputs = {
+			[IRON_NUGGET] = true, [IRON] = true, [GOLD_NUGGET] = true, [GOLD] = true, [FLINT] = true,
+			[GLASS] = true, [PANE] = true,
+		},
+	},
 }
 
 -- What a villager wants for its own sake comes from its savings (comforts.lua, ticket 19),
@@ -140,7 +174,7 @@ local ROLES = {
 local M = {
 	EMERALD = EMERALD, SCALE = SCALE, DINNER = DINNER, STOCK_DAYS = STOCK_DAYS, STOCK_MONEY = STOCK_MONEY,
 	STARVING_DAYS = STARVING_DAYS, MAX_URGENCY = MAX_URGENCY, MIN_URGENCY = MIN_URGENCY,
-	COAL = COAL, version = tables.version,
+	COAL = COAL, COST_FLOOR = COST_FLOOR, version = tables.version,
 }
 
 local function mean(spec) return (spec.min + spec.max) / 2 end
@@ -201,6 +235,31 @@ local function derive()
 	end
 	for item, price in pairs(result) do result[item] = price * SCALE end
 	result[EMERALD] = 1
+	for _, entry in ipairs(COST_PRICED) do
+		local cost = 0
+		for _, input in ipairs(entry[2]) do cost = cost + result[input[1]] * input[2] end
+		result[entry[1]] = cost
+	end
+	-- The cost floor, in a fixed order so a test sees the same prices every run.
+	local floored = {}
+	for profession, list in pairs(recipes) do
+		for _, recipe in ipairs(list) do
+			local uses = false
+			for _, input in ipairs(recipe.from) do uses = uses or FLOORED_INPUTS[input[1]] == true end
+			if uses then floored[#floored + 1] = {profession = profession, recipe = recipe} end
+		end
+	end
+	table.sort(floored, function(a, b)
+		if a.recipe.makes ~= b.recipe.makes then return a.recipe.makes < b.recipe.makes end
+		return a.profession < b.profession
+	end)
+	for _, entry in ipairs(floored) do
+		local recipe = entry.recipe
+		local cost = (recipe.fuel or 0) / SMELTS_PER_LUMP * (result[COAL] or 0)
+		for _, input in ipairs(recipe.from) do cost = cost + (result[input[1]] or 0) * input[2] end
+		local floor = COST_FLOOR * cost / recipe.count
+		if floor > (result[recipe.makes] or 0) then result[recipe.makes] = floor end
+	end
 	return result
 end
 
@@ -220,11 +279,18 @@ function M.inputs(profession, max_tier)
 	local entry = tables.professions[profession]
 	if not entry then return found end
 	local makes = MAKES[profession] or {}
+	-- A vanilla trade's want for iron, gold or flint counts only where its own recipes take
+	-- it: at the alchemist's prices (ticket 20) a cleric's three gold ingots or a tool smith's
+	-- thirty flint would hold hundreds of emeralds in goods it never uses.
+	local uses = {}
+	for _, recipe in ipairs(recipes[profession] or {}) do
+		for _, input in ipairs(recipe.from) do uses[input[1]] = true end
+	end
 	for _, trade in ipairs(entry.trades) do
 		local offered = trade.offered[1]
 		if trade.tier <= (max_tier or 5) and offered.item == EMERALD and #trade.wanted == 1 then
 			local item = trade.wanted[1].item
-			if not makes[item] then found[item] = math.min(math.max(found[item] or 0, trade.wanted[1].min), INPUT_CAP) end
+			if not makes[item] and (not FLOORED_INPUTS[item] or uses[item]) then found[item] = math.min(math.max(found[item] or 0, trade.wanted[1].min), INPUT_CAP) end
 		end
 	end
 	for _, recipe in ipairs(recipes[profession] or {}) do

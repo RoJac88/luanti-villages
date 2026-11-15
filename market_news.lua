@@ -150,7 +150,7 @@ end
 function M.recipe_inputs(self)
 	local out = {}
 	if self._villages_keeper or self._villages_builder then return out end
-	for _, recipe in ipairs(recipes[self._profession] or {}) do
+	for _, recipe in ipairs(recipes[self._villages_alchemist and "alchemist" or self._profession] or {}) do
 		for _, input in ipairs(recipe.from) do out[input[1]] = true end
 		if recipe.fuel then out[COAL] = true end
 	end
@@ -218,7 +218,9 @@ function M.own(self, view, now)
 			-- its ask first: a seller values its own spare at next to nothing, so by its value
 			-- a fisherman's 16 cod ranked under the iron armour it was born with, and the
 			-- butcher never heard of them (ColonyFood, 2026-11-13).
-			local outputs = self._profession and ledger.outputs(self._profession, self._max_trade_tier) or {}
+			-- An alchemist is a cleric to vanilla and sells none of the cleric's goods (ticket 20).
+			local trade = self._villages_alchemist and "alchemist" or self._profession
+			local outputs = trade and ledger.outputs(trade, self._max_trade_tier) or {}
 			local made = {}
 			for item, count in pairs(list) do
 				if outputs[item] and not told[item] then made[item] = count end
@@ -233,9 +235,11 @@ function M.own(self, view, now)
 			-- What its job turns its spare into when it sells (goods.lua), where asked.
 			for _, conversion in ipairs(goods.conversions(self)) do
 				local spare = list[conversion.from]
+				if spare and conversion.reserve then
+					spare = math.min(spare, possessions.count(self, conversion.from) - conversion.reserve)
+				end
 				local value = view.value(conversion.from)
-				local takes = conversion.takes or 1
-				local makes = spare and math.floor(spare / takes) * takes * conversion.ratio or 0
+				local makes = spare and spare > 0 and goods.yield(conversion, spare) or 0
 				if makes >= 1 and value and asked[conversion.to] and not told[conversion.to] then
 					add(conversion.to, makes, value / conversion.ratio)
 				end

@@ -47,6 +47,8 @@ local wants = dofile(core.get_modpath("living_villages") .. "/wants.lua")
 local comforts = dofile(core.get_modpath("living_villages") .. "/comforts.lua")
 local tally = dofile(core.get_modpath("living_villages") .. "/economy_tally.lua")
 local asks = dofile(core.get_modpath("living_villages") .. "/asks.lua")
+local goods = dofile(core.get_modpath("living_villages") .. "/goods.lua")
+local alchemist = dofile(core.get_modpath("living_villages") .. "/alchemist.lua")
 
 local DEFAULT_STASH_RADIUS = 8
 local STASH_HEIGHT = 3
@@ -408,8 +410,9 @@ function M.food_owned(self)
 end
 
 -- Whether it owns food enough to become a parent (births.lua).
+-- An alchemist owns no food and needs none: it counts as fed (ticket 20).
 function M.can_parent(self)
-	return not food.births_need_food() or M.food_owned(self) >= PARENT_FOOD
+	return not food.births_need_food() or self._villages_alchemist == true or M.food_owned(self) >= PARENT_FOOD
 end
 
 -- Slows a starving villager and marks it for common.lua's shorter working day; puts it
@@ -501,8 +504,16 @@ function M.same_house(a, b)
 	return a ~= nil and b ~= nil and math.abs(a.x - b.x) <= 5 and math.abs(a.z - b.z) <= 5 and math.abs(a.y - b.y) <= 4
 end
 
+-- Whose trade data its ledger reads (ledger.inputs and outputs): a role's over the vanilla
+-- profession beneath it. A keeper is a butcher, a Builder a mason and an alchemist a
+-- cleric to vanilla (keeper.lua, builder.lua, alchemist.lua), and none trades as one.
+function M.trade_key(self)
+	return (self._villages_keeper and "keeper") or (self._villages_builder and "builder")
+		or (self._villages_alchemist and "alchemist") or self._profession
+end
+
 -- The ledger's view of this villager (ledger.lua): its targets, needs, surplus and values.
--- A keeper by its role; a Builder (a mason to vanilla, builder.lua) has no trade of its own.
+-- A keeper by its role; a Builder or an alchemist has no vanilla trade of its own.
 function M.assess(self)
 	local extra, worth = wants.targets(self)
 	-- Comforts for its savings (comforts.lua, ticket 19).
@@ -534,21 +545,31 @@ function M.assess(self)
 		end
 		least = {[peddle.item] = peddle.bid}
 	end
+	-- An alchemist (ticket 20) wants stone always and logs for the flint it is short of,
+	-- never at more than their base price, and sells its goods at no less than theirs.
+	local categories
+	if self._villages_alchemist and not self.child then
+		local alchemist_worth, alchemist_least
+		categories, alchemist_worth, alchemist_least = alchemist.targets(M.held(self), ledger.price, goods.CATEGORIES)
+		for item, value in pairs(alchemist_worth) do worth[item] = math.min(worth[item] or math.huge, value) end
+		least = least or {}
+		for item, value in pairs(alchemist_least) do least[item] = math.max(least[item] or 0, value) end
+	elseif self._villages_builder and (self._villages_builder_logs or self._villages_builder_wool) then
+		categories = {log = self._villages_builder_logs, wool = self._villages_builder_wool}
+	end
 	return ledger.assess({
 		id = self._id,
-		profession = (self._villages_keeper and "keeper") or (self._villages_builder and "builder") or self._profession,
+		profession = M.trade_key(self),
 		max_tier = self._max_trade_tier or 1,
 		held = M.held(self),
 		food_points = food.points(self),
-		hunger_per_day = self.child and 0 or food.hunger_per_day(),
+		hunger_per_day = (self.child or self._villages_alchemist) and 0 or food.hunger_per_day(),
 		foods = food.POINTS,
 		-- What a Builder's chests are short of (builder_market.lua), and goods that wear out (wants.lua).
 		extra = extra,
 		-- Logs a Builder splits into the planks it is short of, and wool of any colour for
-		-- the red beds it makes (builder_market.lua).
-		extra_categories = self._villages_builder
-			and (self._villages_builder_logs or self._villages_builder_wool)
-			and {log = self._villages_builder_logs, wool = self._villages_builder_wool} or nil,
+		-- the red beds it makes (builder_market.lua); an alchemist's stone and logs.
+		extra_categories = categories,
 		worth = worth,
 		least = least,
 		-- What it believes things are worth (prices.lua).
