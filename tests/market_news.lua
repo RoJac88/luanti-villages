@@ -147,17 +147,20 @@ do
 	local joe = villager("joe", {[COAL] = 64})
 	local kim = villager("kim", {}, {_profession = "armorer"})
 	news.exchange({joe, kim})
-	local spare = joe._villages_prices and joe._villages_prices[COAL]
-	assert(spare and spare < 1, "joe's spare coal is worth less to it")
-	assert(kim._villages_prices and kim._villages_prices[COAL], "kim hears of it in passing")
+	-- Coal is fuel, and a category's members share one factor (ticket 21b).
+	local prices = dofile("prices.lua")
+	local spare = prices.factor(joe._villages_prices, COAL)
+	assert(spare < 1, "joe's spare coal is worth less to it")
+	assert(prices.factor(kim._villages_prices, COAL) ~= 1, "kim hears of it in passing")
 	assert(joe._villages_prices_day == day and kim._villages_prices_day == day)
 	local logged = false
 	for _, line in ipairs(logs) do if line:find("prices: villager joe, day 30", 1, true) then logged = true end end
 	assert(logged)
 	-- Later the same day only the sharing moves it, toward kim's.
-	local before = joe._villages_prices[COAL]
+	local before = prices.factor(joe._villages_prices, COAL)
 	news.exchange({joe, kim})
-	assert(joe._villages_prices[COAL] > before and joe._villages_prices[COAL] < 1)
+	local after = prices.factor(joe._villages_prices, COAL)
+	assert(after > before and after < 1)
 	minetest.get_day_count = nil
 end
 
@@ -172,7 +175,8 @@ do
 		group = {[APPLE] = "food", [BREAD] = "food"},
 		value = function(item) return values[item] end,
 	}
-	local shepherd = villager("shep", {}, {_profession = "shepherd"})
+	-- With emeralds to cover its bid: a need is told at its value capped at its emeralds.
+	local shepherd = villager("shep", {["mcl_core:emerald"] = 100}, {_profession = "shepherd"})
 	local entries = news.own(shepherd, view, now)
 	local food_needs, need = 0, nil
 	for _, entry in ipairs(entries) do

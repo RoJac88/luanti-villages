@@ -80,9 +80,11 @@ local b = villager("b", {["mcl_core:emerald"] = 30})
 local function seller_view(value) return view({}, {["mcl_core:paper"] = 30}, {["mcl_core:paper"] = value}) end
 local offer = exchange.offer(s, seller_view(0.05), b, view({["mcl_core:paper"] = 10}, {}, {["mcl_core:paper"] = PAPER + 1}))
 assert(offer and offer.count == 10 and offer.pay == math.floor(10 * PAPER + 0.5), offer and offer.pay)
--- The seller's own value does not move the price.
-local dear = exchange.offer(s, seller_view(PAPER * 5), b, view({["mcl_core:paper"] = 10}, {}, {["mcl_core:paper"] = PAPER + 1}))
-assert(dear and dear.pay == offer.pay)
+-- The seller's own value under its ask does not move the price; over it, it is the floor
+-- (ticket 21b): one that values its paper above the buyer sells none.
+local cheap = exchange.offer(s, seller_view(PAPER / 2), b, view({["mcl_core:paper"] = 10}, {}, {["mcl_core:paper"] = PAPER + 1}))
+assert(cheap and cheap.pay == offer.pay)
+assert(not exchange.offer(s, seller_view(PAPER * 5), b, view({["mcl_core:paper"] = 10}, {}, {["mcl_core:paper"] = PAPER + 1})))
 -- A buyer valuing it under the ask: nothing.
 assert(not exchange.offer(s, seller_view(0.05), b, view({["mcl_core:paper"] = 10}, {}, {["mcl_core:paper"] = PAPER - 0.1})))
 -- One short of emeralds buys as many as it can pay for.

@@ -43,17 +43,35 @@ assert(old._villages_ask_sold[BEEF].count == 0)
 asks.sold(old, BEEF, 6)
 assert(old._villages_ask_sold[BEEF].count == 1, "one when no count is given")
 
--- A seller that believes an item worth less than its base price asks that much less:
--- beef heard of in glut at an eighth of its price is not asked for at near twice it.
+-- It asks its reference price (prices.lua) times its factor, a belief over 1 too.
 local ledger = dofile("ledger.lua")
+local prices = dofile("prices.lua")
 local glut = {_villages_asks = {[BEEF] = 1.8}, _villages_prices = {[BEEF] = 0.125}}
 assert(near(asks.ask(glut, BEEF), ledger.price(BEEF) * 1.8 * 0.125))
--- A belief over 1 leaves the ask to its sales.
 glut._villages_prices[BEEF] = 4
-assert(near(asks.ask(glut, BEEF), ledger.price(BEEF) * 1.8))
+assert(near(asks.ask(glut, BEEF), ledger.price(BEEF) * 1.8 * 4))
+-- Never below its own value, given its view.
+assert(near(asks.ask(glut, BEEF, {value = function() return 1e6 end}), 1e6))
 -- A peddler still never asks below what it paid.
 glut._villages_prices[BEEF] = 0.125
 glut._villages_peddle = {item = BEEF, bid = 5}
 assert(asks.ask(glut, BEEF) == 5)
+
+-- A sale at a price: its reference price learns it, and the factor is pulled back toward 1
+-- by the same share before the markup, so the rise is not counted twice.
+local trader = {_villages_asks = {[BEEF] = 2}}
+local base = ledger.price(BEEF)
+asks.sold(trader, BEEF, 1, 1, 2 * base)
+assert(near(prices.factor(trader._villages_prices, BEEF), 2 ^ prices.LEARN_TRADE))
+assert(near(asks.factor(trader, BEEF), 2 ^ (1 - prices.LEARN_TRADE) * asks.MARKUP))
+assert(near(asks.ask(trader, BEEF), base * 2 * asks.MARKUP), "the same ask, now mostly in the reference")
+
+-- Short of money, an unsold good's ask falls twice as fast.
+local broke, comfy = {}, {}
+asks.daily(broke, {[BEEF] = 5}, 1, 10)
+asks.daily(comfy, {[BEEF] = 5}, 1, 1000)
+asks.daily(broke, {[BEEF] = 5}, 2, 10)
+asks.daily(comfy, {[BEEF] = 5}, 2, 1000)
+assert(near(asks.factor(broke, BEEF), asks.MARKDOWN ^ 2) and near(asks.factor(comfy, BEEF), asks.MARKDOWN))
 
 print("asks.lua: ok")

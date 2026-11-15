@@ -59,6 +59,7 @@ local possessions = dofile(core.get_modpath("living_villages") .. "/possessions.
 local ledger = dofile(core.get_modpath("living_villages") .. "/ledger.lua")
 local news = dofile(core.get_modpath("living_villages") .. "/market_news.lua")
 local exchange = dofile(core.get_modpath("living_villages") .. "/exchange.lua")
+local prices = dofile(core.get_modpath("living_villages") .. "/prices.lua")
 local stock = dofile(core.get_modpath("living_villages") .. "/farm_stock.lua")
 local cells = dofile(core.get_modpath("living_villages") .. "/cells.lua")
 local goods_mod = dofile(core.get_modpath("living_villages") .. "/goods.lua")
@@ -302,6 +303,8 @@ function M.buy_from_stash(self, trip, chest)
 	local paid = put(chest, EMERALD, pay)
 	if paid < pay then possessions.add(self, EMERALD, pay - paid) end
 	possessions.add(self, trip.item, count)
+	-- Its reference price learns what it paid (ticket 21b); the seller is away.
+	prices.learn(self, trip.item, paid / count)
 	trip.bought, trip.spent = (trip.bought or 0) + count, (trip.spent or 0) + paid
 	log("villager %s bought %d %s from %s's stash for %d emerald(s)", short_id(self._id), count, trip.item,
 		short_id(trip.who), paid)
@@ -316,7 +319,7 @@ function M.buy_in_person(self, trip, seller)
 	local item = trip.item
 	local seller_view = possessions.assess(seller)
 	local seller_value = seller_view.value(item) or 0
-	local unit = exchange.asking(seller, self, item) or (value + seller_value) / 2
+	local unit = exchange.asking(seller, self, item, seller_view) or (value + seller_value) / 2
 	if unit <= 0 then return 0, "no price" end
 	if value < unit then return 0, string.format("asks %.2f each, over our %.2f", unit, value) end
 	if budget < 1 then return 0, "no budget" end

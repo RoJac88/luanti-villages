@@ -499,7 +499,7 @@ function M.step(self, now)
 	comforts.update(self, M.emeralds(self), M.take, now)
 	-- Its asks for what it did not sell yesterday come down (asks.lua).
 	local day = today()
-	if self._villages_asks_day ~= day then asks.daily(self, M.assess(self).surplus, day) end
+	if self._villages_asks_day ~= day then asks.daily(self, M.assess(self).surplus, day, M.money(self)) end
 end
 
 function M.install(def)
@@ -606,14 +606,12 @@ function M.assess(self)
 		least = {[peddle.item] = peddle.bid}
 	end
 	-- An alchemist (ticket 20) wants stone always and logs for the flint it is short of,
-	-- never at more than their base price, and sells its goods at no less than theirs.
+	-- never at more than their base price (until ticket 21d). Its goods have no floor.
 	local categories
 	if self._villages_alchemist and not self.child then
-		local alchemist_worth, alchemist_least
-		categories, alchemist_worth, alchemist_least = alchemist.targets(M.held(self), ledger.price, goods.CATEGORIES)
+		local alchemist_worth
+		categories, alchemist_worth = alchemist.targets(M.held(self), ledger.price, goods.CATEGORIES)
 		for item, value in pairs(alchemist_worth) do worth[item] = math.min(worth[item] or math.huge, value) end
-		least = least or {}
-		for item, value in pairs(alchemist_least) do least[item] = math.max(least[item] or 0, value) end
 	elseif self._villages_builder and (self._villages_builder_logs or self._villages_builder_wool) then
 		categories = {log = self._villages_builder_logs, wool = self._villages_builder_wool}
 	end

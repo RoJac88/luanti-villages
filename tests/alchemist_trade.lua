@@ -116,19 +116,17 @@ view = possessions.assess(alchemist_with({[EMERALD] = 1000, [FLINT] = 30}))
 assert(view.categories.log.target == 8)
 view = possessions.assess(alchemist_with({[EMERALD] = 1000, [FLINT] = 32}))
 assert(view.categories.log == nil and not view.needs[LOG], "no logs at 32 flint")
--- It values its inputs at their base price, never more, however short; its goods at no
--- less than theirs, however many it holds.
+-- It values its inputs at their base price, never more, however short (until ticket 21d).
 assert(view.value(COBBLE) <= ledger.price(COBBLE) + 1e-9 and view.value(STONE) <= ledger.price(STONE) + 1e-9)
 assert(near(view.value(STONE), ledger.price(STONE)), "short, so at the cap")
 local rich = possessions.assess(alchemist_with({[NUGGET] = 500, [GLASS] = 100}))
-assert(rich.value(NUGGET) >= ledger.price(NUGGET) and rich.value(GLASS) >= ledger.price(GLASS))
 assert(rich.surplus[NUGGET] == 500, "every nugget is spare")
 
--- Its ask never falls below its base price, the inputs' cost.
+-- Its goods have no floor at their cost (ticket 21b): it asks its reference price times
+-- its factor like anyone, so a broke alchemist with goods nobody buys gets cheaper.
 local seller = alchemist_with({[NUGGET] = 50})
 seller._villages_asks = {[INGOT] = 0.5, [NUGGET] = 0.5}
-assert(near(asks.ask(seller, INGOT), ledger.price(INGOT)) and near(asks.ask(seller, NUGGET), ledger.price(NUGGET)))
-assert(near(asks.ask(villager("other", {}, {_villages_asks = {[INGOT] = 0.5}}), INGOT), ledger.price(INGOT) / 2))
+assert(near(asks.ask(seller, INGOT), ledger.price(INGOT) / 2) and near(asks.ask(seller, NUGGET), ledger.price(NUGGET) / 2))
 
 -- It sells an armorer ingots from nine nuggets each, at no less than their cost.
 local armorer = villager("armo", {[EMERALD] = 2000}, {_profession = "armorer", _max_trade_tier = 1})

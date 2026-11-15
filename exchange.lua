@@ -39,6 +39,7 @@ local food = dofile(core.get_modpath("living_villages") .. "/food.lua")
 local gossip = dofile(core.get_modpath("living_villages") .. "/gossip.lua")
 local goods_mod = dofile(core.get_modpath("living_villages") .. "/goods.lua")
 local asks = dofile(core.get_modpath("living_villages") .. "/asks.lua")
+local prices = dofile(core.get_modpath("living_villages") .. "/prices.lua")
 
 local EMERALD = "mcl_core:emerald"
 -- A sale must come to at least this many emeralds before rounding, or it grows: less,
@@ -68,10 +69,10 @@ function M.unit_price(seller, buyer, to_seller, to_buyer)
 	return math.min(math.max(unit * (1 + shift), to_seller), to_buyer)
 end
 
--- What the seller asks this buyer for one of the item: its ask, less for a buyer it
--- thinks well of; nil for an item with no ask.
-function M.asking(seller, buyer, item)
-	local ask = asks.ask(seller, item)
+-- What the seller asks this buyer for one of the item: its ask (no less than its own value,
+-- given its view), less for a buyer it thinks well of; nil for an item with no ask.
+function M.asking(seller, buyer, item, seller_view)
+	local ask = asks.ask(seller, item, seller_view)
 	if not ask then return nil end
 	return ask * (1 - STANDING_SHIFT * standing(seller, buyer))
 end
@@ -149,13 +150,17 @@ function M.quote(seller, seller_view, buyer, buyer_view, item, wanted, from, rat
 	local source_value = seller_view.value(from)
 	local to_seller = source_value and source_value / ratio
 	if stock <= 0 or not to_buyer then return nil end
-	local unit = M.asking(seller, buyer, item)
+	local unit = M.asking(seller, buyer, item, seller_view)
 	local asked = unit ~= nil
 	-- Its value with no money in it: a buyer too poor to value the item at the ask in
 	-- emeralds may still swap goods for it (the money factor, ticket 21a).
 	local real_to_buyer = real(buyer_view, item) or to_buyer
 	if asked then
-		if math.max(to_buyer, real_to_buyer) < unit then return nil end
+		if math.max(to_buyer, real_to_buyer) < unit then
+			-- A buy passed up: its reference price learns the ask (prices.missed, ticket 21b).
+			prices.missed(buyer, item, unit)
+			return nil
+		end
 	elseif not to_seller or to_buyer <= to_seller then
 		return nil
 	else
@@ -222,7 +227,10 @@ function M.settle(trade)
 		price = trade.goods_count .. " " .. trade.goods
 	end
 	local made = trade.from and string.format(" (from %d %s)", from_count, from) or ""
-	asks.sold(seller, trade.item, core.get_day_count and core.get_day_count() or 0, trade.count)
+	-- Both sides' reference prices learn the price paid (ticket 21b); a swap of goods has none.
+	local unit = trade.pay and trade.pay / trade.count
+	asks.sold(seller, trade.item, core.get_day_count and core.get_day_count() or 0, trade.count, unit)
+	if unit then prices.learn(buyer, trade.item, unit) end
 	core.log("action", string.format("[living_villages] trade: villager %s sold %d %s%s to %s for %s",
 		short_id(seller), trade.count, trade.item, made, short_id(buyer), price))
 	return true
