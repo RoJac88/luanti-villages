@@ -182,12 +182,16 @@ function M.own(self, view, now)
 	for _, best in pairs(cheapest) do needs[best.item] = view.needs[best.item] end
 	for kind, list in pairs({needs = needs, has = view.surplus}) do
 		local told = {}
-		local function add(item, count, price)
+		-- `converted` (goods.lua): a product told at its ask capped by its sources'.
+		local function add(item, count, price, converted)
 			told[item] = true
 			-- What it has is told at its ask (asks.lua), what a buyer would pay it; what it
 			-- needs at its bid, its value capped at its emeralds (ticket 21b: others' reference
 			-- prices learn from both, prices.hear).
-			if kind == "has" then price = asks.ask(self, item, view) or price end
+			if kind == "has" then
+				if converted then price = asks.converted(self, converted, view) or price
+				else price = asks.ask(self, item, view) or price end
+			end
 			price = price or view.value(item)
 			if kind == "needs" and price then price = math.min(price, math.max(possessions.emeralds(self), 1)) end
 			-- Its own price signal, for others' reference prices to learn from (prices.hear):
@@ -250,7 +254,7 @@ function M.own(self, view, now)
 				local value = view.value(conversion.from)
 				local makes = spare and spare > 0 and goods.yield(conversion, spare) or 0
 				if makes >= 1 and value and asked[conversion.to] and not told[conversion.to] then
-					add(conversion.to, makes, value / conversion.ratio)
+					add(conversion.to, makes, value / conversion.ratio, conversion)
 				end
 			end
 		end

@@ -69,6 +69,19 @@ function M.ask(seller, item, view)
 	return ask
 end
 
+-- What the seller asks for one of a conversion's product (goods.lua): no more than its ask
+-- for the sources one takes, so an ingot is never dearer than nine nuggets (ticket 15).
+-- The product's own ask stands only when it is lower. A product the seller never holds
+-- keeps its seed price (nothing marks it down), while the source it does hold falls until
+-- it sells: since 21b an alchemist asked 115 for an ingot while it valued a nugget at 0.8.
+function M.converted(seller, conversion, view)
+	local own = M.ask(seller, conversion.to, view)
+	local source = M.ask(seller, conversion.from, view)
+	if not source then return own end
+	local via = source / conversion.ratio
+	return own and math.min(own, via) or via
+end
+
 -- `_villages_ask_sold` is {[item] = {day, count}}: the last day it sold the item, and how
 -- many since its last daily look. A bare day is a save from before counts were kept.
 local function sale(sold, item)

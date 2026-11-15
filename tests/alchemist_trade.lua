@@ -150,6 +150,34 @@ assert(exchange.settle(trade))
 assert(count(smith, NUGGET) == 50 - 9 * trade.count and count(armorer, INGOT) == trade.count)
 assert(count(smith, EMERALD) == trade.pay)
 
+-- An ingot is never dearer than nine nuggets (ticket 15; ColonyFood, 2026-11-15): its nugget
+-- ask fell while it held them unsold, its ingot ask stayed at the seed (115), and an armorer
+-- with 46 emeralds could buy none. Now it pays nine nuggets' ask, and the sale counts as
+-- sold nuggets too, so their ask stops falling.
+do
+	local broke = alchemist_with({[NUGGET] = 19})
+	broke._villages_asks = {[NUGGET] = asks.MIN}
+	local bview = possessions.assess(broke)
+	local per_nugget = asks.ask(broke, NUGGET, bview)
+	assert(near(asks.ask(broke, INGOT, bview), ledger.price(INGOT)), "the ingot's own ask is the seed")
+	local by_nuggets = {from = NUGGET, to = INGOT, ratio = 1 / 9}
+	assert(near(asks.converted(broke, by_nuggets, bview), 9 * per_nugget))
+	local poor_armorer = villager("armo2", {[EMERALD] = 46}, {_profession = "armorer", _max_trade_tier = 1})
+	local sale = exchange.offer(broke, bview, poor_armorer, possessions.assess(poor_armorer))
+	assert(sale and sale.item == INGOT and sale.from == NUGGET, sale and sale.item)
+	assert(sale.pay == math.max(math.floor(sale.count * 9 * per_nugget + 0.5), 1), sale.pay)
+	assert(sale.pay <= 46)
+	assert(exchange.settle(sale))
+	assert(broke._villages_ask_sold[NUGGET] and broke._villages_ask_sold[NUGGET].count == 9 * sale.count)
+	assert(asks.factor(broke, NUGGET) > asks.MIN, "the nugget ask rose on the sale")
+	-- An own ask under the nuggets' stands.
+	local fresh = alchemist_with({[NUGGET] = 19})
+	fresh._villages_asks = {[INGOT] = asks.MIN}
+	local fview = possessions.assess(fresh)
+	assert(near(asks.converted(fresh, by_nuggets, fview), asks.ask(fresh, INGOT, fview)))
+	assert(asks.ask(fresh, INGOT, fview) < 9 * asks.ask(fresh, NUGGET, fview))
+end
+
 -- Gold only past 108 nuggets, and from the excess alone.
 local conversions = goods.conversions(alchemist_with())
 local gold_nugget, ingot_from_nuggets
