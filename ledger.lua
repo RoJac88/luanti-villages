@@ -254,25 +254,34 @@ local function derive()
 		for _, input in ipairs(entry[2]) do cost = cost + result[input[1]] * input[2] end
 		result[entry[1]] = cost
 	end
-	-- The cost floor, in a fixed order so a test sees the same prices every run.
-	local floored = {}
+	-- The cost floor, in a fixed order so a test sees the same prices every run: a priced
+	-- recipe output is seeded at no less than its inputs and fuel (ticket 21d: a craft
+	-- that loses at its seed prices is never made, so never traded, and its price never
+	-- learns; vanilla's prices put bricks under their clay and white wool under grey wool
+	-- and dye), and one made from iron, gold or flint at COST_FLOOR times that. Two passes,
+	-- so a floor reaches what is made from a floored good.
+	local all = {}
 	for profession, list in pairs(recipes) do
-		for _, recipe in ipairs(list) do
-			local uses = false
-			for _, input in ipairs(recipe.from) do uses = uses or FLOORED_INPUTS[input[1]] == true end
-			if uses then floored[#floored + 1] = {profession = profession, recipe = recipe} end
-		end
+		for _, recipe in ipairs(list) do all[#all + 1] = {profession = profession, recipe = recipe} end
 	end
-	table.sort(floored, function(a, b)
+	table.sort(all, function(a, b)
 		if a.recipe.makes ~= b.recipe.makes then return a.recipe.makes < b.recipe.makes end
 		return a.profession < b.profession
 	end)
-	for _, entry in ipairs(floored) do
-		local recipe = entry.recipe
-		local cost = (recipe.fuel or 0) / SMELTS_PER_LUMP * (result[COAL] or 0)
-		for _, input in ipairs(recipe.from) do cost = cost + (result[input[1]] or 0) * input[2] end
-		local floor = COST_FLOOR * cost / recipe.count
-		if floor > (result[recipe.makes] or 0) then result[recipe.makes] = floor end
+	for _ = 1, 2 do
+		for _, entry in ipairs(all) do
+			local recipe = entry.recipe
+			if result[recipe.makes] then
+				local uses = false
+				local cost = (recipe.fuel or 0) / SMELTS_PER_LUMP * (result[COAL] or 0)
+				for _, input in ipairs(recipe.from) do
+					uses = uses or FLOORED_INPUTS[input[1]] == true
+					cost = cost + (result[input[1]] or 0) * input[2]
+				end
+				local floor = (uses and COST_FLOOR or 1) * cost / recipe.count
+				if floor > result[recipe.makes] then result[recipe.makes] = floor end
+			end
+		end
 	end
 	return result
 end
@@ -374,7 +383,8 @@ end
 -- least = {item = emeralds} (the least it will take for an item: a peddler's stock is
 -- worth what it paid, labour.lua, ticket 12), prices = {key = factor} (its reference
 -- prices as factors on the base price, a category's members under "group:<category>",
--- prices.lua, ticket 21b), money = emeralds (what it has to
+-- prices.lua, ticket 21b), unpaid = {item = true} (recipe inputs it wants none of, only
+-- recipes that do not pay taking them, M.unpaid, ticket 21d), money = emeralds (what it has to
 -- spend, for the money factor, M.lambda; none, as for the keeper, leaves values as
 -- they are), dinner = emeralds (its reference price for a dinner, dinner.lua, ticket
 -- 21e: STOCK_MONEY and the cushion are counted in dinners at it; DINNER unset)}. `worth` and `least` are in emeralds and bound the value after the money
@@ -402,8 +412,11 @@ function M.assess(input)
 	local food_need = (input.hunger_per_day or 0) * food_days
 	if food_need > 0 then want_category("food", food_need) end
 	for item, batch in pairs(M.inputs(input.profession, input.max_tier)) do
-		local category = goods.target_category(item)
-		if category then want_category(category, batch * goods.units(category, item)) else want(item, batch) end
+		-- None for recipes that do not pay (ticket 21d, M.unpaid).
+		if not (input.unpaid or {})[item] then
+			local category = goods.target_category(item)
+			if category then want_category(category, batch * goods.units(category, item)) else want(item, batch) end
+		end
 	end
 	for item, count in pairs(input.extra or {}) do targets[item] = (targets[item] or 0) + count end
 	-- A category wanted beyond the job's (a Builder's logs for planks, builder_market.lua).
@@ -499,6 +512,82 @@ function M.assess(input)
 			local v = value(item)
 			return v and v * lambda
 		end}
+end
+
+-- Production by margin (ticket 21d, docs/villager-economy-design.md's Price discovery).
+-- `price_of(item)` is what one villager reckons an item trades for (prices.lua's reference
+-- price times its ask factor, possessions.prices_of). An input that names a category (its
+-- third field), or any log or planks, is reckoned at its cheapest member.
+local function members_of(input)
+	local named = input[3]
+	if named then return goods.CATEGORIES[named] end
+	local category = goods.target_category(input[1])
+	if category == "log" or category == "planks" then return goods.CATEGORIES[category] end
+	return nil
+end
+M.members_of = members_of
+
+-- An input nothing prices (gravel, sand) is gathered, never bought: it counts as 0.
+local function input_price(input, price_of)
+	local members = members_of(input)
+	if not members then return price_of(input[1]) or 0 end
+	local best
+	for item in pairs(members) do
+		local price = price_of(item)
+		if price and (not best or price < best) then best = price end
+	end
+	return best or 0
+end
+
+-- What one craft of the recipe earns over what its inputs and fuel would sell for: nil if
+-- its output has no price.
+function M.margin(recipe, price_of, fuel_price)
+	local made = price_of(recipe.makes)
+	if not made then return nil end
+	local margin = made * recipe.count
+	for _, input in ipairs(recipe.from) do
+		margin = margin - input_price(input, price_of) * input[2]
+	end
+	if recipe.fuel then margin = margin - (fuel_price or price_of(COAL) or 0) * recipe.fuel / SMELTS_PER_LUMP end
+	return margin
+end
+
+-- What each recipe input is worth to the crafter at most: what its best recipe's output
+-- returns, less the other inputs and fuel, per one of it ({item = emeralds}, every member
+-- of a category input). An armorer whose armour stops selling bids less for iron.
+function M.imputed(list, price_of, max_tier)
+	local caps = {}
+	for _, recipe in ipairs(list or {}) do
+		if (recipe.tier or 1) <= (max_tier or 5) then
+			local margin = M.margin(recipe, price_of)
+			if margin then
+				for _, input in ipairs(recipe.from) do
+					local own = input_price(input, price_of) or 0
+					local worth = math.max((margin + own * input[2]) / input[2], 0)
+					for item in pairs(members_of(input) or {[input[1]] = true}) do
+						if not caps[item] or worth > caps[item] then caps[item] = worth end
+					end
+				end
+			end
+		end
+	end
+	return caps
+end
+
+-- The recipe inputs only recipes that do not pay take ({item = true}): a crafter wants
+-- none of them (ticket 21d). A margin of 0 pays, so goods priced at their inputs' cost
+-- (COST_PRICED, the alchemist's) are made until the market says otherwise.
+function M.unpaid(list, price_of, max_tier)
+	local paying, idle = {}, {}
+	for _, recipe in ipairs(list or {}) do
+		if (recipe.tier or 1) <= (max_tier or 5) then
+			local margin = M.margin(recipe, price_of)
+			local target = margin and margin >= 0 and paying or idle
+			for _, input in ipairs(recipe.from) do target[input[1]] = true end
+		end
+	end
+	for item in pairs(paying) do idle[item] = nil end
+	return idle
 end
 
 -- The items with the largest need or surplus first, by value, for news and the inspector.

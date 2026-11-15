@@ -50,6 +50,8 @@ local asks = dofile(core.get_modpath("living_villages") .. "/asks.lua")
 local dinner = dofile(core.get_modpath("living_villages") .. "/dinner.lua")
 local goods = dofile(core.get_modpath("living_villages") .. "/goods.lua")
 local alchemist = dofile(core.get_modpath("living_villages") .. "/alchemist.lua")
+local prices = dofile(core.get_modpath("living_villages") .. "/prices.lua")
+local recipes = dofile(core.get_modpath("living_villages") .. "/recipes.lua")
 
 local DEFAULT_STASH_RADIUS = 8
 local STASH_HEIGHT = 3
@@ -580,6 +582,23 @@ function M.in_dinners(self, emeralds)
 	return emeralds and emeralds / dinner.scale(self)
 end
 
+-- What it reckons an item trades for (ticket 21d): its reference price (prices.lua) times
+-- its ask factor (asks.lua), so goods it cannot sell count for what it now asks.
+function M.prices_of(self)
+	return function(item)
+		local price = prices.price(self._villages_prices, item)
+		return price and price * asks.factor(self, item)
+	end
+end
+
+-- Its recipes (recipes.lua), as production.recipes gives them: an alchemist's own list,
+-- none for a keeper or a Builder.
+function M.recipes_of(self)
+	if self._villages_alchemist then return recipes.alchemist end
+	if self._villages_keeper or self._villages_builder then return nil end
+	return recipes[self._profession]
+end
+
 -- The ledger's view of this villager (ledger.lua): its targets, needs, surplus and values.
 -- A keeper by its role; a Builder or an alchemist has no vanilla trade of its own.
 function M.assess(self)
@@ -613,13 +632,29 @@ function M.assess(self)
 		end
 		least = {[peddle.item] = peddle.bid}
 	end
-	-- An alchemist (ticket 20) wants stone always and logs for the flint it is short of,
-	-- never at more than their base price (until ticket 21d). Its goods have no floor.
+	-- Production by margin (ticket 21d): a recipe input is worth no more than what its best
+	-- recipe's output returns, and one only recipes that do not pay take is not wanted.
+	local list = not self.child and M.recipes_of(self)
+	local unpaid
+	if list then
+		local price_of = M.prices_of(self)
+		local tier = self._max_trade_tier or 1
+		if self._villages_alchemist then tier = 5 end
+		for item, cap in pairs(ledger.imputed(list, price_of, tier)) do
+			worth[item] = math.min(worth[item] or math.huge, cap)
+		end
+		unpaid = ledger.unpaid(list, price_of, tier)
+	end
+	-- An alchemist (ticket 20) wants stone while a stone recipe pays, and logs for the flint
+	-- it is short of while flint pays.
 	local categories
 	if self._villages_alchemist and not self.child then
-		local alchemist_worth
-		categories, alchemist_worth = alchemist.targets(M.held(self), ledger.price, goods.CATEGORIES)
-		for item, value in pairs(alchemist_worth) do worth[item] = math.min(worth[item] or math.huge, value) end
+		local paying = {}
+		for _, recipe in ipairs(list or {}) do
+			local margin = ledger.margin(recipe, M.prices_of(self))
+			if margin and margin >= 0 then paying[recipe.makes] = true end
+		end
+		categories = alchemist.targets(M.held(self), paying)
 	elseif self._villages_builder and (self._villages_builder_logs or self._villages_builder_wool) then
 		categories = {log = self._villages_builder_logs, wool = self._villages_builder_wool}
 	end
@@ -640,6 +675,7 @@ function M.assess(self)
 		least = least,
 		-- What it believes things are worth (prices.lua).
 		prices = self._villages_prices,
+		unpaid = unpaid,
 		-- What it has to spend, for the money factor (ledger.lambda, ticket 21a).
 		money = M.money(self),
 		dinner = dinner.reference(self),

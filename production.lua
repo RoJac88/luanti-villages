@@ -12,12 +12,16 @@
 -- never cook its way out, ColonyFood 2026-11-13); one reading a book (wants.lua) a fifth
 -- faster.
 --
--- Which recipe: of those it has the inputs and fuel for, and whose output it holds fewer
--- than its target plus STOCK of (see below for one nobody wants), the one that adds most by its own values (ledger.lua):
--- the output's value less the inputs' and the fuel's. Its targets include its recipes'
--- inputs, so a librarian short of books values making them above a bookshelf. An output
--- it has heard someone needs (market_news.lua) is worth at least the best price asked,
--- so a tool smith makes the hoe a farmer wants before a shovel no one does (ticket 11d).
+-- Which recipe (ticket 21d, production by margin): of those it has the inputs and fuel
+-- for, and whose output it holds fewer than its target plus STOCK of (see below for one
+-- nobody wants; the alchemist's `upto` instead), the one that earns most per second of
+-- work (M.cost): the output at what it reckons it trades for (possessions.prices_of, its
+-- reference price times its ask factor), less the inputs and fuel reckoned the same way
+-- (ledger.margin). One that earns less than nothing is not made: its inputs sell for
+-- more as they are, and a crafter with nothing that pays labours (M.idle_today). An
+-- output it has heard someone needs (market_news.lua) is reckoned at no less than the
+-- best price asked, so a tool smith makes the hoe a farmer wants before a shovel no one
+-- does (ticket 11d).
 -- Nor does it make what nobody wants: an output it has heard no one ask for and does
 -- not want itself (no target) it makes only while it holds none, so its inputs are left
 -- for what is asked for (run 48: a tool smith spent the sticks for a farmer's second
@@ -182,18 +186,16 @@ function M.can_make(self, recipe, held)
 	return not recipe.fuel or fuel_available(self, held) >= recipe.fuel
 end
 
-local function worth(view, item, count)
-	return (view.value(item) or 0) * count
-end
-
--- What a craft adds by the villager's own values, its output at no less than `asks`
--- (market_news.asking) holds for it.
-function M.gain(recipe, view, asks)
-	local made = math.max(view.value(recipe.makes) or 0, asks and asks[recipe.makes] or 0)
-	local gain = made * recipe.count
-	for _, input in ipairs(recipe.from) do gain = gain - worth(view, input[1], input[2]) end
-	if recipe.fuel then gain = gain - worth(view, COAL, recipe.fuel / SMELTS_PER_LUMP) end
-	return gain
+-- What a craft earns over its inputs and fuel (ledger.margin) at `price_of` (default its
+-- own, possessions.prices_of), its output at no less than `asks` (market_news.asking)
+-- holds for it. Nil if its output has no price.
+function M.gain(recipe, price_of, asks)
+	local function priced(item)
+		local price = price_of(item)
+		if item == recipe.makes and asks and asks[item] then return math.max(price or 0, asks[item]) end
+		return price
+	end
+	return ledger.margin(recipe, priced)
 end
 
 -- The recipe it would make next, or nil. `held`, `view` and `asks` default to its own.
@@ -201,30 +203,33 @@ function M.choose(self, held, view, asks)
 	local list = M.recipes(self)
 	if not list then return nil end
 	held = held or possessions.held(self)
-	-- A ranked list (the alchemist's) goes by rank and `upto`, not by value.
-	if list[1] and list[1].rank then
-		local best
-		for _, recipe in ipairs(list) do
-			local stocked = recipe.upto and have(recipe.makes, function(item) return held[item] end) >= recipe.upto
-			if not stocked and M.can_make(self, recipe, held) and (not best or recipe.rank < best.rank) then
-				best = recipe
-			end
-		end
-		return best
-	end
 	view = view or possessions.assess(self)
 	asks = asks or news.asking(news.heard(self, core.get_gametime()))
-	local best, best_gain
+	local price_of = possessions.prices_of(self)
+	-- A ranked list (the alchemist's) stops at each recipe's `upto` and breaks ties by rank.
+	local ranked = list[1] and list[1].rank
+	local best, best_rate
 	for _, recipe in ipairs(list) do
-		local target = view.targets[recipe.makes] or 0
-		-- Its own need counts, a category's (food, ticket 15) included.
-		local wanted = target > 0 or (asks[recipe.makes] or 0) > 0 or (view.needs[recipe.makes] or 0) > 0
 		local stock_held = have(recipe.makes, function(item) return held[item] end)
-		local stocked = stock_held >= (wanted and target + STOCK or UNASKED_STOCK)
+		local stocked
+		if ranked then
+			stocked = recipe.upto ~= nil and stock_held >= recipe.upto
+		else
+			local target = view.targets[recipe.makes] or 0
+			-- Its own need counts, a category's (food, ticket 15) included.
+			local wanted = target > 0 or (asks[recipe.makes] or 0) > 0 or (view.needs[recipe.makes] or 0) > 0
+			stocked = stock_held >= (wanted and target + STOCK or UNASKED_STOCK)
+		end
 		if not stocked and M.can_make(self, recipe, held) then
-			local gain = M.gain(recipe, view, asks)
-			if not best or gain > best_gain or (gain == best_gain and recipe.makes < best.makes) then
-				best, best_gain = recipe, gain
+			local gain = M.gain(recipe, price_of, asks)
+			-- A craft seeded at its inputs' cost pays 0, give or take rounding.
+			if gain and gain >= -1e-6 then
+				local rate = math.max(gain, 0) / M.cost(self, recipe)
+				local better = not best or rate > best_rate
+				if not better and rate == best_rate then
+					if ranked then better = recipe.rank < best.rank else better = recipe.makes < best.makes end
+				end
+				if better then best, best_rate = recipe, rate end
 			end
 		end
 	end
