@@ -177,4 +177,21 @@ do
 	assert(not exchange.offer(shepherd, lone, homely, rug_view))
 end
 
+-- Anyone's conversions (19h): a forager's bones sell as three white dye each to a buyer
+-- of dye, and as three bone meal each to a buyer of bone meal.
+do
+	local BONE, DYE, MEAL = "mcl_mobitems:bone", "mcl_dye:white", "mcl_bone_meal:bone_meal"
+	local forager = villager("fo", {[BONE] = 4})
+	local seller_view = view({}, {[BONE] = 4}, {[BONE] = 1})
+	local dyer = villager("dy", {["mcl_core:emerald"] = 200}, {_profession = "shepherd"})
+	local offer = exchange.offer(forager, seller_view, dyer, view({[DYE] = 6}, {}, {[DYE] = 12}))
+	assert(offer and offer.item == DYE and offer.from == BONE and offer.from_count == 2 and offer.count == 6,
+		offer and (offer.item .. " " .. offer.count))
+	local grower = villager("gr", {["mcl_core:emerald"] = 200})
+	offer = exchange.offer(forager, seller_view, grower, view({[MEAL] = 3}, {}, {[MEAL] = 12}))
+	assert(offer and offer.item == MEAL and offer.from == BONE and offer.from_count == 1 and offer.count == 3)
+	assert(exchange.settle(offer))
+	assert(count(forager, BONE) == 3 and count(grower, MEAL) == 3)
+end
+
 print("exchange.lua: ok")

@@ -16,7 +16,10 @@
 --
 -- Conversions. When a villager sells to a villager (exchange.lua), a job can hand over a
 -- good it makes from its spare stock on the spot: instantly and for free, and sparingly,
--- a short list a job. None is for food: the butcher cooks (recipes.lua). Player trades
+-- a short list a job. A few are anyone's (ANYONE): a lily of the valley or bone meal (a
+-- farmer's spare, farmer.lua) sells as the white dye it crafts into, one for one, for the
+-- shepherd to dye grey wool white (19h); a bone (a forager picks up a skeleton's) as the
+-- three bone meal or three white dye it makes, whichever the buyer wants. None is for food: the butcher cooks (recipes.lua). Player trades
 -- convert nothing. Each gives `ratio` of its product per source, `takes` sources at a
 -- time (1 unless set): two wool make three carpets.
 local core = minetest
@@ -64,6 +67,12 @@ for _, colour in ipairs(WOOL_COLOURS) do
 		ratio = 1.5, takes = 2})
 end
 for log, planks in pairs(SPECIES) do table.insert(conversions.woodcutter, {from = log, to = planks, ratio = 4}) end
+local ANYONE = {
+	{from = "mcl_bone_meal:bone_meal", to = "mcl_dye:white", ratio = 1},
+	{from = "mcl_mobitems:bone", to = "mcl_bone_meal:bone_meal", ratio = 3},
+	{from = "mcl_mobitems:bone", to = "mcl_dye:white", ratio = 3},
+	{from = "mcl_flowers:lily_of_the_valley", to = "mcl_dye:white", ratio = 1},
+}
 for _, list in pairs(conversions) do
 	table.sort(list, function(a, b) return a.from < b.from end)
 end
@@ -107,9 +116,14 @@ end
 -- profession's, or a labourer's activity's (labour.lua's `_villages_labour`).
 function M.conversions(villager)
 	local list = conversions[villager._profession]
-	if list then return list end
-	local labour = villager._villages_labour
-	return labour and conversions[labour.activity] or {}
+	if not list then
+		local labour = villager._villages_labour
+		list = labour and conversions[labour.activity] or {}
+	end
+	local out = {}
+	for _, conversion in ipairs(list) do out[#out + 1] = conversion end
+	for _, conversion in ipairs(ANYONE) do out[#out + 1] = conversion end
+	return out
 end
 
 return M

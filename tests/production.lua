@@ -105,6 +105,23 @@ assert(logs[#logs]:find("made 1 mcl_tools:shovel_stone", 1, true))
 assert(production.work(tobias, 1000) == 2)
 assert(count(tobias, "mcl_core:stick") == 0 and tobias._villages_craft == nil, "nothing left: nothing banked")
 
+-- The shepherd dyes grey wool white with white dye (19h): nobody bought grey.
+do
+	local shep = smith({_id = "sheila", _profession = "shepherd"})
+	assert(production.choose(shep) == nil, "no dye, nothing to make")
+	assert(production.restock_held(shep) == nil, "its wool restocks from its flock, dye or not")
+	possessions.add(shep, "mcl_wool:grey", 5)
+	possessions.add(shep, "mcl_dye:white", 2)
+	assert(production.choose(shep).makes == "mcl_wool:white")
+	-- Unasked, one in stock is enough.
+	assert(production.work(shep, 1000) == 1 and count(shep, "mcl_wool:white") == 1)
+	assert(count(shep, "mcl_wool:grey") == 4 and count(shep, "mcl_dye:white") == 1)
+	-- Heard of a cartographer wanting white wool, it dyes on.
+	shep._villages_market_news = {{kind = "needs", item = "mcl_wool:white", count = 14, who = "carto",
+		price = 80, heard = now, hops = 1}}
+	assert(production.work(shep, 1000) == 1 and count(shep, "mcl_wool:white") == 2 and count(shep, "mcl_dye:white") == 0)
+end
+
 -- Hungry works at half the rate; starving at a quarter (ticket 18), and holds its restock.
 local hungry = smith({_villages_food = 2})
 possessions.add(hungry, "mcl_core:cobble", 3)
@@ -322,6 +339,8 @@ do
 	assert(production.idle_today(smith({_id = "w1", _villages_woodcutter = true})) == false)
 	assert(production.idle_today(smith({_id = "c1", child = true})) == false)
 	assert(production.idle_today(smith({_id = "f1", _profession = "farmer"})) == false)
+	-- Nor a shepherd, though it now dyes wool (19h): its flock is its work.
+	assert(production.idle_today(smith({_id = "s1", _profession = "shepherd"})) == false)
 	time = saved
 end
 

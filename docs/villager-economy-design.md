@@ -1758,6 +1758,32 @@ wanted it.
   day, and a villager takes the emeralds in its stash into its belongings whenever it
   stands within reach of it (`possessions.collect_stash_emeralds`).
 
+**19h. Shepherds dye their wool** (ColonyFood, 2026-11-14). Three shepherds starved
+holding grey wool nobody bought, valued at 2, while the cartographer wanted 14 white wool
+(at 79) for the banners most villagers want. Grey and white wool share a base price, so
+only demand told them apart.
+
+- The shepherd has a recipe: grey wool and white dye make white wool. VoxeLibre dyes only
+  white wool; Minecraft dyes any, as here. Unasked, it keeps one white in stock; heard of
+  a buyer, it dyes on. Its wool still comes from its flock: a day with no dye never sends
+  it to labour, and never holds its restock. Its recipe also makes it a craftsman for the
+  alms' stake (19f), enough to buy dye.
+- Its white dye comes from lily of the valley, priced as the other flowers (a twelfth of
+  a vanilla emerald). Foragers pick the bloom as they pick poppies and dandelions, eight
+  kept. Anyone selling a lily hands it over as white dye, one for one, VoxeLibre's recipe
+  (`goods.conversions`, the first conversion that is not a job's).
+- Bone meal is the other source, since no lily grew within 80 of ColonyFood. It crafts
+  into white dye one for one too, and is priced as one. A farmer with a chest moves bone
+  meal over its keep of 4 to its belongings, up to 8, as it does wheat, and anyone
+  selling it hands it over as white dye. It composts on past its keep until it has
+  those 8: it used to stop at 4, so it never had any to sell.
+- Bones too: priced at the three bone meal a bone crafts into (a quarter of a vanilla
+  emerald), so a forager picks up a skeleton's as it picks up rotten flesh. Anyone
+  selling a bone hands over three bone meal or three white dye, whichever the buyer
+  needs; the exchange already chooses among a good's conversions by the buyer's needs.
+- Only grey for now, the colour that piled up. Silver wool's base price is 64, and as a
+  recipe input it would put silver among the shepherd's top needs.
+
 ## Open questions
 
 - Pacing: hunger rate, craft time, starting stock and rent all need probe runs on

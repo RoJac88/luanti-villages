@@ -233,6 +233,8 @@ do
 	end
 	named["mcl_core:emerald 2"] = {description = "Lucky"}
 	local flesh = drop(20, "mcl_mobitems:rotten_flesh 3")
+	-- A skeleton's bone is priced, so picked up too (19h: it sells as bone meal or dye).
+	assert(labour.worth_picking(ItemStack("mcl_mobitems:bone 2")), "a bone")
 	local dirt = drop(21, "mcl_core:dirt 5")
 	local worn = drop(22, "mcl_tools:pick_stone 1 300")
 	local lucky = drop(23, "mcl_core:emerald 2")
@@ -631,6 +633,18 @@ do
 	assert(#labour.forage_targets(flo) == 1, "in bloom again")
 	possessions.add(flo, "mcl_flowers:poppy", 7)
 	assert(#labour.forage_targets(flo) == 0, "it keeps eight")
+	day = day - 3
+	-- A lily of the valley too (19h), for the shepherd's white dye; it keeps eight of them.
+	for k in pairs(nodes) do nodes[k] = nil end
+	local lily = {x = 2, y = 1, z = -4}
+	nodes[key(lily)] = "mcl_flowers:lily_of_the_valley"
+	local lil = villager({_id = "lil"})
+	local found = labour.forage_targets(lil)
+	assert(#found == 1 and found[1].kind == "flower", "the lily is a target")
+	assert(labour.forage(lil, found[1]) == "mcl_flowers:lily_of_the_valley" and nodes[key(lily)] ~= nil)
+	day = day + 3
+	possessions.add(lil, "mcl_flowers:lily_of_the_valley", 7)
+	assert(#labour.forage_targets(lil) == 0, "eight lilies kept")
 	day = day - 3
 	for k in pairs(nodes) do nodes[k] = nil end
 	for k, v in pairs(saved) do nodes[k] = v end

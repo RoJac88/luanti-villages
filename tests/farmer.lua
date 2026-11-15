@@ -214,14 +214,30 @@ local on_the_way = plot(1, 1, "mcl_farming:wheat")
 step()
 assert(world.name(on_the_way) == "air" and #farmer.walks == 0)
 
--- A small excess is not worth a trip.
-setup({_villages_farm_pouch = {["mcl_bone_meal:bone_meal"] = 4, ["mcl_farming:wheat_seeds"] = 20}})
+-- A small excess is not worth a trip (with its bone meal for sale in hand, so it does
+-- not compost either).
+setup({_villages_farm_pouch = {["mcl_bone_meal:bone_meal"] = 4, ["mcl_farming:wheat_seeds"] = 20},
+	_villages_belongings = {["mcl_bone_meal:bone_meal"] = 8}})
 support.chest(world, {x = 20, y = 2, z = 0})
 step(3)
 assert(#farmer.walks == 0 and pouch("mcl_farming:wheat_seeds") == 20)
+-- Without bone meal to sell, with the economy on, it composts that excess on past its
+-- keep of four bone meal (19h): stopping at the keep, it never had any spare to sell.
+setup({_villages_farm_pouch = {["mcl_bone_meal:bone_meal"] = 4, ["mcl_farming:wheat_seeds"] = 20}})
+support.chest(world, {x = 20, y = 2, z = 0})
+step(3)
+assert(#world.composted > 0 and pouch("mcl_farming:wheat_seeds") < 20, "composts for bone meal to sell")
+-- With the economy off it stops at the keep, as before.
+economy = false
+setup({_villages_farm_pouch = {["mcl_bone_meal:bone_meal"] = 4, ["mcl_farming:wheat_seeds"] = 20}})
+support.chest(world, {x = 20, y = 2, z = 0})
+step(3)
+assert(#world.composted == 0 and pouch("mcl_farming:wheat_seeds") == 20)
+economy = nil
 
 -- A full chest is left alone for a while, and nothing is lost to it.
-setup({_villages_farm_pouch = {["mcl_bone_meal:bone_meal"] = 4, ["mcl_farming:wheat_seeds"] = 30}})
+setup({_villages_farm_pouch = {["mcl_bone_meal:bone_meal"] = 4, ["mcl_farming:wheat_seeds"] = 30},
+	_villages_belongings = {["mcl_bone_meal:bone_meal"] = 8}})
 local full = support.chest(world, {x = 2, y = 2, z = 0})
 for i = 1, 27 do full:set_stack("main", i, "mcl_core:stone 64") end
 step(3)
@@ -239,7 +255,8 @@ assert(placed:get_stack("main", 1):to_string() == "mcl_farming:wheat_seeds 14")
 assert(builders:get_stack("main", 1):is_empty(), "the other chest is left alone")
 
 -- That chest full, it waits rather than fill another.
-setup({_villages_farm_pouch = {["mcl_bone_meal:bone_meal"] = 4, ["mcl_farming:wheat_seeds"] = 30}})
+setup({_villages_farm_pouch = {["mcl_bone_meal:bone_meal"] = 4, ["mcl_farming:wheat_seeds"] = 30},
+	_villages_belongings = {["mcl_bone_meal:bone_meal"] = 8}})
 builders = support.chest(world, {x = 8, y = 2, z = 0})
 placed = support.chest(world, {x = -6, y = 2, z = 0})
 for i = 1, 27 do placed:set_stack("main", i, "mcl_core:stone 64") end
@@ -247,7 +264,8 @@ step(6)
 assert(builders:get_stack("main", 1):is_empty() and pouch("mcl_farming:wheat_seeds") == 30)
 
 -- Both halves of a double chest are its own.
-setup({_villages_farm_pouch = {["mcl_bone_meal:bone_meal"] = 4, ["mcl_farming:wheat_seeds"] = 30}})
+setup({_villages_farm_pouch = {["mcl_bone_meal:bone_meal"] = 4, ["mcl_farming:wheat_seeds"] = 30},
+	_villages_belongings = {["mcl_bone_meal:bone_meal"] = 8}})
 local near_half = support.chest(world, {x = 2, y = 2, z = 0}, "mcl_chests:chest_left")
 local far_half = support.chest(world, {x = 3, y = 2, z = 0}, "mcl_chests:chest_right")
 builders = support.chest(world, {x = 4, y = 2, z = 0})
@@ -435,6 +453,13 @@ step()
 assert(farmer._villages_belongings and farmer._villages_belongings["mcl_farming:wheat_item"] == 8)
 assert(pouch("mcl_farming:wheat_item") == 3)
 assert(world.meta({x = 2, y = 2, z = 0}).inv:get_stack("main", 1):to_string() == "mcl_farming:wheat_item 19")
+-- Bone meal over its keep of four too, up to eight, to sell as white dye (19h).
+setup({_villages_farm_pouch = {["mcl_bone_meal:bone_meal"] = 14}})
+local meal_chest = support.chest(world, {x = 2, y = 2, z = 0})
+step()
+assert(farmer._villages_belongings and farmer._villages_belongings["mcl_bone_meal:bone_meal"] == 8)
+assert(pouch("mcl_bone_meal:bone_meal") == 4)
+assert(meal_chest:get_stack("main", 1):to_string() == "mcl_bone_meal:bone_meal 2")
 
 -- Spare bread is worth a trip well short of the usual eight over the keep: its own
 -- dinners and the keeper's fetches both wait on it (run of 2026-11-13).

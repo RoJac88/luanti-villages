@@ -322,6 +322,8 @@ end
 -- `_villages_idle` holds the day and the answer.
 function M.idle_today(self)
 	if self.child or not self._id or not self._jobsite or self._villages_woodcutter then return false end
+	-- A shepherd's flock is its work: dyeing is a side line, never a reason to labour.
+	if self._profession == "shepherd" then return false end
 	if self._profession == "nitwit" or self._profession == "unemployed" or not M.recipes(self) then return false end
 	local day = core.get_day_count()
 	local idle = self._villages_idle
@@ -392,6 +394,8 @@ end
 function M.restock_held(self)
 	if not clock.enabled() or self.child then return nil end
 	if food.state(self) == "starving" then return "starving" end
+	-- A shepherd's goods are its flock's wool, not its dyeing (19h).
+	if self._profession == "shepherd" then return nil end
 	local list = M.recipes(self)
 	if not list then return nil end
 	local held = possessions.held(self)

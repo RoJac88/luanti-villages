@@ -17,8 +17,8 @@
 --   villager makes every recipe in its list whatever its tier: the list holds only plain
 --   goods a village can supply, never enchanted ones.
 --
--- Left out, so they restock as vanilla does: the farmer, fisherman and shepherd, whose
--- work loops make their goods; the cleric, whose goods have no recipe. The cartographer
+-- Left out, so they restock as vanilla does: the farmer and fisherman, whose work loops
+-- make their goods, and the shepherd's wool (flock.lua); the cleric, whose goods have no recipe. The cartographer
 -- makes banners (ticket 12), for stalls (market_stall.lua), and the paper its trade
 -- table buys: its map needs a compass a village cannot make. Fletching flint from
 -- gravel is one for one, where a player digging gets flint one time in ten: the
@@ -27,6 +27,13 @@ local COBBLE, STICK = "mcl_core:cobble", "mcl_core:stick"
 local IRON, LEATHER = "mcl_core:iron_ingot", "mcl_mobitems:leather"
 
 return {
+	-- The shepherd dyes its grey wool white (19h): nobody bought grey, and three shepherds
+	-- starved holding it while the cartographer wanted 14 white for banners (ColonyFood,
+	-- 2026-11-14). VoxeLibre dyes only white wool; Minecraft dyes any, as here. Its white
+	-- dye comes from a lily of the valley or a farmer's bone meal (goods.lua's conversions).
+	shepherd = {
+		{makes = "mcl_wool:white", count = 1, tier = 1, from = {{"mcl_wool:grey", 1}, {"mcl_dye:white", 1}}},
+	},
 	tool_smith = {
 		{makes = "mcl_tools:pick_stone", count = 1, tier = 1, from = {{COBBLE, 3}, {STICK, 2}}},
 		{makes = "mcl_tools:axe_stone", count = 1, tier = 1, from = {{COBBLE, 3}, {STICK, 2}}},
