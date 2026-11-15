@@ -65,7 +65,7 @@ do
 	assert(targets[tastes[1].item] == 2 and targets[tastes[2].item] == 1 and targets[tastes[3].item] == 1,
 		"round its tastes")
 	for _, taste in ipairs(tastes) do
-		assert(worth[taste.item] == comforts.WORTH * ledger.price(taste.item))
+		assert(math.abs(worth[taste.item] - comforts.WORTH * ledger.price(taste.item) / ledger.lambda(rich)) < 1e-9)
 	end
 	assert(comforts.targets({_id = "kid", child = true}, rich, clock) and
 		total(comforts.targets({_id = "kid", child = true}, rich, clock)) == 0, "no child")

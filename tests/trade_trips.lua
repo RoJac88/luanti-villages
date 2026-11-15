@@ -441,17 +441,19 @@ do
 		_villages_belongings = {[EMERALD] = 6 * 64}})
 	local coal_seller = villager("cole", {x = 70, y = 1, z = 0},
 		{_villages_belongings = {["mcl_core:coal_lump"] = 40}})
-	sam._villages_market_news = {has_news("cole", "mcl_core:coal_lump", {x = 70, y = 1, z = 0}, 0.04)}
+	sam._villages_market_news = {has_news("cole", "mcl_core:coal_lump", {x = 70, y = 1, z = 0}, dofile("ledger.lua").price("mcl_core:coal_lump"))}
 	local pat = villager("pat-porter", {x = 50, y = 1, z = 1}, {_villages_belongings = {},
 		_villages_labour = {day = day, activity = "porter"}})
 	local idler = villager("ida", {x = 50, y = 1, z = 1}, {_villages_belongings = {[EMERALD] = 9 * 64}})
 	local hires = trips.hire({pat, sam, idler})
 	assert(#hires == 1 and hires[1].client == sam and pat._villages_trade_trip.client.id == "sam-smith")
-	-- The purse is the lot at the client's value and the fee: not all it has (ColonyFood,
-	-- 2026-11-14: 512 sent for one poppy).
+	-- The purse is the lot at the client's value, or the price heard with some slack if
+	-- that is less, and the fee: not all it has (ColonyFood, 2026-11-14: 512 sent for
+	-- one poppy).
 	local trip = pat._villages_trade_trip
 	local purse = trip.client.purse
-	assert(purse == math.ceil(trip.want * trip.client.value) + trips.PORTER_FEE, purse)
+	assert(purse == trips.purse_for(trip, trip.client.value), purse)
+	assert(purse <= math.ceil(trip.want * trip.client.value) + trips.PORTER_FEE)
 	assert(purse < 384 and count(sam, EMERALD) == 384 - purse and count(pat, EMERALD) == purse)
 	assert(logs[#logs]:find("hired porter pat%-po with " .. purse .. " emerald"))
 	assert(trips.purse_for({want = 1000}, 10) == trips.PURSE, "at most PURSE")
@@ -492,7 +494,7 @@ do
 	trips.step(por, now + 4)
 	por.arrive()
 	trips.step(por, now + 6)
-	assert(chest_count(stash, EMERALD) == 4 * 64 and count(por, EMERALD) == 0)
+	assert(chest_count(stash, EMERALD) + count(lib, EMERALD) == 4 * 64 and count(por, EMERALD) == 0)
 	-- An own trip lasts into the next day's work stage, not called back to the jobsite;
 	-- one from the day before that is dropped.
 	local own = villager("own", {x = 0, y = 1, z = 0}, {_villages_belongings = {[EMERALD] = 2 * 64}})

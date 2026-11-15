@@ -109,8 +109,8 @@ assert(view.needs[COBBLE] == 8 and view.value(COBBLE) == 3)
 peddler._villages_peddle.buying = nil
 possessions.add(peddler, COBBLE, 8)
 view = possessions.assess(peddler)
-assert(view.surplus[COBBLE] == 8 and view.value(COBBLE) == 3, "spare, at no less than its bid")
+assert(view.surplus[COBBLE] == 8 and view.value(COBBLE) >= 3, "spare, at no less than its bid")
 peddler._villages_peddle = nil
-assert(possessions.assess(peddler).value(COBBLE) < 3, "a nitwit's own value for spare cobble is lower")
+assert(possessions.assess(peddler).real(COBBLE) < 3, "a nitwit's own value for spare cobble is lower, money aside")
 
 print("market_stall.lua: ok")

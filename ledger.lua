@@ -55,6 +55,17 @@ local MAX_URGENCY, MIN_URGENCY = 3, 0.5
 local CRAFT_BATCH = 4
 local FUEL_BATCH = 4
 local COAL = "mcl_core:coal_lump"
+-- The money factor (ticket 21a, docs/villager-economy-design.md's Price discovery): what
+-- an emerald is worth to a villager falls with how many it holds. Its marginal value is
+-- lambda = (CUSHION / emeralds) ^ GAMMA, within 1 / LAMBDA_SPAN and LAMBDA_SPAN, and
+-- every value is divided by it: at CUSHION (four dinners) a value is as it was, a
+-- villager with one emerald values everything at an eighth, and one with 3000 pays some
+-- six times a price for what it wants. Money then goes from the rich to whoever sells
+-- what they want, and a broke seller's goods come cheap. ColonyFood, 2026-11-15: two
+-- farmers and the mason held 3940 of some 4700 emeralds and bought almost nothing.
+local CUSHION = 4 * DINNER
+local GAMMA = 0.5
+local LAMBDA_SPAN = 8
 
 local HAND_PRICES = {
 	-- A log is four planks, a plank two sticks (the fletcher buys 32 sticks for one).
@@ -172,7 +183,7 @@ local ROLES = {
 -- by way of `extra`.
 
 local M = {
-	EMERALD = EMERALD, SCALE = SCALE, DINNER = DINNER, STOCK_DAYS = STOCK_DAYS, STOCK_MONEY = STOCK_MONEY,
+	EMERALD = EMERALD, SCALE = SCALE, DINNER = DINNER, CUSHION = CUSHION, GAMMA = GAMMA, LAMBDA_SPAN = LAMBDA_SPAN, STOCK_DAYS = STOCK_DAYS, STOCK_MONEY = STOCK_MONEY,
 	STARVING_DAYS = STARVING_DAYS, MAX_URGENCY = MAX_URGENCY, MIN_URGENCY = MIN_URGENCY,
 	COAL = COAL, COST_FLOOR = COST_FLOOR, version = tables.version,
 }
@@ -343,6 +354,14 @@ function M.urgency(held, target)
 	return MIN_URGENCY + (1 - MIN_URGENCY) * keep / held
 end
 
+-- The marginal value of an emerald to one holding `emeralds` (the money factor, above);
+-- 1 when not known.
+function M.lambda(emeralds)
+	if not emeralds then return 1 end
+	local lambda = (CUSHION / math.max(emeralds, 1)) ^ GAMMA
+	return math.min(math.max(lambda, 1 / LAMBDA_SPAN), LAMBDA_SPAN)
+end
+
 -- input: {id, profession, max_tier, held = {item = count}, food_points, hunger_per_day,
 -- foods = {item = points} (food.POINTS), extra = {item = count} (a Builder's missing
 -- materials, goods that wear out), extra_categories = {category = amount} (a Builder's
@@ -350,7 +369,10 @@ end
 -- to it whatever its need: what a good that wears out brings over its life, wants.lua),
 -- least = {item = emeralds} (the least it will take for an item: a peddler's stock is
 -- worth what it paid, labour.lua, ticket 12), prices = {item = factor} (its own
--- multiplier on the base price, prices.lua, ticket 13)}.
+-- multiplier on the base price, prices.lua, ticket 13), money = emeralds (what it has to
+-- spend, for the money factor, M.lambda; none, as for the keeper, leaves values as
+-- they are)}. `worth` and `least` are in emeralds and bound the value after the money
+-- factor.
 -- Returns {targets, needs, surplus, value = function(item), urgency = function(item)}:
 -- urgency is the need's own (M.urgency), before `worth` caps the value, so a good that
 -- wears out, wanted whole, is still as urgent as any other need (trade_trips.lua).
@@ -447,19 +469,26 @@ function M.assess(input)
 		if category then return M.urgency(held_units[category] or 0, wanted[category] or 0) end
 		return M.urgency(raw[item] or 0, targets[item] or 0)
 	end
+	local lambda = M.lambda(input.money)
 	local function value(item)
 		local price = M.price(item)
 		if not price then return nil end
 		if item == EMERALD then return 1 end
 		local factor = input.prices and input.prices[item] or 1
-		local value = price * factor * urgency(item)
+		local value = price * factor * urgency(item) / lambda
 		local most = input.worth and input.worth[item]
 		if most then value = math.min(value, most) end
 		local least = input.least and input.least[item]
 		return least and math.max(value, least) or value
 	end
 	return {targets = targets, needs = needs, surplus = surplus, value = value, urgency = urgency,
-		categories = categories, group = group}
+		categories = categories, group = group, lambda = lambda,
+		-- Its value with no money in it, for goods against goods (exchange.lua's barter):
+		-- two broke villagers swap at what the goods are worth to them, not what an emerald is.
+		real = function(item)
+			local v = value(item)
+			return v and v * lambda
+		end}
 end
 
 -- The items with the largest need or surplus first, by value, for news and the inspector.

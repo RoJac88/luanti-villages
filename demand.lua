@@ -29,8 +29,10 @@ local M = {HUNGER = HUNGER}
 M.enabled = clock.enabled
 
 -- The trader's urgency for the item, from its view (possessions.assess), or 1.
+-- Its value with no money in it (the view's `real`, ticket 21a): vanilla's prices are
+-- moved by want alone.
 function M.urgency(view, item)
-	local price, value = ledger.price(item), view.value(item)
+	local price, value = ledger.price(item), (view.real or view.value)(item)
 	if not price or price <= 0 or not value then return 1 end
 	return value / price
 end

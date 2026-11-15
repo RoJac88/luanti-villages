@@ -597,9 +597,14 @@ end
 -- The purse a client hands a porter for a trip: the lot at the client's value for it (the
 -- most the porter pays, buy_in_person), and the fee; at most PURSE. It used to be the
 -- whole PURSE: a farmer sent 512 for one poppy, and the rest came back into its stash,
--- where nothing took it out (ColonyFood, 2026-11-14).
+-- where nothing took it out (ColonyFood, 2026-11-14). Since the money factor (ticket
+-- 21a) a rich client's value runs well over the price, so the lot is reckoned at no more
+-- than the price heard, with PRICE_SLACK for an ask that rose since.
+local PRICE_SLACK = 1.25
 function M.purse_for(trip, value)
-	return math.min(math.ceil((trip.want or 0) * (value or 0)) + PORTER_FEE, PURSE)
+	local unit = value or 0
+	if trip.price and trip.price > 0 then unit = math.min(unit, trip.price * PRICE_SLACK) end
+	return math.min(math.ceil((trip.want or 0) * unit) + PORTER_FEE, PURSE)
 end
 
 -- At the end of a conversation, each porter with no trip may be hired by another member.

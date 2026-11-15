@@ -75,7 +75,19 @@ local EAT_CHECK_SECONDS = 10
 local STARVING_SPEED = 0.7
 -- Food points each parent must own: two days of food.
 local PARENT_FOOD = 8
-local DOUBLE_HALVES = {["mcl_chests:chest_left"] = true, ["mcl_chests:chest_right"] = true}
+local DOUBLE_HALVES = {["mcl_chests:chest_left"] = true, ["mcl_chests:chest_right"] = true,
+	["mcl_chests:trapped_chest_left"] = true, ["mcl_chests:trapped_chest_right"] = true,
+	["mcl_chests:trapped_chest_on_left"] = true, ["mcl_chests:trapped_chest_on_right"] = true}
+-- What may be a stash: any chest, trapped ones too (open, a trapped chest is swapped for its
+-- `_on` node, meta and all). A player left emeralds in a trapped chest by a villager's
+-- bed to give it money and nothing came of it (ColonyFood, 2026-11-15, ticket 21a).
+local STASH_NODES = {}
+for _, name in ipairs(stock.CHEST_NODES) do STASH_NODES[#STASH_NODES + 1] = name end
+for _, suffix in ipairs({"", "_small", "_left", "_right", "_on", "_on_small", "_on_left", "_on_right"}) do
+	STASH_NODES[#STASH_NODES + 1] = "mcl_chests:trapped_chest" .. suffix
+end
+local IS_STASH_NODE = {}
+for _, name in ipairs(STASH_NODES) do IS_STASH_NODE[name] = true end
 
 -- What a profession starts with: a little of what it works with, from its trade table's
 -- side of things, enough for a crafting profession (recipes.lua) to make its first goods.
@@ -226,7 +238,7 @@ local function halves(pos)
 	local found = {pos}
 	local node = core.get_node_or_nil(pos)
 	if node and DOUBLE_HALVES[node.name] then
-		for _, other in ipairs(core.find_nodes_in_area(vector.subtract(pos, 1), vector.add(pos, 1), stock.CHEST_NODES)) do
+		for _, other in ipairs(core.find_nodes_in_area(vector.subtract(pos, 1), vector.add(pos, 1), STASH_NODES)) do
 			if vector.distance(other, pos) == 1 then
 				local other_node = core.get_node_or_nil(other)
 				if other_node and DOUBLE_HALVES[other_node.name] then table.insert(found, other) end
@@ -238,22 +250,35 @@ end
 
 M.halves = halves
 
-local function set_owner(pos, id, bed)
+-- What a claimed stash says when pointed at (ticket 21a), so a player can tell whose it is
+-- and leave it emeralds: "Stash of the farmer 84ebb7".
+local function stash_label(self)
+	local role = self._villages_keeper and "keeper" or self._villages_builder and "Builder"
+		or self._villages_alchemist and "alchemist" or tostring(self._profession or "villager")
+	return string.format("Stash of the %s %s", role:gsub("_", " "), tostring(self._id):sub(1, 6))
+end
+
+local function set_owner(pos, id, bed, label)
 	for _, half in ipairs(halves(pos)) do
 		local meta = core.get_meta(half)
 		meta:set_string(OWNER, id or "")
 		meta:set_string(OWNER_BED, bed and core.pos_to_string(bed) or "")
+		meta:set_string("infotext", id and label or "")
+	end
+end
+
+-- Keeps the stash's label up to date with its owner's job.
+local function relabel(pos, self)
+	local label = stash_label(self)
+	if core.get_meta(pos):get_string("infotext") ~= label then
+		for _, half in ipairs(halves(pos)) do core.get_meta(half):set_string("infotext", label) end
 	end
 end
 
 local function owned_by(pos, self)
 	local node = core.get_node_or_nil(pos)
 	if not node then return false end
-	local is_chest = false
-	for _, name in ipairs(stock.CHEST_NODES) do
-		if node.name == name then is_chest = true end
-	end
-	return is_chest and core.get_meta(pos):get_string(OWNER) == self._id
+	return IS_STASH_NODE[node.name] == true and core.get_meta(pos):get_string(OWNER) == self._id
 end
 
 -- The villager's stash, claiming one if it has none or its bed moved. Nil without a bed.
@@ -264,13 +289,16 @@ function M.claim_stash(self)
 	local current = self._villages_stash
 	if current and owned_by(current, self) and vector.distance(current, bed) <= radius * 2 then
 		local claimed_from = core.string_to_pos(core.get_meta(current):get_string(OWNER_BED))
-		if claimed_from and vector.equals(claimed_from, bed) then return current end
+		if claimed_from and vector.equals(claimed_from, bed) then
+			relabel(current, self)
+			return current
+		end
 	end
 	if current and owned_by(current, self) then set_owner(current, nil, nil) end
 	self._villages_stash = nil
 	local chests = core.find_nodes_in_area(
 		{x = bed.x - radius, y = bed.y - STASH_HEIGHT, z = bed.z - radius},
-		{x = bed.x + radius, y = bed.y + STASH_HEIGHT, z = bed.z + radius}, stock.CHEST_NODES)
+		{x = bed.x + radius, y = bed.y + STASH_HEIGHT, z = bed.z + radius}, STASH_NODES)
 	table.sort(chests, function(a, b) return vector.distance(a, bed) < vector.distance(b, bed) end)
 	for _, pos in ipairs(chests) do
 		local meta = core.get_meta(pos)
@@ -285,7 +313,7 @@ function M.claim_stash(self)
 				core.log("action", string.format("[living_villages] villager %s claims the stash at %s",
 					tostring(self._id), core.pos_to_string(pos)))
 			end
-			set_owner(pos, self._id, bed)
+			set_owner(pos, self._id, bed, stash_label(self))
 			self._villages_stash = vector.new(pos)
 			return pos
 		end
@@ -333,11 +361,15 @@ end
 -- Emeralds in its stash go into its belongings when it stands within STASH_REACH of it. A
 -- porter leaves what is left of its client's purse there (trade_trips.lua), and nothing
 -- took it out again: 495 of a farmer's emeralds sat in its chest, out of its budget and
--- its donations (ColonyFood, 2026-11-14). Returns how many it took.
-function M.collect_stash_emeralds(self)
+-- its donations (ColonyFood, 2026-11-14). It also collects them when it gets up, from
+-- anywhere within reach of its bed (`reach`, M.step), so a gift a player leaves in its
+-- stash reaches it within a day (ticket 21a). Returns how many it took.
+function M.collect_stash_emeralds(self, reach)
 	local stash = self._villages_stash
 	local pos = self.object and self.object:get_pos()
-	if not stash or not pos or vector.distance(pos, stash) > STASH_REACH or not owned_by(stash, self) then return 0 end
+	if not stash or not pos or vector.distance(pos, stash) > (reach or STASH_REACH) or not owned_by(stash, self) then
+		return 0
+	end
 	local taken = 0
 	for _, half in ipairs(halves(stash)) do
 		local inv = core.get_meta(half):get_inventory()
@@ -347,7 +379,11 @@ function M.collect_stash_emeralds(self)
 		end
 		if here > 0 then taken = taken + inv:remove_item("main", EMERALD .. " " .. here):get_count() end
 	end
-	if taken > 0 then M.add(self, EMERALD, taken) end
+	if taken > 0 then
+		M.add(self, EMERALD, taken)
+		core.log("action", string.format("[living_villages] villager %s collected %d emerald(s) from its stash at %s",
+			tostring(self._id):sub(1, 6), taken, core.pos_to_string(stash)))
+	end
 	return taken
 end
 
@@ -435,8 +471,19 @@ end
 local next_check = setmetatable({}, {__mode = "k"})
 local next_meal = setmetatable({}, {__mode = "k"})
 
+local was_sleeping = setmetatable({}, {__mode = "k"})
+
 function M.step(self, now)
 	if self.child or not self._id then return end
+	-- Getting up, it takes what was left in its stash, from as far as a stash may be
+	-- from its bed.
+	if self._villages_sleeping then
+		was_sleeping[self] = true
+	elseif was_sleeping[self] then
+		was_sleeping[self] = nil
+		M.claim_stash(self)
+		M.collect_stash_emeralds(self, 2 * stash_radius())
+	end
 	if now >= (next_meal[self] or 0) then
 		next_meal[self] = now + EAT_CHECK_SECONDS
 		if self._villages_food == nil then self._villages_food = EAT_AT end
@@ -512,6 +559,19 @@ function M.trade_key(self)
 		or (self._villages_alchemist and "alchemist") or self._profession
 end
 
+-- Its own emeralds, for the money factor (ledger.lambda, ticket 21a): a porter's purse
+-- is its client's (trade_trips.lua), so what is left of one is left out. Nil for the
+-- keeper, whose emeralds are a float topped up from the pantry: its values stay as they
+-- are.
+function M.money(self)
+	if self._villages_keeper then return nil end
+	local emeralds = M.emeralds(self)
+	local trip = self._villages_trade_trip
+	local client = type(trip) == "table" and trip.client
+	if client and client.purse then emeralds = emeralds - math.max(client.purse - (trip.spent or 0), 0) end
+	return math.max(emeralds, 0)
+end
+
 -- The ledger's view of this villager (ledger.lua): its targets, needs, surplus and values.
 -- A keeper by its role; a Builder or an alchemist has no vanilla trade of its own.
 function M.assess(self)
@@ -574,6 +634,8 @@ function M.assess(self)
 		least = least,
 		-- What it believes things are worth (prices.lua).
 		prices = self._villages_prices,
+		-- What it has to spend, for the money factor (ledger.lambda, ticket 21a).
+		money = M.money(self),
 	})
 end
 
