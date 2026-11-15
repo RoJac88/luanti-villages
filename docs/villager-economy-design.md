@@ -1357,7 +1357,7 @@ branch, and each leaves the game playable with `living_villages_economy` on or o
 | 20 | The alchemist: its stand and role (20a), cost-based prices (20b), alchemy at the stand (20c), trades with players (20d) | 19 |
 | 21 | Price discovery: the money factor and gifts (21a), reference prices that learn (21b), players at the villagers' prices (21c), production by margin (21d), a dinner that floats (21e) | 20 |
 | 22 | Flows that answer prices: money that comes back (22a), the starving eat (22b), a tavern stocked to demand (22c) | 21 |
-| 23 | Comforts the labourers make: labourers craft while they wait (23a), new comforts and flowers in pots (23b) | 22 |
+| 23 | Comforts the labourers make: labourers craft while they wait (23a), new comforts and flowers in pots (23b), slots that grow with wealth (23c) | 22 |
 
 ### 1. Clock, hunger and the tavern
 
@@ -2721,7 +2721,7 @@ nothing and little money would move. A conversion also takes one input, and a to
 a lantern needs two. A crafted good takes work time, and production by margin (21d)
 prices it from what buyers want and makes more of what pays.
 
-Two parts, one PR each.
+Three parts, one PR each.
 
 **23a. Labourers craft while they wait** (`production.lua`, `labour.lua`, `recipes.lua`).
 - **Who.** Every labourer (`_villages_labour`: nitwits, the unemployed, crafters
@@ -2790,9 +2790,21 @@ Two parts, one PR each.
   villager; every comfort has days, none over MAX_DAYS; a lily of the valley fills a
   flower slot.
 
+**23c. Slots that grow with wealth** (`comforts.lua`). Farmer 84ebb7 holds 1,163
+emeralds and fills the same 6 slots as a villager with 576: past that its money buys
+nothing more. The first BASE_SLOTS (6) still come one for every STEP (4 dinners) over
+SAVINGS; each slot past them needs twice the span of the one before (2, 4, 8 … STEPs), up
+to MAX_SLOTS (12). At today's dinner of 18 that is a 7th slot at 720 emeralds, an 8th at
+1,008, a 9th at 1,584 and the 12th at 9,648 (in dinners, at the villager's own dinner
+scale, as now). The richest spend more, by less for each slot, so a hoard is drawn down
+without one villager buying up every comfort. The slots still go round its tastes, so a
+villager with 4 tastes and 9 slots wants some comforts twice.
+- **Tests:** slots at SAVINGS, at 6 STEPs over it, and at each doubling, never over
+  MAX_SLOTS; a villager with 9 slots and 4 tastes wants the first taste three times.
+
 **Not in this ticket:** placing comforts in the villager's house (out of scope: a
-comfort is held, used up and gone), the Builder buying torches from labourers for its
-houses, and comfort slots that grow with wealth past MAX_SLOTS.
+comfort is held, used up and gone), and the Builder buying torches from labourers for
+its houses.
 
 ## Open questions
 
