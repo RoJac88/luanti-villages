@@ -39,8 +39,10 @@ local SCALE = ledger.SCALE
 local RENT = 1 * SCALE
 local RENT_DAYS = 2
 local RENT_CAP = 3 * SCALE
--- A tenant keeps a dinner's price (ledger.DINNER) back from rent.
+-- A tenant keeps a dinner's price back from rent: its reference price for one
+-- (dinner.lua, ticket 21e), ledger.DINNER unlearnt.
 local DINNER = ledger.DINNER
+local dinner = dofile(core.get_modpath("living_villages") .. "/dinner.lua")
 local VILLAGE_RADIUS = 128
 local CHEST_RADIUS = 32
 local REACH = 3
@@ -159,7 +161,7 @@ end
 function M.payable(self)
 	local rent = self._villages_rent
 	if not rent or rent.owed <= 0 then return 0 end
-	return math.max(math.min(rent.owed, possessions.emeralds(self) - DINNER), 0)
+	return math.max(math.min(rent.owed, math.floor(possessions.emeralds(self) - dinner.reference(self))), 0)
 end
 
 local function paid(self, count, how)

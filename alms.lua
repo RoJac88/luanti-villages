@@ -35,7 +35,9 @@
 -- carries what one churchgoer needs to another that has it.
 --
 -- SAVINGS and MAJOR are in dinners, which carry ledger.SCALE (ticket 11h): the design's
--- 8 and 5 emeralds were written before money was scaled.
+-- 8 and 5 emeralds were written before money was scaled. Since ticket 21e every amount
+-- here counts dinners at the villager's own reference price for one (dinner.scale): the
+-- donor's, the poor's, the cleric's.
 --
 -- With the economy off nothing is given.
 local core = minetest
@@ -45,6 +47,7 @@ local cleric = dofile(core.get_modpath("living_villages") .. "/cleric.lua")
 local possessions = dofile(core.get_modpath("living_villages") .. "/possessions.lua")
 local ledger = dofile(core.get_modpath("living_villages") .. "/ledger.lua")
 local news = dofile(core.get_modpath("living_villages") .. "/market_news.lua")
+local dinner = dofile(core.get_modpath("living_villages") .. "/dinner.lua")
 
 local EMERALD = ledger.EMERALD
 local DINNER = ledger.DINNER
@@ -68,17 +71,19 @@ local function short_id(id)
 	return tostring(id):sub(1, 6)
 end
 
--- What a villager with `emeralds` gives.
-function M.donation(emeralds)
-	if emeralds <= SAVINGS then return 0 end
-	return math.max(math.floor((emeralds - SAVINGS) / 10), 1)
+-- What a villager with `emeralds` gives, its dinners at `scale` (dinner.scale, 1 unset).
+function M.donation(emeralds, scale)
+	local savings = SAVINGS * (scale or 1)
+	if emeralds <= savings then return 0 end
+	return math.max(math.floor((emeralds - savings) / 10), 1)
 end
 
 -- Takes the donor's gift, if it owes one today. `witnesses` note it. Returns the gift.
 function M.collect(priest, donor, witnesses, day, gossip)
 	if donor._villages_donated == day then return 0 end
 	donor._villages_donated = day
-	local gift = M.donation(possessions.emeralds(donor))
+	local scale = dinner.scale(donor)
+	local gift = M.donation(possessions.emeralds(donor), scale)
 	if gift == 0 then return 0 end
 	possessions.take(donor, EMERALD, gift)
 	local kept = math.floor(gift * KEEP_SHARE)
@@ -92,7 +97,7 @@ function M.collect(priest, donor, witnesses, day, gossip)
 		for _, other in ipairs(witnesses) do
 			if other ~= donor then
 				gossip.add(other, subject, "minor_positive")
-				if gift >= MAJOR then gossip.add(other, subject, "major_positive") end
+				if gift >= MAJOR * scale then gossip.add(other, subject, "major_positive") end
 			end
 		end
 	end
@@ -116,12 +121,12 @@ function M.stake(villager)
 		end
 	end
 	if not cheapest then return 0 end
-	return math.min(math.ceil(cheapest * CRAFT_BATCH), STAKE_CAP)
+	return math.min(math.ceil(cheapest * CRAFT_BATCH), math.ceil(STAKE_CAP * dinner.scale(villager)))
 end
 
 -- What the cleric can give: its fund, then its own emeralds over SAVINGS.
 local function can_give(priest)
-	return (priest._villages_alms or 0) + math.max(possessions.emeralds(priest) - SAVINGS, 0)
+	return (priest._villages_alms or 0) + math.max(math.floor(possessions.emeralds(priest) - SAVINGS * dinner.scale(priest)), 0)
 end
 
 local function pay_out(priest, amount)
@@ -134,7 +139,7 @@ end
 -- Tops a villager up to `upto` (ALMS_TO, or with its stake, M.stake), once today for each
 -- level. Returns the alms.
 function M.give(priest, poor, day, upto)
-	upto = upto or ALMS_TO
+	upto = upto or math.ceil(ALMS_TO * dinner.scale(poor))
 	if poor == priest or (poor._villages_alms_got == day and (poor._villages_alms_upto or ALMS_TO) >= upto) then
 		return 0
 	end
@@ -183,7 +188,7 @@ function M.hold(priest, list, day, gossip)
 	for _, villager in ipairs(list) do M.give(priest, villager, day) end
 	for _, villager in ipairs(list) do
 		local stake = M.stake(villager)
-		if stake > 0 then M.give(priest, villager, day, ALMS_TO + stake) end
+		if stake > 0 then M.give(priest, villager, day, math.ceil(ALMS_TO * dinner.scale(villager)) + stake) end
 	end
 	for _, villager in ipairs(list) do M.church_news(priest, villager, day) end
 end

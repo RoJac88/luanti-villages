@@ -2483,6 +2483,40 @@ Tests: a dinner price falls when broke guests are turned away from a full pantry
 rises when the pantry runs out; the keeper pays farmers its reference price; a villager
 with dear dinners buys bread instead.
 
+Landed (`dinner.lua`, read by `meal.lua`, `keeper_supply.lua`, `player_meals.lua`,
+`possessions.lua`, `alms.lua`, `rent.lua` and `trade_window.lua`):
+- **Food cost.** A meal's food at the keeper's reference price for a loaf
+  (`dinner.food_cost`), since a guest values a meal as a loaf. The keeper pays a farm
+  chest that per meal the food makes (a potato is one, a carrot a quarter). Not each
+  food's own price: at vanilla's a potato is about a quarter of a loaf, and pricing a
+  dinner by the cheapest food would have cut it from 18 to 2 overnight and the farmers'
+  pay with it. The keeper's food price learns as anyone's does (21b); no separate
+  learning from its own payments, which would only teach it its own price.
+- **The price.** Food cost × the dinner factor, in whole emeralds, at least 1. MARKUP is
+  1.1 and MARKDOWN 0.9; the rails are the asks' 0.25 and 4. The factor moves once a day
+  for the evening before: up if a guest who would have paid found no dish, else down if a
+  hungry guest would not pay while dishes were left. A guest counts once a day. The
+  keeper settles and posts the price each tick, in the jukebox meta
+  (`villages_dinner_price`), and reckons a dinner worth its own price.
+- **Who dines.** A hungry guest dines when the price is no more than a loaf's value in its
+  view. Short of the price in emeralds it gets the raw plate at BROKE_PRICE as before;
+  with the emeralds but not the will, it is not served and eats at home or buys food.
+  Its choice is kept per day and price.
+- **Not in the news.** The price is not a `has` entry: those drive porter trips, peddling
+  and supply counts, and a dinner can be bought only at the tavern. A villager learns it
+  on reaching the tavern (LEARN_NEWS) and on paying it (LEARN_TRADE), under the
+  pseudo-item `living_villages:dinner`, base price `ledger.DINNER`.
+- **Players** pay the posted price unless `living_villages_player_meal_price` is set.
+- **Amounts in dinners** follow `dinner.scale`, the villager's reference price for a
+  dinner over 18: the cushion and STOCK_MONEY (`ledger.assess`'s `dinner` input), the
+  asks' cushion and the comfort slots (`possessions.in_dinners`), alms' savings, gifts,
+  top-up and stake cap, the trade window's gift gossip, and rent's keep-back.
+  `wants.DAILY_WORK` stays fixed.
+- **Tests:** `tests/dinner.lua`, and `tests/meal.lua` and `tests/keeper_supply.lua` at
+  the posted price and the food cost.
+- **lv_keep** logs a `dinner` line per keeper: the posted price, the factor, and the
+  evening's turned-away count and whether it ran out.
+
 ## Open questions
 
 - Price discovery (ticket 21):

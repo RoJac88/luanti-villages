@@ -21,9 +21,13 @@
 -- it always was.
 --
 -- A villager guest pays too (ticket 8, once crafting gives every profession something
--- to sell): VILLAGER_PRICE emeralds from its belongings (possessions.lua) into the
--- pantry, unless it is the keeper or of the keeper's household (possessions.same_house),
--- who eat free. At a pantry it is served only when it has room for a meal, at or below
+-- to sell): the keeper's posted dinner price (dinner.lua, ticket 21e; ledger.DINNER where
+-- none was ever posted) from its belongings (possessions.lua) into the pantry, unless it
+-- is the keeper or of the keeper's household (possessions.same_house), who eat free. It
+-- dines only when the price is no more than a meal is worth to it (dinner.wants);
+-- otherwise it eats its own food, or buys some. A guest who would not pay while dishes
+-- were left, and one who would have paid but found none, move the keeper's price for the
+-- next day. At a pantry it is served only when it has room for a meal, at or below
 -- possessions.EAT_AT points. Served, it has had its dinner for the day
 -- (`_villages_dined_day`); one that was not eats its own food at home afterwards
 -- (possessions.lua). One that cannot pay is not served. Each payment is
@@ -45,6 +49,7 @@ local food = dofile(core.get_modpath("living_villages") .. "/food.lua")
 local pantry = dofile(core.get_modpath("living_villages") .. "/tavern_pantry.lua")
 local possessions = dofile(core.get_modpath("living_villages") .. "/possessions.lua")
 local news = dofile(core.get_modpath("living_villages") .. "/market_news.lua")
+local dinner = dofile(core.get_modpath("living_villages") .. "/dinner.lua")
 local ENTITY = "living_villages:meal"
 local PLATE = "mcl_itemframes:plate"
 -- A guest waits this long after sitting down before it is served.
@@ -73,8 +78,7 @@ local FRAME_OFFSET = 0.42
 -- A seated guest's mouth, above its origin (seat.lua sets the origin in the
 -- chair; the model's head is about 1.3 above it seated).
 local MOUTH_HEIGHT = 1.3
--- What a villager pays for dinner: a bundle of bread at the farmer's costs the same.
--- A dinner's price (ledger.DINNER).
+-- What a villager pays for dinner where no keeper ever posted a price (dinner.lua).
 local VILLAGER_PRICE = ledger.DINNER
 
 local plates = {}
@@ -153,9 +157,13 @@ local function terms(self, jukebox)
 	if not is_villager(self) then return self._villages_price or 0, self._villages_can_pay, self._villages_pay end
 	local keeper = keeper_state(jukebox)
 	if keeper and (keeper == self or possessions.same_house(keeper._bed, self._bed)) then return 0 end
-	return VILLAGER_PRICE,
-		function() return possessions.emeralds(self) >= VILLAGER_PRICE end,
-		function() possessions.take(self, possessions.EMERALD, VILLAGER_PRICE) end
+	local price = dinner.posted(jukebox, keeper, core.get_day_count()) or VILLAGER_PRICE
+	return price,
+		function() return possessions.emeralds(self) >= price end,
+		function()
+			possessions.take(self, possessions.EMERALD, price)
+			dinner.paid(self, price)
+		end
 end
 
 -- A villager at a pantry orders only when it has room for a meal.
@@ -177,14 +185,22 @@ end
 local function order(self, jukebox, chests, choose)
 	local price, can_pay, pay = terms(self, jukebox)
 	local dishes = pantry.available(chests, menu())
-	if #dishes == 0 and not (is_villager(self) and raw_plate(chests)) then return nil, "the pantry is empty" end
-	if price == 0 or can_pay() then
+	local villager = is_villager(self)
+	local day = core.get_day_count()
+	-- A villager pays only what a meal is worth to it (dinner.lua, ticket 21e).
+	local willing = price == 0 or (can_pay() and (not villager or dinner.wants(self, price, day, possessions.assess)))
+	local keeper = villager and price > 0 and keeper_state(jukebox) or nil
+	if #dishes == 0 and willing then dinner.ran_out(keeper, day) end
+	if #dishes == 0 and not (villager and raw_plate(chests)) then return nil, "the pantry is empty" end
+	if willing then
 		if #dishes > 0 then return dishes[choose and math.random(#dishes) or 1], 1, price, pay end
-		local raw = is_villager(self) and raw_plate(chests)
+		local raw = villager and raw_plate(chests)
 		if raw then return raw, RAW_PORTION, price, pay end
 		return nil, "the pantry is empty"
 	end
-	if not is_villager(self) or possessions.emeralds(self) < BROKE_PRICE then
+	if #dishes > 0 then dinner.turned(keeper, self._id, day) end
+	if villager and can_pay() then return nil, "a dinner is not worth " .. price .. " emerald(s) to the diner" end
+	if not villager or possessions.emeralds(self) < BROKE_PRICE then
 		return nil, "the diner cannot pay " .. price .. " emerald(s)"
 	end
 	local raw = raw_plate(chests)

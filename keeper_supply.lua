@@ -11,9 +11,10 @@
 --   Only the farmer bakes bread, and only the butcher cooks meat and fish (recipes.lua):
 --   the keeper buys those ready made.
 -- * It buys what it takes (ticket 4): setting out, it takes up to PURSE emeralds from
---   the pantry, and leaves in the work chest what the food will sell for as dinners, for
---   its farmer or fisherman to collect: DINNER (meal.lua's VILLAGER_PRICE) for each meal
---   the food makes (MEALS: a loaf or a potato is one). The tavern
+--   the pantry, and leaves in the work chest what the food is worth, for its farmer or
+--   fisherman to collect: a meal's food cost (dinner.food_cost, its reference price for a
+--   loaf, ticket 21e; DINNER until then) for each meal the food makes (MEALS: a loaf or a
+--   potato is one). The tavern
 --   keeps no margin, so dinner money, a player's too, passes through the pantry to the
 --   food producers (ticket 11b; at vanilla's prices, rounded, 8 wheat paid nothing while
 --   its dinners took 1 emerald each, and money piled up in the pantry). What it cannot
@@ -45,6 +46,7 @@ local stock = dofile(core.get_modpath("living_villages") .. "/farm_stock.lua")
 local keeper = dofile(core.get_modpath("living_villages") .. "/keeper.lua")
 local possessions = dofile(core.get_modpath("living_villages") .. "/possessions.lua")
 local food = dofile(core.get_modpath("living_villages") .. "/food.lua")
+local dinner = dofile(core.get_modpath("living_villages") .. "/dinner.lua")
 
 local SUPPLY_RADIUS = 48
 local COMPOSTER_HEIGHT = 8
@@ -159,10 +161,12 @@ local function carried(self)
 	return total
 end
 
--- What goods will sell for as dinners, in emeralds, fractions kept.
-function M.worth(goods)
+-- What the keeper pays for goods, in emeralds, fractions kept: a meal's food cost at its
+-- reference prices (dinner.food_cost) for each meal they make.
+function M.worth(goods, keeper_self)
 	local value = 0
-	for item, count in pairs(goods) do value = value + count * (MEALS[item] or 0) * DINNER end
+	local cost = dinner.food_cost(keeper_self)
+	for item, count in pairs(goods) do value = value + count * (MEALS[item] or 0) * cost end
 	return value
 end
 
@@ -182,7 +186,7 @@ end
 -- Pays for what it took from the chest, and what it owed there, from its purse.
 -- Returns what it paid and what it still owes.
 function M.pay(self, chest, taken)
-	local due = M.tab(chest) + M.worth(taken)
+	local due = M.tab(chest) + M.worth(taken, self)
 	local paid = stock.put_in_chest(self, chest, EMERALD, math.min(math.floor(due + EPSILON), stock.count(self, EMERALD)))
 	local owed = due - paid
 	if owed > TAB_CAP then
@@ -387,6 +391,8 @@ function M.step(self, now)
 	if not self._villages_keeper or self.child or busy(self) then return end
 	local jukebox = keeper.claimed_jukebox(self)
 	if not jukebox then return end
+	-- Its dinner price for the day, posted at the jukebox (dinner.lua, ticket 21e).
+	dinner.settle(self, jukebox, core.get_day_count())
 	local stage = common.schedule_stage(nil, self)
 	if stage == "staff" then
 		cook_tick(self, jukebox, now)

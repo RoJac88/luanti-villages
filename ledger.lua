@@ -40,6 +40,9 @@ local SCALE = 64
 -- a little more for the keeper's cooking; at a vanilla emerald (64) it took six loaves'
 -- worth for one loaf, and money piled up in the pantry.
 local DINNER = 18
+-- Since ticket 21e the keeper prices dinner (dinner.lua): DINNER is only the seed of every
+-- villager's reference price for this pseudo-item, which no inventory ever holds.
+local DINNER_ITEM = "living_villages:dinner"
 -- Food a villager wants by it, beyond the tavern's dinners: STOCK_DAYS of it once it has
 -- more than STOCK_MONEY emeralds, five dinners; with less, it relies on the tavern and
 -- wants food by it only when starving, a day's worth.
@@ -183,7 +186,7 @@ local ROLES = {
 -- by way of `extra`.
 
 local M = {
-	EMERALD = EMERALD, SCALE = SCALE, DINNER = DINNER, CUSHION = CUSHION, GAMMA = GAMMA, LAMBDA_SPAN = LAMBDA_SPAN, STOCK_DAYS = STOCK_DAYS, STOCK_MONEY = STOCK_MONEY,
+	EMERALD = EMERALD, SCALE = SCALE, DINNER = DINNER, DINNER_ITEM = DINNER_ITEM, CUSHION = CUSHION, GAMMA = GAMMA, LAMBDA_SPAN = LAMBDA_SPAN, STOCK_DAYS = STOCK_DAYS, STOCK_MONEY = STOCK_MONEY,
 	STARVING_DAYS = STARVING_DAYS, MAX_URGENCY = MAX_URGENCY, MIN_URGENCY = MIN_URGENCY,
 	COAL = COAL, COST_FLOOR = COST_FLOOR, version = tables.version,
 }
@@ -285,6 +288,7 @@ end
 
 -- An item's base price in emeralds, or nil if nothing prices it.
 function M.price(item)
+	if item == DINNER_ITEM then return DINNER end
 	prices = prices or derive()
 	return prices[item]
 end
@@ -382,7 +386,8 @@ end
 -- prices.lua, ticket 21b), unpaid = {item = true} (recipe inputs it wants none of, only
 -- recipes that do not pay taking them, M.unpaid, ticket 21d), money = emeralds (what it has to
 -- spend, for the money factor, M.lambda; none, as for the keeper, leaves values as
--- they are)}. `worth` and `least` are in emeralds and bound the value after the money
+-- they are), dinner = emeralds (its reference price for a dinner, dinner.lua, ticket
+-- 21e: STOCK_MONEY and the cushion are counted in dinners at it; DINNER unset)}. `worth` and `least` are in emeralds and bound the value after the money
 -- factor.
 -- Returns {targets, needs, surplus, value = function(item), urgency = function(item)}:
 -- urgency is the need's own (M.urgency), before `worth` caps the value, so a good that
@@ -398,7 +403,8 @@ function M.assess(input)
 	end
 	-- Food by it, from any food: STOCK_DAYS with money to spare, a day's when starving.
 	local food_days = 0
-	if ((input.held or {})[EMERALD] or 0) > STOCK_MONEY then
+	local dinners = (input.dinner or DINNER) / DINNER
+	if ((input.held or {})[EMERALD] or 0) > STOCK_MONEY * dinners then
 		food_days = STOCK_DAYS
 	elseif input.food_points and input.food_points <= 0 then
 		food_days = STARVING_DAYS
@@ -483,7 +489,7 @@ function M.assess(input)
 		if category then return M.urgency(held_units[category] or 0, wanted[category] or 0) end
 		return M.urgency(raw[item] or 0, targets[item] or 0)
 	end
-	local lambda = M.lambda(input.money)
+	local lambda = M.lambda(input.money and input.money / dinners)
 	local function value(item)
 		local price = M.price(item)
 		if not price then return nil end
