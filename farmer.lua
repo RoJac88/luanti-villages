@@ -96,7 +96,9 @@ local OWN_BREAD = 4
 -- goes in the chest: the pouch and the chest are not goods it trades.
 local SALE_WHEAT = 8
 -- Bone meal over its keep goes to its belongings too, up to this much, for sale as white
--- dye (goods.lua, 19h): the shepherd dyes grey wool white with it.
+-- dye (goods.lua, 19h): the shepherd dyes grey wool white with it. So with a chest it
+-- composts on past its keep until it has these to sell (`bone_meal_limit`): stopping at
+-- the keep, it never had any spare (ColonyFood, 2026-11-14).
 local SALE_BONE_MEAL = 8
 -- With the economy on, at its own chest it also takes food for sale into its belongings:
 -- bread up to SALE_BREAD there, then potatoes up to SALE_POTATO, from what the chest holds
@@ -452,9 +454,16 @@ local function can_bake(self)
 end
 
 -- The item it has most of beyond what it keeps, or nil.
+-- How much bone meal it composts up to: its keep with a chest, plus, with the economy on,
+-- what it lacks of SALE_BONE_MEAL in its belongings.
+local function bone_meal_limit(self, has_chest)
+	if not has_chest then return BONE_MEAL_LIMIT end
+	local for_sale = clock.enabled() and math.max(0, SALE_BONE_MEAL - possessions.count(self, BONE_MEAL)) or 0
+	return BONE_MEAL_LIMIT_WITH_CHEST + for_sale
+end
+
 local function surplus_item(self, has_chest)
-	local limit = has_chest and BONE_MEAL_LIMIT_WITH_CHEST or BONE_MEAL_LIMIT
-	if stock.count(self, BONE_MEAL) >= limit then return nil end
+	if stock.count(self, BONE_MEAL) >= bone_meal_limit(self, has_chest) then return nil end
 	local best, best_extra = nil, 0
 	for name, keep in pairs(COMPOST_KEEP) do
 		-- Wheat is for bread while there is room for more.
