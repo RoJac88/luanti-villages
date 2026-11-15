@@ -31,6 +31,12 @@
 -- it holds GLASS_KEEP or fewer; each at ALCHEMY_BID of the base price, from its emeralds,
 -- kept as they are. Its other needs (stone, logs) are bought as anyone's.
 --
+-- Gifts (ticket 21a). Below the rows, the player may give the villager emeralds outright,
+-- to put money back into a village whose money has piled up with a few: a gift of
+-- GIFT_MINOR or more (a dinner) is "minor_positive" gossip, one of GIFT_MAJOR or more
+-- (eight dinners) "major_positive" besides, so it thinks better of the giver and gives it
+-- better prices.
+--
 -- Vanilla's tables, tiers and rare goods (enchanted books, diamond gear) are left out of
 -- player trade, to be brought back once the economy works. `_trades` is left alone:
 -- vanilla and this mod read it as the mark of a villager that keeps its job. The keeper
@@ -50,6 +56,7 @@ local REP_MAX = 0.25
 local REFUSE = -40
 local URGENT = 2
 local ALCHEMY_MARKUP, ALCHEMY_BID = 1.5, 0.5
+local GIFT_MINOR, GIFT_MAJOR = ledger.DINNER, 8 * ledger.DINNER
 local NUGGET, INGOT = "mcl_core:iron_nugget", "mcl_core:iron_ingot"
 local GOLD_NUGGET, GOLD = "mcl_core:gold_nugget", "mcl_core:gold_ingot"
 local FLINT, GLASS, PANE = "mcl_core:flint", "mcl_core:glass", "xpanes:pane_natural_flat"
@@ -63,8 +70,23 @@ local UNITS = {food = "points", fuel = "seconds", log = "logs", planks = "planks
 local M = {
 	FORMNAME = FORMNAME, MARKUP = MARKUP, BID_SHARE = BID_SHARE, REP_STEP = REP_STEP,
 	REP_MAX = REP_MAX, REFUSE = REFUSE, URGENT = URGENT, ROWS = ROWS,
-	ALCHEMY_MARKUP = ALCHEMY_MARKUP, ALCHEMY_BID = ALCHEMY_BID,
+	ALCHEMY_MARKUP = ALCHEMY_MARKUP, ALCHEMY_BID = ALCHEMY_BID, GIFT_MINOR = GIFT_MINOR, GIFT_MAJOR = GIFT_MAJOR,
 }
+
+-- The gossip a gift of `amount` emeralds makes, in the order to add it.
+function M.gift_gossip(amount)
+	local kinds = {}
+	if amount >= GIFT_MAJOR then kinds[#kinds + 1] = "major_positive" end
+	if amount >= GIFT_MINOR then kinds[#kinds + 1] = "minor_positive" end
+	return kinds
+end
+
+-- The emeralds a Give field asks for: a whole number over 0, or nil.
+function M.gift_amount(text)
+	local amount = tonumber(text)
+	if not amount or amount ~= amount or amount < 1 or amount == math.huge then return nil end
+	return math.floor(amount)
+end
 
 -- Pure pricing.
 
@@ -231,7 +253,7 @@ function M.install(def, deps)
 		sessions[name].rows = rows
 		local r = reputation(villager, name)
 		local parts = {
-			"formspec_version[4]", "size[13,13.5]",
+			"formspec_version[4]", "size[13,14.6]",
 			string.format("label[0.5,0.6;%s]", esc(string.format("%s, %s. Purse: %d emeralds. You are %s to it (%d).",
 				(villager.nametag and villager.nametag ~= "" and villager.nametag) or "Villager",
 				villager._villages_alchemist and "alchemist" or tostring(villager._profession or "villager"),
@@ -266,6 +288,8 @@ function M.install(def, deps)
 				esc("Short of: " .. table.concat(list, ", ") .. " (any kind)"))
 		end
 		parts[#parts + 1] = string.format("list[current_player;main;0.5,%g;9,4;]", y + 0.4)
+		parts[#parts + 1] = string.format("field[0.5,%g;2,0.7;give_amount;;]", y + 5.6)
+		parts[#parts + 1] = string.format("button[2.6,%g;3,0.7;give;Give emeralds]", y + 5.6)
 		return table.concat(parts)
 	end
 
@@ -362,6 +386,27 @@ function M.install(def, deps)
 			tostring(villager._id):sub(1, 6), pay, entry.urgency >= URGENT and ", an urgent need" or "")
 	end
 
+	-- The player gives the villager `amount` emeralds.
+	local function player_gives(player, villager, amount)
+		local inv = player:get_inventory()
+		local name = player:get_player_name()
+		if not amount then
+			core.chat_send_player(name, "Give how many emeralds?")
+			return
+		end
+		local taken = inv:remove_item("main", EMERALD .. " " .. amount)
+		if taken:get_count() < amount then
+			inv:add_item("main", taken)
+			core.chat_send_player(name, "You have too few emeralds for that.")
+			return
+		end
+		possessions.add(villager, EMERALD, amount)
+		if gossip then
+			for _, kind in ipairs(M.gift_gossip(amount)) do gossip.add(villager, name, kind) end
+		end
+		log("%s gave villager %s %d emerald(s)", name, tostring(villager._id):sub(1, 6), amount)
+	end
+
 	local original_rightclick = def.on_rightclick
 	def.on_rightclick = function(self, clicker)
 		local name = clicker and clicker.is_player and clicker:is_player() and clicker:get_player_name()
@@ -400,6 +445,11 @@ function M.install(def, deps)
 		if not pos or not at or vector.distance(pos, at) > REACH then
 			close(name)
 			core.close_formspec(name, FORMNAME)
+			return true
+		end
+		if fields.give or fields.key_enter_field == "give_amount" then
+			player_gives(player, villager, M.gift_amount(fields.give_amount))
+			show(name)
 			return true
 		end
 		for field in pairs(fields) do

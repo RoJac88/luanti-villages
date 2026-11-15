@@ -83,11 +83,17 @@ end
 
 -- Goods the seller needs that the buyer can give, paying `value` emeralds' worth at the
 -- midpoint, so that both gain. Returns item, count or nil.
+-- Both sides reckon goods against goods with no money in them (the views' `real`, ticket
+-- 21a): `value` and `buyer_gets_worth` are in those terms too.
+local function real(view, item)
+	return (view.real or view.value)(item)
+end
+
 local function barter(buyer, buyer_view, seller_view, value, buyer_gets_worth)
 	local best, best_count, best_gain
 	for item in pairs(seller_view.needs) do
 		local available = spare(buyer, buyer_view, item)
-		local to_buyer, to_seller = buyer_view.value(item), seller_view.value(item)
+		local to_buyer, to_seller = real(buyer_view, item), real(seller_view, item)
 		if available > 0 and item ~= EMERALD and to_buyer and to_seller and to_seller > to_buyer then
 			local count = math.ceil(value / ((to_buyer + to_seller) / 2))
 			local buyer_gives = count * to_buyer
@@ -145,8 +151,11 @@ function M.quote(seller, seller_view, buyer, buyer_view, item, wanted, from, rat
 	if stock <= 0 or not to_buyer then return nil end
 	local unit = M.asking(seller, buyer, item)
 	local asked = unit ~= nil
+	-- Its value with no money in it: a buyer too poor to value the item at the ask in
+	-- emeralds may still swap goods for it (the money factor, ticket 21a).
+	local real_to_buyer = real(buyer_view, item) or to_buyer
 	if asked then
-		if to_buyer < unit then return nil end
+		if math.max(to_buyer, real_to_buyer) < unit then return nil end
 	elseif not to_seller or to_buyer <= to_seller then
 		return nil
 	else
@@ -164,6 +173,7 @@ function M.quote(seller, seller_view, buyer, buyer_view, item, wanted, from, rat
 	from_count, count = goods_mod.sources_for(conversion, count)
 	local value = count * unit
 	local worth_to_buyer = count * to_buyer
+	local real_worth = count * real_to_buyer
 	-- At an ask the seller takes what it asked; at the midpoint, no less than its value.
 	local floor = asked and 0 or count * to_seller
 	local trade
@@ -171,15 +181,15 @@ function M.quote(seller, seller_view, buyer, buyer_view, item, wanted, from, rat
 	if pay <= worth_to_buyer and pay >= floor and possessions.emeralds(buyer) >= pay then
 		trade = {pay = pay}
 	else
-		local goods, goods_count = barter(buyer, buyer_view, seller_view, value, worth_to_buyer)
-		if goods and goods_count * seller_view.value(goods) >= math.max(floor, asked and value or 0) then
+		local goods, goods_count = barter(buyer, buyer_view, seller_view, value, real_worth)
+		if goods and goods_count * real(seller_view, goods) >= math.max(floor, asked and value or 0) then
 			trade = {goods = goods, goods_count = goods_count}
 		end
 	end
 	if not trade then return nil end
 	trade.seller, trade.buyer, trade.item, trade.count = seller, buyer, item, count
 	if from ~= item then trade.from, trade.from_count = from, from_count end
-	trade.gain = worth_to_buyer - (trade.pay or value)
+	trade.gain = (trade.pay and worth_to_buyer or real_worth) - (trade.pay or value)
 	return trade
 end
 

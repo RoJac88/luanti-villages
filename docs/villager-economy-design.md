@@ -942,9 +942,11 @@ This one factor:
   over `λ`. Comforts keep their slots, the quantity side.
 
 **Exceptions.**
-- The emeralds a peddler holds for its lot (`peddle.bid`) and a porter's purse count
-  as the client's money, not the carrier's.
-- The keeper's emeralds use the pantry's money, as its float does today.
+- What is left of a porter's purse is its client's money, not the porter's.
+- The keeper's values are left as they are (`λ` of 1): its emeralds are a float topped
+  up from the pantry, so they say nothing about how rich it is.
+- Goods against goods are reckoned with no money in them (the view's `real`). Two broke
+  villagers still swap at what the goods are worth to them.
 
 ### Producer goods and production by margin
 
@@ -2323,6 +2325,29 @@ one PR each, each checked in ColonyFood before the next:
 
 Tests: `λ` at 1, CUSHION and 3110 emeralds; a rich buyer paying over an ask a poor one
 passes up; a gift's emeralds and gossip; a trapped-chest stash paying out.
+
+Landed:
+- `ledger.lambda` and `assess`'s `money` input. `possessions.money` gives it, less what
+  is left of a porter's client purse, and nil for the keeper. The view also carries
+  `lambda` and `real`.
+- Barter (`exchange.lua`) compares `real` values. A buyer passes up an ask only when
+  both its money value and its real value are under it.
+- Vanilla's demand term (`demand.lua`) reads `real`, so vanilla trade prices are moved
+  by want alone.
+- A porter's purse is now the lot at no more than the heard price × 1.25, plus the fee.
+  A rich client's value runs well past the price, and otherwise it would send all it has.
+- Comforts' cap is WORTH × base price ÷ `λ`.
+- The window's Give field (`trade_window.gift_amount`, `gift_gossip`).
+- Stash changes:
+  - trapped chests, open or shut, count as stashes;
+  - the infotext reads "Stash of the farmer 84ebb7" and follows the owner's job;
+  - each collection is logged;
+  - getting up (`possessions.step` sees `_villages_sleeping` end), a villager collects
+    from up to twice the stash radius of its bed.
+- `tests/money.lua`.
+
+Until 21c, the window still sells at the villager's value × 1.25. A rich villager's own
+spare is worth more to it, so the window's prices for its goods rise with its money.
 
 **21b. Reference prices** (`prices.lua` rewritten, `asks.lua`, `exchange.lua`,
 `market_news.lua`, `alchemist.lua`):
