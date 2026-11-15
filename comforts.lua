@@ -6,8 +6,12 @@
 -- Tastes. Each villager has TASTES of COMFORTS, picked by its _id, always the same.
 --
 -- Slots. It has a slot for a comfort for every STEP emeralds it holds over SAVINGS, up to
--- MAX_SLOTS: none below SAVINGS, so a villager short of money spends nothing on them. The
--- slots go round its tastes in turn, so the second slot is its second taste.
+-- BASE_SLOTS: none below SAVINGS, so a villager short of money spends nothing on them.
+-- Past BASE_SLOTS each slot needs twice the span of the one before (2, 4, 8 ... STEPs), up
+-- to MAX_SLOTS (ticket 23c): a farmer with 1,163 filled the same six slots as one with
+-- 576, so a hoard bought nothing more; now the richest spend more, by less for each slot.
+-- The slots go round its tastes in turn, so the second slot is its second taste, and one
+-- with more slots than tastes wants some twice.
 --
 -- Use. A comfort it holds in its belongings fills a free slot (`_villages_comforts`, a
 -- list of {item, until}), and is used up `days` game days later. The ledger wants one for
@@ -39,7 +43,8 @@ M.TASTES = 3
 -- alms.lua's SAVINGS: what a villager keeps before it gives, or buys comforts.
 M.SAVINGS = 8 * ledger.DINNER
 M.STEP = 4 * ledger.DINNER
-M.MAX_SLOTS = 6
+M.BASE_SLOTS = 6
+M.MAX_SLOTS = 12
 M.WORTH = 2
 
 local by_item = {}
@@ -67,7 +72,13 @@ end
 -- How many comforts a villager with `emeralds` has room for.
 function M.slots(emeralds)
 	if emeralds <= M.SAVINGS then return 0 end
-	return math.min(math.floor((emeralds - M.SAVINGS) / M.STEP), M.MAX_SLOTS)
+	local steps = (emeralds - M.SAVINGS) / M.STEP
+	if steps < M.BASE_SLOTS then return math.floor(steps) end
+	local slots, needed, span = M.BASE_SLOTS, M.BASE_SLOTS, 2
+	while slots < M.MAX_SLOTS and steps >= needed + span do
+		slots, needed, span = slots + 1, needed + span, span * 2
+	end
+	return slots
 end
 
 local function in_use(self)

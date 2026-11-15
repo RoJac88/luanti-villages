@@ -2802,6 +2802,12 @@ villager with 4 tastes and 9 slots wants some comforts twice.
 - **Tests:** slots at SAVINGS, at 6 STEPs over it, and at each doubling, never over
   MAX_SLOTS; a villager with 9 slots and 4 tastes wants the first taste three times.
 
+Landed (`comforts.lua`): `BASE_SLOTS` (6) and `MAX_SLOTS` (12); `slots` counts STEPs over
+SAVINGS one a slot up to BASE_SLOTS, then a span of 2, 4, 8 … STEPs a slot. Tests
+(`tests/comforts.lua`): 719 and 720 emeralds give 6 and 7 slots, 1,008 gives 8, farmer
+84ebb7's 1,163 gives 8, then 9 to 12 at 1,584, 2,736, 5,040 and 9,648, never more; 9 slots
+want the first taste once each round of its tastes.
+
 **Not in this ticket:** placing comforts in the villager's house (out of scope: a
 comfort is held, used up and gone), and the Builder buying torches from labourers for
 its houses.
