@@ -3,7 +3,8 @@
 -- it sells to a villager. Data and pure functions; it reads only what it is handed.
 --
 -- Categories. A need for food is for food points, and any food gives them; a need for
--- fuel is for burn seconds; a need for logs or planks takes any species. A category's
+-- fuel is for burn seconds; a need for logs or planks takes any species, and one for
+-- wool any colour (a Builder's for the red beds it makes, builder_market.lua). A category's
 -- amount is in its units: an item gives `units` of them. ledger.assess reckons a need
 -- and its spare on the category, and lists the need under every member in that member's
 -- own count, so a seller of any of them can fill it.
@@ -19,7 +20,8 @@
 -- a short list a job. A few are anyone's (ANYONE): a lily of the valley or bone meal (a
 -- farmer's spare, farmer.lua) sells as the white dye it crafts into, one for one, for the
 -- shepherd to dye grey wool white (19h); a bone (a forager picks up a skeleton's) as the
--- three bone meal or three white dye it makes, whichever the buyer wants. None is for food: the butcher cooks (recipes.lua). Player trades
+-- three bone meal or three white dye it makes, whichever the buyer wants; a poppy or a
+-- red tulip as a red dye, for the Builder's red beds (19i). None is for food: the butcher cooks (recipes.lua). Player trades
 -- convert nothing. Each gives `ratio` of its product per source, `takes` sources at a
 -- time (1 unless set): two wool make three carpets.
 local core = minetest
@@ -45,15 +47,16 @@ local WOOL_COLOURS = {"white", "grey", "silver", "black", "red", "yellow", "gree
 -- Burn seconds, as VoxeLibre's furnaces take them.
 local BURN = {[COAL] = 80, [CHARCOAL] = 80, [STICK] = 5, [KELP_BLOCK] = 200}
 
-local categories = {food = {}, fuel = {}, log = {}, planks = {}}
+local categories = {food = {}, fuel = {}, log = {}, planks = {}, wool = {}}
 for item, points in pairs(food.POINTS) do categories.food[item] = points end
 for item, seconds in pairs(BURN) do categories.fuel[item] = seconds end
 for log, planks in pairs(SPECIES) do
 	categories.log[log], categories.planks[planks] = 1, 1
 	categories.fuel[log], categories.fuel[planks] = 15, 15
 end
+for _, colour in ipairs(WOOL_COLOURS) do categories.wool["mcl_wool:" .. colour] = 1 end
 -- Which category a member belongs to first, when it is in two (a log is fuel too).
-local ORDER = {"log", "planks", "food", "fuel"}
+local ORDER = {"log", "planks", "wool", "food", "fuel"}
 
 local conversions = {
 	shepherd = {},
@@ -72,6 +75,8 @@ local ANYONE = {
 	{from = "mcl_mobitems:bone", to = "mcl_bone_meal:bone_meal", ratio = 3},
 	{from = "mcl_mobitems:bone", to = "mcl_dye:white", ratio = 3},
 	{from = "mcl_flowers:lily_of_the_valley", to = "mcl_dye:white", ratio = 1},
+	{from = "mcl_flowers:poppy", to = "mcl_dye:red", ratio = 1},
+	{from = "mcl_flowers:tulip_red", to = "mcl_dye:red", ratio = 1},
 }
 for _, list in pairs(conversions) do
 	table.sort(list, function(a, b) return a.from < b.from end)

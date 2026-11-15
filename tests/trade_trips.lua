@@ -562,6 +562,52 @@ do
 	assert(chest_count(drop, BIRCH_PLANKS) == 12 and chest_count(drop, BIRCH_LOG) == 0 and count(po, BIRCH_LOG) == 0)
 end
 
+-- Red beds (19i): nobody makes beds, so it makes the red beds it is short of, three wool of
+-- any colour, three planks and a red dye each. It wants the wool as any colour, the planks
+-- as logs and the dye, and makes them from what it holds past the building's own needs.
+do
+	local BED, DYE, GREY, OAK_PLANKS = market.RED_BED, market.RED_DYE, "mcl_wool:grey", "mcl_core:wood"
+	local bed_chest = chest({x = 0, y = 1, z = 6})
+	local bb = villager("bb-builder", {x = 0, y = 1, z = 5},
+		{_profession = "mason", _villages_builder = true, _jobsite = {x = 0, y = 1, z = 5},
+			_villages_belongings = {[EMERALD] = 600}})
+	-- Two beds, any colour (a stock building), and four oak planks for the building itself.
+	local function beds_report()
+		return {
+			rows = {
+				{item = BED, need = 2, in_chests = 0, carried = 0, missing = 2, swaps = true},
+				{item = OAK_PLANKS, need = 4, in_chests = chest_count(bed_chest, OAK_PLANKS), carried = 0,
+					missing = 4, swaps = true},
+			},
+			short = true, chests = {bed_chest},
+		}
+	end
+	market.update(bb, beds_report())
+	assert(bb._villages_builder_wool == 6 and bb._villages_builder_wants[DYE] == 2
+		and bb._villages_builder_wants[BED] == nil, "wool, dye, not the bed")
+	assert(bb._villages_builder_logs == 3, "ten planks: four for the building, six for the beds")
+	assert(market.status(bb) == "2 red, 3 logs (any), 6 wool (any)", market.status(bb))
+	local view = possessions.assess(bb)
+	assert(view.needs[GREY] == 6 and view.group[GREY] == "wool" and view.needs["mcl_wool:white"] == 6)
+	assert(view.needs[DYE] == 2)
+	-- Bought: grey wool and a dye in hand, a porter's planks in its chest. One bed made; the
+	-- building's four planks are left alone.
+	bb._villages_belongings[GREY] = 4
+	bb._villages_belongings[DYE] = 1
+	chests[key(bed_chest)].inv.stacks[1] = {name = OAK_PLANKS, count = 8}
+	market.update(bb, beds_report())
+	assert(stock.count(bb, BED) == 1 and table.concat(logs, "\n"):find("builder bb%-bui made 1 red bed"))
+	assert(stock.count(bb, GREY) == 1 and stock.count(bb, DYE) == 0)
+	assert(chest_count(bed_chest, OAK_PLANKS) + stock.count(bb, OAK_PLANKS) == 5, "three planks used")
+	assert(bb._villages_builder_wool == 2 and bb._villages_builder_wants[DYE] == 1, "the second bed's")
+	assert(bb._villages_builder_logs == 1, "one plank to spare: the second bed's other two, as a log")
+	-- A player's order of a blue bed wants that very bed.
+	local blue = "mcl_beds:bed_blue_bottom"
+	market.update(bb, {rows = {{item = blue, need = 1, in_chests = 0, carried = 0, missing = 1}},
+		short = true, chests = {bed_chest}})
+	assert(bb._villages_builder_wants[blue] == 1 and bb._villages_builder_wool == nil)
+end
+
 -- Off with the economy: no hire.
 settings.living_villages_economy = false
 assert(#trips.hire({}) == 0)

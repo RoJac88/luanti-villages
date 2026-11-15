@@ -1379,7 +1379,7 @@ it counts:
 | Fuel | burn seconds | coal 80, charcoal 80, dried kelp block 200, any log 15, any planks 15, stick 5 | recipes that smelt (`fuel`), the butcher's kelp blocks (19g) |
 | Logs | logs | any species | recipes, the Builder |
 | Planks | planks | any species | recipes, the Builder |
-| Wool | wool | any colour | anything but the cartographer's banner, which takes white |
+| Wool | wool | any colour | the Builder's red beds (19i); the cartographer's banner takes white |
 
 What a need is for decides its category: every coal need today is a smelting recipe's
 fuel, so any fuel does. A recipe that uses coal itself (torches) asks for coal. Each item
@@ -1784,6 +1784,23 @@ only demand told them apart.
 - Only grey for now, the colour that piled up. Silver wool's base price is 64, and as a
   recipe input it would put silver among the shepherd's top needs.
 
+**19i. The Builder makes its red beds** (ColonyFood, 2026-11-14). The Builder wanted a
+red bed (at 683) that nobody makes, so its house waited on a player. It now makes the
+red beds it is short of, and any bed where any colour will do (a stock building), which
+also puts its money into wood, wool and flowers.
+
+- A bed is three wool of any colour, three planks and a red dye, a mod-side craft:
+  VoxeLibre's beds take three wool of their own colour, or recolour a white bed with a
+  dye. A player's order of another colour still wants that very bed.
+- It wants the wool as any colour (`_villages_builder_wool`, a new `wool` category in
+  goods.lua, one unit a wool, which is no job's target category), the planks with its
+  other planks as logs (`_villages_builder_logs`), and the dye among its wants. Anyone
+  selling a poppy or a red tulip hands it over as a red dye, one for one, VoxeLibre's
+  recipe, so foragers' poppies have a buyer.
+- It makes a bed from its pouch and its chests, a porter's delivery included, once it
+  holds all three past what the building needs of wool and planks itself, so a bed never
+  takes the building's own (`builder_market.lua`, logged `made N red bed(s)`).
+
 ## Open questions
 
 - Pacing: hunger rate, craft time, starting stock and rent all need probe runs on
@@ -1798,9 +1815,9 @@ only demand told them apart.
 - Once the basic money loops work: whether the keeper should keep a margin, and what it
   would spend it on.
 - The Builder's other materials: a small house needs planks, logs, glass panes, carved
-  stone brick and a bed besides cobble. The woodcutter fells logs but sells no planks,
-  and nobody makes glass, carved stone brick or beds, so no Builder finishes a house
-  without a player yet.
+  stone brick and a bed besides cobble. The Builder buys logs for its planks, the mason
+  carves stone brick and the Builder makes its red beds (19i), but
+  nobody makes glass, so no Builder finishes a house without a player yet.
 - Money piling up at the tavern: in run 32 the pantry held 15 of the village's 41
   emeralds by day 6, since dinners bring in more than the keeper pays for food.
 - After ticket 11h, prices relative to each other. A dinner first cost 64 while the
