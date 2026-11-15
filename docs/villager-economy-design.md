@@ -1357,6 +1357,7 @@ branch, and each leaves the game playable with `living_villages_economy` on or o
 | 20 | The alchemist: its stand and role (20a), cost-based prices (20b), alchemy at the stand (20c), trades with players (20d) | 19 |
 | 21 | Price discovery: the money factor and gifts (21a), reference prices that learn (21b), players at the villagers' prices (21c), production by margin (21d), a dinner that floats (21e) | 20 |
 | 22 | Flows that answer prices: money that comes back (22a), the starving eat (22b), a tavern stocked to demand (22c) | 21 |
+| 23 | Comforts the labourers make: labourers craft while they wait (23a), new comforts and flowers in pots (23b) | 22 |
 
 ### 1. Clock, hunger and the tavern
 
@@ -2692,6 +2693,106 @@ armorer and smiths. Two bugs seen in the same runs: villager 840a99 in ColonyFoo
 reaches the tavern (17 failed walks, last dined 77 days earlier, no market news); and on
 days 307, 309 and 310 the whole ColonyRich village slept through the tavern (possibly
 the local Luanti 5.17; not seen in ColonyFood).
+
+### 23. Comforts the labourers make
+
+ColonyFood at day 334 (main c247d45, 2026-11-15) holds 4,711 emeralds, with dinner posted
+at 1. Money is not short, and neither is demand. The goods are:
+
+- **Bids nobody fills.** Villagers bid 2,000 to 9,000 emeralds for a banner, a
+  bookshelf or an item frame: their money factor is low, so the comforts of 19a are worth
+  a great deal to them. Banners stand at ×4 and books at ×5.7, but every comfort above a
+  flower comes from a chain with a bottleneck: frames need leather, a bookshelf 3 books,
+  a banner 6 wool.
+- **Raw goods nobody buys.** Nitwits, the unemployed and crafters labouring (19b) hold 50
+  to 130 cobble and 60 logs each at about 1 emerald (stone ×0.13, logs ×0.23). A
+  woodcutter labouring holds 33 charcoal at 3. Foragers hold 8 to 10 lilies of the valley,
+  which are no comfort.
+- **Labour that waits.** Several labourers stand at "woodcutter, grove of 0", or beside a
+  generator between blocks.
+
+So comforts made from stone and wood, by the labourers who hold it, join the two: the
+richest pay the poorest for their work, and the cobble, logs and charcoal get a use.
+
+**Crafted, not converted.** A conversion (ticket 15) sells its product at no more than
+its sources' ask (`asks.converted`, #103), so a flower pot converted from 3 cobble would
+sell for 3 cobble while its buyer bid hundreds: the comfort would be bought for almost
+nothing and little money would move. A conversion also takes one input, and a torch or
+a lantern needs two. A crafted good takes work time, and production by margin (21d)
+prices it from what buyers want and makes more of what pays.
+
+Two parts, one PR each.
+
+**23a. Labourers craft while they wait** (`production.lua`, `labour.lua`, `recipes.lua`).
+- **Who.** Every labourer (`_villages_labour`: nitwits, the unemployed, crafters
+  labouring under 19b), whatever its activity, from one list, `recipes.labour`. Which it
+  makes is production by margin, as at a jobsite: the inputs it holds or can buy steer
+  it, so a woodcutter makes torches and a quarrier flower pots without a rule saying so.
+- **When.** Work-stage time its activity has no job for (a woodcutter with no tree ready,
+  a quarrier waiting on its generator, a forager with nothing in bloom, a porter waiting
+  for hire) is banked in `_villages_craft` as a crafter's time at its jobsite is, at the
+  same hunger rates. It crafts at home, at no block. Time spent working its activity
+  banks nothing, so crafting never takes a labourer from its labour.
+- **Buying inputs.** What it lacks for the recipe that would pay best is a need, posted
+  in market news and bought like a crafter's inputs; nuggets from an alchemist, wool from
+  a shepherd.
+- **The list.** Vanilla recipes, except the flower pot, which in vanilla takes 3 bricks
+  from clay no village can get:
+
+| Makes | From | Note |
+|---|---|---|
+| 4 sticks | 2 planks | as the tool smith's |
+| 4 torches | 1 stick, 1 coal or charcoal | an input of the lantern; the Builder's houses take torches too |
+| 1 flower pot | 3 stone or cobble, or 3 planks | the mod's own recipe; players still need bricks |
+| 1 painting | 8 sticks, 1 wool | |
+| 1 barrel | 7 planks | 6 planks and 2 wood slabs (3 planks make 6 slabs) |
+| 1 armor stand | 6 sticks, 1 stone or cobble | a stone slab (3 stone make 6), rounded up |
+| 1 lantern | 8 iron nuggets, 1 torch | only where an alchemist makes nuggets |
+
+- **Prices.** The lantern (librarian, 1 emerald) and the painting (shepherd, 2 for 3) have
+  vanilla trades; the flower pot, barrel, armor stand and torch take their base price
+  from their inputs and work, as the alchemist's goods do (20b).
+- **Tests:** a labourer whose activity has no job banks time and makes the recipe that
+  pays best; one working its activity banks none; a flower pot from cobble, from stone and
+  from planks; a lantern from bought nuggets.
+
+**23b. New comforts, and flowers in pots** (`comforts.lua`).
+- **Comforts.** `COMFORTS` gains the flower pot, painting, barrel, armor stand and lantern.
+  Each villager's tastes rise from 3 to 4 (TASTES), as the list nearly doubles.
+- **Flowers.** Poppy and dandelion become one comfort, *a flower*: any of the village's
+  flowers (`mcl_flowers:*` in `ledger.lua`), the lily of the valley too, so the foragers'
+  lilies get a buyer.
+- **Flowers in pots.** A flower pot in use holds a flower. While one is in use, its owner
+  wants a flower for it every FLOWER_DAYS (2), worth what a flower comfort is to it, and
+  a flower it holds goes in the pot. A pot keeps its slot with or without one; the flower
+  is its upkeep, so a pot keeps buying flowers for as long as it lasts.
+- **Everything perishes.** Every comfort has its days, and one used up is gone: it never
+  goes back to belongings or the stash, and nothing is left of it. A flower in a pot
+  wilts after FLOWER_DAYS and goes too. A test checks that every entry in `COMFORTS` has
+  days, at most MAX_DAYS (12), so no comfort is added that lasts forever.
+
+| Comfort | Made by | Days |
+|---|---|---|
+| A flower (any) | Foragers | 2 |
+| Apple | Foragers | 2 |
+| White carpet | Shepherd | 4 |
+| Flower pot (wants a flower every 2 days) | Labourers | 8 |
+| Painting | Labourers | 6 |
+| Barrel | Labourers | 6 |
+| White banner | Cartographer | 6 |
+| Armor stand | Labourers | 8 |
+| Bookshelf | Librarian | 8 |
+| Item frame | Cartographer | 8 |
+| Lantern | Labourers | 10 |
+
+- **Tests:** a pot in use wants a flower every 2 days and takes one it holds; a pot with
+  no flower keeps its slot; a used-up comfort and a wilted flower are gone from the
+  villager; every comfort has days, none over MAX_DAYS; a lily of the valley fills a
+  flower slot.
+
+**Not in this ticket:** placing comforts in the villager's house (out of scope: a
+comfort is held, used up and gone), the Builder buying torches from labourers for its
+houses, and comfort slots that grow with wealth past MAX_SLOTS.
 
 ## Open questions
 
