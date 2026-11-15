@@ -2830,6 +2830,10 @@ Landed (`comforts.lua`, `goods.lua`, `possessions.lua`):
   slot and wilts away; a pot without a flower wants one and keeps its slot, takes one,
   wants the next when nearly wilted, and is gone with its flower after 8 days) and
   `tests/possessions.lua` (a pot's want is a need for any flower, grouped as `flower`).
+- **Fix after landing** (ColonyFood, 2026-11-15): slots were matched to tastes by their
+  place in the list in use, so an armorer holding lilies filled all nine of its slots with
+  them, a lily a minute. Each taste now fills and wants only its own slots (`per_taste`),
+  and a comfort in use counts against its taste's.
 
 **23c. Slots that grow with wealth** (`comforts.lua`). Farmer 84ebb7 holds 1,163
 emeralds and fills the same 6 slots as a villager with 576: past that its money buys
