@@ -15,6 +15,14 @@
 -- * How much. RENT every RENT_DAYS days of economic clock (economy_clock.lua), so time
 --   away from players costs nothing. Owing starts when the landlord is first known; while
 --   none is known the clock runs on unbilled.
+-- * In dinners (ticket 22a). RENT and RENT_CAP are 3.6 and 10.7 dinners at the old
+--   dinner of 18, and are billed at the tenant's dinner scale (dinner.lua), like every
+--   other amount counted in dinners since 21e, at least 1: ColonyFood, 2026-11-15, still
+--   billed 64 when a dinner was 1, and its farmers paid it from their savings.
+-- * Only what the landlord uses. No period is billed while the bench's chests (as the
+--   errand finds them) hold more than the Builder's purse (builder_market.PURSE): a Builder
+--   with nothing to buy took 153 of the 786 paid into its chest, and the rest left the
+--   village's money. The clock runs on unbilled, as with no landlord.
 -- * Arrears. Up to RENT_CAP; past that, forgiven and logged. No eviction. A tenant pays
 --   only from emeralds above DINNER (meal.lua's VILLAGER_PRICE), so it eats first.
 -- * Paying. settle(members), when a conversation runs its time and before its trades:
@@ -43,6 +51,8 @@ local RENT_CAP = 3 * SCALE
 -- (dinner.lua, ticket 21e), ledger.DINNER unlearnt.
 local DINNER = ledger.DINNER
 local dinner = dofile(core.get_modpath("living_villages") .. "/dinner.lua")
+-- builder_market.lua's PURSE: emeralds its Builder tops itself up to from its chests.
+local PURSE = 8 * SCALE
 local VILLAGE_RADIUS = 128
 local CHEST_RADIUS = 32
 local REACH = 3
@@ -56,7 +66,7 @@ local FOOD_PRODUCERS = {farmer = true, fisherman = true}
 
 local M = {
 	RENT = RENT, RENT_DAYS = RENT_DAYS, RENT_CAP = RENT_CAP, DINNER = DINNER, LANDLORD = LANDLORD,
-	VILLAGE_RADIUS = VILLAGE_RADIUS,
+	VILLAGE_RADIUS = VILLAGE_RADIUS, PURSE = PURSE,
 }
 
 local benches, keeper_beds = {}, {}
@@ -126,6 +136,31 @@ function M.landlord(self)
 	return best
 end
 
+-- A period's rent and the arrears cap, in emeralds at its dinner scale.
+function M.rent(self)
+	return math.max(math.ceil(RENT * dinner.scale(self)), 1)
+end
+
+function M.cap(self)
+	return math.max(math.ceil(RENT_CAP * dinner.scale(self)), M.rent(self))
+end
+
+-- The chests rent is paid into: the bench's, never a farm's or the pantry.
+local function bench_chests(bench)
+	local list = {}
+	for _, pos in ipairs(stock.find_chests(bench, CHEST_RADIUS)) do
+		if not possessions.is_food_chest(pos) then list[#list + 1] = pos end
+	end
+	return list
+end
+
+-- The emeralds waiting in the bench's chests.
+function M.in_chests(bench)
+	local total = 0
+	for _, pos in ipairs(bench_chests(bench)) do total = total + stock.chest_count(pos, EMERALD) end
+	return total
+end
+
 -- Bills the clock run since it last did. Returns what it owes.
 function M.accrue(self)
 	local rent = self._villages_rent
@@ -145,13 +180,20 @@ function M.accrue(self)
 	local due = math.floor((now - rent.at) / period)
 	if due > 0 then
 		rent.at = rent.at + due * period
-		rent.owed = rent.owed + due * RENT
-		log("villager %s now owes %d rent to the bench at %s", short_id(self._id), math.min(rent.owed, RENT_CAP),
+		local held = M.in_chests(bench)
+		if held > PURSE then
+			log("villager %s billed no rent: the bench at %s has %d emerald(s) waiting", short_id(self._id),
+				core.pos_to_string(bench), held)
+			return rent.owed
+		end
+		local cap = M.cap(self)
+		rent.owed = rent.owed + due * M.rent(self)
+		log("villager %s now owes %d rent to the bench at %s", short_id(self._id), math.min(rent.owed, cap),
 			core.pos_to_string(bench))
-		if rent.owed > RENT_CAP then
+		if rent.owed > cap then
 			log("villager %s owed %d rent to the bench at %s; %d forgiven", short_id(self._id), rent.owed,
-				core.pos_to_string(bench), rent.owed - RENT_CAP)
-			rent.owed = RENT_CAP
+				core.pos_to_string(bench), rent.owed - cap)
+			rent.owed = cap
 		end
 	end
 	return rent.owed
@@ -235,10 +277,7 @@ function M.step(self, now)
 			or rent.errand_day == core.get_day_count() then
 			return
 		end
-		local chest
-		for _, pos in ipairs(stock.find_chests(rent.bench, CHEST_RADIUS)) do
-			if not possessions.is_food_chest(pos) then chest = pos break end
-		end
+		local chest = bench_chests(rent.bench)[1]
 		if not chest then return end
 		errand = {chest = vector.new(chest), tries = 0}
 		self._villages_rent_errand = errand

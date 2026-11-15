@@ -251,6 +251,35 @@ fern.teleport({x = 3, y = 1, z = 1})
 rent.step(fern, now + 55)
 assert(fern._villages_rent.owed == 0 and not fern._villages_rent_errand and emeralds(fern) == S, "pays at the chest")
 
+-- Rent in dinners (ticket 22a): a tenant whose dinner is 9 owes half, at least 1.
+local ledger = dofile("ledger.lua")
+local dinner_item = ledger.DINNER_ITEM
+local cheap = villager("cheap-farmer", {x = 70, y = 1, z = 0}, {_villages_belongings = {[EMERALD] = 4 * S},
+	_villages_prices = {[dinner_item] = 0.5}})
+assert(rent.rent(cheap) == S / 2 and rent.cap(cheap) == 3 * S / 2)
+assert(rent.rent({_villages_prices = {[dinner_item] = 0.001}}) == 1, "never under 1")
+rent.accrue(cheap)
+work(cheap, PERIOD)
+assert(rent.accrue(cheap) == S / 2)
+work(cheap, PERIOD * 10)
+assert(rent.accrue(cheap) == 3 * S / 2, "arrears capped in dinners too")
+
+-- Only what the landlord uses: over the Builder's purse waiting in the bench's chests, no
+-- period is billed and none later; once the Builder takes it down, billing resumes.
+local rich_chest = meta_of(bench_chest).inv
+local waiting = count_in(bench_chest, EMERALD)
+rich_chest:add_item("main", EMERALD .. " " .. (rent.PURSE + 1 - waiting))
+assert(rent.in_chests(bench) == rent.PURSE + 1)
+local tom = villager("tom-farmer", {x = 80, y = 1, z = 0}, {_villages_belongings = {[EMERALD] = 4 * S}})
+rent.accrue(tom)
+work(tom, PERIOD * 2)
+assert(rent.accrue(tom) == 0)
+assert(logs[#logs]:find("tom%-fa billed no rent: the bench at %(0,1,0%) has 513 emerald%(s%) waiting"), logs[#logs])
+for _, stack in ipairs(rich_chest.stacks) do if stack.name == EMERALD then stack.count = 0 end end
+assert(rent.accrue(tom) == 0, "the skipped periods are not billed later")
+work(tom, PERIOD)
+assert(rent.accrue(tom) == S, "billed again once the chest is taken down")
+
 -- Off with the economy: nothing settles.
 settings.living_villages_economy = false
 assert(rent.settle({fay, bob}) == 0)
