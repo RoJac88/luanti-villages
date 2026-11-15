@@ -27,7 +27,43 @@ local FLAG = "_villages_alchemist"
 -- The cleric's robe, recoloured, as keeper.lua recolours the butcher's apron.
 local OVERLAY = "(living_villages_villager_profession_cleric.png^[multiply:#4fb3a0)"
 
-local M = {BLOCK = BLOCK, PROFESSION = PROFESSION, FLAG = FLAG, OVERLAY = OVERLAY}
+-- Its trade (ticket 20c). It makes glass while it holds GLASS_KEEP or fewer and flint up
+-- to FLINT_KEEP (recipes.lua's `upto`), and nuggets without end. It wants logs for the
+-- flint it is short of, at most LOG_CAP at once, and a day's STONE_WANT of stone or cobble
+-- always, as far as its money goes (prices.balance). Gold is sold only from the nuggets
+-- past GOLD_RESERVE (goods.lua's conversions).
+local NUGGET, FLINT, GLASS = "mcl_core:iron_nugget", "mcl_core:flint", "mcl_core:glass"
+local GLASS_KEEP, FLINT_KEEP = 12, 32
+local LOGS_PER_FLINT, LOG_CAP = 4, 32
+local STONE_WANT = 72
+local GOLD_RESERVE = 12 * 9
+-- What it makes or sells, by conversion too: never asked for under its base price
+-- (asks.lua), which is what the inputs cost (ledger.lua).
+local GOODS = {
+	[NUGGET] = true, ["mcl_core:iron_ingot"] = true, ["mcl_core:gold_nugget"] = true,
+	["mcl_core:gold_ingot"] = true, [FLINT] = true, [GLASS] = true, ["xpanes:pane_natural_flat"] = true,
+}
+
+local M = {BLOCK = BLOCK, PROFESSION = PROFESSION, FLAG = FLAG, OVERLAY = OVERLAY, GOODS = GOODS,
+	GLASS_KEEP = GLASS_KEEP, FLINT_KEEP = FLINT_KEEP, LOGS_PER_FLINT = LOGS_PER_FLINT, LOG_CAP = LOG_CAP,
+	STONE_WANT = STONE_WANT, GOLD_RESERVE = GOLD_RESERVE}
+
+-- For its ledger (possessions.assess), from what it holds (possessions.held) and base prices
+-- (ledger.price): the categories it wants ({stone = n, log = n}), what each input is worth
+-- at most (its base price: it never pays more for an input than its output returns), and
+-- the least it takes for its own goods (their base price).
+function M.targets(held, price, categories)
+	local flint = held[FLINT] or 0
+	local logs = math.min(LOGS_PER_FLINT * math.max(FLINT_KEEP - flint, 0), LOG_CAP)
+	local wanted = {stone = STONE_WANT}
+	if logs > 0 then wanted.log = logs end
+	local worth, least = {}, {}
+	for _, category in ipairs({"stone", "log"}) do
+		for item in pairs(categories[category]) do worth[item] = price(item) end
+	end
+	for item in pairs(GOODS) do least[item] = price(item) end
+	return wanted, worth, least
+end
 
 local function pos_string(pos)
 	if not pos then return "?" end

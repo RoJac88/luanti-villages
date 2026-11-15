@@ -2,7 +2,8 @@
 # Headless alchemist check (alchemist.lua, ticket 20): on a throwaway flat world, a villager
 # out of work with a bed takes up an alchemist's stand placed near it, walks to it in the
 # work stage and stays there through tavern time, keeps the role when saved and made again
-# (as an unloaded mapblock would), and loses it when the stand is dug.
+# (as an unloaded mapblock would), and loses it when the stand is dug. Given cobble, it
+# makes iron nuggets at the stand (ticket 20c).
 #
 #   tools/lv_alchemist/run.sh [--mod-dir PATH]
 #

@@ -206,6 +206,18 @@ local MAX_DAYS_BACK = 1000
 -- How many of the last `seconds` of game time fell in the villager's work stages, from the
 -- clock alone: each day's own timetable, holiday or not, counted back from the time of day
 -- now. Thunder is left out, and so is a night skipped in bed, which game time never saw.
+-- Ticks of work in an ordinary (not holiday) day of the villager's timetable.
+local function work_day_ticks(villager)
+	local schedule, total = schedule_of(villager, false), 0
+	for i, entry in ipairs(schedule) do
+		if WORK_STAGES[entry.stage] then
+			local stops = schedule[i + 1] and schedule[i + 1].start or 24000 + schedule[1].start
+			total = total + stops - entry.start
+		end
+	end
+	return total
+end
+
 local function work_seconds(seconds, villager)
 	local speed = tonumber(core.settings and core.settings:get("time_speed")) or 72
 	if not seconds or seconds <= 0 or speed <= 0 then return 0 end
@@ -314,6 +326,7 @@ M = {
 	schedule_stage = stage_at,
 	is_holiday = is_holiday,
 	work_seconds = work_seconds,
+	work_day_ticks = work_day_ticks,
 	-- Replacement for VoxeLibre's get_activity(tod), which villager.lua
 	-- declares without `local` and looks up as a global on every call.
 	-- activity_override(villager, stage), when set, may answer instead (flock.lua keeps

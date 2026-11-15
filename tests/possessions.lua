@@ -364,7 +364,9 @@ do
 	local alch = {_id = "aq", _profession = "cleric", _villages_alchemist = true, _villages_food = 0}
 	assert(possessions.trade_key(alch) == "alchemist" and possessions.trade_key(cleric) == "cleric")
 	assert(next(possessions.assess(cleric).needs) ~= nil, "the cleric wants its trade's goods")
-	assert(next(possessions.assess(alch).needs) == nil, "the alchemist wants nothing yet")
+	local needs = possessions.assess(alch).needs
+	assert(needs["mcl_core:cobble"] and needs["mcl_core:stone"] and needs["mcl_core:tree"], "stone and logs (20c)")
+	assert(not needs["mcl_mobitems:rotten_flesh"] and not needs["mcl_farming:bread"], "no cleric's goods, no food")
 	assert(possessions.can_parent(alch))
 end
 

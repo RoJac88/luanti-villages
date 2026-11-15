@@ -86,7 +86,8 @@ assert(not ledger.inputs("keeper")["mcl_farming:wheat_item"] and not ledger.inpu
 assert(ledger.outputs("keeper")["mcl_farming:bread"])
 assert(next(ledger.inputs("nitwit")) == nil and next(ledger.inputs("unemployed")) == nil)
 local flint = ledger.producers("mcl_core:flint")
-assert(#flint == 1 and flint[1] == "fletcher")
+assert(#flint == 2 and flint[1] == "alchemist" and flint[2] == "fletcher", "and the alchemist (ticket 20)")
+assert(next(ledger.inputs("alchemist")) == nil, "its inputs follow what it holds (alchemist.targets)")
 local bread = table.concat(ledger.producers("mcl_farming:bread"), ",")
 assert(bread == "farmer,keeper", bread)
 

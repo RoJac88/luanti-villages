@@ -157,6 +157,15 @@ local ROLES = {
 			["mcl_mushrooms:mushroom_stew"] = true, ["mcl_farming:pumpkin_pie"] = true,
 		},
 	},
+	-- The alchemist (ticket 20): its inputs change with what it holds (alchemist.targets,
+	-- by way of possessions.assess), so none is fixed here.
+	alchemist = {
+		inputs = {},
+		outputs = {
+			[IRON_NUGGET] = true, [IRON] = true, [GOLD_NUGGET] = true, [GOLD] = true, [FLINT] = true,
+			[GLASS] = true, [PANE] = true,
+		},
+	},
 }
 
 -- What a villager wants for its own sake comes from its savings (comforts.lua, ticket 19),

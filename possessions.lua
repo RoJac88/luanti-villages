@@ -47,6 +47,8 @@ local wants = dofile(core.get_modpath("living_villages") .. "/wants.lua")
 local comforts = dofile(core.get_modpath("living_villages") .. "/comforts.lua")
 local tally = dofile(core.get_modpath("living_villages") .. "/economy_tally.lua")
 local asks = dofile(core.get_modpath("living_villages") .. "/asks.lua")
+local goods = dofile(core.get_modpath("living_villages") .. "/goods.lua")
+local alchemist = dofile(core.get_modpath("living_villages") .. "/alchemist.lua")
 
 local DEFAULT_STASH_RADIUS = 8
 local STASH_HEIGHT = 3
@@ -543,6 +545,18 @@ function M.assess(self)
 		end
 		least = {[peddle.item] = peddle.bid}
 	end
+	-- An alchemist (ticket 20) wants stone always and logs for the flint it is short of,
+	-- never at more than their base price, and sells its goods at no less than theirs.
+	local categories
+	if self._villages_alchemist and not self.child then
+		local alchemist_worth, alchemist_least
+		categories, alchemist_worth, alchemist_least = alchemist.targets(M.held(self), ledger.price, goods.CATEGORIES)
+		for item, value in pairs(alchemist_worth) do worth[item] = math.min(worth[item] or math.huge, value) end
+		least = least or {}
+		for item, value in pairs(alchemist_least) do least[item] = math.max(least[item] or 0, value) end
+	elseif self._villages_builder and (self._villages_builder_logs or self._villages_builder_wool) then
+		categories = {log = self._villages_builder_logs, wool = self._villages_builder_wool}
+	end
 	return ledger.assess({
 		id = self._id,
 		profession = M.trade_key(self),
@@ -554,10 +568,8 @@ function M.assess(self)
 		-- What a Builder's chests are short of (builder_market.lua), and goods that wear out (wants.lua).
 		extra = extra,
 		-- Logs a Builder splits into the planks it is short of, and wool of any colour for
-		-- the red beds it makes (builder_market.lua).
-		extra_categories = self._villages_builder
-			and (self._villages_builder_logs or self._villages_builder_wool)
-			and {log = self._villages_builder_logs, wool = self._villages_builder_wool} or nil,
+		-- the red beds it makes (builder_market.lua); an alchemist's stone and logs.
+		extra_categories = categories,
 		worth = worth,
 		least = least,
 		-- What it believes things are worth (prices.lua).

@@ -2010,6 +2010,18 @@ Tests: a day's output on each input, the stops at 12 glass and 32 flint, gold on
 108 nuggets and paid from the excess, and no input bought above base. A short run with a
 quarrier and a smith, showing stone bought and iron sold.
 
+Landed: the recipes carry `share`, `rank` and `upto` (`recipes.lua`); `production.cost`
+turns a share into seconds from the villager's ordinary working day
+(`common.work_day_ticks`). A recipe input's third field names a category, so a nugget
+takes stone or cobble. `alchemist.targets` gives `possessions.assess` the stone and log
+categories, caps each input's value at its base price (`worth`) and floors its goods'
+value at theirs (`least`). Conversions count in whole batches (`goods.yield`,
+`goods.sources_for`), so nine nuggets make exactly one ingot. Its stone need is the
+category: one holding only cobble makes nuggets and no glass until stone comes. On the real engine
+(`tools/lv_alchemist/run.sh`, 40 cobble given at the stand) it made a nugget every 30 s,
+against the 29.2 s a share of the default day gives. The run with a quarrier and a smith
+is left to a test world.
+
 **20d. Trades with players** (`trade_window.lua`). Add the 1.5 and 0.5 margins,
 conversions in the window, the buying rules with their stops, and goods bought kept as
 they are. Tests: buying an ingot takes 9 nuggets and pays the pouch, gold is refused

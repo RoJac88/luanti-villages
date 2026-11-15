@@ -3,12 +3,15 @@
 -- then PASS or FAIL and why.
 local core = minetest
 local common = dofile(core.get_modpath("living_villages") .. "/common.lua")
+local possessions = dofile(core.get_modpath("living_villages") .. "/possessions.lua")
 
 local STAND = "living_villages:alchemy_stand"
 local SPAWN = {x = 2, z = 3}
 local BED = {x = 2, z = 6}
 local STAND_AT = {x = 10, z = 6}
-local SEEK_LIMIT, WALK_LIMIT, TAVERN_HOLD, AFTER = 120, 90, 30, 10
+-- At time_speed 0 a working day is reckoned at the default 72: a nugget each 29 s.
+local SEEK_LIMIT, WALK_LIMIT, TAVERN_HOLD, AFTER = 120, 90, 75, 10
+local NUGGET, COBBLE, MIN_NUGGETS = "mcl_core:iron_nugget", "mcl_core:cobble", 2
 
 local out = io.open(core.get_worldpath() .. "/alchemist.log", "w")
 local function log(...)
@@ -80,9 +83,10 @@ core.register_globalstep(function(dtime)
 	tick = tick + dtime
 	if tick >= 1 then
 		tick = 0
-		log("%6.1f %-8s stage %-7s %-10s role %-5s jobsite %s distance %.1f", clock, phase,
+		log("%6.1f %-8s stage %-7s %-10s role %-5s jobsite %s distance %.1f cobble %d nuggets %d", clock, phase,
 			common.schedule_stage(nil, e), tostring(e._profession), tostring(e._villages_alchemist == true),
-			e._jobsite and core.pos_to_string(e._jobsite) or "none", distance())
+			e._jobsite and core.pos_to_string(e._jobsite) or "none", distance(),
+			possessions.count(e, COBBLE), possessions.count(e, NUGGET))
 	end
 	local in_phase = clock - phase_at
 	if phase == "settle" and in_phase > 2 and e._id then
@@ -99,6 +103,8 @@ core.register_globalstep(function(dtime)
 		log("took the stand in %.1f s", in_phase)
 		if e._profession ~= "cleric" then fail("profession " .. tostring(e._profession)) end
 		if core.get_meta(stand):get_string("villager") ~= e._id then fail("the stand does not name it") end
+		-- Stone to work (ticket 20c): four cobble a nugget.
+		possessions.add(e, COBBLE, 40)
 		next_phase("walk")
 	elseif phase == "seek" and in_phase > SEEK_LIMIT then
 		fail("never took the stand")
@@ -120,6 +126,9 @@ core.register_globalstep(function(dtime)
 		if stage ~= "work" then fail("stage " .. stage .. " at tavern time") end
 		if in_phase > 5 and distance() > 4 then fail(string.format("left the stand at tavern time (%.1f)", distance())) end
 		if in_phase > TAVERN_HOLD then
+			local nuggets = possessions.count(e, NUGGET)
+			log("made %d nugget(s) in %.0f s at the stand", nuggets, in_phase)
+			if nuggets < MIN_NUGGETS then fail(string.format("made %d nugget(s), not %d", nuggets, MIN_NUGGETS)) end
 			local data, pos = e:get_staticdata(), villager:get_pos()
 			villager:remove()
 			villager = core.add_entity(pos, "mobs_mc:villager", data)
