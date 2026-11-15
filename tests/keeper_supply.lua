@@ -190,6 +190,31 @@ now = now + supply.CHECK_SECONDS
 supply.step(kate, now)
 assert(not trip, "pantry stocked: stays")
 
+-- Stocked to demand (ticket 22c): last evening 30 meals were wanted, so 14 is short, and
+-- it carries 30. Busier still, at most CARRY_MAX a trip; the tab's cap grows with it.
+do
+	local dinner = dofile("dinner.lua")
+	assert(supply.target(kate) == supply.TARGET_MEALS and supply.carry(kate) == supply.CARRY)
+	kate._villages_dinner = {day = day, factor = 1, demand = 30}
+	assert(supply.target(kate) == 30 and supply.carry(kate) == 30)
+	assert(math.abs(supply.tab_cap(kate) - supply.TAB_CAP * 30 / supply.TARGET_MEALS) < 1e-9)
+	inventories[key(farm_chest)]["mcl_farming:potato_item"] = 50
+	now = now + supply.CHECK_SECONDS
+	supply.step(kate, now)
+	assert(trip and vector.equals(trip.target, farm_chest), "14 is short of 30")
+	arrive_at(farm_chest)
+	assert(kate._villages_farm_pouch["mcl_farming:potato_item"] == 30, "carries the target")
+	assert(inventories[key(farm_chest)]["mcl_farming:potato_item"] == 20)
+	kate._villages_dinner.demand = 500
+	assert(supply.carry(kate) == supply.CARRY_MAX)
+	assert(dinner.demand(kate) == 500)
+	-- Back as it was for what follows.
+	kate._villages_dinner, kate._villages_farm_pouch = nil, {}
+	kate._villages_supply_next, kate._villages_supply_target, trip = nil, nil, nil
+	inventories[key(farm_chest)]["mcl_farming:potato_item"] = nil
+	inventories[key(farm_chest)]["mcl_core:emerald"] = nil
+end
+
 -- A walk that ends without arriving: tried again later, not at once. (The farm has
 -- only wheat left, which it does not fetch: some bread to go for.)
 inventories[key(pantry_chest)] = {}

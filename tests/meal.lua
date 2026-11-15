@@ -777,6 +777,7 @@ pantry_items["mcl_farming:potato_item_baked"] = 1
 sit("pat", west)
 step(5)
 assert(eating(), "a paying player is served")
+assert((kate._villages_dinner.served or 0) >= 1, "counted toward the evening's demand (ticket 22c)")
 assert(purses.pat["mcl_core:emerald"] == nil and pantry_items["mcl_core:emerald"] == posted, "paid into the pantry")
 assert(pantry_items["mcl_farming:potato_item_baked"] == nil, "the meal came out of the pantry")
 step(14)

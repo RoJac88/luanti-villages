@@ -2638,6 +2638,22 @@ Landed (`ledger.lua`, `meal.lua`, `dinner.lua`):
 - Tests: the target follows a night of 20 diners and 5 turned away by an empty pantry; a
   keeper that ran out fetches the next day; its tab at the larger target.
 
+Landed (`dinner.lua`, `meal.lua`, `keeper_supply.lua`):
+- **Demand.** `dinner.served` counts each meal served at the keeper's tavern (`meal.lua`'s
+  serve, players and the household too), and `dinner.ran_out` now takes the guest's id,
+  kept once a day in `short`. At the day's turn `settle` stores served plus short as
+  `demand` in the new record (`dinner.demand`); a day without either leaves 0.
+- **Target and carry.** `keeper_supply.target` is the demand, at least TARGET_MEALS (12);
+  `carry` is the target, at least CARRY (24) and at most CARRY_MAX (64). The keeper
+  fetches while the pantry holds less than the target, checking every CHECK_SECONDS of its
+  free hours as before, so a short pantry brings a second trip without a separate rule.
+- **Tab.** `keeper_supply.tab_cap` is TAB_CAP × target / TARGET_MEALS.
+- **lv_keep**'s dinner line adds `served=`, `short=` and `demand=`.
+- **Tests:** `tests/dinner.lua` (20 served and 5 short, one twice, make a demand of 25 the
+  next day, then 0), `tests/keeper_supply.lua` (a demand of 30 sends the keeper out with
+  14 meals in the pantry and it carries 30; CARRY_MAX; the tab's cap) and
+  `tests/meal.lua` (a served meal is counted).
+
 **Not in this ticket** (open, for after 22): income for those with none — hiring porters
 and nitwits, a buyer for raw fish (the keeper or the butcher), and iron enough for the
 armorer and smiths. Two bugs seen in the same runs: villager 840a99 in ColonyFood never

@@ -18,6 +18,9 @@
 --   it, LEARN_TRADE, so its reference price for a dinner (ITEM, base ledger.DINNER) is
 --   what dinner costs now. `M.scale` is that over ledger.DINNER: savings, the cushion and
 --   the other amounts counted in dinners follow it.
+-- * Demand (ticket 22c): each evening the keeper counts the meals it served (`served`)
+--   and the guests who would have paid but found no dish (`short`); at the day's turn
+--   their sum is `demand`, which keeper_supply.lua stocks the pantry to.
 --
 -- Pure but for the jukebox's meta and the log.
 local core = minetest
@@ -68,7 +71,7 @@ function M.settle(keeper, jukebox, day)
 			core.log("action", string.format("[living_villages] keeper %s moved its dinner factor to %.2f (%s)",
 				short_id(keeper._id), factor, record.out and "ran out" or "guests turned away"))
 		end
-		record = {day = day, factor = factor}
+		record = {day = day, factor = factor, demand = record.day and M.evening(record) or nil}
 		keeper._villages_dinner = record
 	end
 	local price = M.price(keeper)
@@ -98,11 +101,36 @@ function M.turned(keeper, id, day)
 	record.turned[id] = true
 end
 
--- A guest who would have paid found no dish.
-function M.ran_out(keeper, day)
+-- A guest who would have paid found no dish. `id` (may be nil) is counted once a day.
+function M.ran_out(keeper, day, id)
 	if not keeper then return end
 	M.settle(keeper, nil, day)
-	keeper._villages_dinner.out = true
+	local record = keeper._villages_dinner
+	record.out = true
+	if id then
+		record.short = record.short or {}
+		record.short[id] = true
+	end
+end
+
+-- A meal served at the keeper's tavern.
+function M.served(keeper, day)
+	if not keeper then return end
+	M.settle(keeper, nil, day)
+	local record = keeper._villages_dinner
+	record.served = (record.served or 0) + 1
+end
+
+-- The evening's demand in `record`: meals served and guests it ran out on.
+function M.evening(record)
+	local short = 0
+	for _ in pairs(record.short or {}) do short = short + 1 end
+	return (record.served or 0) + short
+end
+
+-- Meals wanted the last evening the keeper kept (ticket 22c); 0 before any.
+function M.demand(keeper)
+	return (keeper and keeper._villages_dinner or {}).demand or 0
 end
 
 -- Whether a villager dines at `price`: no more than a loaf is worth to it. Asked of its
