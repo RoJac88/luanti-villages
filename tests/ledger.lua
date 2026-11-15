@@ -10,8 +10,10 @@ assert(S == 64)
 assert(near(ledger.price("mcl_farming:wheat_item"), S / 20), "the farmer buys 20 wheat for one")
 assert(near(ledger.price("mcl_farming:bread"), S / 6), "and sells 6 bread for one")
 assert(near(ledger.price("mcl_core:stick"), 2), "32 sticks for one: the cheapest, worth 2")
--- Bought (18 for one) and sold (one for one) somewhere: the geometric mean.
-assert(near(ledger.price("mcl_wool:white"), S * math.sqrt(1 / 18)))
+-- Bought (18 for one) and sold (one for one) somewhere: the geometric mean. Grey wool is
+-- priced so; white wool, dyed from grey, starts at no less than grey and dye (ticket 21d).
+assert(near(ledger.price("mcl_wool:grey"), S * math.sqrt(1 / 18)))
+assert(near(ledger.price("mcl_wool:white"), ledger.price("mcl_wool:grey") + ledger.price("mcl_dye:white")))
 -- Emeralds and a second ingredient: 1 emerald and 6 raw cod (15 for one) make 6 cooked.
 assert(near(ledger.price("mcl_fishing:fish_cooked"), S * (1 + 6 / 15) / 6))
 -- Hand prices for what no table has, and none for what nothing prices.

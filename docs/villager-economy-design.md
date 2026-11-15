@@ -2392,8 +2392,8 @@ Landed:
 - **News.** A `needs` entry's price is capped at the needer's emeralds, and every entry
   carries `ref`.
 - **The alchemist.** Its ask floor and its goods' `least` floors are gone. Its input
-  `worth` caps stay until 21d: without an input valued by its output, a rich alchemist
-  would bid up stone without limit.
+  `worth` caps stayed until 21d, which values an input by its output instead: without
+  that, a rich alchemist would bid up stone without limit.
 - **`tests/price_sim.lua`.** Four checks, all passing:
   - A broke seller's glut of flint, against a fletcher with 30 emeralds, sold within days
     at a price between the two sides' values, below its base price of 64.
@@ -2436,6 +2436,42 @@ Landed:
 
 Tests: the alchemist switches to glass when panes bid high and flint doesn't sell; a
 crafter with no paying recipe labours; an armorer's iron bid follows its armour price.
+
+Landed:
+- **Margin.** `ledger.margin(recipe, price_of)` is the output's price × its count, less
+  its inputs and fuel, at `price_of`: the villager's reference price × its ask factor
+  (`possessions.prices_of`). A category input is priced at its cheapest member. An input
+  nothing prices (gravel, sand) is gathered, not bought, and counts as 0.
+- **Choosing.** `production.choose` makes the recipe with the best margin per second
+  (`production.gain` / `production.cost`), the output priced at no less than a heard
+  ask. A margin of 0 still counts as paying, so a craft at its inputs' cost goes on; one
+  that loses is never made, and a crafter with nothing that pays labours
+  (`idle_today`).
+- **Imputed values.** `ledger.imputed` caps what each input is worth to a crafter at what
+  its best recipe returns per unit of it. `possessions.assess` applies the caps, and
+  drops the needs that only losing recipes would use (`ledger.unpaid`). An armorer whose
+  armour stops selling bids less for iron, and none once no armour pays.
+- **Seed prices.** Every recipe output starts priced at no less than its inputs and fuel
+  (two passes, so chains settle), and one made from iron, gold or flint at COST_FLOOR
+  times that, as before. Without this vanilla's prices put bricks under their clay and
+  white wool under grey wool and dye, and those crafts would never be made, so their
+  prices could never learn. COST_FLOOR stays as a seed, not a rule: after the seed, an
+  output's price moves like any other.
+- **The alchemist.** Its stops (`upto`) and ranks stay, and now act only among recipes
+  that pay; ranks break ties. At the seed prices glass and flint pay 0 and nuggets pay,
+  so it makes nuggets until their price falls, then glass and flint. It wants stone only
+  while glass or nuggets pay, and logs only while flint does (`alchemist.targets`). Its
+  `worth` caps on stone and logs are replaced by the imputed values.
+- **Not done:** STORE_CAP. The stock caps (STOCK, UNASKED_STOCK and `upto`) still bound
+  what a crafter holds.
+- **Tests:** `tests/production.lua` (a crafter whose tools fetch a 32nd labours; an
+  armorer's iron bid follows its armour; white wool is dyed while it pays),
+  `tests/alchemist_trade.lua` (nuggets first, glass then flint when nuggets glut, flint
+  first when it sells dear; stone and cobble bids at their imputed caps) and
+  `tests/ledger.lua`.
+- **Thin crafts.** A fishing rod pays 0.3 over its string at the seed prices, so the
+  fletcher stops wanting string for rods as soon as string's price rises a little.
+  `tests/price_sim.lua`'s rich fletcher is now tier 2, so its string goes into bows.
 
 **21e. A dinner that floats** (`keeper_supply.lua`, `meal.lua`, `tavern.lua`,
 `player_meals.lua`, `alms.lua`, `comforts.lua`, `rent.lua`):

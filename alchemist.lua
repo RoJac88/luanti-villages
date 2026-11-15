@@ -48,21 +48,18 @@ local M = {BLOCK = BLOCK, PROFESSION = PROFESSION, FLAG = FLAG, OVERLAY = OVERLA
 	GLASS_KEEP = GLASS_KEEP, FLINT_KEEP = FLINT_KEEP, LOGS_PER_FLINT = LOGS_PER_FLINT, LOG_CAP = LOG_CAP,
 	STONE_WANT = STONE_WANT, GOLD_RESERVE = GOLD_RESERVE}
 
--- For its ledger (possessions.assess), from what it holds (possessions.held) and base prices
--- (ledger.price): the categories it wants ({stone = n, log = n}) and what each input is
--- worth at most (its base price: it never pays more for an input than its output returns,
--- until ticket 21d values an input by what its output sells for). Its goods have no floor
--- since ticket 21b: it sells below cost when nobody pays more.
-function M.targets(held, price, categories)
-	local flint = held[FLINT] or 0
-	local logs = math.min(LOGS_PER_FLINT * math.max(FLINT_KEEP - flint, 0), LOG_CAP)
-	local wanted = {stone = STONE_WANT}
-	if logs > 0 then wanted.log = logs end
-	local worth = {}
-	for _, category in ipairs({"stone", "log"}) do
-		for item in pairs(categories[category]) do worth[item] = price(item) end
-	end
-	return wanted, worth
+-- For its ledger (possessions.assess), from what it holds (possessions.held) and the
+-- goods whose recipes pay ({item = true}, ledger.margin at its own prices, ticket 21d):
+-- the categories it wants ({stone = n, log = n}). Stone while nuggets or glass pay, logs
+-- for the flint it is short of while flint pays. What an input is worth to it is what its
+-- output returns (ledger.imputed); its goods have no floor (ticket 21b).
+function M.targets(held, paying)
+	paying = paying or {[NUGGET] = true, [FLINT] = true, [GLASS] = true}
+	local wanted = {}
+	if paying[NUGGET] or paying[GLASS] then wanted.stone = STONE_WANT end
+	local logs = math.min(LOGS_PER_FLINT * math.max(FLINT_KEEP - (held[FLINT] or 0), 0), LOG_CAP)
+	if logs > 0 and paying[FLINT] then wanted.log = logs end
+	return wanted
 end
 
 local function pos_string(pos)
