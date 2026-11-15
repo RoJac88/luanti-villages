@@ -62,7 +62,7 @@ for profession, list in pairs(recipes) do
 		end
 	end
 end
-assert(checked == 6, "the four iron pieces, the iron axe and arrows: " .. checked)
+assert(checked == 7, "the four iron pieces, the iron axe, arrows and the labourers' lantern: " .. checked)
 assert(math.floor(ledger.price("mcl_armor:helmet_iron") + 0.5) == 724)
 assert(math.floor(ledger.price("mcl_tools:axe_iron") + 0.5) == 439)
 assert(near(ledger.price("mcl_armor:helmet_iron"), ledger.COST_FLOOR * (5 * 36 * stone

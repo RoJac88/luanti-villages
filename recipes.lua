@@ -25,6 +25,7 @@
 -- fletcher's table sells it that way.
 local COBBLE, STICK = "mcl_core:cobble", "mcl_core:stick"
 local IRON, LEATHER = "mcl_core:iron_ingot", "mcl_mobitems:leather"
+local TORCH = "mcl_torches:torch"
 
 return {
 	-- The shepherd dyes its grey wool white (19h): nobody bought grey, and three shepherds
@@ -119,5 +120,24 @@ return {
 		{makes = "mcl_core:andesite_smooth", count = 4, tier = 3, from = {{"mcl_core:andesite", 4}}},
 		{makes = "mcl_core:granite_smooth", count = 4, tier = 3, from = {{"mcl_core:granite", 4}}},
 		{makes = "mcl_core:diorite_smooth", count = 4, tier = 3, from = {{"mcl_core:diorite", 4}}},
+	},
+	-- Labourers (ticket 23a): no profession, but every villager labouring (labour.lua)
+	-- crafts from this list at home while its activity has nothing for it, by margin as at
+	-- a jobsite (production.labour_step). Comforts from the cobble, logs and charcoal they
+	-- gather, so the richest pay the poorest for work. Vanilla's recipes, but the flower
+	-- pot: vanilla's takes bricks from clay no village can get, so here 3 stone or cobble,
+	-- or 3 planks. A barrel's 2 wood slabs are a plank (3 planks make 6), an armor stand's
+	-- stone slab half a stone, rounded up. None is checked against a trade table.
+	labour = {
+		{makes = "mcl_core:wood", count = 4, tier = 1, from = {{"mcl_core:tree", 1}}},
+		{makes = STICK, count = 4, tier = 1, from = {{"mcl_core:wood", 2}}},
+		{makes = TORCH, count = 4, tier = 1, from = {{STICK, 1}, {"mcl_core:charcoal_lump", 1}}},
+		{makes = TORCH, count = 4, tier = 1, from = {{STICK, 1}, {"mcl_core:coal_lump", 1}}},
+		{makes = "mcl_flowerpots:flower_pot", count = 1, tier = 1, from = {{"mcl_core:cobble", 3, "stone"}}},
+		{makes = "mcl_flowerpots:flower_pot", count = 1, tier = 1, from = {{"mcl_core:wood", 3}}},
+		{makes = "mcl_paintings:painting", count = 1, tier = 1, from = {{STICK, 8}, {"mcl_wool:white", 1, "wool"}}},
+		{makes = "mcl_barrels:barrel_closed", count = 1, tier = 1, from = {{"mcl_core:wood", 7}}},
+		{makes = "mcl_armor_stand:armor_stand", count = 1, tier = 1, from = {{STICK, 6}, {"mcl_core:cobble", 1, "stone"}}},
+		{makes = "mcl_lanterns:lantern_floor", count = 1, tier = 1, from = {{"mcl_core:iron_nugget", 8}, {TORCH, 1}}},
 	},
 }

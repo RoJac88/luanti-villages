@@ -2756,6 +2756,29 @@ Three parts, one PR each.
   pays best; one working its activity banks none; a flower pot from cobble, from stone and
   from planks; a lantern from bought nuggets.
 
+Landed (`recipes.lua`, `production.lua`, `labour.lua`, `possessions.lua`, `ledger.lua`,
+`market_news.lua`):
+- **`recipes.labour`**, the table above, with planks from logs first (a woodcutter holds
+  logs, and logs to planks is otherwise only a conversion at sale) and torches from coal as
+  well as charcoal.
+- **Waiting.** `labour.waiting` is set at each labour tick: true with no activity, a
+  porter not on a trip, no target, or at a generator between blocks; false while walking
+  or working. `do_custom` calls `production.labour_step`, which banks clock time only
+  while waiting, in `_villages_labour_craft`, and makes by margin from `recipes.labour`.
+  A labour craft counts toward no tier.
+- **The plan.** Every PLAN_SECONDS (60) while waiting, `production.labour_plan` picks the
+  labour recipe that pays best, of the goods someone has asked for or it wants itself,
+  and keeps its index in `_villages_labour_plan` for the day. `possessions.assess` wants
+  one craft of its inputs (stone, wool and planks as their categories) and caps their worth
+  by that recipe alone (`ledger.imputed`); `market_news.recipe_inputs` tells them.
+- **Prices.** The torch, flower pot, barrel and armor stand join `COST_PRICED`: a torch
+  about 1.7 emeralds, a pot 12, a barrel 28, an armor stand 15. The lantern, now made from
+  nuggets, is cost-floored at about 130.
+- **Tests:** `tests/production.lua` (a pot made only while waiting, from cobble, stone or
+  birch planks; torches then a lantern; the lantern plan wants 8 nuggets and a torch and
+  tells them; a pot plan wants stone; no plan with nothing asked, nor from yesterday) and
+  `tests/labour.lua` (waiting at a generator between blocks, not while setting off).
+
 **23b. New comforts, and flowers in pots** (`comforts.lua`).
 - **Comforts.** `COMFORTS` gains the flower pot, painting, barrel, armor stand and lantern.
   Each villager's tastes rise from 3 to 4 (TASTES), as the list nearly doubles.

@@ -45,8 +45,9 @@ for _, good in ipairs(dofile("wants.lua").GOODS) do
 end
 for profession, list in pairs(recipes) do
 	-- The alchemist is a role and makes no vanilla craft (ticket 20): tests/alchemist_trade.lua.
-	if profession == "alchemist" then list = {} end
-	local entry = tables.professions[profession] or (profession == "alchemist" and {trades = {}})
+	-- Nor are the labourers (ticket 23a), who have no profession: tested below.
+	if profession == "alchemist" or profession == "labour" then list = {} end
+	local entry = tables.professions[profession] or ((profession == "alchemist" or profession == "labour") and {trades = {}})
 	assert(entry, profession .. " has a trade table")
 	local sold, used = {}, {}
 	local bought = {}
@@ -384,6 +385,90 @@ do
 	-- At a quarter, no armour pays over its iron and coal: it wants no iron at all.
 	for item in pairs(armorer._villages_asks) do armorer._villages_asks[item] = 0.25 end
 	assert(not possessions.assess(armorer).needs[IRON])
+end
+
+-- Labourers craft while they wait (ticket 23a).
+do
+	local function labourer(id)
+		local v = smith({_id = id, _profession = "nitwit", _jobsite = nil})
+		v._villages_labour = {day = day, activity = "quarrier"}
+		v._villages_econ_clock = 0
+		return v
+	end
+	local function asked(v, item, price)
+		v._villages_market_news = {{kind = "needs", item = item, count = 4, who = "rich", price = price, heard = now, hops = 1}}
+	end
+	local POT, LANTERN, TORCH = "mcl_flowerpots:flower_pot", "mcl_lanterns:lantern_floor", "mcl_torches:torch"
+	-- A quarrier with cobble, asked for flower pots at a good price: it makes them, at home,
+	-- and only while it waits.
+	local q = labourer("quinn")
+	possessions.add(q, "mcl_core:cobble", 9)
+	asked(q, POT, 200)
+	local chosen = production.choose(q, nil, nil, nil, production.LABOUR)
+	assert(chosen and chosen.makes == POT, chosen and chosen.makes)
+	local t0 = now
+	assert(production.labour_step(q, now, true) == 0, "the first step only reads the clock")
+	q._villages_econ_clock = 130
+	now = now + 6
+	assert(production.labour_step(q, now, false) == 0 and q._villages_labour_craft == nil, "working: nothing banked")
+	q._villages_econ_clock = 260
+	now = now + 6
+	assert(production.labour_step(q, now, true) == 1, "waiting: 130 s banked, one pot made")
+	assert(count(q, POT) == 1 and count(q, "mcl_core:cobble") == 6)
+	assert(q._max_trade_tier == nil and q._villages_tier_supply == nil, "no tier for a labourer")
+	now = t0
+	-- From stone, and from planks of any species.
+	local s = labourer("stoney")
+	possessions.add(s, "mcl_core:stone", 3)
+	asked(s, POT, 200)
+	assert(production.make(s, production.choose(s, nil, nil, nil, production.LABOUR), true))
+	assert(count(s, POT) == 1 and count(s, "mcl_core:stone") == 0)
+	local w = labourer("woody")
+	possessions.add(w, "mcl_core:birchwood", 3)
+	asked(w, POT, 200)
+	assert(production.make(w, production.choose(w, nil, nil, nil, production.LABOUR), true))
+	assert(count(w, POT) == 1 and count(w, "mcl_core:birchwood") == 0)
+	-- A lantern from nuggets and a torch; torches from a stick and charcoal.
+	local l = labourer("lamp")
+	possessions.add(l, "mcl_core:iron_nugget", 8)
+	possessions.add(l, "mcl_core:stick", 1)
+	possessions.add(l, "mcl_core:charcoal_lump", 1)
+	asked(l, LANTERN, 1000)
+	local first = production.choose(l, nil, nil, nil, production.LABOUR)
+	assert(first.makes == TORCH, first.makes)
+	assert(production.make(l, first, true) and count(l, TORCH) == 4)
+	local second = production.choose(l, nil, nil, nil, production.LABOUR)
+	assert(second.makes == LANTERN, second.makes)
+	assert(production.make(l, second, true))
+	assert(count(l, LANTERN) == 1 and count(l, TORCH) == 3 and count(l, "mcl_core:iron_nugget") == 0)
+	-- Asked for lanterns with no nuggets: its plan is the lantern, and it wants the nuggets
+	-- and a torch, and tells the nuggets.
+	local p = labourer("planner")
+	asked(p, LANTERN, 1000)
+	local plan = production.labour_plan(p)
+	assert(plan and plan.makes == LANTERN, plan and plan.makes)
+	p._villages_labour_plan = {day = day, checked = now, index = production.labour_index(plan)}
+	local view = possessions.assess(p)
+	assert((view.needs["mcl_core:iron_nugget"] or 0) == 8, tostring(view.needs["mcl_core:iron_nugget"]))
+	assert((view.needs[TORCH] or 0) == 1)
+	assert(dofile("market_news.lua").recipe_inputs(p)["mcl_core:iron_nugget"])
+	-- Asked for pots: it wants three stone or cobble, either.
+	local c = labourer("cat")
+	asked(c, POT, 200)
+	local pot_plan = production.labour_plan(c)
+	assert(pot_plan and pot_plan.makes == POT)
+	c._villages_labour_plan = {day = day, checked = now, index = production.labour_index(pot_plan)}
+	view = possessions.assess(c)
+	assert((view.needs["mcl_core:cobble"] or 0) >= 3 and view.group and view.group["mcl_core:cobble"] == "stone")
+	-- Nobody asks for anything: no plan, no wants. Yesterday's plan counts for nothing.
+	local idle = labourer("idle")
+	assert(production.labour_plan(idle) == nil)
+	c._villages_labour_plan.day = day - 1
+	assert(not possessions.assess(c).needs["mcl_core:cobble"])
+	-- Not labouring today: no plan counts.
+	c._villages_labour_plan.day = day
+	c._villages_labour = {day = day - 1, activity = "quarrier"}
+	assert(possessions.labour_plan(c) == nil)
 end
 
 print("production.lua: ok")
