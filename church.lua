@@ -14,12 +14,17 @@ local seeking_cleric -- the installed cleric.lua, whose skipped pulpits are the 
 local follower = dofile(core.get_modpath("living_villages") .. "/follower.lua")
 local atan2 = math.atan2 or function(y, x) return math.atan(y, x) end
 local PULPIT = "living_villages:pulpit"
--- How far from its bed a villager looks for a church: its own village, as for
--- the tavern (tavern.lua).
+-- How far from its bed a villager looks for a church: its own neighbourhood first, then
+-- the whole village (rent.lua's VILLAGE_RADIUS). ColonyFood, 2026-11-15: its one church
+-- stood 55-61 from the beds of the west side, so seven adults never went, the starving
+-- fletcher among them, and none of them got alms or gave any.
 local SEARCH_RADIUS = 48
+local VILLAGE_RADIUS = 128
 local SEARCH_HEIGHT = 16
--- How often a villager with no church, or no seat, looks again.
+-- How often a villager with no church, or no seat, looks again; with none in the whole
+-- village, less often, the search being a large one.
 local SEARCH_SECONDS = 5
+local FAR_SEARCH_SECONDS = 60
 -- A reserved standing place lapses unless its villager renews it, as a chair
 -- reservation does (seat.lua).
 local HOLD_SECONDS = 10
@@ -219,19 +224,24 @@ local function skipped(self, pulpit)
 	return until_time and until_time > now()
 end
 
-local function nearest_pulpit(self, origin)
+local function nearest_within(self, origin, radius)
 	local sites = core.find_nodes_in_area(
-		{x = origin.x - SEARCH_RADIUS, y = origin.y - SEARCH_HEIGHT, z = origin.z - SEARCH_RADIUS},
-		{x = origin.x + SEARCH_RADIUS, y = origin.y + SEARCH_HEIGHT, z = origin.z + SEARCH_RADIUS},
+		{x = origin.x - radius, y = origin.y - SEARCH_HEIGHT, z = origin.z - radius},
+		{x = origin.x + radius, y = origin.y + SEARCH_HEIGHT, z = origin.z + radius},
 		{PULPIT})
 	local best, best_distance
 	for _, site in ipairs(sites) do
 		local distance = vector.distance(origin, site)
-		if distance <= SEARCH_RADIUS and not skipped(self, site) and (not best or distance < best_distance) then
+		if distance <= radius and not skipped(self, site) and (not best or distance < best_distance) then
 			best, best_distance = site, distance
 		end
 	end
 	return best
+end
+
+-- The nearest pulpit within SEARCH_RADIUS, else within VILLAGE_RADIUS.
+local function nearest_pulpit(self, origin)
+	return nearest_within(self, origin, SEARCH_RADIUS) or nearest_within(self, origin, VILLAGE_RADIUS)
 end
 
 -- Which part a villager plays this tick: "cleric" at its claimed pulpit during
@@ -541,7 +551,7 @@ local function join(self, pos)
 		if now() < (self._villages_church_checked or 0) then return end
 		local pulpit = nearest_pulpit(self, self._bed or vector.round(pos))
 		if not pulpit then
-			self._villages_church_checked = now() + SEARCH_SECONDS
+			self._villages_church_checked = now() + FAR_SEARCH_SECONDS
 			return
 		end
 		church = {role = "member", pulpit = pulpit, since = now(), limit = walk_limit(self, pulpit)}
@@ -592,7 +602,7 @@ local function social(self, pos, attended)
 		if now() < (self._villages_church_checked or 0) then return end
 		pulpit = nearest_pulpit(self, self._bed or vector.round(pos))
 		if not pulpit then
-			self._villages_church_checked = now() + SEARCH_SECONDS
+			self._villages_church_checked = now() + FAR_SEARCH_SECONDS
 			return
 		end
 	end

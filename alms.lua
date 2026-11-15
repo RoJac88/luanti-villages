@@ -35,7 +35,9 @@
 -- ALMS_TO and stake (M.level), at its own dinner scale. A donation is taken only while the
 -- fund is under the target, and no more than it lacks; over it donors keep their money and
 -- spend it. What the fund holds over the target goes out after the alms and stakes,
--- poorest first, topping villagers up toward SAVINGS.
+-- poorest first, topping villagers up toward SAVINGS at the old dinner (18), not at their
+-- own dinner scale: with dinner at 1 that was 8 emeralds, and a fund of 1,702 gave 15
+-- (ColonyFood, 2026-11-15).
 --
 -- News. Each villager there also swaps market news with the cleric once a holiday
 -- (`_villages_church_news`), as diners do with the keeper (meal.lua): the service is no
@@ -232,7 +234,7 @@ function M.hold(priest, list, day, gossip)
 	for _, villager in ipairs(poorest) do
 		local over = (priest._villages_alms or 0) - target
 		if over <= 0 then break end
-		M.give(priest, villager, day, math.floor(SAVINGS * dinner.scale(villager)), math.floor(over))
+		M.give(priest, villager, day, SAVINGS, math.floor(over))
 	end
 	for _, villager in ipairs(list) do M.church_news(priest, villager, day) end
 end

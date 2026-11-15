@@ -793,4 +793,11 @@ local cleric_anchor = walking_cleric._villages_wander_anchor
 assert(cleric_anchor and vector.equals(cleric_anchor.pos, pulpit) and cleric_anchor.radius == 12, "the cleric is anchored at its pulpit")
 time = 8000 / 24000
 
+-- Past its neighbourhood (48) but in the village (128): it goes to the village's church
+-- (ColonyFood, 2026-11-15: the west side, 55-61 from the one church, never went).
+local west = villager("west", {x = -80, y = 1.51, z = 6})
+west._bed = {x = -80, y = 2, z = 6}
+def.do_custom(west, 0.1)
+assert(west._villages_church and vector.equals(west._villages_church.pulpit, pulpit), "the village's church")
+
 print("ok")
