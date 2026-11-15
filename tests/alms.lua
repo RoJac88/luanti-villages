@@ -186,4 +186,44 @@ local before = def.do_custom
 alms.install(def, gossip)
 assert(def.do_custom == before)
 
+-- A fund that spends down (ticket 22a): its target is FUND_HOLIDAYS holidays of everyone's
+-- level; under it a donation is no more than it lacks, at it none, over it the excess goes
+-- out poorest first toward savings.
+do
+	local a, b = villager("ta", 0), villager("tb", 0, {_profession = "weapon_smith"})
+	assert(alms.level(a) == alms.ALMS_TO and alms.level(b) == alms.ALMS_TO + alms.STAKE_CAP)
+	local priest9 = villager("cleric9", 0, {_profession = "cleric"})
+	assert(alms.fund_target(priest9, {priest9, a, b}) == alms.FUND_HOLIDAYS * (2 * alms.ALMS_TO + alms.STAKE_CAP))
+
+	-- Room for 10: the donor gives 10, not a tenth of its excess.
+	local full = villager("cleric10", 0, {_profession = "cleric"})
+	local donor = villager("donor", alms.SAVINGS + 2000)
+	local enough = villager("enough2", alms.SAVINGS)
+	local target = alms.fund_target(full, {full, donor, enough})
+	full._villages_alms = target - 10
+	alms.hold(full, {full, donor, enough}, day, nil)
+	assert(emeralds(donor) == alms.SAVINGS + 2000 - 10, "gives only what the fund lacks")
+	-- At the target: nothing taken, and its money stays its own.
+	local at = villager("cleric11", 0, {_profession = "cleric"})
+	local donor2 = villager("donor2", alms.SAVINGS + 2000)
+	at._villages_alms = alms.fund_target(at, {at, donor2, enough})
+	alms.hold(at, {at, donor2, enough}, day, nil)
+	assert(emeralds(donor2) == alms.SAVINGS + 2000 and donor2._villages_donated == day)
+
+	-- Over it: alms first, then the excess to the poorest, toward savings, down to the target.
+	local hoard = villager("cleric12", 0, {_profession = "cleric"})
+	local zero, some, saver = villager("zero", 0), villager("some", 50), villager("saver", alms.SAVINGS)
+	local list = {hoard, saver, some, zero}
+	local t = alms.fund_target(hoard, list)
+	hoard._villages_alms = t + 200
+	alms.hold(hoard, list, day, nil)
+	-- zero: ALMS_TO, then up to SAVINGS; some: what is left of the 200.
+	assert(emeralds(zero) == alms.SAVINGS, emeralds(zero))
+	assert(emeralds(saver) == alms.SAVINGS, "at its savings: nothing")
+	assert(hoard._villages_alms == t, hoard._villages_alms)
+	assert(emeralds(some) == 50 + 200 - alms.SAVINGS, emeralds(some))
+	-- Only the fund: its own emeralds stay.
+	assert(emeralds(hoard) == 0)
+end
+
 print("alms.lua: ok")

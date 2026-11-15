@@ -2579,6 +2579,23 @@ Three parts, one PR each, the first two smallest and most urgent:
 - Tests: the fund stops taking at FUND_TARGET and pays out over it; rent at a cheap
   dinner; no rent billed over a full chest, billed again once taken.
 
+Landed (`alms.lua`, `rent.lua`):
+- **The fund.** `alms.level` is a villager's ALMS_TO plus its stake at its dinner scale;
+  `alms.fund_target` is FUND_HOLIDAYS (4) times the congregation's levels, the cleric's
+  own aside. A donation is capped at what the fund lacks of the target, and a donor at the
+  target is marked as having given that holiday. After the alms and stakes, the fund over
+  the target goes out from the fund only, poorest first, each topped up toward its
+  SAVINGS. The cleric's own emeralds are not spent down.
+- **Rent.** `rent.rent` and `rent.cap` are RENT and RENT_CAP at the tenant's dinner
+  scale, at least 1. A due period is not billed while `rent.in_chests` (the bench's
+  chests, never a food chest) holds more than PURSE (512, builder_market.lua's); the
+  periods skipped are not billed later. `builder_market.lua` is unchanged: what stops the
+  hoard is no billing, not more buying.
+- **Tests:** `tests/alms.lua` (the level and target; a donation capped at what the fund
+  lacks; none at the target; the excess to the poorest down to the target) and
+  `tests/rent.lua` (rent and its cap at a dinner of 9; no billing over 512 waiting, and
+  none later; billed again once it is taken).
+
 **22b. The starving eat** (`ledger.lua`, `meal.lua`, `dinner.lua`):
 - **Food first.** For a villager at or under possessions' starving point, the money
   factor on food is at most 1: it values a meal as a villager of average means would, so

@@ -29,6 +29,14 @@
 -- ALMS_TO is given first, the stakes after. When the fund runs short the cleric gives from
 -- its own emeralds over SAVINGS: it held 610 it had no use for.
 --
+-- A fund that spends down (ticket 22a; ColonyFood, 2026-11-15: villagers gave 1,337 over
+-- 13 days and the cleric gave 18 back, so the village's money drained into the fund). Its
+-- target is FUND_HOLIDAYS holidays of alms for the congregation it sees: each one's
+-- ALMS_TO and stake (M.level), at its own dinner scale. A donation is taken only while the
+-- fund is under the target, and no more than it lacks; over it donors keep their money and
+-- spend it. What the fund holds over the target goes out after the alms and stakes,
+-- poorest first, topping villagers up toward SAVINGS.
+--
 -- News. Each villager there also swaps market news with the cleric once a holiday
 -- (`_villages_church_news`), as diners do with the keeper (meal.lua): the service is no
 -- time for conversations, and the social stage after it lasts seconds, so the cleric
@@ -61,11 +69,12 @@ local RECHECK_SECONDS = 1
 local VILLAGER = "mobs_mc:villager"
 local CRAFT_BATCH = 4
 local STAKE_CAP = 3 * DINNER
+local FUND_HOLIDAYS = 4
 local COAL = "mcl_core:coal_lump"
 local recipes = dofile(core.get_modpath("living_villages") .. "/recipes.lua")
 
 local M = {SAVINGS = SAVINGS, MAJOR = MAJOR, ALMS_TO = ALMS_TO, KEEP_SHARE = KEEP_SHARE, REACH = REACH,
-	CRAFT_BATCH = CRAFT_BATCH, STAKE_CAP = STAKE_CAP}
+	CRAFT_BATCH = CRAFT_BATCH, STAKE_CAP = STAKE_CAP, FUND_HOLIDAYS = FUND_HOLIDAYS}
 
 local function short_id(id)
 	return tostring(id):sub(1, 6)
@@ -78,12 +87,14 @@ function M.donation(emeralds, scale)
 	return math.max(math.floor((emeralds - savings) / 10), 1)
 end
 
--- Takes the donor's gift, if it owes one today. `witnesses` note it. Returns the gift.
-function M.collect(priest, donor, witnesses, day, gossip)
+-- Takes the donor's gift, if it owes one today, no more than `room` (what the fund lacks
+-- of its target; nil, no limit). `witnesses` note it. Returns the gift.
+function M.collect(priest, donor, witnesses, day, gossip, room)
 	if donor._villages_donated == day then return 0 end
 	donor._villages_donated = day
 	local scale = dinner.scale(donor)
 	local gift = M.donation(possessions.emeralds(donor), scale)
+	if room then gift = math.min(gift, math.max(math.ceil(room), 0)) end
 	if gift == 0 then return 0 end
 	possessions.take(donor, EMERALD, gift)
 	local kept = math.floor(gift * KEEP_SHARE)
@@ -124,6 +135,21 @@ function M.stake(villager)
 	return math.min(math.ceil(cheapest * CRAFT_BATCH), math.ceil(STAKE_CAP * dinner.scale(villager)))
 end
 
+-- The most alms a villager gets in a holiday: ALMS_TO and its stake, at its dinner scale.
+function M.level(villager)
+	return math.ceil(ALMS_TO * dinner.scale(villager)) + M.stake(villager)
+end
+
+-- The fund's target among `list`: FUND_HOLIDAYS holidays of everyone's level but the
+-- cleric's own.
+function M.fund_target(priest, list)
+	local total = 0
+	for _, villager in ipairs(list) do
+		if villager ~= priest then total = total + M.level(villager) end
+	end
+	return FUND_HOLIDAYS * total
+end
+
 -- What the cleric can give: its fund, then its own emeralds over SAVINGS.
 local function can_give(priest)
 	return (priest._villages_alms or 0) + math.max(math.floor(possessions.emeralds(priest) - SAVINGS * dinner.scale(priest)), 0)
@@ -137,15 +163,15 @@ local function pay_out(priest, amount)
 end
 
 -- Tops a villager up to `upto` (ALMS_TO, or with its stake, M.stake), once today for each
--- level. Returns the alms.
-function M.give(priest, poor, day, upto)
+-- level, giving at most `limit` (nil, no limit). Returns the alms.
+function M.give(priest, poor, day, upto, limit)
 	upto = upto or math.ceil(ALMS_TO * dinner.scale(poor))
 	if poor == priest or (poor._villages_alms_got == day and (poor._villages_alms_upto or ALMS_TO) >= upto) then
 		return 0
 	end
 	local has = possessions.emeralds(poor)
 	if has >= upto then return 0 end
-	local alms = math.min(upto - has, can_give(priest))
+	local alms = math.min(upto - has, can_give(priest), limit or math.huge)
 	if alms <= 0 then return 0 end
 	poor._villages_alms_got, poor._villages_alms_upto = day, upto
 	pay_out(priest, alms)
@@ -182,13 +208,31 @@ function M.hold(priest, list, day, gossip)
 		if not villager._villages_alchemist then members[#members + 1] = villager end
 	end
 	list = members
+	local target = M.fund_target(priest, list)
 	for _, villager in ipairs(list) do
-		if villager ~= priest then M.collect(priest, villager, list, day, gossip) end
+		if villager ~= priest then
+			M.collect(priest, villager, list, day, gossip, target - (priest._villages_alms or 0))
+		end
 	end
 	for _, villager in ipairs(list) do M.give(priest, villager, day) end
 	for _, villager in ipairs(list) do
 		local stake = M.stake(villager)
-		if stake > 0 then M.give(priest, villager, day, math.ceil(ALMS_TO * dinner.scale(villager)) + stake) end
+		if stake > 0 then M.give(priest, villager, day, M.level(villager)) end
+	end
+	-- The fund over its target goes out, poorest first, toward each one's savings.
+	local poorest = {}
+	for _, villager in ipairs(list) do
+		if villager ~= priest then poorest[#poorest + 1] = villager end
+	end
+	table.sort(poorest, function(a, b)
+		local ea, eb = possessions.emeralds(a), possessions.emeralds(b)
+		if ea ~= eb then return ea < eb end
+		return a._id < b._id
+	end)
+	for _, villager in ipairs(poorest) do
+		local over = (priest._villages_alms or 0) - target
+		if over <= 0 then break end
+		M.give(priest, villager, day, math.floor(SAVINGS * dinner.scale(villager)), math.floor(over))
 	end
 	for _, villager in ipairs(list) do M.church_news(priest, villager, day) end
 end
