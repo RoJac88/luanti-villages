@@ -618,7 +618,8 @@ end
 function M.assess(self)
 	local extra, worth = wants.targets(self)
 	-- Comforts for its savings (comforts.lua, ticket 19).
-	local comfort, comfort_worth = comforts.targets(self, M.in_dinners(self, M.emeralds(self)), core.get_gametime())
+	local comfort, comfort_worth, comfort_categories = comforts.targets(self, M.in_dinners(self, M.emeralds(self)),
+		core.get_gametime())
 	for item, count in pairs(comfort) do extra[item] = (extra[item] or 0) + count end
 	for item, value in pairs(comfort_worth) do worth[item] = math.max(worth[item] or 0, value) end
 	for item, count in pairs(self._villages_builder and self._villages_builder_wants or {}) do
@@ -696,6 +697,11 @@ function M.assess(self)
 	for category, amount in pairs(labour_categories or {}) do
 		categories = categories or {}
 		categories[category] = math.max(categories[category] or 0, amount)
+	end
+	-- A flower for a comfort, and for each pot (comforts.lua, ticket 23b): wanted together.
+	for category, count in pairs(comfort_categories or {}) do
+		categories = categories or {}
+		categories[category] = (categories[category] or 0) + count
 	end
 	return ledger.assess({
 		id = self._id,

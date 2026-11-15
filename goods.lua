@@ -49,7 +49,7 @@ local WOOL_COLOURS = {"white", "grey", "silver", "black", "red", "yellow", "gree
 -- Burn seconds, as VoxeLibre's furnaces take them.
 local BURN = {[COAL] = 80, [CHARCOAL] = 80, [STICK] = 5, [KELP_BLOCK] = 200}
 
-local categories = {food = {}, fuel = {}, log = {}, planks = {}, wool = {}, stone = {}}
+local categories = {food = {}, fuel = {}, log = {}, planks = {}, wool = {}, stone = {}, flower = {}}
 for item, points in pairs(food.POINTS) do categories.food[item] = points end
 for item, seconds in pairs(BURN) do categories.fuel[item] = seconds end
 for log, planks in pairs(SPECIES) do
@@ -60,8 +60,14 @@ for _, colour in ipairs(WOOL_COLOURS) do categories.wool["mcl_wool:" .. colour] 
 -- Stone or cobble, either for an alchemist's iron nuggets (ticket 20). Like wool, no job's
 -- target category: a mason's stone and a tool smith's cobble stay needs for that very item.
 categories.stone["mcl_core:stone"], categories.stone["mcl_core:cobble"] = 1, 1
+-- Any flower, for a comfort or the flower in a pot (comforts.lua, ticket 23b): like wool
+-- and stone, no job's target category. Its members share one reference price.
+for _, flower in ipairs({"poppy", "dandelion", "tulip_red", "allium", "azure_bluet", "blue_orchid", "oxeye_daisy",
+	"tulip_orange", "tulip_white", "tulip_pink", "cornflower", "lily_of_the_valley"}) do
+	categories.flower["mcl_flowers:" .. flower] = 1
+end
 -- Which category a member belongs to first, when it is in two (a log is fuel too).
-local ORDER = {"log", "planks", "wool", "stone", "food", "fuel"}
+local ORDER = {"log", "planks", "wool", "stone", "flower", "food", "fuel"}
 
 local conversions = {
 	shepherd = {},

@@ -14,32 +14,50 @@
 -- with more slots than tastes wants some twice.
 --
 -- Use. A comfort it holds in its belongings fills a free slot (`_villages_comforts`, a
--- list of {item, until}), and is used up `days` game days later. The ledger wants one for
--- each slot that is free or nearly done (wants.NEARLY_WORN of its days left), worth at
--- most WORTH times its base price over the money factor (ledger.lambda, ticket 21a), so it
--- never pays more than that, and the richer it is the more that is. A villager that grew
--- poorer keeps what it is using until it is used up, and wants no more.
+-- list of {item, until}), and is used up `days` game days later: gone, never back to its
+-- belongings or stash (ticket 23b: every comfort perishes, at most MAX_DAYS, so money
+-- keeps going round). The ledger wants one for each slot that is free or nearly done
+-- (wants.NEARLY_WORN of its days left), worth at most WORTH times its base price over the
+-- money factor (ledger.lambda, ticket 21a), so it never pays more than that, and the
+-- richer it is the more that is. A villager that grew poorer keeps what it is using until
+-- it is used up, and wants no more.
+--
+-- Flowers (ticket 23b). One comfort, a flower, is any of goods.lua's `flower` category,
+-- wanted as the category, so the foragers' lilies of the valley sell too. A flower pot in
+-- use holds a flower (`flower`, `flower_until` on its entry): while one is in use its
+-- owner wants a flower for it every FLOWER_DAYS, and a flower it holds goes in the pot,
+-- before any loose flower fills a slot. The pot keeps its slot with or without one; a
+-- flower in it wilts after FLOWER_DAYS and is gone.
 --
 -- Replaces the ledger's fixed preferences, two of which (cake, cookie) no village makes.
 local core = minetest
 local ledger = dofile(core.get_modpath("living_villages") .. "/ledger.lua")
 local wants = dofile(core.get_modpath("living_villages") .. "/wants.lua")
+local goods = dofile(core.get_modpath("living_villages") .. "/goods.lua")
 
 local M = {}
 
 -- What the village makes that a villager may want for its own sake, and how many game
--- days each lasts: the foragers' blooms, the shepherd's carpets (two wool make three, at
--- sale) and the cartographer's item frames (ticket 19c), dear, for the richest.
+-- days each lasts: the foragers' flowers and apples, the shepherd's carpets (two wool make
+-- three, at sale), the cartographer's banners and item frames, the librarian's
+-- bookshelves, and what labourers make from stone and wood (ticket 23a).
+M.FLOWER = "flower"
 M.COMFORTS = {
-	{item = "mcl_banners:banner_item_white", days = 6},
-	{item = "mcl_books:bookshelf", days = 8},
+	{item = "mcl_flowers:poppy", category = M.FLOWER, days = 2},
 	{item = "mcl_core:apple", days = 2},
-	{item = "mcl_flowers:poppy", days = 2},
-	{item = "mcl_flowers:dandelion", days = 2},
 	{item = "mcl_wool:white_carpet", days = 4},
+	{item = "mcl_banners:banner_item_white", days = 6},
+	{item = "mcl_paintings:painting", days = 6},
+	{item = "mcl_barrels:barrel_closed", days = 6},
+	{item = "mcl_flowerpots:flower_pot", days = 8, holds = M.FLOWER},
+	{item = "mcl_armor_stand:armor_stand", days = 8},
+	{item = "mcl_books:bookshelf", days = 8},
 	{item = "mcl_itemframes:frame", days = 8},
+	{item = "mcl_lanterns:lantern_floor", days = 10},
 }
-M.TASTES = 3
+M.FLOWER_DAYS = 2
+M.MAX_DAYS = 12
+M.TASTES = 4
 -- alms.lua's SAVINGS: what a villager keeps before it gives, or buys comforts.
 M.SAVINGS = 8 * ledger.DINNER
 M.STEP = 4 * ledger.DINNER
@@ -47,8 +65,32 @@ M.BASE_SLOTS = 6
 M.MAX_SLOTS = 12
 M.WORTH = 2
 
+-- A category's members, in a fixed order.
+local function members(category)
+	local list = {}
+	for item in pairs(goods.CATEGORIES[category] or {}) do list[#list + 1] = item end
+	table.sort(list)
+	return list
+end
+
+-- Every item a comfort is held as: a flower comfort under each flower.
 local by_item = {}
-for _, comfort in ipairs(M.COMFORTS) do by_item[comfort.item] = comfort end
+for _, comfort in ipairs(M.COMFORTS) do
+	by_item[comfort.item] = comfort
+	if comfort.category then
+		for _, member in ipairs(members(comfort.category)) do by_item[member] = comfort end
+	end
+end
+M.by_item = by_item
+
+-- Takes one of the comfort (any member of its category) through take; the item taken, or nil.
+local function take_one(self, comfort, take)
+	if not comfort.category then return take(self, comfort.item, 1) > 0 and comfort.item or nil end
+	for _, member in ipairs(members(comfort.category)) do
+		if take(self, member, 1) > 0 then return member end
+	end
+	return nil
+end
 
 local function roll(id, salt, n)
 	local text = tostring(id) .. salt
@@ -94,54 +136,91 @@ end
 -- take(self, item, count) (possessions.take). Returns nothing.
 function M.update(self, emeralds, take, now)
 	if not wanted(self) then return end
+	local id = tostring(self._id):sub(1, 6)
 	local list, kept = in_use(self), {}
 	for _, comfort in ipairs(list) do
 		if now < comfort["until"] then
 			table.insert(kept, comfort)
 		else
-			core.log("action", string.format("[living_villages] villager %s used up its %s",
-				tostring(self._id):sub(1, 6), comfort.item))
+			core.log("action", string.format("[living_villages] villager %s used up its %s", id, comfort.item))
+		end
+	end
+	-- A pot's flower wilts, and a flower it holds takes its place.
+	for _, comfort in ipairs(kept) do
+		local def = by_item[comfort.item]
+		if def and def.holds then
+			if comfort.flower and now >= (comfort.flower_until or 0) then
+				core.log("action", string.format("[living_villages] villager %s's %s wilted", id, comfort.flower))
+				comfort.flower, comfort.flower_until = nil, nil
+			end
+			if not comfort.flower then
+				local flower = take_one(self, {category = def.holds}, take)
+				if flower then
+					comfort.flower, comfort.flower_until = flower, now + M.FLOWER_DAYS * wants.DAY_SECONDS
+					core.log("action", string.format("[living_villages] villager %s puts a %s in its %s", id, flower,
+						comfort.item))
+				end
+			end
 		end
 	end
 	local slots, tastes = M.slots(emeralds), M.tastes(self._id)
 	for slot = #kept + 1, slots do
 		local taste = tastes[(slot - 1) % #tastes + 1]
-		if take(self, taste.item, 1) > 0 then
-			table.insert(kept, {item = taste.item, ["until"] = now + taste.days * wants.DAY_SECONDS})
-			core.log("action", string.format("[living_villages] villager %s enjoys a %s",
-				tostring(self._id):sub(1, 6), taste.item))
+		local item = take_one(self, taste, take)
+		if item then
+			table.insert(kept, {item = item, ["until"] = now + taste.days * wants.DAY_SECONDS})
+			core.log("action", string.format("[living_villages] villager %s enjoys a %s", id, item))
 		end
 	end
 	self._villages_comforts = #kept > 0 and kept or nil
 end
 
--- For the ledger: {item = count} it should get, and {item = worth} for each of its tastes.
+-- For the ledger: {item = count} it should get, {item = worth} for each of its tastes (a
+-- flower's for every flower), and {category = count} for the comforts any member of a
+-- category fills: a flower, and the flowers its pots want.
 function M.targets(self, emeralds, now)
-	local targets, worth = {}, {}
-	if not wanted(self) then return targets, worth end
+	local targets, worth, categories = {}, {}, {}
+	if not wanted(self) then return targets, worth, categories end
+	-- Over the money factor (ledger.lambda, ticket 21a): the richer, the more it pays.
+	local lambda = ledger.lambda(emeralds)
+	local function value(item) worth[item] = M.WORTH * (ledger.price(item) or 0) / lambda end
 	local tastes = M.tastes(self._id)
-	for _, taste in ipairs(tastes) do
-		-- Over the money factor (ledger.lambda, ticket 21a): the richer, the more it pays.
-		worth[taste.item] = M.WORTH * (ledger.price(taste.item) or 0) / ledger.lambda(emeralds)
+	local function want(comfort)
+		if comfort.category then
+			categories[comfort.category] = (categories[comfort.category] or 0) + 1
+			for _, member in ipairs(members(comfort.category)) do value(member) end
+		else
+			targets[comfort.item] = (targets[comfort.item] or 0) + 1
+		end
 	end
-	-- A slot in use and not nearly done needs nothing.
+	for _, taste in ipairs(tastes) do
+		if taste.category then
+			for _, member in ipairs(members(taste.category)) do value(member) end
+		else
+			value(taste.item)
+		end
+	end
+	-- A slot in use and not nearly done needs nothing; a pot with no flower, or one nearly
+	-- wilted, wants one.
 	local busy = 0
 	for _, comfort in ipairs(in_use(self)) do
-		local days = (by_item[comfort.item] or {days = 1}).days
-		if comfort["until"] - now > days * wants.DAY_SECONDS * wants.NEARLY_WORN then busy = busy + 1 end
+		local def = by_item[comfort.item] or {days = 1}
+		if comfort["until"] - now > def.days * wants.DAY_SECONDS * wants.NEARLY_WORN then busy = busy + 1 end
+		if def.holds and comfort["until"] > now and (not comfort.flower
+			or (comfort.flower_until or 0) - now <= M.FLOWER_DAYS * wants.DAY_SECONDS * wants.NEARLY_WORN) then
+			want({category = def.holds})
+		end
 	end
-	for slot = busy + 1, M.slots(emeralds) do
-		local item = tastes[(slot - 1) % #tastes + 1].item
-		targets[item] = (targets[item] or 0) + 1
-	end
-	return targets, worth
+	for slot = busy + 1, M.slots(emeralds) do want(tastes[(slot - 1) % #tastes + 1]) end
+	return targets, worth, categories
 end
 
 -- One line for the inspector.
 function M.status(self)
 	local parts = {}
 	for _, comfort in ipairs(in_use(self)) do
-		table.insert(parts, string.format("%s, %d s left", comfort.item,
+		local flower = comfort.flower and (" with a " .. comfort.flower:gsub("^.*:", "")) or ""
+		table.insert(parts, string.format("%s%s, %d s left", comfort.item, flower,
 			math.max(math.floor(comfort["until"] - core.get_gametime()), 0)))
 	end
 	return #parts > 0 and table.concat(parts, "; ") or "none"

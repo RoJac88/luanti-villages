@@ -2813,6 +2813,24 @@ Landed (`recipes.lua`, `production.lua`, `labour.lua`, `possessions.lua`, `ledge
   villager; every comfort has days, none over MAX_DAYS; a lily of the valley fills a
   flower slot.
 
+Landed (`comforts.lua`, `goods.lua`, `possessions.lua`):
+- **`goods.CATEGORIES.flower`**: the twelve flowers the ledger prices, after stone in
+  ORDER. Like wool and stone it is no job's target category; its members share one
+  reference price (`group:flower`), and an old save's per-flower beliefs fold into it.
+- **`COMFORTS`** as in the table, the flower an entry with `category = "flower"`; `by_item`
+  maps every flower to it, so an old save's poppy or dandelion in use keeps its days.
+  TASTES is 4; FLOWER_DAYS 2; MAX_DAYS 12.
+- **`targets`** returns a third value, `{category = count}`: a flower slot, and each pot in
+  use with no flower or one nearly wilted. `possessions.assess` adds it to the ledger's
+  `extra_categories`, so a need for a flower is told once, under the cheapest flower, and
+  any flower fills it. Worth is set for every flower.
+- **`update`** drops what is used up, then wilts each pot's flower past `flower_until`
+  and puts in one it holds, then fills free slots; logs `puts a … in its …` and `… wilted`.
+- **Tests:** `tests/comforts.lua` (every comfort within MAX_DAYS; a lily fills a flower
+  slot and wilts away; a pot without a flower wants one and keeps its slot, takes one,
+  wants the next when nearly wilted, and is gone with its flower after 8 days) and
+  `tests/possessions.lua` (a pot's want is a need for any flower, grouped as `flower`).
+
 **23c. Slots that grow with wealth** (`comforts.lua`). Farmer 84ebb7 holds 1,163
 emeralds and fills the same 6 slots as a villager with 576: past that its money buys
 nothing more. The first BASE_SLOTS (6) still come one for every STEP (4 dinners) over

@@ -393,4 +393,21 @@ do
 	assert(sal.walk_velocity == 2 and sal.run_velocity == 4 and not sal._villages_slowed)
 end
 
+-- A villager whose pot wants a flower (ticket 23b) needs any flower, a lily of the valley
+-- too, told as the flower category.
+do
+	local comforts = dofile("comforts.lua")
+	local pot = "mcl_flowerpots:flower_pot"
+	local id
+	for i = 1, 5000 do
+		if comforts.tastes("pots" .. i)[1].item == pot then id = "pots" .. i break end
+	end
+	local rich = {_id = id, _profession = "nitwit", _villages_food = 20,
+		_villages_belongings = {["mcl_core:emerald"] = comforts.SAVINGS + comforts.STEP}}
+	rich._villages_comforts = {{item = pot, ["until"] = minetest.get_gametime() + 8 * dofile("wants.lua").DAY_SECONDS}}
+	local view = possessions.assess(rich)
+	assert(view.needs["mcl_flowers:lily_of_the_valley"] == 1 and view.group["mcl_flowers:lily_of_the_valley"] == "flower")
+	assert(view.needs["mcl_flowers:poppy"] == 1 and not view.needs[pot], "the pot's slot is full")
+end
+
 print("possessions.lua: ok")
