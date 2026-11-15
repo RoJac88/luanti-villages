@@ -2027,6 +2027,16 @@ conversions in the window, the buying rules with their stops, and goods bought k
 they are. Tests: buying an ingot takes 9 nuggets and pays the pouch, gold is refused
 under the reserve, and selling flint is refused at 32.
 
+Landed: `trade_window.alchemy_rows` makes the alchemist's rows for its goods, at 1.5 and
+0.5 of the base price (reputation moves both, as for anyone), and its other needs (stone,
+logs) are rows as anyone's, at 0.9 of its value. A sell row made by conversion carries
+the conversion; buying from it takes the alchemist's own first, then whole batches of
+the source past any reserve, and logs `(from 9 mcl_core:iron_nugget)`. Its buy rows
+offer for at most what the player carries, what it can pay for and, for flint and glass,
+what fits under its keep (panes count as glass). A player can still buy ingots at 1.5 of
+their base price and sell them to an urgent armorer at up to 0.9 of three times it: the
+window's ordinary margins, bounded by the armorer's emeralds and need.
+
 ## Open questions
 
 - Pacing: hunger rate, craft time, starting stock and rent all need probe runs on
