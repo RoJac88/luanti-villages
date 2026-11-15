@@ -754,8 +754,11 @@ What follows from this:
 - A player selling iron to a smith gets up to 0.9 × 115 an ingot, out of that smith's
   emeralds.
 - Glass gets cheaper, and so do the Builder's houses.
-- The cleric's vanilla want for gold ingots is dropped from its ledger. At 2073 it would
-  pay players out of the alms fund.
+- A vanilla trade's want for iron, gold or flint counts only where the profession's own
+  recipes take it. That drops the cleric's gold ingots (at 2073 it would pay players out of
+  the alms fund), the tool smith's iron and flint, and the leatherworker's and weapon
+  smith's flint, which none of them uses. The armorer, the weapon smith (iron) and the
+  fletcher (flint) keep theirs.
 - The alchemist cannot lose money trading with villagers: it buys at base or below and
   sells at base or above.
 
@@ -1995,8 +1998,9 @@ kept it through tavern time and a reload, and lost the role when the stand was d
 
 **20b. Cost-based prices** (`ledger.lua`, `goods.lua`). Add the base prices for the
 alchemist's outputs, the `stone` category, and the cost floor for goods made from iron,
-gold and flint. Drop the cleric's gold want. Tests: the prices in the tables above, and
-a check that every recipe that takes iron, gold or flint gains at base prices.
+gold and flint. Drop the vanilla trade wants for iron, gold and flint that no recipe of
+the profession uses. Tests: the prices in the tables above, and a check that every recipe
+that takes iron, gold or flint gains at base prices.
 
 **20c. Alchemy at the stand** (`recipes.lua`, `production.lua`, `goods.lua`,
 `asks.lua`). Add the three recipes with their shares of the work day, the order and the

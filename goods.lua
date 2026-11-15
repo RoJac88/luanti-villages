@@ -4,7 +4,8 @@
 --
 -- Categories. A need for food is for food points, and any food gives them; a need for
 -- fuel is for burn seconds; a need for logs or planks takes any species, and one for
--- wool any colour (a Builder's for the red beds it makes, builder_market.lua). A category's
+-- wool any colour (a Builder's for the red beds it makes, builder_market.lua), and one for
+-- stone either stone or cobble (an alchemist's, ticket 20). A category's
 -- amount is in its units: an item gives `units` of them. ledger.assess reckons a need
 -- and its spare on the category, and lists the need under every member in that member's
 -- own count, so a seller of any of them can fill it.
@@ -47,7 +48,7 @@ local WOOL_COLOURS = {"white", "grey", "silver", "black", "red", "yellow", "gree
 -- Burn seconds, as VoxeLibre's furnaces take them.
 local BURN = {[COAL] = 80, [CHARCOAL] = 80, [STICK] = 5, [KELP_BLOCK] = 200}
 
-local categories = {food = {}, fuel = {}, log = {}, planks = {}, wool = {}}
+local categories = {food = {}, fuel = {}, log = {}, planks = {}, wool = {}, stone = {}}
 for item, points in pairs(food.POINTS) do categories.food[item] = points end
 for item, seconds in pairs(BURN) do categories.fuel[item] = seconds end
 for log, planks in pairs(SPECIES) do
@@ -55,8 +56,11 @@ for log, planks in pairs(SPECIES) do
 	categories.fuel[log], categories.fuel[planks] = 15, 15
 end
 for _, colour in ipairs(WOOL_COLOURS) do categories.wool["mcl_wool:" .. colour] = 1 end
+-- Stone or cobble, either for an alchemist's iron nuggets (ticket 20). Like wool, no job's
+-- target category: a mason's stone and a tool smith's cobble stay needs for that very item.
+categories.stone["mcl_core:stone"], categories.stone["mcl_core:cobble"] = 1, 1
 -- Which category a member belongs to first, when it is in two (a log is fuel too).
-local ORDER = {"log", "planks", "wool", "food", "fuel"}
+local ORDER = {"log", "planks", "wool", "stone", "food", "fuel"}
 
 local conversions = {
 	shepherd = {},
