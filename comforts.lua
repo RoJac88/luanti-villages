@@ -127,6 +127,26 @@ local function in_use(self)
 	return self._villages_comforts or {}
 end
 
+-- How many of `slots` each of its tastes gets, going round them: {[i] = count}.
+local function per_taste(tastes, slots)
+	local out = {}
+	for i = 1, #tastes do out[i] = 0 end
+	for slot = 1, slots do
+		local i = (slot - 1) % #tastes + 1
+		out[i] = out[i] + 1
+	end
+	return out
+end
+
+-- Which of its tastes a comfort in use is, or nil (a comfort from a taste it no longer has).
+local function taste_of(tastes, item)
+	local def = by_item[item]
+	for i, taste in ipairs(tastes) do
+		if taste == def then return i end
+	end
+	return nil
+end
+
 -- Never an alchemist's, which wants nothing for itself (ticket 20).
 local function wanted(self)
 	return not self.child and self._id ~= nil and not self._villages_alchemist
@@ -163,13 +183,23 @@ function M.update(self, emeralds, take, now)
 			end
 		end
 	end
-	local slots, tastes = M.slots(emeralds), M.tastes(self._id)
-	for slot = #kept + 1, slots do
-		local taste = tastes[(slot - 1) % #tastes + 1]
-		local item = take_one(self, taste, take)
-		if item then
+	-- Each taste fills its own slots, so one held in plenty fills no other taste's
+	-- (ColonyFood, 2026-11-15: an armorer holding lilies filled all nine of its slots
+	-- with them). A comfort in use counts against its taste's slots and all of them.
+	local tastes = M.tastes(self._id)
+	local free = per_taste(tastes, M.slots(emeralds))
+	local total = M.slots(emeralds) - #kept
+	for _, comfort in ipairs(kept) do
+		local i = taste_of(tastes, comfort.item)
+		if i then free[i] = free[i] - 1 end
+	end
+	for i, taste in ipairs(tastes) do
+		while free[i] > 0 and total > 0 do
+			local item = take_one(self, taste, take)
+			if not item then break end
 			table.insert(kept, {item = item, ["until"] = now + taste.days * wants.DAY_SECONDS})
 			core.log("action", string.format("[living_villages] villager %s enjoys a %s", id, item))
+			free[i], total = free[i] - 1, total - 1
 		end
 	end
 	self._villages_comforts = #kept > 0 and kept or nil
@@ -200,18 +230,28 @@ function M.targets(self, emeralds, now)
 			value(taste.item)
 		end
 	end
-	-- A slot in use and not nearly done needs nothing; a pot with no flower, or one nearly
-	-- wilted, wants one.
-	local busy = 0
+	-- A slot in use and not nearly done needs nothing, its taste's or any; a pot with no
+	-- flower, or one nearly wilted, wants one.
+	local free = per_taste(tastes, M.slots(emeralds))
+	local total = M.slots(emeralds)
 	for _, comfort in ipairs(in_use(self)) do
 		local def = by_item[comfort.item] or {days = 1}
-		if comfort["until"] - now > def.days * wants.DAY_SECONDS * wants.NEARLY_WORN then busy = busy + 1 end
+		if comfort["until"] - now > def.days * wants.DAY_SECONDS * wants.NEARLY_WORN then
+			total = total - 1
+			local i = taste_of(tastes, comfort.item)
+			if i then free[i] = free[i] - 1 end
+		end
 		if def.holds and comfort["until"] > now and (not comfort.flower
 			or (comfort.flower_until or 0) - now <= M.FLOWER_DAYS * wants.DAY_SECONDS * wants.NEARLY_WORN) then
 			want({category = def.holds})
 		end
 	end
-	for slot = busy + 1, M.slots(emeralds) do want(tastes[(slot - 1) % #tastes + 1]) end
+	for i, taste in ipairs(tastes) do
+		for _ = 1, math.max(math.min(free[i], total), 0) do
+			want(taste)
+			total = total - 1
+		end
+	end
 	return targets, worth, categories
 end
 

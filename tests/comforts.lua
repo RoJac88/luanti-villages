@@ -140,6 +140,22 @@ do
 	assert(wanted_of(list[1], targets, categories) == math.ceil(9 / #list))
 end
 
+-- Each taste fills its own slots: nine slots and plenty of the first taste held fill only
+-- that taste's three, and the other tastes are still wanted (ColonyFood, 2026-11-15: an
+-- armorer filled all nine slots with lilies).
+do
+	local nine = {_id = "rich-farmer"}
+	local list = comforts.tastes(nine._id)
+	local first = item_of(list[1])
+	local held = {[first] = 20}
+	comforts.update(nine, 1584, take_from(held), clock)
+	assert(#nine._villages_comforts == 3 and held[first] == 17, tostring(#nine._villages_comforts))
+	comforts.update(nine, 1584, take_from(held), clock + 1)
+	assert(#nine._villages_comforts == 3 and held[first] == 17, "no more the next time")
+	local targets, _, categories = comforts.targets(nine, 1584, clock + 1)
+	assert(wanted_of(list[1], targets, categories) == 0 and total(targets, categories) == 6)
+end
+
 -- Every comfort has a price, so it is worth something, and perishes (ticket 23b): some
 -- days, never more than MAX_DAYS.
 for _, comfort in ipairs(comforts.COMFORTS) do
