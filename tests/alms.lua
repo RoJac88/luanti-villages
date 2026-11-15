@@ -169,6 +169,16 @@ gossip.add(talker, gossip.villager_subject("farmer1"), "minor_positive")
 gossip.share(talker, listener)
 assert(gossip.reputation(listener, gossip.villager_subject("farmer1")) > 0, "the donor is passed on")
 
+-- An alchemist (ticket 20) never goes to church: one near the pulpit neither gives nor gets.
+do
+	local fund = villager("cleric8", 0, {_profession = "cleric", _villages_alms = 500})
+	local rich_alchemist = villager("alch1", alms.SAVINGS + 800, {_profession = "cleric", _villages_alchemist = true})
+	local poor_alchemist = villager("alch2", 0, {_profession = "cleric", _villages_alchemist = true})
+	alms.hold(fund, {fund, rich_alchemist, poor_alchemist}, day + 40, gossip)
+	assert(emeralds(rich_alchemist) == alms.SAVINGS + 800 and not rich_alchemist._villages_donated, "gives nothing")
+	assert(emeralds(poor_alchemist) == 0 and fund._villages_alms == 500, "gets nothing")
+end
+
 -- With the economy off, nothing is installed.
 settings.living_villages_economy = false
 local def = {do_custom = function() return true end}

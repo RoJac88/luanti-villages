@@ -74,8 +74,9 @@ M.LOG_EVERY = 16
 -- took 111 s one time and 2053 s the next, by hand).
 M.BURST_GAP = 5
 
+-- Nothing wears out for an alchemist, which wants no goods for itself (ticket 20).
 local function wanted_by(self, good)
-	if self.child or not self._id then return false end
+	if self.child or not self._id or self._villages_alchemist then return false end
 	if good.professions and good.professions[self._profession] then return true end
 	-- A labour activity counts only while it labours: one that took a job that day still
 	-- carries the morning's `_villages_labour` (run 45, a tool smith wanting an axe).
@@ -123,7 +124,7 @@ function M.worth(good, tier)
 end
 
 local function reads(self)
-	return not self.child and self._id ~= nil
+	return not self.child and self._id ~= nil and not self._villages_alchemist
 end
 
 function M.book_worth()

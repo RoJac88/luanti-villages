@@ -408,8 +408,9 @@ function M.food_owned(self)
 end
 
 -- Whether it owns food enough to become a parent (births.lua).
+-- An alchemist owns no food and needs none: it counts as fed (ticket 20).
 function M.can_parent(self)
-	return not food.births_need_food() or M.food_owned(self) >= PARENT_FOOD
+	return not food.births_need_food() or self._villages_alchemist == true or M.food_owned(self) >= PARENT_FOOD
 end
 
 -- Slows a starving villager and marks it for common.lua's shorter working day; puts it
@@ -501,8 +502,16 @@ function M.same_house(a, b)
 	return a ~= nil and b ~= nil and math.abs(a.x - b.x) <= 5 and math.abs(a.z - b.z) <= 5 and math.abs(a.y - b.y) <= 4
 end
 
+-- Whose trade data its ledger reads (ledger.inputs and outputs): a role's over the vanilla
+-- profession beneath it. A keeper is a butcher, a Builder a mason and an alchemist a
+-- cleric to vanilla (keeper.lua, builder.lua, alchemist.lua), and none trades as one.
+function M.trade_key(self)
+	return (self._villages_keeper and "keeper") or (self._villages_builder and "builder")
+		or (self._villages_alchemist and "alchemist") or self._profession
+end
+
 -- The ledger's view of this villager (ledger.lua): its targets, needs, surplus and values.
--- A keeper by its role; a Builder (a mason to vanilla, builder.lua) has no trade of its own.
+-- A keeper by its role; a Builder or an alchemist has no vanilla trade of its own.
 function M.assess(self)
 	local extra, worth = wants.targets(self)
 	-- Comforts for its savings (comforts.lua, ticket 19).
@@ -536,11 +545,11 @@ function M.assess(self)
 	end
 	return ledger.assess({
 		id = self._id,
-		profession = (self._villages_keeper and "keeper") or (self._villages_builder and "builder") or self._profession,
+		profession = M.trade_key(self),
 		max_tier = self._max_trade_tier or 1,
 		held = M.held(self),
 		food_points = food.points(self),
-		hunger_per_day = self.child and 0 or food.hunger_per_day(),
+		hunger_per_day = (self.child or self._villages_alchemist) and 0 or food.hunger_per_day(),
 		foods = food.POINTS,
 		-- What a Builder's chests are short of (builder_market.lua), and goods that wear out (wants.lua).
 		extra = extra,

@@ -1990,7 +1990,8 @@ timetables. Take it out of hunger, meals, the tavern, the church, donations, alm
 comforts and wants. Village staffing leaves it out. Tests: the claim and its kind in
 `job_blocks`, both timetables, food that never falls, no comfort slots, no donation and
 no alms. A short headless check that a placed stand gets claimed and the alchemist
-spends a whole day at it.
+works at it through tavern time (`tools/lv_alchemist/run.sh`: it took the stand in 4 s,
+kept it through tavern time and a reload, and lost the role when the stand was dug).
 
 **20b. Cost-based prices** (`ledger.lua`, `goods.lua`). Add the base prices for the
 alchemist's outputs, the `stone` category, and the cost floor for goods made from iron,

@@ -104,6 +104,22 @@ local HOLIDAY_CLERIC_SCHEDULE = {
 	{start = 17500, stage = "home"},
 	{start = 18500, stage = "sleep"},
 }
+-- The alchemist (alchemist.lua, ticket 20) goes to neither the tavern nor the church: it
+-- works through those hours, and meets the village at the morning bell and the holiday bell.
+local ALCHEMIST_SCHEDULE = {
+	{start = 5500, stage = "putter"},
+	{start = 7000, stage = "work"},
+	{start = 17500, stage = "home"},
+	{start = 18500, stage = "sleep"},
+}
+local HOLIDAY_ALCHEMIST_SCHEDULE = {
+	{start = 5500, stage = "putter"},
+	{start = 7000, stage = "work"},
+	{start = 10500, stage = "bell"},
+	{start = 15000, stage = "work"},
+	{start = 17500, stage = "home"},
+	{start = 18500, stage = "sleep"},
+}
 local HOLIDAY_KEEPER_SCHEDULE = {
 	{start = 7000, stage = "putter"},
 	{start = 8000, stage = "free"},
@@ -147,6 +163,9 @@ end
 -- villager picks that villager's own timetable; omit it for the common one.
 -- A thunderstorm sends everyone to bed at any hour.
 local function schedule_of(villager, holiday)
+	if villager and villager._villages_alchemist then
+		return holiday and HOLIDAY_ALCHEMIST_SCHEDULE or ALCHEMIST_SCHEDULE
+	end
 	if holiday then
 		if villager and villager._villages_keeper then return HOLIDAY_KEEPER_SCHEDULE end
 		if villager and villager._profession == "cleric" then return HOLIDAY_CLERIC_SCHEDULE end
@@ -238,6 +257,7 @@ local vanilla_activity = {
 
 local PULPIT = "living_villages:pulpit"
 local BENCH = "living_villages:builder_block"
+local ALCHEMY_STAND = "living_villages:alchemy_stand"
 
 local function is_workstation_node(name)
 	return workstation_nodes[name] or core.get_item_group(name, "cauldron") > 0
@@ -324,12 +344,13 @@ M = {
 		return stage == "work" or stage == "staff"
 	end,
 	is_workstation_node = is_workstation_node,
-	-- Whether the villager's _jobsite is a workstation (or a pulpit, cleric.lua, or a
-	-- builder's bench) that carries its id.
+	-- Whether the villager's _jobsite is a workstation (or a pulpit, cleric.lua, a
+	-- builder's bench or an alchemist's stand) that carries its id.
 	has_claimed_jobsite = function(self)
 		if not self._jobsite or not self._id then return false end
 		local node = core.get_node_or_nil(self._jobsite)
-		if not node or not (is_workstation_node(node.name) or node.name == PULPIT or node.name == BENCH) then
+		if not node or not (is_workstation_node(node.name) or node.name == PULPIT or node.name == BENCH
+			or node.name == ALCHEMY_STAND) then
 			return false
 		end
 		return core.get_meta(self._jobsite):get_string("villager") == self._id

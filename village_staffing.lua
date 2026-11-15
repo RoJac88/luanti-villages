@@ -106,7 +106,10 @@ function M.staff(batch, roles, unemployed)
 	local names = job_blocks.search_nodes(roles)
 	for _, box in ipairs(batch.boxes) do
 		for _, pos in ipairs(core.find_nodes_in_area(box[1], box[2], names)) do
-			if not seen[key(pos)] and job_blocks.is_free(pos, roles) then
+			-- Never an alchemist's stand (ticket 20): no village is generated with one, and one a
+			-- player placed nearby is for a villager out of work to take (job_seek.lua).
+			if not seen[key(pos)] and job_blocks.is_free(pos, roles)
+				and job_blocks.kind(core.get_node_or_nil(pos).name, roles) ~= "alchemy" then
 				seen[key(pos)] = true
 				table.insert(blocks, pos)
 			end

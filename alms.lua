@@ -169,8 +169,14 @@ function M.church_news(priest, villager, day)
 	return true
 end
 
--- Donations first, then alms, then news, among `list`.
+-- Donations first, then alms, then news, among `list`. An alchemist (ticket 20) never goes
+-- to church, so one that happens to stand near the pulpit neither gives nor gets.
 function M.hold(priest, list, day, gossip)
+	local members = {}
+	for _, villager in ipairs(list) do
+		if not villager._villages_alchemist then members[#members + 1] = villager end
+	end
+	list = members
 	for _, villager in ipairs(list) do
 		if villager ~= priest then M.collect(priest, villager, list, day, gossip) end
 	end

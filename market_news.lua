@@ -218,7 +218,9 @@ function M.own(self, view, now)
 			-- its ask first: a seller values its own spare at next to nothing, so by its value
 			-- a fisherman's 16 cod ranked under the iron armour it was born with, and the
 			-- butcher never heard of them (ColonyFood, 2026-11-13).
-			local outputs = self._profession and ledger.outputs(self._profession, self._max_trade_tier) or {}
+			-- An alchemist is a cleric to vanilla and sells none of the cleric's goods (ticket 20).
+			local trade = self._villages_alchemist and "alchemist" or self._profession
+			local outputs = trade and ledger.outputs(trade, self._max_trade_tier) or {}
 			local made = {}
 			for item, count in pairs(list) do
 				if outputs[item] and not told[item] then made[item] = count end
