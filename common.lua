@@ -104,6 +104,22 @@ local HOLIDAY_CLERIC_SCHEDULE = {
 	{start = 17500, stage = "home"},
 	{start = 18500, stage = "sleep"},
 }
+-- The alchemist (alchemist.lua, ticket 20) goes to neither the tavern nor the church: it
+-- works through those hours, and meets the village at the morning bell and the holiday bell.
+local ALCHEMIST_SCHEDULE = {
+	{start = 5500, stage = "putter"},
+	{start = 7000, stage = "work"},
+	{start = 17500, stage = "home"},
+	{start = 18500, stage = "sleep"},
+}
+local HOLIDAY_ALCHEMIST_SCHEDULE = {
+	{start = 5500, stage = "putter"},
+	{start = 7000, stage = "work"},
+	{start = 10500, stage = "bell"},
+	{start = 15000, stage = "work"},
+	{start = 17500, stage = "home"},
+	{start = 18500, stage = "sleep"},
+}
 local HOLIDAY_KEEPER_SCHEDULE = {
 	{start = 7000, stage = "putter"},
 	{start = 8000, stage = "free"},
@@ -147,6 +163,9 @@ end
 -- villager picks that villager's own timetable; omit it for the common one.
 -- A thunderstorm sends everyone to bed at any hour.
 local function schedule_of(villager, holiday)
+	if villager and villager._villages_alchemist then
+		return holiday and HOLIDAY_ALCHEMIST_SCHEDULE or ALCHEMIST_SCHEDULE
+	end
 	if holiday then
 		if villager and villager._villages_keeper then return HOLIDAY_KEEPER_SCHEDULE end
 		if villager and villager._profession == "cleric" then return HOLIDAY_CLERIC_SCHEDULE end
@@ -187,6 +206,18 @@ local MAX_DAYS_BACK = 1000
 -- How many of the last `seconds` of game time fell in the villager's work stages, from the
 -- clock alone: each day's own timetable, holiday or not, counted back from the time of day
 -- now. Thunder is left out, and so is a night skipped in bed, which game time never saw.
+-- Ticks of work in an ordinary (not holiday) day of the villager's timetable.
+local function work_day_ticks(villager)
+	local schedule, total = schedule_of(villager, false), 0
+	for i, entry in ipairs(schedule) do
+		if WORK_STAGES[entry.stage] then
+			local stops = schedule[i + 1] and schedule[i + 1].start or 24000 + schedule[1].start
+			total = total + stops - entry.start
+		end
+	end
+	return total
+end
+
 local function work_seconds(seconds, villager)
 	local speed = tonumber(core.settings and core.settings:get("time_speed")) or 72
 	if not seconds or seconds <= 0 or speed <= 0 then return 0 end
@@ -238,6 +269,7 @@ local vanilla_activity = {
 
 local PULPIT = "living_villages:pulpit"
 local BENCH = "living_villages:builder_block"
+local ALCHEMY_STAND = "living_villages:alchemy_stand"
 
 local function is_workstation_node(name)
 	return workstation_nodes[name] or core.get_item_group(name, "cauldron") > 0
@@ -294,6 +326,7 @@ M = {
 	schedule_stage = stage_at,
 	is_holiday = is_holiday,
 	work_seconds = work_seconds,
+	work_day_ticks = work_day_ticks,
 	-- Replacement for VoxeLibre's get_activity(tod), which villager.lua
 	-- declares without `local` and looks up as a global on every call.
 	-- activity_override(villager, stage), when set, may answer instead (flock.lua keeps
@@ -324,12 +357,13 @@ M = {
 		return stage == "work" or stage == "staff"
 	end,
 	is_workstation_node = is_workstation_node,
-	-- Whether the villager's _jobsite is a workstation (or a pulpit, cleric.lua, or a
-	-- builder's bench) that carries its id.
+	-- Whether the villager's _jobsite is a workstation (or a pulpit, cleric.lua, a
+	-- builder's bench or an alchemist's stand) that carries its id.
 	has_claimed_jobsite = function(self)
 		if not self._jobsite or not self._id then return false end
 		local node = core.get_node_or_nil(self._jobsite)
-		if not node or not (is_workstation_node(node.name) or node.name == PULPIT or node.name == BENCH) then
+		if not node or not (is_workstation_node(node.name) or node.name == PULPIT or node.name == BENCH
+			or node.name == ALCHEMY_STAND) then
 			return false
 		end
 		return core.get_meta(self._jobsite):get_string("villager") == self._id

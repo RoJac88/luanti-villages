@@ -55,6 +55,17 @@ local MAX_URGENCY, MIN_URGENCY = 3, 0.5
 local CRAFT_BATCH = 4
 local FUEL_BATCH = 4
 local COAL = "mcl_core:coal_lump"
+-- The money factor (ticket 21a, docs/villager-economy-design.md's Price discovery): what
+-- an emerald is worth to a villager falls with how many it holds. Its marginal value is
+-- lambda = (CUSHION / emeralds) ^ GAMMA, within 1 / LAMBDA_SPAN and LAMBDA_SPAN, and
+-- every value is divided by it: at CUSHION (four dinners) a value is as it was, a
+-- villager with one emerald values everything at an eighth, and one with 3000 pays some
+-- six times a price for what it wants. Money then goes from the rich to whoever sells
+-- what they want, and a broke seller's goods come cheap. ColonyFood, 2026-11-15: two
+-- farmers and the mason held 3940 of some 4700 emeralds and bought almost nothing.
+local CUSHION = 4 * DINNER
+local GAMMA = 0.5
+local LAMBDA_SPAN = 8
 
 local HAND_PRICES = {
 	-- A log is four planks, a plank two sticks (the fletcher buys 32 sticks for one).
@@ -104,6 +115,31 @@ for _, species in ipairs({"acacia", "spruce", "birch", "jungle"}) do
 	HAND_PRICES["mcl_core:" .. species .. "sapling"] = HAND_PRICES["mcl_core:sapling"]
 end
 
+-- The alchemist's goods (ticket 20), priced at what their inputs cost at base prices, in
+-- order, each from the ones before it: a nugget is four stone, an ingot nine nuggets, a
+-- gold nugget two ingots' nuggets, a gold ingot nine gold nuggets, a flint four logs, glass
+-- two stone and a pane one glass. These replace the trade tables' prices, so a smith values
+-- iron at what the alchemist can sell it for, and glass gets cheaper.
+local STONE, LOG = "mcl_core:stone", "mcl_core:tree"
+local IRON_NUGGET, IRON = "mcl_core:iron_nugget", "mcl_core:iron_ingot"
+local GOLD_NUGGET, GOLD = "mcl_core:gold_nugget", "mcl_core:gold_ingot"
+local FLINT, GLASS, PANE = "mcl_core:flint", "mcl_core:glass", "xpanes:pane_natural_flat"
+local COST_PRICED = {
+	{IRON_NUGGET, {{STONE, 4}}},
+	{IRON, {{IRON_NUGGET, 9}}},
+	{GOLD_NUGGET, {{IRON_NUGGET, 18}}},
+	{GOLD, {{GOLD_NUGGET, 9}}},
+	{FLINT, {{LOG, 4}}},
+	{GLASS, {{STONE, 2}}},
+	{PANE, {{GLASS, 1}}},
+}
+-- A good a profession's recipe makes from iron, gold or flint is priced at no less than its
+-- inputs and fuel at these prices times COST_FLOOR, so the smiths, the armorer and the
+-- fletcher still gain on each craft.
+local FLOORED_INPUTS = {[IRON] = true, [IRON_NUGGET] = true, [GOLD] = true, [GOLD_NUGGET] = true, [FLINT] = true}
+local COST_FLOOR = 1.25
+local SMELTS_PER_LUMP = 8
+
 -- What a profession makes for itself, so never needs to buy.
 local MAKES = {
 	farmer = {
@@ -132,15 +168,24 @@ local ROLES = {
 			["mcl_mushrooms:mushroom_stew"] = true, ["mcl_farming:pumpkin_pie"] = true,
 		},
 	},
+	-- The alchemist (ticket 20): its inputs change with what it holds (alchemist.targets,
+	-- by way of possessions.assess), so none is fixed here.
+	alchemist = {
+		inputs = {},
+		outputs = {
+			[IRON_NUGGET] = true, [IRON] = true, [GOLD_NUGGET] = true, [GOLD] = true, [FLINT] = true,
+			[GLASS] = true, [PANE] = true,
+		},
+	},
 }
 
 -- What a villager wants for its own sake comes from its savings (comforts.lua, ticket 19),
 -- by way of `extra`.
 
 local M = {
-	EMERALD = EMERALD, SCALE = SCALE, DINNER = DINNER, STOCK_DAYS = STOCK_DAYS, STOCK_MONEY = STOCK_MONEY,
+	EMERALD = EMERALD, SCALE = SCALE, DINNER = DINNER, CUSHION = CUSHION, GAMMA = GAMMA, LAMBDA_SPAN = LAMBDA_SPAN, STOCK_DAYS = STOCK_DAYS, STOCK_MONEY = STOCK_MONEY,
 	STARVING_DAYS = STARVING_DAYS, MAX_URGENCY = MAX_URGENCY, MIN_URGENCY = MIN_URGENCY,
-	COAL = COAL, version = tables.version,
+	COAL = COAL, COST_FLOOR = COST_FLOOR, version = tables.version,
 }
 
 local function mean(spec) return (spec.min + spec.max) / 2 end
@@ -201,6 +246,31 @@ local function derive()
 	end
 	for item, price in pairs(result) do result[item] = price * SCALE end
 	result[EMERALD] = 1
+	for _, entry in ipairs(COST_PRICED) do
+		local cost = 0
+		for _, input in ipairs(entry[2]) do cost = cost + result[input[1]] * input[2] end
+		result[entry[1]] = cost
+	end
+	-- The cost floor, in a fixed order so a test sees the same prices every run.
+	local floored = {}
+	for profession, list in pairs(recipes) do
+		for _, recipe in ipairs(list) do
+			local uses = false
+			for _, input in ipairs(recipe.from) do uses = uses or FLOORED_INPUTS[input[1]] == true end
+			if uses then floored[#floored + 1] = {profession = profession, recipe = recipe} end
+		end
+	end
+	table.sort(floored, function(a, b)
+		if a.recipe.makes ~= b.recipe.makes then return a.recipe.makes < b.recipe.makes end
+		return a.profession < b.profession
+	end)
+	for _, entry in ipairs(floored) do
+		local recipe = entry.recipe
+		local cost = (recipe.fuel or 0) / SMELTS_PER_LUMP * (result[COAL] or 0)
+		for _, input in ipairs(recipe.from) do cost = cost + (result[input[1]] or 0) * input[2] end
+		local floor = COST_FLOOR * cost / recipe.count
+		if floor > (result[recipe.makes] or 0) then result[recipe.makes] = floor end
+	end
 	return result
 end
 
@@ -220,11 +290,18 @@ function M.inputs(profession, max_tier)
 	local entry = tables.professions[profession]
 	if not entry then return found end
 	local makes = MAKES[profession] or {}
+	-- A vanilla trade's want for iron, gold or flint counts only where its own recipes take
+	-- it: at the alchemist's prices (ticket 20) a cleric's three gold ingots or a tool smith's
+	-- thirty flint would hold hundreds of emeralds in goods it never uses.
+	local uses = {}
+	for _, recipe in ipairs(recipes[profession] or {}) do
+		for _, input in ipairs(recipe.from) do uses[input[1]] = true end
+	end
 	for _, trade in ipairs(entry.trades) do
 		local offered = trade.offered[1]
 		if trade.tier <= (max_tier or 5) and offered.item == EMERALD and #trade.wanted == 1 then
 			local item = trade.wanted[1].item
-			if not makes[item] then found[item] = math.min(math.max(found[item] or 0, trade.wanted[1].min), INPUT_CAP) end
+			if not makes[item] and (not FLOORED_INPUTS[item] or uses[item]) then found[item] = math.min(math.max(found[item] or 0, trade.wanted[1].min), INPUT_CAP) end
 		end
 	end
 	for _, recipe in ipairs(recipes[profession] or {}) do
@@ -277,6 +354,14 @@ function M.urgency(held, target)
 	return MIN_URGENCY + (1 - MIN_URGENCY) * keep / held
 end
 
+-- The marginal value of an emerald to one holding `emeralds` (the money factor, above);
+-- 1 when not known.
+function M.lambda(emeralds)
+	if not emeralds then return 1 end
+	local lambda = (CUSHION / math.max(emeralds, 1)) ^ GAMMA
+	return math.min(math.max(lambda, 1 / LAMBDA_SPAN), LAMBDA_SPAN)
+end
+
 -- input: {id, profession, max_tier, held = {item = count}, food_points, hunger_per_day,
 -- foods = {item = points} (food.POINTS), extra = {item = count} (a Builder's missing
 -- materials, goods that wear out), extra_categories = {category = amount} (a Builder's
@@ -284,7 +369,10 @@ end
 -- to it whatever its need: what a good that wears out brings over its life, wants.lua),
 -- least = {item = emeralds} (the least it will take for an item: a peddler's stock is
 -- worth what it paid, labour.lua, ticket 12), prices = {item = factor} (its own
--- multiplier on the base price, prices.lua, ticket 13)}.
+-- multiplier on the base price, prices.lua, ticket 13), money = emeralds (what it has to
+-- spend, for the money factor, M.lambda; none, as for the keeper, leaves values as
+-- they are)}. `worth` and `least` are in emeralds and bound the value after the money
+-- factor.
 -- Returns {targets, needs, surplus, value = function(item), urgency = function(item)}:
 -- urgency is the need's own (M.urgency), before `worth` caps the value, so a good that
 -- wears out, wanted whole, is still as urgent as any other need (trade_trips.lua).
@@ -381,19 +469,26 @@ function M.assess(input)
 		if category then return M.urgency(held_units[category] or 0, wanted[category] or 0) end
 		return M.urgency(raw[item] or 0, targets[item] or 0)
 	end
+	local lambda = M.lambda(input.money)
 	local function value(item)
 		local price = M.price(item)
 		if not price then return nil end
 		if item == EMERALD then return 1 end
 		local factor = input.prices and input.prices[item] or 1
-		local value = price * factor * urgency(item)
+		local value = price * factor * urgency(item) / lambda
 		local most = input.worth and input.worth[item]
 		if most then value = math.min(value, most) end
 		local least = input.least and input.least[item]
 		return least and math.max(value, least) or value
 	end
 	return {targets = targets, needs = needs, surplus = surplus, value = value, urgency = urgency,
-		categories = categories, group = group}
+		categories = categories, group = group, lambda = lambda,
+		-- Its value with no money in it, for goods against goods (exchange.lua's barter):
+		-- two broke villagers swap at what the goods are worth to them, not what an emerald is.
+		real = function(item)
+			local v = value(item)
+			return v and v * lambda
+		end}
 end
 
 -- The items with the largest need or surplus first, by value, for news and the inspector.

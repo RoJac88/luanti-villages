@@ -83,29 +83,54 @@ local function short_id(self)
 	return tostring(self._id):sub(1, 6)
 end
 
+-- Its trade, for the log: an alchemist is a cleric to vanilla (alchemist.lua).
+local function trade_name(self)
+	return self._villages_alchemist and "alchemist" or tostring(self._profession)
+end
+
 function M.craft_seconds()
 	local value = core.settings and tonumber(core.settings:get("living_villages_craft_seconds"))
 	return math.max(value or DEFAULT_CRAFT_SECONDS, 1)
 end
 
--- A keeper and a Builder (a mason to vanilla, builder.lua) have work of their own.
+-- A keeper and a Builder (a mason to vanilla, builder.lua) have work of their own; an
+-- alchemist (a cleric to vanilla, alchemist.lua) has its own list.
 function M.recipes(self)
+	if self._villages_alchemist then return recipes.alchemist end
 	if self._villages_keeper or self._villages_builder then return nil end
 	return recipes[self._profession]
 end
 
+-- Seconds of economic clock in an ordinary working day for this villager, from its
+-- timetable and time_speed (common.lua).
+local function work_day_seconds(self)
+	local speed = tonumber(core.settings and core.settings:get("time_speed")) or 72
+	if speed <= 0 then speed = 72 end
+	return common.work_day_ticks(self) * 86400 / (24000 * speed)
+end
+
+-- What one craft of the recipe costs in banked seconds: its `share` of a working day
+-- (the alchemist's, recipes.lua), or living_villages_craft_seconds an item.
+function M.cost(self, recipe)
+	if recipe.share then return recipe.share * work_day_seconds(self) end
+	return M.craft_seconds() * recipe.count
+end
+
 -- An input any species of which will do (ticket 15): a recipe written with oak logs or
--- planks takes any log or planks, and planks made from a log are of its species. The
+-- planks takes any log or planks, and planks made from a log are of its species. An input
+-- that names a category (its third field, the alchemist's stone) takes any member. The
 -- members, or nil for an input wanted as itself.
-local function kinds(item)
+local function kinds(item, named)
+	if named then return goods.CATEGORIES[named] end
 	local category = goods.target_category(item)
 	if category == "log" or category == "planks" then return goods.CATEGORIES[category] end
 	return nil
 end
 
--- How many of an input there are by `count(item)`, any species counted.
-local function have(item, count)
-	local members = kinds(item)
+-- How many of an input there are by `count(item)`, any species (or member of the
+-- `named` category) counted.
+local function have(item, count, named)
+	local members = kinds(item, named)
 	if not members then return count(item) or 0 end
 	local total = 0
 	for member in pairs(members) do total = total + (count(member) or 0) end
@@ -123,7 +148,7 @@ local function fuels(self)
 	for _, recipe in ipairs(recipes[profession] or {}) do
 		for _, input in ipairs(recipe.from) do
 			inputs[input[1]] = true
-			for member in pairs(kinds(input[1]) or {}) do inputs[member] = true end
+			for member in pairs(kinds(input[1], input[3]) or {}) do inputs[member] = true end
 		end
 	end
 	local others = {}
@@ -152,7 +177,7 @@ end
 -- Whether `held` (possessions.held) covers one craft.
 function M.can_make(self, recipe, held)
 	for _, input in ipairs(recipe.from) do
-		if have(input[1], function(item) return held[item] end) < input[2] then return false end
+		if have(input[1], function(item) return held[item] end, input[3]) < input[2] then return false end
 	end
 	return not recipe.fuel or fuel_available(self, held) >= recipe.fuel
 end
@@ -176,6 +201,17 @@ function M.choose(self, held, view, asks)
 	local list = M.recipes(self)
 	if not list then return nil end
 	held = held or possessions.held(self)
+	-- A ranked list (the alchemist's) goes by rank and `upto`, not by value.
+	if list[1] and list[1].rank then
+		local best
+		for _, recipe in ipairs(list) do
+			local stocked = recipe.upto and have(recipe.makes, function(item) return held[item] end) >= recipe.upto
+			if not stocked and M.can_make(self, recipe, held) and (not best or recipe.rank < best.rank) then
+				best = recipe
+			end
+		end
+		return best
+	end
 	view = view or possessions.assess(self)
 	asks = asks or news.asking(news.heard(self, core.get_gametime()))
 	local best, best_gain
@@ -214,7 +250,9 @@ end
 -- Whether its belongings alone cover one craft, fuel included.
 function M.supplied(self, recipe)
 	for _, input in ipairs(recipe.from) do
-		if have(input[1], function(item) return possessions.count(self, item) end) < input[2] then return false end
+		if have(input[1], function(item) return possessions.count(self, item) end, input[3]) < input[2] then
+			return false
+		end
 	end
 	if not recipe.fuel then return true end
 	return (self._villages_fuel or 0) + fuel_in(self, function(item) return possessions.count(self, item) end)
@@ -264,7 +302,7 @@ function M.count_supply(self)
 	update_max_tradenum(self)
 	set_badge(self, tier, tier + 1)
 	core.log("action", string.format("[living_villages] production: villager %s (%s) rose to tier %d on village supply",
-		short_id(self), tostring(self._profession), tier + 1))
+		short_id(self), trade_name(self), tier + 1))
 	return true
 end
 
@@ -276,7 +314,7 @@ function M.make(self, recipe)
 	local held = possessions.held(self)
 	local log_used
 	for _, input in ipairs(recipe.from) do
-		local members = kinds(input[1])
+		local members = kinds(input[1], input[3])
 		if not members then
 			possessions.take_held(self, input[1], input[2])
 			used[input[1]] = (used[input[1]] or 0) + input[2]
@@ -309,7 +347,7 @@ function M.make(self, recipe)
 	possessions.add(self, makes, recipe.count)
 	tally.note(self, {[makes] = recipe.count}, used)
 	core.log("action", string.format("[living_villages] production: villager %s (%s) made %d %s",
-		short_id(self), tostring(self._profession), recipe.count, makes))
+		short_id(self), trade_name(self), recipe.count, makes))
 	if supplied then M.count_supply(self) end
 	return true
 end
@@ -322,8 +360,9 @@ end
 -- `_villages_idle` holds the day and the answer.
 function M.idle_today(self)
 	if self.child or not self._id or not self._jobsite or self._villages_woodcutter then return false end
-	-- A shepherd's flock is its work: dyeing is a side line, never a reason to labour.
-	if self._profession == "shepherd" then return false end
+	-- A shepherd's flock is its work: dyeing is a side line, never a reason to labour. An
+	-- alchemist waits at its stand for stone and logs (ticket 20).
+	if self._profession == "shepherd" or self._villages_alchemist then return false end
 	if self._profession == "nitwit" or self._profession == "unemployed" or not M.recipes(self) then return false end
 	local day = core.get_day_count()
 	local idle = self._villages_idle
@@ -333,7 +372,7 @@ function M.idle_today(self)
 	self._villages_idle = {day = day, idle = nothing}
 	if nothing then
 		core.log("action", string.format("[living_villages] production: villager %s (%s) has nothing to make today and labours",
-			short_id(self), tostring(self._profession)))
+			short_id(self), trade_name(self)))
 	end
 	return nothing
 end
@@ -371,7 +410,7 @@ function M.work(self, elapsed)
 			banked = 0
 			break
 		end
-		local cost = M.craft_seconds() * recipe.count
+		local cost = M.cost(self, recipe)
 		if banked < cost or not M.make(self, recipe) then break end
 		banked = banked - cost
 		made = made + 1
@@ -413,7 +452,7 @@ function M.guard_restock(self, before)
 	if not reason then return false end
 	self._trades = before.trades
 	core.log("action", string.format("[living_villages] production: villager %s (%s) did not restock: %s",
-		short_id(self), tostring(self._profession), reason))
+		short_id(self), trade_name(self), reason))
 	return true
 end
 
@@ -447,7 +486,7 @@ function M.status(self)
 	local fuel = self._villages_fuel and (", " .. self._villages_fuel .. " smelts of fuel") or ""
 	if not recipe then return "nothing to craft with" .. fuel end
 	return string.format("making %s, %d/%d s%s", recipe.makes:gsub("^.*:", ""), banked,
-		M.craft_seconds() * recipe.count, fuel)
+		math.floor(M.cost(self, recipe) + 0.5), fuel)
 end
 
 return M

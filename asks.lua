@@ -29,6 +29,7 @@
 local core = minetest
 local ledger = dofile(core.get_modpath("living_villages") .. "/ledger.lua")
 local prices = dofile(core.get_modpath("living_villages") .. "/prices.lua")
+local alchemist = dofile(core.get_modpath("living_villages") .. "/alchemist.lua")
 
 local MIN, MAX = 0.5, 2
 local MARKUP, MARKDOWN = 1.05, 0.9
@@ -61,6 +62,8 @@ function M.ask(seller, item)
 	local ask = base * M.factor(seller, item) * math.min(prices.factor(seller._villages_prices, item), 1)
 	local peddle = seller._villages_peddle
 	if peddle and peddle.item == item and not peddle.buying and peddle.bid then ask = math.max(ask, peddle.bid) end
+	-- An alchemist never asks less for its goods than their inputs cost (ticket 20).
+	if seller._villages_alchemist and alchemist.GOODS[item] then ask = math.max(ask, base) end
 	return ask
 end
 

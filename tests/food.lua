@@ -91,6 +91,11 @@ hungry._villages_econ_clock = hungry._villages_econ_clock + 1200
 assert(math.abs(food.points(hungry) - 8) < 1e-9)
 world.settings.living_villages_economy = nil
 
+-- An alchemist (ticket 20) does not eat: always full, whatever its clock says.
+local alchemist = {_villages_alchemist = true, _villages_food = 2, _villages_econ_clock = 0}
+alchemist._villages_econ_clock = 100000
+assert(food.points(alchemist) == food.FULL and food.state(alchemist) == "full" and not food.wants(alchemist))
+
 -- Children do not get hungry.
 child._villages_econ_clock = 100000
 assert(food.state(child) == "fed" and not child._villages_food)

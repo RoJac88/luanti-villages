@@ -3,7 +3,9 @@
 -- it sells to a villager. Data and pure functions; it reads only what it is handed.
 --
 -- Categories. A need for food is for food points, and any food gives them; a need for
--- fuel is for burn seconds; a need for logs or planks takes any species. A category's
+-- fuel is for burn seconds; a need for logs or planks takes any species, and one for
+-- wool any colour (a Builder's for the red beds it makes, builder_market.lua), and one for
+-- stone either stone or cobble (an alchemist's, ticket 20). A category's
 -- amount is in its units: an item gives `units` of them. ledger.assess reckons a need
 -- and its spare on the category, and lists the need under every member in that member's
 -- own count, so a seller of any of them can fill it.
@@ -19,9 +21,11 @@
 -- a short list a job. A few are anyone's (ANYONE): a lily of the valley or bone meal (a
 -- farmer's spare, farmer.lua) sells as the white dye it crafts into, one for one, for the
 -- shepherd to dye grey wool white (19h); a bone (a forager picks up a skeleton's) as the
--- three bone meal or three white dye it makes, whichever the buyer wants. None is for food: the butcher cooks (recipes.lua). Player trades
+-- three bone meal or three white dye it makes, whichever the buyer wants; a poppy or a
+-- red tulip as a red dye, for the Builder's red beds (19i). None is for food: the butcher cooks (recipes.lua). Player trades
 -- convert nothing. Each gives `ratio` of its product per source, `takes` sources at a
--- time (1 unless set): two wool make three carpets.
+-- time (1 unless set): two wool make three carpets. One with `reserve` spends only the
+-- sources held past that many: the alchemist's gold (ticket 20).
 local core = minetest
 local food = dofile(core.get_modpath("living_villages") .. "/food.lua")
 
@@ -45,20 +49,33 @@ local WOOL_COLOURS = {"white", "grey", "silver", "black", "red", "yellow", "gree
 -- Burn seconds, as VoxeLibre's furnaces take them.
 local BURN = {[COAL] = 80, [CHARCOAL] = 80, [STICK] = 5, [KELP_BLOCK] = 200}
 
-local categories = {food = {}, fuel = {}, log = {}, planks = {}}
+local categories = {food = {}, fuel = {}, log = {}, planks = {}, wool = {}, stone = {}}
 for item, points in pairs(food.POINTS) do categories.food[item] = points end
 for item, seconds in pairs(BURN) do categories.fuel[item] = seconds end
 for log, planks in pairs(SPECIES) do
 	categories.log[log], categories.planks[planks] = 1, 1
 	categories.fuel[log], categories.fuel[planks] = 15, 15
 end
+for _, colour in ipairs(WOOL_COLOURS) do categories.wool["mcl_wool:" .. colour] = 1 end
+-- Stone or cobble, either for an alchemist's iron nuggets (ticket 20). Like wool, no job's
+-- target category: a mason's stone and a tool smith's cobble stay needs for that very item.
+categories.stone["mcl_core:stone"], categories.stone["mcl_core:cobble"] = 1, 1
 -- Which category a member belongs to first, when it is in two (a log is fuel too).
-local ORDER = {"log", "planks", "food", "fuel"}
+local ORDER = {"log", "planks", "wool", "stone", "food", "fuel"}
 
 local conversions = {
 	shepherd = {},
 	woodcutter = {},
 	mason = {{from = "mcl_core:stone", to = "mcl_core:stonebrickcarved", ratio = 1}},
+	-- The alchemist's (ticket 20): an ingot from nine nuggets, a gold nugget from eighteen
+	-- (two ingots) and a gold ingot from 162 (nine gold nuggets), gold only from the nuggets
+	-- past `reserve`; a pane from a glass, so both come from two stone.
+	alchemist = {
+		{from = "mcl_core:iron_nugget", to = "mcl_core:iron_ingot", ratio = 1 / 9, takes = 9},
+		{from = "mcl_core:iron_nugget", to = "mcl_core:gold_nugget", ratio = 1 / 18, takes = 18, reserve = 108},
+		{from = "mcl_core:iron_nugget", to = "mcl_core:gold_ingot", ratio = 1 / 162, takes = 162, reserve = 108},
+		{from = "mcl_core:glass", to = "xpanes:pane_natural_flat", ratio = 1},
+	},
 }
 for _, colour in ipairs(WOOL_COLOURS) do
 	table.insert(conversions.shepherd, {from = "mcl_wool:" .. colour, to = STRING, ratio = 4})
@@ -72,12 +89,35 @@ local ANYONE = {
 	{from = "mcl_mobitems:bone", to = "mcl_bone_meal:bone_meal", ratio = 3},
 	{from = "mcl_mobitems:bone", to = "mcl_dye:white", ratio = 3},
 	{from = "mcl_flowers:lily_of_the_valley", to = "mcl_dye:white", ratio = 1},
+	{from = "mcl_flowers:poppy", to = "mcl_dye:red", ratio = 1},
+	{from = "mcl_flowers:tulip_red", to = "mcl_dye:red", ratio = 1},
 }
 for _, list in pairs(conversions) do
 	table.sort(list, function(a, b) return a.from < b.from end)
 end
 
-local M = {CATEGORIES = categories, ORDER = ORDER, SPECIES = SPECIES, CONVERSIONS = conversions, BURN = BURN,
+-- Whole products from `sources` of a conversion's source: whole batches of `takes`, each
+-- giving takes × ratio (rounded, so 9 nuggets at a ninth give exactly one ingot), past its
+-- reserve. Returns the products and the sources they take.
+local function batch(conversion)
+	local takes = conversion.takes or 1
+	return takes, math.floor(takes * conversion.ratio + 0.5)
+end
+
+local function yield(conversion, sources)
+	local takes, gives = batch(conversion)
+	local batches = math.floor(math.max(sources - (conversion.reserve or 0), 0) / takes)
+	return batches * gives, batches * takes
+end
+
+-- The sources `count` products take, rounded up to whole batches, and the products they give.
+local function sources_for(conversion, count)
+	local takes, gives = batch(conversion)
+	local batches = math.ceil(count / gives)
+	return batches * takes, batches * gives
+end
+
+local M = {CATEGORIES = categories, yield = yield, sources_for = sources_for, ORDER = ORDER, SPECIES = SPECIES, CONVERSIONS = conversions, BURN = BURN,
 	COAL = COAL, CHARCOAL = CHARCOAL, STRING = STRING}
 
 -- How many of a category's units one item gives, or nil if it is no member.
@@ -115,7 +155,7 @@ end
 -- What a villager's job turns into another at a sale: a list of {from, to, ratio}. A
 -- profession's, or a labourer's activity's (labour.lua's `_villages_labour`).
 function M.conversions(villager)
-	local list = conversions[villager._profession]
+	local list = villager._villages_alchemist and conversions.alchemist or conversions[villager._profession]
 	if not list then
 		local labour = villager._villages_labour
 		list = labour and conversions[labour.activity] or {}

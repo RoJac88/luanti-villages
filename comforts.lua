@@ -12,7 +12,8 @@
 -- Use. A comfort it holds in its belongings fills a free slot (`_villages_comforts`, a
 -- list of {item, until}), and is used up `days` game days later. The ledger wants one for
 -- each slot that is free or nearly done (wants.NEARLY_WORN of its days left), worth at
--- most WORTH times its base price, so it never pays more than that. A villager that grew
+-- most WORTH times its base price over the money factor (ledger.lambda, ticket 21a), so it
+-- never pays more than that, and the richer it is the more that is. A villager that grew
 -- poorer keeps what it is using until it is used up, and wants no more.
 --
 -- Replaces the ledger's fixed preferences, two of which (cake, cookie) no village makes.
@@ -73,8 +74,9 @@ local function in_use(self)
 	return self._villages_comforts or {}
 end
 
+-- Never an alchemist's, which wants nothing for itself (ticket 20).
 local function wanted(self)
-	return not self.child and self._id ~= nil
+	return not self.child and self._id ~= nil and not self._villages_alchemist
 end
 
 -- Drops the comforts used up by `now`, and fills free slots from what it holds, through
@@ -108,7 +110,8 @@ function M.targets(self, emeralds, now)
 	if not wanted(self) then return targets, worth end
 	local tastes = M.tastes(self._id)
 	for _, taste in ipairs(tastes) do
-		worth[taste.item] = M.WORTH * (ledger.price(taste.item) or 0)
+		-- Over the money factor (ledger.lambda, ticket 21a): the richer, the more it pays.
+		worth[taste.item] = M.WORTH * (ledger.price(taste.item) or 0) / ledger.lambda(emeralds)
 	end
 	-- A slot in use and not nearly done needs nothing.
 	local busy = 0

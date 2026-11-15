@@ -132,7 +132,8 @@ local OLD_JOB_FIELDS = {
 }
 
 local function take_over(self, pos)
-	if self.child or not self._id or self._villages_keeper or self._villages_builder or self._profession == "nitwit"
+	if self.child or not self._id or self._villages_keeper or self._villages_builder or self._villages_alchemist
+		or self._profession == "nitwit"
 		or self._profession == "farmer" or self._villages_farm_seek or self._villages_left_unemployed then return false end
 	-- These are employ()'s own conditions, checked up front so nothing below
 	-- can fail halfway: once the old job is released, employ() must succeed.

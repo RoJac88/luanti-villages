@@ -9,7 +9,6 @@ local S = ledger.SCALE
 assert(S == 64)
 assert(near(ledger.price("mcl_farming:wheat_item"), S / 20), "the farmer buys 20 wheat for one")
 assert(near(ledger.price("mcl_farming:bread"), S / 6), "and sells 6 bread for one")
-assert(near(ledger.price("mcl_core:iron_ingot"), S / 4))
 assert(near(ledger.price("mcl_core:stick"), 2), "32 sticks for one: the cheapest, worth 2")
 -- Bought (18 for one) and sold (one for one) somewhere: the geometric mean.
 assert(near(ledger.price("mcl_wool:white"), S * math.sqrt(1 / 18)))
@@ -31,11 +30,53 @@ for _, profession in pairs(tables.professions) do
 end
 assert(#unpriced == 0, "unpriced: " .. table.concat(unpriced, ", "))
 
+-- The alchemist's goods at what their inputs cost (ticket 20): stone 3.2, a log 16.
+local stone, log = ledger.price("mcl_core:stone"), ledger.price("mcl_core:tree")
+assert(near(stone, S / 20) and near(log, 16))
+assert(near(ledger.price("mcl_core:iron_nugget"), 4 * stone))
+assert(near(ledger.price("mcl_core:iron_ingot"), 36 * stone), "nine nuggets, not vanilla's 16")
+assert(near(ledger.price("mcl_core:gold_nugget"), 2 * ledger.price("mcl_core:iron_ingot")))
+assert(near(ledger.price("mcl_core:gold_ingot"), 9 * ledger.price("mcl_core:gold_nugget")))
+assert(near(ledger.price("mcl_core:flint"), 4 * log))
+assert(near(ledger.price("mcl_core:glass"), 2 * stone), "cheaper than vanilla's 16")
+assert(near(ledger.price("xpanes:pane_natural_flat"), ledger.price("mcl_core:glass")))
+-- Goods made from them at no less than COST_FLOOR times their inputs and fuel, so every
+-- recipe that takes iron, gold or flint gains at base prices.
+local recipes = dofile("recipes.lua")
+local floored = {["mcl_core:iron_ingot"] = true, ["mcl_core:iron_nugget"] = true, ["mcl_core:gold_ingot"] = true,
+	["mcl_core:gold_nugget"] = true, ["mcl_core:flint"] = true}
+local checked = 0
+for profession, list in pairs(recipes) do
+	for _, recipe in ipairs(list) do
+		local cost, uses = (recipe.fuel or 0) / 8 * ledger.price("mcl_core:coal_lump"), false
+		for _, input in ipairs(recipe.from) do
+			cost = cost + (ledger.price(input[1]) or 0) * input[2]
+			uses = uses or floored[input[1]] == true
+		end
+		if uses then
+			checked = checked + 1
+			local made = ledger.price(recipe.makes) * recipe.count
+			assert(made >= ledger.COST_FLOOR * cost - 1e-9, profession .. " loses on " .. recipe.makes)
+		end
+	end
+end
+assert(checked == 6, "the four iron pieces, the iron axe and arrows: " .. checked)
+assert(math.floor(ledger.price("mcl_armor:helmet_iron") + 0.5) == 724)
+assert(math.floor(ledger.price("mcl_tools:axe_iron") + 0.5) == 439)
+assert(near(ledger.price("mcl_armor:helmet_iron"), ledger.COST_FLOOR * (5 * 36 * stone
+	+ 5 / 8 * ledger.price("mcl_core:coal_lump"))))
+
 -- The dependency graph.
 local smith = ledger.inputs("tool_smith")
-assert(smith["mcl_core:coal_lump"] == 15 and smith["mcl_core:iron_ingot"] == 4)
-assert(smith["mcl_core:flint"] == 30, "capped at 32 but 30 fits")
-assert(ledger.inputs("tool_smith", 1)["mcl_core:iron_ingot"] == nil, "only up to its tier")
+assert(smith["mcl_core:coal_lump"] == 15 and smith["mcl_core:diamond"] == 1)
+assert(ledger.inputs("tool_smith", 1)["mcl_core:diamond"] == nil, "only up to its tier")
+-- A trade's want for iron, gold or flint counts only where the profession's recipes take it
+-- (ticket 20): the tool smith's iron and flint, the cleric's gold and the leatherworker's flint go.
+assert(smith["mcl_core:iron_ingot"] == nil and smith["mcl_core:flint"] == nil)
+assert(ledger.inputs("cleric")["mcl_core:gold_ingot"] == nil and ledger.inputs("cleric")["mcl_mobitems:rotten_flesh"])
+assert(ledger.inputs("leatherworker")["mcl_core:flint"] == nil)
+assert(ledger.inputs("weapon_smith")["mcl_core:iron_ingot"] and not ledger.inputs("weapon_smith")["mcl_core:flint"])
+assert(ledger.inputs("armorer")["mcl_core:iron_ingot"] == 32 and ledger.inputs("fletcher")["mcl_core:flint"] == 26)
 assert(next(ledger.inputs("farmer")) == nil, "a farmer grows what its table buys")
 assert(ledger.inputs("shepherd")["mcl_wool:white"] == nil and ledger.inputs("shepherd")["mcl_dye:black"] == 12)
 assert(ledger.outputs("farmer")["mcl_farming:bread"] and ledger.outputs("farmer")["mcl_farming:wheat_item"])
@@ -45,7 +86,8 @@ assert(not ledger.inputs("keeper")["mcl_farming:wheat_item"] and not ledger.inpu
 assert(ledger.outputs("keeper")["mcl_farming:bread"])
 assert(next(ledger.inputs("nitwit")) == nil and next(ledger.inputs("unemployed")) == nil)
 local flint = ledger.producers("mcl_core:flint")
-assert(#flint == 1 and flint[1] == "fletcher")
+assert(#flint == 2 and flint[1] == "alchemist" and flint[2] == "fletcher", "and the alchemist (ticket 20)")
+assert(next(ledger.inputs("alchemist")) == nil, "its inputs follow what it holds (alchemist.targets)")
 local bread = table.concat(ledger.producers("mcl_farming:bread"), ",")
 assert(bread == "farmer,keeper", bread)
 

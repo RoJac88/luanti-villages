@@ -94,6 +94,20 @@ return {
 		{makes = "mcl_books:bookshelf", count = 1, tier = 1, from = {{"mcl_core:wood", 6}, {"mcl_books:book", 3}}},
 		{makes = "mcl_core:glass", count = 1, tier = 3, from = {{"mcl_core:sand", 1}}, fuel = 1},
 	},
+	-- The alchemist (ticket 20): a role over a cleric, at its stand (alchemist.lua). Its
+	-- recipes are no vanilla craft, so none is checked against a trade table. Each takes
+	-- `share` of its working day (10500 ticks of the clock, production.lua) rather than
+	-- living_villages_craft_seconds, so a whole day gives 36 glass, 6 flint or 18 nuggets,
+	-- and it makes the first by `rank` that it may: glass while it holds fewer than `upto`
+	-- (alchemist.lua's GLASS_KEEP plus one), flint up to FLINT_KEEP, then nuggets without
+	-- end. A nugget takes stone or cobble: an input's third field names a category
+	-- (goods.lua) any member of which serves.
+	alchemist = {
+		{makes = "mcl_core:glass", count = 1, tier = 1, from = {{"mcl_core:stone", 2}}, share = 1 / 36, rank = 1, upto = 13},
+		{makes = "mcl_core:flint", count = 1, tier = 1, from = {{"mcl_core:tree", 4}}, share = 1 / 6, rank = 2, upto = 32},
+		{makes = "mcl_core:iron_nugget", count = 1, tier = 1, from = {{"mcl_core:cobble", 4, "stone"}}, share = 1 / 18,
+			rank = 3},
+	},
 	-- No leatherworker: its leather comes from its herd (herd.lua, ticket 11e) and goes to
 	-- the librarian's books. Armour no villager wears would hold a recipe batch of leather
 	-- (32) back from them, and its player trades need no stock.

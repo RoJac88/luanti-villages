@@ -88,6 +88,7 @@ local possessions = {
 	end,
 }
 possessions.take_held = possessions.take
+possessions.count = function(self, item) return self._villages_belongings[item] or 0 end
 values[BREAD] = 10
 view.surplus = {[BREAD] = 6}
 local gossiped = {}
@@ -155,4 +156,69 @@ enabled = false
 local other = {_id = "o", object = villager.object}
 def.on_rightclick(other, player)
 assert(other.vanilla)
+-- The alchemist (ticket 20d): its goods at 1.5 and 0.5 times their base price, what its
+-- conversions make listed beside what it holds, and only the iron, gold, flint and glass
+-- it takes in.
+enabled = true
+local ledger = dofile("ledger.lua")
+local NUGGET, GOLD_NUGGET, GOLD = "mcl_core:iron_nugget", "mcl_core:gold_nugget", "mcl_core:gold_ingot"
+local FLINT, GLASS, PANE = "mcl_core:flint", "mcl_core:glass", "xpanes:pane_natural_flat"
+local function row(list, item)
+	for i, entry in ipairs(list) do if entry.item == item then return entry, i end end
+end
+local empty = {surplus = {}, needs = {}, value = function(item) return ledger.price(item) end}
+do
+	local held = {[NUGGET] = 50, [GLASS] = 3}
+	local r = window.rows(empty, held, 1000, 0, nil, true)
+	local ingot = row(r.sells, IRON)
+	assert(ingot and ingot.lots == 5 and ingot.held == 0 and ingot.conversion.from == NUGGET, "five ingots from 50")
+	assert(ingot.price == math.ceil(ledger.price(IRON) * 1.5), ingot.price)
+	assert(row(r.sells, NUGGET).lots == 50 and row(r.sells, PANE).lots == 3 and row(r.sells, GLASS).lots == 3)
+	assert(not row(r.sells, GOLD_NUGGET), "no gold under the reserve")
+	assert(row(window.rows(empty, {[NUGGET] = 126}, 0, 0, nil, true).sells, GOLD_NUGGET).lots == 1, "past it")
+	local bid = row(r.buys, IRON)
+	assert(bid and bid.price == math.floor(ledger.price(IRON) * 0.5) and bid.lots == math.floor(1000 / bid.price))
+	assert(row(r.buys, GOLD) and row(r.buys, GOLD).lots == 0, "a gold ingot is more than it has")
+assert(row(r.buys, FLINT).lots == 31 and row(r.buys, GLASS).lots == 10, "what 1000 pays for; 13 glass less 3")
+	-- At 32 flint and 13 glass it takes no more; panes count as glass.
+	r = window.rows(empty, {[FLINT] = 32, [GLASS] = 10, [PANE] = 3}, 1000, 0, nil, true)
+	assert(not row(r.buys, FLINT) and not row(r.buys, GLASS) and not row(r.buys, PANE) and row(r.buys, NUGGET))
+	-- With the player's goods known, it offers for what the player has, as many as they have.
+	r = window.rows(empty, {}, 1000, 0, {[IRON] = 2}, true)
+	assert(#r.buys == 1 and r.buys[1].item == IRON and r.buys[1].lots == 2)
+	-- Anyone else has no such rows.
+	assert(not row(window.rows(empty, held, 1000, 0, nil, false).sells, IRON))
+end
+-- In the window: buying an ingot takes nine nuggets and pays its pouch; a held ingot goes first.
+do
+	local pouch = {[NUGGET] = 20, [EMERALD] = 10}
+	local alch = {_id = "alch-1", _profession = "cleric", _villages_alchemist = true, _villages_belongings = pouch,
+		object = villager.object}
+	view = empty
+	-- The stub engine has no player lookup, so the window's rows are unfiltered, as here.
+	player_inv.contents[EMERALD] = 1000
+	def.on_rightclick(alch, player)
+	assert(shown[#shown].spec:find("alchemist", 1, true), "named for its trade")
+	local rows_now = window.rows(empty, pouch, 10, 0, nil, true)
+	local _, index = row(rows_now.sells, IRON)
+	handlers.fields(player, window.FORMNAME, {["sell_one_" .. index] = true})
+	local price = math.ceil(ledger.price(IRON) * 1.5)
+	assert(pouch[NUGGET] == 11 and player_inv.contents[IRON] == 7 + 1 and pouch[EMERALD] == 10 + price, pouch[NUGGET])
+	assert(logs[#logs]:find("(from 9 mcl_core:iron_nugget)", 1, true))
+	pouch[IRON] = 1
+	rows_now = window.rows(empty, pouch, pouch[EMERALD], 0, nil, true)
+	_, index = row(rows_now.sells, IRON)
+	handlers.fields(player, window.FORMNAME, {["sell_one_" .. index] = true})
+	assert(pouch[IRON] == 0 and pouch[NUGGET] == 11, "the held ingot, not the nuggets")
+	-- Selling it flint: kept as it is, at half its base price, refused at 32.
+	player_inv.contents[FLINT] = 40
+	pouch[EMERALD] = 5000
+	rows_now = window.rows(empty, pouch, pouch[EMERALD], 0, nil, true)
+	_, index = row(rows_now.buys, FLINT)
+	handlers.fields(player, window.FORMNAME, {["buy_all_" .. index] = true})
+	assert(pouch[FLINT] == 32 and player_inv.contents[FLINT] == 8, tostring(pouch[FLINT]))
+	assert(pouch[EMERALD] == 5000 - 32 * math.floor(ledger.price(FLINT) * 0.5))
+	assert(not row(window.rows(empty, pouch, pouch[EMERALD], 0, nil, true).buys, FLINT))
+	handlers.fields(player, window.FORMNAME, {quit = "true"})
+end
 print("trade_window.lua: ok")
