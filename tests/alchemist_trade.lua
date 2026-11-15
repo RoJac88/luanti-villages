@@ -98,14 +98,23 @@ local cutter = alchemist_with({[LOG] = 12, ["mcl_core:birchtree"] = 12})
 for _ = 1, 6 do production.work(cutter, 525 / 6) end
 assert(count(cutter, FLINT) == 6 and count(cutter, LOG) + count(cutter, "mcl_core:birchtree") == 0)
 
--- Glass first while it holds 12 or fewer, then flint under 32, then nuggets.
+-- It makes what pays most (ticket 21d). At their seed prices glass and flint sell for
+-- what their stone and logs would, so nuggets, which earn over their cobble, come first.
 local busy = alchemist_with({[STONE] = 40, [LOG] = 8})
+assert(production.choose(busy).makes == NUGGET)
+assert(production.status(busy):find("making iron_nugget", 1, true))
+-- Once nuggets glut and their ask falls below their stone, glass and flint tie at no gain
+-- and go by rank: glass while it holds 12 or fewer, then flint under 32, then nothing.
+busy._villages_asks = {[NUGGET] = 0.25}
 assert(production.choose(busy).makes == GLASS)
 possessions.add(busy, GLASS, 13)
 assert(production.choose(busy).makes == FLINT, "past 12 glass")
 possessions.add(busy, FLINT, 32)
-assert(production.choose(busy).makes == NUGGET, "at 32 flint")
-assert(production.status(busy):find("making iron_nugget", 1, true))
+assert(production.choose(busy) == nil, "at 32 flint, and nuggets lose")
+-- Flint that sells dear beats glass at its seed price.
+local keen = alchemist_with({[STONE] = 40, [LOG] = 8})
+keen._villages_asks = {[FLINT] = 2}
+assert(production.choose(keen).makes == FLINT)
 
 -- What it buys: a day's 72 stone or cobble always, and logs for the flint it is short of,
 -- four a flint, at most 32 at once.
@@ -116,9 +125,12 @@ view = possessions.assess(alchemist_with({[EMERALD] = 1000, [FLINT] = 30}))
 assert(view.categories.log.target == 8)
 view = possessions.assess(alchemist_with({[EMERALD] = 1000, [FLINT] = 32}))
 assert(view.categories.log == nil and not view.needs[LOG], "no logs at 32 flint")
--- It values its inputs at their base price, never more, however short (until ticket 21d).
-assert(view.value(COBBLE) <= ledger.price(COBBLE) + 1e-9 and view.value(STONE) <= ledger.price(STONE) + 1e-9)
-assert(near(view.value(STONE), ledger.price(STONE)), "short, so at the cap")
+-- It values an input at no more than its best recipe returns for it (ticket 21d): stone
+-- at glass's 3.2 or a nugget's 3.84, cobble at a nugget's 3.84; short, it pays its price.
+local caps = ledger.imputed(recipes.alchemist, ledger.price, 5)
+assert(near(caps[STONE], ledger.price(NUGGET) / 4) and near(caps[COBBLE], caps[STONE]))
+assert(view.value(COBBLE) <= caps[COBBLE] + 1e-9 and view.value(STONE) <= caps[STONE] + 1e-9)
+assert(near(view.value(STONE), ledger.price(STONE)), "short, so at its price")
 local rich = possessions.assess(alchemist_with({[NUGGET] = 500, [GLASS] = 100}))
 assert(rich.surplus[NUGGET] == 500, "every nugget is spare")
 
@@ -171,14 +183,16 @@ builder_view.needs[PANE] = 3
 trade = exchange.offer(glazier, possessions.assess(glazier), builder, builder_view)
 assert(trade and trade.item == PANE and trade.from == GLASS and trade.from_count == trade.count)
 
--- It buys no stone above its base price: a quarrier asking more is passed over.
+-- It buys no cobble above what a nugget returns for it (ticket 21d): a quarrier asking
+-- more is passed over.
 local buyer_alch = alchemist_with({[EMERALD] = 1000})
 local quarrier = villager("quar", {[COBBLE] = 40})
-quarrier._villages_asks = {[COBBLE] = 1.2}
+quarrier._villages_asks = {[COBBLE] = 1.6}
+assert(asks.ask(quarrier, COBBLE) > caps[COBBLE])
 assert(exchange.offer(quarrier, possessions.assess(quarrier), buyer_alch, possessions.assess(buyer_alch)) == nil)
 quarrier._villages_asks = {[COBBLE] = 0.9}
 trade = exchange.offer(quarrier, possessions.assess(quarrier), buyer_alch, possessions.assess(buyer_alch))
-assert(trade and trade.item == COBBLE and trade.pay <= trade.count * ledger.price(COBBLE) + 1)
+assert(trade and trade.item == COBBLE and trade.pay <= trade.count * caps[COBBLE] + 1)
 
 -- Its news tells the stone and logs it needs, and its ingots where someone asks for them.
 local teller = alchemist_with({[EMERALD] = 1000, [NUGGET] = 40})

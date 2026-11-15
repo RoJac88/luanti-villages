@@ -119,10 +119,12 @@ do
 end
 
 -- 3. A rich buyer's money reaches several sellers: each of three broke sellers holds a
--- good the rich fletcher needs.
+-- good the rich fletcher needs. At tier 2, so its string goes into bows: a fishing rod
+-- barely pays over its string (ticket 21d), and the fletcher stops wanting string for it
+-- as soon as string's price rises a little.
 do
 	day = 1
-	local rich = villager("rich", {[EMERALD] = 3000}, {_profession = "fletcher", _max_trade_tier = 1})
+	local rich = villager("rich", {[EMERALD] = 3000}, {_profession = "fletcher", _max_trade_tier = 2})
 	local sellers = {
 		villager("s-flint", {[FLINT] = 30}),
 		villager("s-feather", {[FEATHER] = 30}),

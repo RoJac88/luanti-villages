@@ -114,7 +114,12 @@ do
 	assert(production.restock_held(shep) == nil, "its wool restocks from its flock, dye or not")
 	possessions.add(shep, "mcl_wool:grey", 5)
 	possessions.add(shep, "mcl_dye:white", 2)
+	-- White wool is seeded at no less than grey wool and dye (ticket 21d), so dyeing pays.
 	assert(production.choose(shep).makes == "mcl_wool:white")
+	-- Not once white sells for less than they would (its ask fallen).
+	shep._villages_asks = {["mcl_wool:white"] = 0.5}
+	assert(production.choose(shep) == nil, "it does not pay")
+	shep._villages_asks = nil
 	-- Unasked, one in stock is enough.
 	assert(production.work(shep, 1000) == 1 and count(shep, "mcl_wool:white") == 1)
 	assert(count(shep, "mcl_wool:grey") == 4 and count(shep, "mcl_dye:white") == 1)
@@ -344,6 +349,41 @@ do
 	-- Nor a shepherd, though it now dyes wool (19h): its flock is its work.
 	assert(production.idle_today(smith({_id = "s1", _profession = "shepherd"})) == false)
 	time = saved
+end
+
+-- Production by margin (ticket 21d).
+do
+	local ledger = dofile("ledger.lua")
+	local saved = time
+	time = 9000 / 24000
+	-- A crafter whose goods all sell for less than their inputs labours, inputs and all.
+	local loser = smith({_id = "lou-loses"})
+	possessions.add(loser, "mcl_core:cobble", 6)
+	possessions.add(loser, "mcl_core:stick", 8)
+	assert(production.choose(loser), "it pays at its seed prices")
+	-- Tools are dear at their seed prices: it has learnt they fetch a sixteenth.
+	local prices = dofile("prices.lua")
+	loser._villages_prices = {}
+	for _, recipe in ipairs(production.recipes(loser)) do
+		if recipe.makes ~= "mcl_core:stick" then loser._villages_prices[prices.key(recipe.makes)] = 1 / 32 end
+	end
+	assert(production.choose(loser) == nil)
+	assert(production.idle_today(loser) == true)
+	time = saved
+	-- An armorer's iron is worth no more to it than its armour returns, so its bid falls
+	-- with its armour's price.
+	local IRON = "mcl_core:iron_ingot"
+	local armorer = smith({_id = "ari", _profession = "armorer", _max_trade_tier = 1})
+	possessions.add(armorer, "mcl_core:emerald", 5000)
+	local dear = possessions.assess(armorer).value(IRON)
+	armorer._villages_asks = {}
+	for _, recipe in ipairs(production.recipes(armorer)) do armorer._villages_asks[recipe.makes] = 0.5 end
+	local cheap = possessions.assess(armorer).value(IRON)
+	assert(cheap < dear, cheap .. " " .. dear)
+	assert(cheap <= ledger.imputed(production.recipes(armorer), possessions.prices_of(armorer), 1)[IRON] + 1e-9)
+	-- At a quarter, no armour pays over its iron and coal: it wants no iron at all.
+	for item in pairs(armorer._villages_asks) do armorer._villages_asks[item] = 0.25 end
+	assert(not possessions.assess(armorer).needs[IRON])
 end
 
 print("production.lua: ok")
