@@ -155,8 +155,9 @@ local function villager(id, at, fields)
 	return v
 end
 local function count(v, item) return possessions.count(v, item) end
+-- Prices in the news are given at vanilla's scale and told at the economy's (ticket 11h).
 local function has_news(who, item, home, price)
-	return {item = item, who = who, kind = "has", count = 40, price = price, home = home, heard = now, hops = 1}
+	return {item = item, who = who, kind = "has", count = 40, price = price and price * 64, home = home, heard = now, hops = 1}
 end
 
 -- Terms: at the seller's ask, whole emeralds, at least one, the buyer valuing it at least
@@ -441,7 +442,7 @@ do
 		_villages_belongings = {[EMERALD] = 6 * 64}})
 	local coal_seller = villager("cole", {x = 70, y = 1, z = 0},
 		{_villages_belongings = {["mcl_core:coal_lump"] = 40}})
-	sam._villages_market_news = {has_news("cole", "mcl_core:coal_lump", {x = 70, y = 1, z = 0}, dofile("ledger.lua").price("mcl_core:coal_lump"))}
+	sam._villages_market_news = {has_news("cole", "mcl_core:coal_lump", {x = 70, y = 1, z = 0}, dofile("ledger.lua").price("mcl_core:coal_lump") / 64)}
 	local pat = villager("pat-porter", {x = 50, y = 1, z = 1}, {_villages_belongings = {},
 		_villages_labour = {day = day, activity = "porter"}})
 	local idler = villager("ida", {x = 50, y = 1, z = 1}, {_villages_belongings = {[EMERALD] = 9 * 64}})
@@ -521,7 +522,7 @@ do
 	local fern_view = possessions.assess(fern)
 	assert(fern_view.needs[HOE] == 1)
 	assert(trips.urgency(fern_view, HOE) >= trips.URGENT)
-	local hoe_news = has_news("tess-smith", HOE, {x = 15, y = 1, z = 0}, ledger.price(HOE) * 0.6)
+	local hoe_news = has_news("tess-smith", HOE, {x = 15, y = 1, z = 0}, ledger.price(HOE) * 0.6 / 64)
 	hoe_news.count = 1
 	local hoe_trip = trips.plan(fern, fern_view, {hoe_news}, fern._bed)
 	assert(hoe_trip and hoe_trip.item == HOE and hoe_trip.who == "tess-smith", "a trip for the hoe")

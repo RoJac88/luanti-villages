@@ -368,8 +368,9 @@ end
 -- logs, in logs), worth = {item = emeralds} (the most an item is worth
 -- to it whatever its need: what a good that wears out brings over its life, wants.lua),
 -- least = {item = emeralds} (the least it will take for an item: a peddler's stock is
--- worth what it paid, labour.lua, ticket 12), prices = {item = factor} (its own
--- multiplier on the base price, prices.lua, ticket 13), money = emeralds (what it has to
+-- worth what it paid, labour.lua, ticket 12), prices = {key = factor} (its reference
+-- prices as factors on the base price, a category's members under "group:<category>",
+-- prices.lua, ticket 21b), money = emeralds (what it has to
 -- spend, for the money factor, M.lambda; none, as for the keeper, leaves values as
 -- they are)}. `worth` and `least` are in emeralds and bound the value after the money
 -- factor.
@@ -474,7 +475,10 @@ function M.assess(input)
 		local price = M.price(item)
 		if not price then return nil end
 		if item == EMERALD then return 1 end
-		local factor = input.prices and input.prices[item] or 1
+		-- Its reference price's factor (prices.lua): a category's members share one.
+		local beliefs = input.prices
+		local category = beliefs and goods.category_of(item)
+		local factor = beliefs and (category and beliefs["group:" .. category] or beliefs[item]) or 1
 		local value = price * factor * urgency(item) / lambda
 		local most = input.worth and input.worth[item]
 		if most then value = math.min(value, most) end

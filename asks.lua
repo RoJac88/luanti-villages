@@ -7,31 +7,32 @@
 -- midpoint gave the butcher half of that, and a keeper with less than the midpoint
 -- bought nothing at all from a seller who would have taken a third of it.
 --
--- Now the seller asks the item's base price (ledger.price) times its own factor for the
--- item (`_villages_asks`, {[item] = factor}, 1 when unset), and a buyer that values the
--- item at least that much pays it. The factor moves with how the item sells:
+-- Since ticket 21b the seller asks its reference price (prices.lua) times its own short-run
+-- factor for the item (`_villages_asks`, {[item] = factor}, 1 when unset), and a buyer that
+-- values the item at least that much pays it. The factor moves with how the item sells:
 --
--- * each sale raises it by MARKUP (M.sold);
+-- * a sale moves the seller's reference price LEARN_TRADE of the way to the price paid
+--   (prices.learn), and pulls the factor back toward 1 by the same share, so a lasting
+--   rise lives in the reference price and is not counted twice; then the factor rises by
+--   MARKUP (M.sold);
 -- * each game day the seller held some spare and sold less than SLOW_SHARE of it, it falls
---   by MARKDOWN (M.daily, from possessions.lua's step). It used to fall only on a day with
---   no sale at all: a leatherworker that sold the butcher 2 beef now and then kept asking
---   near MAX while 26 more piled up (ColonyFood, 2026-11-14);
+--   by MARKDOWN, and by MARKDOWN again if the seller holds less than ledger.CUSHION: one
+--   short of money cuts its price faster (M.daily, from possessions.lua's step). It used to
+--   fall only on a day with no sale at all: a leatherworker that sold the butcher 2 beef
+--   now and then kept asking near MAX while 26 more piled up (ColonyFood, 2026-11-14);
 -- * it stays within MIN and MAX.
 --
--- A seller that believes an item worth less than its base price (its price multiplier
--- under 1, prices.lua) asks that much less: a market that heard of a glut valued beef at
--- an eighth of its price while the leatherworker asked near twice it, so the butcher
--- bought none and the beef piled up (ColonyFood, 2026-11-14). A belief over 1 leaves the
--- ask to its sales, so demand is not counted twice.
---
--- A peddler (labour.lua) never asks less than it paid for its lot. An item with no base
+-- An ask never falls below the seller's own value for the item (given its view): one
+-- with a glut or no money values it little, a rich one more. A peddler (labour.lua)
+-- never asks less than it paid for its lot. Nothing else floors it: the alchemist's floor
+-- at its inputs' cost went with ticket 21b (ColonyFood, 2026-11-15: broke, it held 30
+-- flint it could not sell at cost to a fletcher with one emerald). An item with no base
 -- price has no ask: exchange.lua falls back to the midpoint for it.
 local core = minetest
 local ledger = dofile(core.get_modpath("living_villages") .. "/ledger.lua")
 local prices = dofile(core.get_modpath("living_villages") .. "/prices.lua")
-local alchemist = dofile(core.get_modpath("living_villages") .. "/alchemist.lua")
 
-local MIN, MAX = 0.5, 2
+local MIN, MAX = 0.25, 4
 local MARKUP, MARKDOWN = 1.05, 0.9
 local SLOW_SHARE = 0.25
 local NEAR_ONE = 0.01
@@ -55,15 +56,16 @@ local function set_factor(seller, item, factor)
 	seller._villages_asks = next(asks) and asks or nil
 end
 
--- What the seller asks for one, or nil for an item with no base price.
-function M.ask(seller, item)
-	local base = ledger.price(item)
-	if not base or base <= 0 then return nil end
-	local ask = base * M.factor(seller, item) * math.min(prices.factor(seller._villages_prices, item), 1)
+-- What the seller asks for one, or nil for an item with no base price. With its view
+-- (possessions.assess), never less than its own value for the item.
+function M.ask(seller, item, view)
+	local reference = prices.price(seller._villages_prices, item)
+	if not reference then return nil end
+	local ask = reference * M.factor(seller, item)
+	local own = view and view.value(item)
+	if own then ask = math.max(ask, own) end
 	local peddle = seller._villages_peddle
 	if peddle and peddle.item == item and not peddle.buying and peddle.bid then ask = math.max(ask, peddle.bid) end
-	-- An alchemist never asks less for its goods than their inputs cost (ticket 20).
-	if seller._villages_alchemist and alchemist.GOODS[item] then ask = math.max(ask, base) end
 	return ask
 end
 
@@ -75,9 +77,15 @@ local function sale(sold, item)
 	return entry
 end
 
--- A sale of count (1 if not given) of the item on `day`: the ask rises.
-function M.sold(seller, item, day, count)
-	set_factor(seller, item, M.factor(seller, item) * MARKUP)
+-- A sale of count (1 if not given) of the item on `day`, at `unit` emeralds each if known:
+-- its reference price learns the price, and the ask rises.
+function M.sold(seller, item, day, count, unit)
+	local factor = M.factor(seller, item)
+	if unit and unit > 0 then
+		prices.learn(seller, item, unit, prices.LEARN_TRADE)
+		factor = factor ^ (1 - prices.LEARN_TRADE)
+	end
+	set_factor(seller, item, factor * MARKUP)
 	local sold = seller._villages_ask_sold or {}
 	local entry = sale(sold, item) or {count = 0}
 	sold[item] = {day = day, count = entry.count + (count or 1)}
@@ -85,8 +93,9 @@ function M.sold(seller, item, day, count)
 end
 
 -- Once a game day: every item of `surplus` (item -> count) it sold less than SLOW_SHARE of
--- since the last time is asked for less. Returns whether it ran today.
-function M.daily(seller, surplus, day)
+-- since the last time is asked for less, twice as fast with `money` under the cushion.
+-- Returns whether it ran today.
+function M.daily(seller, surplus, day, money)
 	if not day or seller._villages_asks_day == day then return false end
 	local since = seller._villages_asks_day
 	seller._villages_asks_day = day
@@ -96,7 +105,8 @@ function M.daily(seller, surplus, day)
 		local entry = sale(sold, item)
 		local moved = entry and entry.day >= since and entry.count or 0
 		if count > 0 and ledger.price(item) and moved < count * SLOW_SHARE then
-			set_factor(seller, item, M.factor(seller, item) * MARKDOWN)
+			local short = money and money < ledger.CUSHION
+			set_factor(seller, item, M.factor(seller, item) * MARKDOWN * (short and MARKDOWN or 1))
 		end
 	end
 	-- Each day's count starts afresh; what sold before the last day is forgotten.

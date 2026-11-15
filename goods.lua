@@ -126,6 +126,15 @@ function M.units(category, item)
 	return members and members[item]
 end
 
+-- The first category in ORDER an item belongs to, whatever anyone wants: the one its
+-- reference price is kept under (prices.lua, ticket 21b). Nil for none.
+function M.category_of(item)
+	for _, category in ipairs(ORDER) do
+		if categories[category][item] then return category end
+	end
+	return nil
+end
+
 -- The category a target item names, so a need for it is a need for the category: coal,
 -- charcoal and kelp blocks are fuel, any log or planks is logs or planks. Food targets are set as a
 -- category already (ledger.assess). Nil for an item wanted for itself.

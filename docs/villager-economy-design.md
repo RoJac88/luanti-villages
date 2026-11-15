@@ -887,13 +887,18 @@ The old rules could not settle this, for six reasons:
 Each villager keeps a reference price in emeralds per item: what it thinks the item
 trades for. This replaces ticket 13's multipliers.
 
-**Storage.** Prices are kept in `_villages_ref` (`{[item] = emeralds}`). An item absent
-from it is at its base price. A villager remembers at most REF_ITEMS (64) items and
-drops the least recently moved. Saves from before 21b are converted once: an old
-multiplier times the base price.
+**Storage.** A reference price is kept as a factor on the item's base price, in ticket
+13's `_villages_prices` (`{[key] = factor}`). The base price is only the seed. A key
+absent from it is at the base price. A category's members (food, fuel, logs, planks,
+wool, stone) share one factor under `group:<category>`, the first category in
+`goods.ORDER` the item belongs to (`goods.category_of`), so a loaf and a potato stay in
+line with each other. A villager keeps at most KEEP (64) keys, those furthest from 1.
+Saves from before 21b kept a factor per item: at the first day's move, a category's
+members are folded into its key at their geometric mean (`prices.migrate`).
 
-**Bounds.** A reference price stays within REF_SPAN (64) times either side of the base
-price. This is a safety rail, not a working range.
+**Bounds.** A factor stays within SPAN (64) either side of 1. This is a safety rail,
+not a working range. Counts alone (the imbalance below) take a factor no further than
+COUNT_SPAN (4) either way.
 
 **Learning.** A reference price moves in log space toward evidence. There is no pull
 back toward the base price: with no evidence, a price stays where it is.
@@ -901,19 +906,27 @@ back toward the base price: with no evidence, a price stays where it is.
 | Evidence | Moves the price toward | Share |
 |---|---|---|
 | A trade it made, as buyer or seller, with a villager or a player | the price paid per item | LEARN_TRADE 0.3 |
-| An ask or bid heard in the news | the price heard, weighted down by hops and age | LEARN_NEWS 0.1 |
-| A buy it passed up because the ask was over its value | that ask | LEARN_MISS 0.05 |
+| A price signal heard in the news (an entry's `ref`, below) | their geometric mean, each weighted 1 / (1 + hops) | LEARN_NEWS 0.1, times the weight, at most 0.1 |
+| A buy it passed up because the ask was over its value | the dearest such ask that day, if above its price | LEARN_MISS 0.05 |
 | A finished conversation | the members' geometric mean, as ticket 13's SHARE | SHARE 0.25 |
 
-A category (food, fuel, logs, planks, wool, stone) keeps one reference price per unit.
-Each member is priced at the unit price times its units, so a loaf and a potato stay in
-line with each other.
-
 **News carries prices.** A `has` entry carries the seller's ask, as it does today. A
-`needs` entry carries the needer's bid: its value, capped at its emeralds. Counts and
-budgets still go into the market's demand and supply, and ticket 13's imbalance rule
-becomes a small extra term on top of the learning above: one day of full imbalance
-moves a price by IMBALANCE_DAY (1.15). Heard prices carry most of the weight.
+`needs` entry carries the needer's bid: its value, capped at its emeralds. Peddlers,
+porters and trade trips act on these. Each entry also carries `ref`, the teller's own
+price signal:
+- for what it has, its reference price times its ask factor, so a glut shows;
+- for what it needs, its reference price.
+
+Reference prices learn from `ref`, never from `price`. A need's price has urgency and
+the money factor in it. In the simulation, learning from it ran an untraded good to
+the rail: each villager's bid raised the next one's reference price, and with it that
+villager's own bid.
+
+Counts and budgets still go into the market's demand and supply. Ticket 13's imbalance
+rule becomes a small extra term on top of the learning above: one day of full imbalance
+moves a price by IMBALANCE_DAY (1.15), and never past COUNT_SPAN. In the simulation, a
+need nobody could meet (the fletcher's planks) ran to the rail on counts alone. Heard
+prices carry most of the weight.
 
 ### The money factor
 
@@ -2359,6 +2372,36 @@ spare is worth more to it, so the window's prices for its goods rise with its mo
 - Add `tests/price_sim.lua` and lv_keep's per-item price lines.
 
 Tests: each learning rule; the rails; old saves converted; the four simulation checks.
+
+Landed:
+- **Storage.** Reference prices stay factors in `_villages_prices`, under a category key
+  for a category's members (see Reference prices), rather than emeralds in
+  `_villages_ref`. This is the same thing, since the base price never moves, and old
+  saves need only the fold into category keys.
+- **Learning:**
+  - `prices.learn` on every trade paid in emeralds: in `exchange.settle` for the buyer,
+    in `asks.sold` for the seller, and on a trip's stash purchase.
+  - `prices.missed` when `exchange.quote` turns down an ask.
+  - `prices.hear`, `drift` and the missed asks, at the day's move.
+- **Asks.** An ask is the reference price × its factor, no less than the seller's own
+  value when its view is given. The factor is between 0.25 and 4. A sale pulls the factor
+  back by LEARN_TRADE before the markup. A slow day lowers it ×0.81 instead of ×0.9 for a
+  seller under CUSHION.
+- **News.** A `needs` entry's price is capped at the needer's emeralds, and every entry
+  carries `ref`.
+- **The alchemist.** Its ask floor and its goods' `least` floors are gone. Its input
+  `worth` caps stay until 21d: without an input valued by its output, a rich alchemist
+  would bid up stone without limit.
+- **`tests/price_sim.lua`.** Four checks, all passing:
+  - A broke seller's glut of flint, against a fletcher with 30 emeralds, sold within days
+    at a price between the two sides' values, below its base price of 64.
+  - Three broke sellers of flint, feathers and string were each paid by a fletcher with
+    3000 emeralds.
+  - In 120 days of steady supply, flint settled at 20 emeralds and feathers at 2.3 from
+    about day 60, every good made was sold, and nothing reached a rail.
+  - The simulation surfaced COUNT_SPAN and the switch to learning from `ref`.
+- **lv_keep** logs a `prices` line with each key's median factor among the adults and
+  its range.
 
 **21c. Players at the villagers' prices** (`trade_window.lua`):
 - Rows at the villager's ask and bid.

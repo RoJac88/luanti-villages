@@ -184,11 +184,20 @@ function M.own(self, view, now)
 		local told = {}
 		local function add(item, count, price)
 			told[item] = true
-			-- What it has is told at its ask (asks.lua), what a buyer would pay it.
-			if kind == "has" then price = asks.ask(self, item) or price end
+			-- What it has is told at its ask (asks.lua), what a buyer would pay it; what it
+			-- needs at its bid, its value capped at its emeralds (ticket 21b: others' reference
+			-- prices learn from both, prices.hear).
+			if kind == "has" then price = asks.ask(self, item, view) or price end
+			price = price or view.value(item)
+			if kind == "needs" and price then price = math.min(price, math.max(possessions.emeralds(self), 1)) end
+			-- Its own price signal, for others' reference prices to learn from (prices.hear):
+			-- what it has at its reference price times its ask factor, what it needs at its
+			-- reference price, with no urgency or money factor in either.
+			local ref = prices.price(self._villages_prices, item)
+			if ref and kind == "has" then ref = ref * asks.factor(self, item) end
 			entries[#entries + 1] = {
 				item = item, who = self._id, kind = kind, count = count,
-				price = price or view.value(item), home = home, heard = now, hops = 0,
+				price = price, ref = ref, home = home, heard = now, hops = 0,
 				group = kind == "needs" and view.group and view.group[item] or nil,
 				-- What it has to pay with, so a need counts only as far as it can pay (prices.lua).
 				budget = kind == "needs" and possessions.emeralds(self) or nil,
@@ -225,7 +234,7 @@ function M.own(self, view, now)
 			for item, count in pairs(list) do
 				if outputs[item] and not told[item] then made[item] = count end
 			end
-			for _, top in ipairs(ledger.top(made, function(item) return asks.ask(self, item) or view.value(item) end,
+			for _, top in ipairs(ledger.top(made, function(item) return asks.ask(self, item, view) or view.value(item) end,
 				OWN_ITEMS)) do
 				add(top.item, top.count)
 			end
