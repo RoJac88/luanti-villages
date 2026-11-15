@@ -1356,6 +1356,7 @@ branch, and each leaves the game playable with `living_villages_economy` on or o
 | 19 | Money that circulates: comforts for savings and the cleric's share (19a), idle crafters labour (19b), new goods from existing professions (19c), quarries players build (19d) | 18 |
 | 20 | The alchemist: its stand and role (20a), cost-based prices (20b), alchemy at the stand (20c), trades with players (20d) | 19 |
 | 21 | Price discovery: the money factor and gifts (21a), reference prices that learn (21b), players at the villagers' prices (21c), production by margin (21d), a dinner that floats (21e) | 20 |
+| 22 | Flows that answer prices: money that comes back (22a), the starving eat (22b), a tavern stocked to demand (22c) | 21 |
 
 ### 1. Clock, hunger and the tavern
 
@@ -2516,6 +2517,99 @@ Landed (`dinner.lua`, read by `meal.lua`, `keeper_supply.lua`, `player_meals.lua
   the posted price and the food cost.
 - **lv_keep** logs a `dinner` line per keeper: the posted price, the factor, and the
   evening's turned-away count and whether it ran out.
+
+### 22. Flows that answer prices
+
+On 2026-11-15, with 21a–21e merged, the user asked how the price changes had done and
+what still held the economy back. Two runs from the same snapshot (ColonyFood at day 302,
+main 5f2c997) answered it: ColonyFood as it was, and ColonyRich, a local copy where every
+villager was given 2,000 emeralds once. By day 315:
+
+| | ColonyFood | ColonyRich (+2,000 each) |
+|---|---|---|
+| Money in the village | 4,961 → 3,286 | 48,697 → 44,196 |
+| Dinner posted | 1 (factor 0.28, falling) | 1 → 13 (factor 1.42, rising) |
+| Food, median reference | ×0.12 → ×0.09 | ×0.20 → ×0.53 |
+| Wheat; beef | ×0.16; ×0.18 | ×0.29; ×0.27 |
+| Stone, planks, books, banners | flat | flat |
+| Hungry / starving | 7 / 4 | 4 / 1 |
+
+Prices did their part. Food fell under a glut (about 370 potatoes in the farm chest) and
+rose where the new money chased it; goods nobody wanted more of stayed put; crafters made
+what paid and laboured otherwise. What failed was the flows prices are meant to steer:
+
+- **Money that stops.** Over the 13 days in ColonyFood, villagers gave the cleric 1,337
+  emeralds and it gave 18 back (its fund reached about 1,036). The farmers paid 786 in
+  rent into the Builder's bench and the Builder took 153 out. Those two hoards are the
+  1,675 the village lost: its deflation is money leaving, not goods arriving. Rent is
+  still 64 every 2 days, fixed since 11h, now about 60 dinners at the posted price, and the farmers paid it
+  from savings (the richest went from 2,525 to 1,293) while the tavern paid them about 20
+  a day.
+- **Supply that ignores price.** The keeper fetches only while the pantry holds under
+  TARGET_MEALS (12), CARRY (24) at a time. In ColonyRich it fetched 7 times in 13 days and
+  ran out most evenings; dinner climbed to 13 and one load of 24 potatoes paid the farmers
+  295, while 352 more sat in their chest. A higher price brought more money for the same
+  meals, never more meals.
+- **Starving in a glut.** λ is up to 8 for one with nothing and urgency at most 3. With
+  food at ×0.09 a loaf is worth about 0.8 emerald to a starving villager holding 2, so it
+  turns down a dinner at 1; it can pay, so it gets no raw plate either. The keeper reads
+  its refusal as a price too high and marks down a factor already pinned at the 1-emerald
+  floor: 0.28 now, about 13 days of MARKUP from 1 when demand returns.
+- **No income.** Porters and nitwits wait for hire nobody offers; the fisherman's raw fish
+  are worth 0 to anyone (only the butcher cooks fish, and the keeper does not buy it), so
+  it holds 0 emeralds and 190 in rent arrears; the alchemist made about 2 ingots' worth of
+  nuggets while the armorer wants 31. Trade between villagers came to 58 sales and 650
+  emeralds, less than the rent.
+
+Three parts, one PR each, the first two smallest and most urgent:
+
+**22a. Money that comes back** (`alms.lua`, `rent.lua`, `builder_market.lua`):
+- **The alms fund spends down.** A donation is taken only while the fund is under
+  FUND_TARGET: four holidays of alms for the congregation it sees (ALMS_TO, at each poor
+  villager's own dinner scale, plus the stakes). Above it donors keep their money, which
+  their own spending puts back in circulation. Over FUND_TARGET the cleric tops the poor
+  past ALMS_TO, up to SAVINGS, until the fund is back at it, so a hoard already gathered
+  goes out over a few holidays.
+- **Rent in dinners.** RENT becomes RENT_DINNERS (64 / 18, the 11h rent at the old dinner)
+  at the tenant's `dinner.scale`, like every other amount counted in dinners since 21e.
+  At a dinner of 1 to 2 emeralds that is 4 to 7 every 2 days, not 64.
+- **Rent the landlord uses.** No rent is billed while the bench's chests hold more than
+  the Builder's PURSE: a Builder with nothing to buy does not draw its tenants' money into
+  a chest. Billing resumes when the Builder has taken it down.
+- Tests: the fund stops taking at FUND_TARGET and pays out over it; rent at a cheap
+  dinner; no rent billed over a full chest, billed again once taken.
+
+**22b. The starving eat** (`ledger.lua`, `meal.lua`, `dinner.lua`):
+- **Food first.** For a villager at or under possessions' starving point, the money
+  factor on food is at most 1: it values a meal as a villager of average means would, so
+  its last emeralds go on food before anything else. Other goods keep their λ.
+- **The raw plate for the starving.** A starving guest who will not pay the dinner price
+  still gets the raw plate at BROKE_PRICE, as one who cannot pay does.
+- **A factor that holds at the floor.** The keeper does not mark down when the price is
+  already 1 and the markdown would leave it at 1; guests turned away then say nothing
+  about the price.
+- Tests: a starving villager with 2 emeralds dines at 1 at food ×0.09 and one fed does
+  not; a starving refuser gets the raw plate; the factor stays when the price is 1.
+
+**22c. A tavern stocked to demand** (`keeper_supply.lua`, `dinner.lua`):
+- **The target from last night.** TARGET_MEALS becomes the meals the keeper served the
+  evening before plus the guests it ran out on (a count kept in `_villages_dinner`), at
+  least 12, and CARRY rises with it, up to CARRY_MAX.
+- **A second trip.** A keeper that ran out goes again the next free hours, not only when
+  the pantry next drops under the target.
+- **Paying for more.** It pays the farm chest per meal at the food cost as now; its tab
+  and TAB_CAP scale with the target, so a busier tavern does not just forgive more.
+- With supply following demand, a rising dinner price draws more food out of the farm
+  chest and more money to the farmers, and falls back once the pantry stops running out.
+- Tests: the target follows a night of 20 diners and 5 turned away by an empty pantry; a
+  keeper that ran out fetches the next day; its tab at the larger target.
+
+**Not in this ticket** (open, for after 22): income for those with none — hiring porters
+and nitwits, a buyer for raw fish (the keeper or the butcher), and iron enough for the
+armorer and smiths. Two bugs seen in the same runs: villager 840a99 in ColonyFood never
+reaches the tavern (17 failed walks, last dined 77 days earlier, no market news); and on
+days 307, 309 and 310 the whole ColonyRich village slept through the tavern (possibly
+the local Luanti 5.17; not seen in ColonyFood).
 
 ## Open questions
 
