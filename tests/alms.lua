@@ -224,6 +224,15 @@ do
 	assert(emeralds(some) == 50 + 200 - alms.SAVINGS, emeralds(some))
 	-- Only the fund: its own emeralds stay.
 	assert(emeralds(hoard) == 0)
+	-- At a cheap dinner too it tops up toward SAVINGS at the old dinner, not 8 dinners at
+	-- 1 emerald (ColonyFood, 2026-11-15: a fund of 1,702 gave 15).
+	local cheap_priest = villager("cleric13", 0, {_profession = "cleric"})
+	local dinner_item = ledger.DINNER_ITEM
+	local thin = villager("thin", 0, {_villages_prices = {[dinner_item] = 1 / 18}})
+	local cheap_list = {cheap_priest, thin}
+	cheap_priest._villages_alms = alms.fund_target(cheap_priest, cheap_list) + 500
+	alms.hold(cheap_priest, cheap_list, day, nil)
+	assert(emeralds(thin) == alms.SAVINGS, emeralds(thin))
 end
 
 print("alms.lua: ok")

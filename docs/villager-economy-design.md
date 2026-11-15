@@ -2618,6 +2618,15 @@ Landed (`alms.lua`, `rent.lua`):
   lacks; none at the target; the excess to the poorest down to the target) and
   `tests/rent.lua` (rent and its cap at a dinner of 9; no billing over 512 waiting, and
   none later; billed again once it is taken).
+- **Fix, 2026-11-15 (day 327 census in ColonyFood).** The fund over its target gave 15 of
+  1,702: it topped villagers up toward SAVINGS at their own dinner scale, 8 emeralds at a
+  dinner of 1. Now it tops up toward SAVINGS at the old dinner, 144. And seven adults on
+  the west side, the starving fletcher among them, never went to church at all: they
+  looked for one within 48 of their bed and the village's one church stood 55-61 away.
+  `church.lua` now looks within 48, then within 128 (rent's VILLAGE_RADIUS), and with
+  none in the village waits 60 s before looking again. Tests: `tests/alms.lua` (a
+  villager at a dinner of 1 topped up to 144) and `tests/church.lua` (a bed 88 from the
+  pulpit goes to it).
 
 **22b. The starving eat** (`ledger.lua`, `meal.lua`, `dinner.lua`):
 - **Food first.** For a villager at or under possessions' starving point, the money
