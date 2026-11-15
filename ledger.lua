@@ -490,6 +490,15 @@ function M.assess(input)
 		return M.urgency(raw[item] or 0, targets[item] or 0)
 	end
 	local lambda = M.lambda(input.money and input.money / dinners)
+	-- Food first (ticket 22b): a starving villager values food with a money factor of at
+	-- most 1, as one of average means would, so its last emeralds go on food. ColonyFood,
+	-- 2026-11-15: at λ 6 and food at ×0.09, one holding 2 valued a loaf at 0.8 and turned
+	-- down a dinner at 1 while 370 potatoes sat in the farm chest.
+	local starving = input.food_points ~= nil and input.food_points <= 0
+	local function divisor(item)
+		if starving and lambda > 1 and goods.category_of(item) == "food" then return 1 end
+		return lambda
+	end
 	local function value(item)
 		local price = M.price(item)
 		if not price then return nil end
@@ -498,7 +507,7 @@ function M.assess(input)
 		local beliefs = input.prices
 		local category = beliefs and goods.category_of(item)
 		local factor = beliefs and (category and beliefs["group:" .. category] or beliefs[item]) or 1
-		local value = price * factor * urgency(item) / lambda
+		local value = price * factor * urgency(item) / divisor(item)
 		local most = input.worth and input.worth[item]
 		if most then value = math.min(value, most) end
 		local least = input.least and input.least[item]
@@ -510,7 +519,7 @@ function M.assess(input)
 		-- two broke villagers swap at what the goods are worth to them, not what an emerald is.
 		real = function(item)
 			local v = value(item)
-			return v and v * lambda
+			return v and v * divisor(item)
 		end}
 end
 

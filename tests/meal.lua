@@ -719,6 +719,27 @@ bo._villages_food, bo._villages_belongings["mcl_core:emerald"] = 0, 0
 pantry_items["mcl_farming:beetroot_item"] = 8
 assert(not meal.would_serve(bo, jukebox), "no emerald: no seat")
 assert(meal.explain(bo, jukebox):find("cannot pay"))
+-- Starving and able to pay but unwilling (ticket 22b): the raw plate at one emerald, as
+-- if broke. Merely hungry and unwilling: nothing.
+do
+	day = day + 1
+	pantry_items["mcl_farming:bread"] = 1
+	local cheapskate = {_id = "cheap", _villages_seat = {table = tabletop}, _villages_food = 0,
+		_villages_prices = {["group:food"] = 0.05}, _villages_belongings = {["mcl_core:emerald"] = P + 2}}
+	cheapskate.object = {get_pos = function() return {x = 2, y = 0, z = 0} end}
+	local hungry = {_id = "hun", _villages_seat = {table = tabletop}, _villages_food = 2, _villages_prices = {["group:food"] = 0.05},
+		_villages_belongings = {["mcl_core:emerald"] = P + 2}}
+	hungry.object = cheapskate.object
+	assert(meal.explain(hungry, jukebox):find("not worth"), meal.explain(hungry, jukebox))
+	now = now + 10
+	meal.tick(cheapskate, 0.1, jukebox)
+	now = now + 5
+	meal.tick(cheapskate, 0.1, jukebox)
+	assert(cheapskate._villages_meal and cheapskate._villages_meal.item == "mcl_farming:beetroot_item", "the raw plate")
+	assert(cheapskate._villages_belongings["mcl_core:emerald"] == P + 1 and pantry_items["mcl_farming:bread"] == 1)
+	now = now + 20
+	meal.tick(cheapskate, 0.1, jukebox)
+end
 -- One that can pay but is not hungry takes no seat either.
 assert(not meal.would_serve({_id = "fed", _villages_food = 12, _villages_belongings = {["mcl_core:emerald"] = 99}}, jukebox))
 pantry_items["mcl_farming:beetroot_item"], pantry_items["mcl_farming:bread"] = nil, nil

@@ -58,7 +58,9 @@ function M.settle(keeper, jukebox, day)
 		local factor = record.factor or 1
 		if record.out then
 			factor = factor * MARKUP
-		elseif record.turned and next(record.turned) then
+		elseif record.turned and next(record.turned) and M.price(keeper) > 1 then
+			-- At the 1-emerald floor a markdown changes nothing a guest sees, and would only
+			-- leave the factor far to climb back (ticket 22b).
 			factor = factor * MARKDOWN
 		end
 		factor = math.min(math.max(factor, asks.MIN), asks.MAX)
