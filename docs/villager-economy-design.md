@@ -767,15 +767,16 @@ What follows from this:
 ### Trading with players
 
 It is the only villager whose player trades use conversions. In `trade_window.lua` it
-treats the player as it would a villager, with its own margins:
+treats the player as it would a villager. Since ticket 21c it has no margins of its own:
+it sells at its asks and buys at its value, as everyone does.
 
-- **It sells** at 1.5 times its reference value (others: 1.25 times their value). The
+- **It sells** (first at 1.5 times its reference value, before 21c). The
   window lists what it holds spare and what its conversions can make: an iron ingot
   while it holds 9 nuggets, gold only past the reserve, a pane for each glass. Buying an
   ingot takes 9 nuggets from its pouch and puts the emeralds in it.
 - **It buys** iron and gold, as nuggets or ingots, at any time; flint while it holds
-  fewer than 32; and glass or panes while it holds 12 or fewer. It pays half its
-  reference value (others: 0.9), from the emeralds in its pouch. What it buys goes into
+  fewer than 32; and glass or panes while it holds 12 or fewer. It pays its value for one
+  more (first half its reference value, before 21c), from the emeralds in its pouch. What it buys goes into
   its belongings as it is, and it sells a held ingot before converting new nuggets.
 - Reputation moves both prices, as with everyone else.
 
@@ -2359,8 +2360,9 @@ Landed:
     from up to twice the stash radius of its bed.
 - `tests/money.lua`.
 
-Until 21c, the window still sells at the villager's value × 1.25. A rich villager's own
-spare is worth more to it, so the window's prices for its goods rise with its money.
+Until 21c, the window still sold at the villager's value × 1.25, so its prices for a rich
+villager's goods rose with that villager's money. Since 21c it sells at the villager's
+ask, which a rich seller's own value floors.
 
 **21b. Reference prices** (`prices.lua` rewritten, `asks.lua`, `exchange.lua`,
 `market_news.lua`, `alchemist.lua`):
@@ -2410,6 +2412,21 @@ Landed:
 
 Tests: a row at the ask; buying all of a good raises its next ask; a player's sale
 lowers the buyer's reference price; no spread on any one villager's own goods.
+
+Landed:
+- **Rows.** `trade_window.rows` takes the villager's asks (`ask(item)`, `asks.ask` with
+  its view) and sells at them, or at its value for an item with no base price. It buys
+  at its value. Reputation still moves both by up to REP_MAX.
+- **The alchemist.** It sells its goods and what its conversions make at its asks, and
+  buys iron, gold, flint and glass at its value for one more, within the same stops.
+- **Margins removed:** MARKUP, BID_SHARE, ALCHEMY_MARKUP and ALCHEMY_BID.
+- **Player trades teach.**
+  - A player's purchase goes through `asks.sold` with the price paid: the villager's
+    reference price learns it, its ask rises, and the sale counts against the slow-day
+    markdown.
+  - A player's sale goes through `prices.learn` on the villager's side.
+- **Tests:** `tests/trade_window.lua` checks rows at the ask and at the value, and the
+  learning after each kind of trade.
 
 **21d. Production by margin** (`production.lua`, `recipes.lua`, `ledger.lua`,
 `possessions.lua`):

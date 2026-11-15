@@ -1,12 +1,20 @@
 -- The mod's own trade window (docs/villager-economy-design.md, ticket 14), in place of
 -- vanilla's trade tables with the economy on. A villager trades only what it really
--- has, at what it really thinks things are worth (ledger.lua, prices.lua):
+-- has, at the prices it trades at with villagers (ticket 21c: the player is one more
+-- trader in the market, not a customer at a margin):
 --
 -- * It sells its spare goods (its ledger's surplus), from its belongings and its
---   stash, at its value times MARKUP.
--- * It buys what it needs, up to its need, at BID_SHARE of its value, and only with
---   the emeralds it carries. A villager in need is a standing order: this is how the
---   player takes part in the village's economy.
+--   stash, at its ask (asks.lua), the price a villager would pay it; an item with no ask
+--   at its value.
+-- * It buys what it needs, up to its need, at its value (ledger.lua: its reference price
+--   times its urgency over the money factor), and only with the emeralds it carries. A
+--   villager in need is a standing order: this is how the player takes part in the
+--   village's economy.
+-- * Each trade teaches it the price, as a villager's does: what it sold goes through
+--   asks.sold (its reference price learns, its ask rises), what it bought through
+--   prices.learn. A player who buys up a good makes it dearer; one who floods a good
+--   makes it cheaper. A villager never both needs and has spare of an item, so it offers
+--   no spread on its own goods; the player's margin is between villagers.
 --
 -- A price is whole emeralds for a lot: one item, or as many as make up one emerald for
 -- goods worth less (M.lot).
@@ -22,14 +30,13 @@
 -- members the player has with them, each at its own units' worth. Player trades convert
 -- nothing, but for the alchemist's.
 --
--- The alchemist (ticket 20d) treats the player as it would a villager, at margins of its
--- own: it sells its goods (alchemist.GOODS) at ALCHEMY_MARKUP times their base price, which
--- is what their inputs cost (ledger.lua), and lists what its conversions make (goods.lua:
--- an ingot while it holds 9 nuggets, gold only past its reserve, a pane a glass), a held
--- one first; buying one takes the nuggets from its pouch. It buys iron and gold, nuggets
--- or ingots, at any time; flint while it holds fewer than FLINT_KEEP; glass or panes while
--- it holds GLASS_KEEP or fewer; each at ALCHEMY_BID of the base price, from its emeralds,
--- kept as they are. Its other needs (stone, logs) are bought as anyone's.
+-- The alchemist (ticket 20d) sells its goods (alchemist.GOODS) at its asks, as anyone, and
+-- lists what its conversions make (goods.lua: an ingot while it holds 9 nuggets, gold
+-- only past its reserve, a pane a glass), a held one first; buying one takes the nuggets
+-- from its pouch. It buys iron and gold, nuggets or ingots, at any time; flint while it
+-- holds fewer than FLINT_KEEP; glass or panes while it holds GLASS_KEEP or fewer; each at
+-- its value for one more, from its emeralds, kept as they are. Its other needs (stone,
+-- logs) are bought as anyone's.
 --
 -- Gifts (ticket 21a). Below the rows, the player may give the villager emeralds outright,
 -- to put money back into a village whose money has piled up with a few: a gift of
@@ -49,13 +56,10 @@ local alchemist = dofile(core.get_modpath("living_villages") .. "/alchemist.lua"
 
 local EMERALD = "mcl_core:emerald"
 local FORMNAME = "living_villages:trade"
-local MARKUP = 1.25
-local BID_SHARE = 0.9
 local REP_STEP = 1 / 400
 local REP_MAX = 0.25
 local REFUSE = -40
 local URGENT = 2
-local ALCHEMY_MARKUP, ALCHEMY_BID = 1.5, 0.5
 local GIFT_MINOR, GIFT_MAJOR = ledger.DINNER, 8 * ledger.DINNER
 local NUGGET, INGOT = "mcl_core:iron_nugget", "mcl_core:iron_ingot"
 local GOLD_NUGGET, GOLD = "mcl_core:gold_nugget", "mcl_core:gold_ingot"
@@ -68,9 +72,8 @@ local REACH = 6
 local UNITS = {food = "points", fuel = "seconds", log = "logs", planks = "planks"}
 
 local M = {
-	FORMNAME = FORMNAME, MARKUP = MARKUP, BID_SHARE = BID_SHARE, REP_STEP = REP_STEP,
-	REP_MAX = REP_MAX, REFUSE = REFUSE, URGENT = URGENT, ROWS = ROWS,
-	ALCHEMY_MARKUP = ALCHEMY_MARKUP, ALCHEMY_BID = ALCHEMY_BID, GIFT_MINOR = GIFT_MINOR, GIFT_MAJOR = GIFT_MAJOR,
+	FORMNAME = FORMNAME, REP_STEP = REP_STEP,
+	REP_MAX = REP_MAX, REFUSE = REFUSE, URGENT = URGENT, ROWS = ROWS, GIFT_MINOR = GIFT_MINOR, GIFT_MAJOR = GIFT_MAJOR,
 }
 
 -- The gossip a gift of `amount` emeralds makes, in the order to add it.
@@ -107,8 +110,9 @@ function M.lot(unit, up)
 end
 
 -- The rows of the window, from a villager's view (ledger.assess), what it holds
--- ({item = count}), its emeralds, its reputation for the player, and what the player
--- has ({item = count}, nil for no filter):
+-- ({item = count}), its emeralds, its reputation for the player, what the player
+-- has ({item = count}, nil for no filter), whether it is the alchemist, and its asks
+-- (`ask(item)`, asks.ask with its view; nil for none, when its value stands in):
 -- {sells = {{item, lot, price, lots}}, buys = {{item, lot, price, lots, urgency}},
 -- short = {{category, amount}}}. `lots` is how many lots it has to sell, or wants and
 -- can pay for. A category's members are bought only as the player has them.
@@ -122,10 +126,15 @@ local function alchemy_room(item, held)
 	return math.huge
 end
 
+-- The price per item it sells at: its ask, or its value for an item with none.
+local function asking(view, ask, item)
+	return ask and ask(item) or view.value(item)
+end
+
 -- The alchemist's rows for its own goods (see the header): sells, buys. `held` is what
 -- it holds, `share` reputation's share; a sell row made by conversion carries `held` (how
 -- many it holds as they are) and `conversion` (goods.lua) to make the rest.
-function M.alchemy_rows(held, emeralds, share, player_has)
+function M.alchemy_rows(view, held, emeralds, share, player_has, ask)
 	local sells, buys = {}, {}
 	local made = {}
 	for _, conversion in ipairs(goods.CONVERSIONS.alchemist) do
@@ -133,11 +142,11 @@ function M.alchemy_rows(held, emeralds, share, player_has)
 		if count > 0 then made[conversion.to] = {count = count, conversion = conversion} end
 	end
 	for item in pairs(alchemist.GOODS) do
-		local price = ledger.price(item)
+		local price = asking(view, ask, item)
 		local own, from = held[item] or 0, made[item]
 		local have = own + (from and from.count or 0)
 		if price and have > 0 then
-			local lot, lot_price = M.lot(price * ALCHEMY_MARKUP * (1 - share), true)
+			local lot, lot_price = M.lot(price * (1 - share), true)
 			if lot and have >= lot then
 				sells[#sells + 1] = {item = item, lot = lot, price = lot_price, lots = math.floor(have / lot),
 					held = own, conversion = from and from.conversion or nil}
@@ -145,8 +154,8 @@ function M.alchemy_rows(held, emeralds, share, player_has)
 		end
 	end
 	for _, item in ipairs(ALCHEMY_BUYS) do
-		local price = ledger.price(item)
-		local lot, lot_price = M.lot(price * ALCHEMY_BID * (1 + share), false)
+		local price = view.value(item)
+		local lot, lot_price = M.lot((price or 0) * (1 + share), false)
 		local room = alchemy_room(item, held)
 		if lot and room >= lot and (not player_has or (player_has[item] or 0) > 0) then
 			local lots = math.min(math.floor(room / lot), math.floor((emeralds or 0) / lot_price))
@@ -157,15 +166,15 @@ function M.alchemy_rows(held, emeralds, share, player_has)
 	return sells, buys
 end
 
-function M.rows(view, held, emeralds, reputation, player_has, is_alchemist)
+function M.rows(view, held, emeralds, reputation, player_has, is_alchemist, ask)
 	local share = M.rep_share(reputation)
 	local sells, buys = {}, {}
-	if is_alchemist then sells, buys = M.alchemy_rows(held, emeralds, share, player_has) end
+	if is_alchemist then sells, buys = M.alchemy_rows(view, held, emeralds, share, player_has, ask) end
 	for item, spare in pairs(view.surplus or {}) do
 		local have = math.min(spare, held[item] or 0)
-		local value = view.value(item)
-		if item ~= EMERALD and have > 0 and value and not (is_alchemist and alchemist.GOODS[item]) then
-			local lot, price = M.lot(value * MARKUP * (1 - share), true)
+		local unit = asking(view, ask, item)
+		if item ~= EMERALD and have > 0 and unit and not (is_alchemist and alchemist.GOODS[item]) then
+			local lot, price = M.lot(unit * (1 - share), true)
 			if lot and have >= lot then
 				sells[#sells + 1] = {item = item, lot = lot, price = price, lots = math.floor(have / lot)}
 			end
@@ -176,7 +185,7 @@ function M.rows(view, held, emeralds, reputation, player_has, is_alchemist)
 		local value = view.value(item)
 		local shown = not group[item] or not player_has or (player_has[item] or 0) > 0
 		if item ~= EMERALD and value and shown and not (is_alchemist and alchemist.GOODS[item]) then
-			local lot, price = M.lot(value * BID_SHARE * (1 + share), false)
+			local lot, price = M.lot(value * (1 + share), false)
 			if lot and need >= lot then
 				local lots = math.min(math.floor(need / lot), math.floor((emeralds or 0) / price))
 				buys[#buys + 1] = {item = item, lot = lot, price = price, lots = lots,
@@ -222,6 +231,8 @@ end
 
 function M.install(def, deps)
 	local possessions, gossip, clock = deps.possessions, deps.gossip, deps.clock
+	local asks = deps.asks or dofile(core.get_modpath("living_villages") .. "/asks.lua")
+	local prices = deps.prices or dofile(core.get_modpath("living_villages") .. "/prices.lua")
 	local sessions = {}
 
 	local function reputation(villager, name)
@@ -244,8 +255,9 @@ function M.install(def, deps)
 
 	local function current_rows(villager, name)
 		local view = possessions.assess(villager)
+		local function ask(item) return asks.ask(villager, item, view) end
 		return M.rows(view, possessions.held(villager), possessions.emeralds(villager), reputation(villager, name),
-			player_has(name), villager._villages_alchemist == true), view
+			player_has(name), villager._villages_alchemist == true, ask), view
 	end
 
 	local function form(villager, name)
@@ -355,6 +367,8 @@ function M.install(def, deps)
 		inv:remove_item("main", EMERALD .. " " .. pay)
 		possessions.add(villager, EMERALD, pay)
 		inv:add_item("main", entry.item .. " " .. count)
+		-- A sale like any (ticket 21c): its reference price learns the price, its ask rises.
+		asks.sold(villager, entry.item, core.get_day_count and core.get_day_count() or 0, count, pay / count)
 		if gossip then gossip.add(villager, name, "trading") end
 		log("%s bought %d %s from villager %s for %d emerald(s)%s", name, count, entry.item,
 			tostring(villager._id):sub(1, 6), pay, from and string.format(" (from %d %s)", from_count, from) or "")
@@ -376,6 +390,8 @@ function M.install(def, deps)
 		end
 		possessions.take(villager, EMERALD, pay)
 		possessions.add(villager, entry.item, count)
+		-- A purchase like any (ticket 21c): its reference price learns the price.
+		prices.learn(villager, entry.item, pay / count)
 		local left = inv:add_item("main", EMERALD .. " " .. pay)
 		if not left:is_empty() and core.add_item then core.add_item(player:get_pos(), left) end
 		if gossip then
