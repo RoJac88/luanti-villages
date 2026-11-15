@@ -135,13 +135,18 @@ assert(kate._villages_farm_pouch["mcl_farming:potato_item"] == 10)
 assert(not kate._villages_farm_pouch["mcl_farming:wheat_item"])
 assert(inventories[key(farm_chest)]["mcl_farming:wheat_item"] == 30 and not kate._villages_supply_target)
 -- It owes more than the one emerald it has: it pays that, and takes the food anyway.
--- A dinner's price (18, ledger.DINNER) per meal the food makes: a loaf or a potato is one.
-local owed = supply.worth({["mcl_farming:bread"] = 4, ["mcl_farming:potato_item"] = 10})
-assert(math.abs(owed - 18 * 14) < 1e-9, "worth " .. owed)
+-- A meal's food cost per meal the food makes (ticket 21e): its reference price for a loaf
+-- (the base price, unlearnt), and a loaf or a potato is one meal.
+local LOAF = dofile("ledger.lua").price("mcl_farming:bread")
+local owed = supply.worth({["mcl_farming:bread"] = 4, ["mcl_farming:potato_item"] = 10}, kate)
+assert(math.abs(owed - LOAF * 14) < 1e-9, "worth " .. owed)
+-- It pays its reference price: one that has learnt food trades at half pays half.
+local frugal = {_villages_prices = {["group:food"] = 0.5}}
+assert(math.abs(supply.worth({["mcl_farming:potato_item"] = 10}, frugal) - LOAF * 5) < 1e-9)
 assert(inventories[key(farm_chest)]["mcl_core:emerald"] == 1 and not kate._villages_farm_pouch["mcl_core:emerald"])
 -- The rest it owes in the chest, up to the cap; past that it is forgiven.
 assert(math.abs(supply.tab(farm_chest) - (owed - 1)) < 1e-3, "owes " .. supply.tab(farm_chest))
-supply.pay(kate, farm_chest, {["mcl_farming:bread"] = 30})
+supply.pay(kate, farm_chest, {["mcl_farming:bread"] = 60})
 assert(supply.tab(farm_chest) == supply.TAB_CAP, "capped at " .. supply.tab(farm_chest))
 assert(logs[#logs]:find("forgave"), "and the rest forgiven")
 inventories[key(farm_chest)]["mcl_core:emerald"] = nil
@@ -150,15 +155,16 @@ do
 	local chest = {x = 30, y = 0, z = 0}
 	inventories[key(chest)] = {}
 	nodes[key(chest)] = nodes[key(farm_chest)]
-	-- 2 loaves: two dinners, 36. With 20 in the purse it pays 20 and owes 16.
-	local buyer = {_id = "kim", _villages_farm_pouch = {["mcl_core:emerald"] = 20}}
-	local paid, left = supply.pay(buyer, chest, {["mcl_farming:bread"] = 2})
-	assert(paid == 20 and math.abs(left - 16) < 1e-3 and math.abs(supply.tab(chest) - 16) < 1e-3, paid .. " " .. left)
-	-- Next time, with a full purse, the 16 owed comes first: a loaf (18) and 16 make 34.
+	-- 4 loaves at 16 each: 64. With 20 in the purse it pays 20 and owes 44.
+	local buyer = {_id = "kim", _villages_farm_pouch = {["mcl_core:emerald"] = 20},
+		_villages_prices = {["group:food"] = 16 / LOAF}}
+	local paid, left = supply.pay(buyer, chest, {["mcl_farming:bread"] = 4})
+	assert(paid == 20 and math.abs(left - 44) < 1e-3 and math.abs(supply.tab(chest) - 44) < 1e-3, paid .. " " .. left)
+	-- Next time, with a full purse, the 44 owed comes first: a loaf (16) and 44 make 60.
 	buyer._villages_farm_pouch["mcl_core:emerald"] = 100
 	paid, left = supply.pay(buyer, chest, {["mcl_farming:bread"] = 1})
-	assert(paid == 34 and left < 1e-3 and supply.tab(chest) == 0, "the tab is paid first")
-	assert(inventories[key(chest)]["mcl_core:emerald"] == 54 and buyer._villages_farm_pouch["mcl_core:emerald"] == 66)
+	assert(paid == 60 and left < 1e-3 and supply.tab(chest) == 0, "the tab is paid first")
+	assert(inventories[key(chest)]["mcl_core:emerald"] == 80 and buyer._villages_farm_pouch["mcl_core:emerald"] == 40)
 end
 
 -- At the next check it carries the food back to the pantry.

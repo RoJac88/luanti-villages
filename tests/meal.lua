@@ -644,7 +644,12 @@ meal.tick(vera, 0.1, jukebox)
 assert(not vera._villages_meal and meal.explain(vera, jukebox):find("cannot pay"), meal.explain(vera, jukebox))
 assert(pantry_items["mcl_farming:bread"] == 1)
 -- Fed well enough already: she does not order, emerald or not.
--- A dinner costs 18 emeralds (ledger.DINNER).
+-- A dinner costs the keeper's posted price (dinner.lua, ticket 21e): a loaf's base price
+-- at its dinner factor of 1, rounded.
+local ledger = dofile("ledger.lua")
+local dinner = dofile("dinner.lua")
+local P = math.floor(ledger.price("mcl_farming:bread") + 0.5)
+assert(dinner.price(kate) == P)
 vera._villages_belongings = {["mcl_core:emerald"] = 128}
 vera._villages_food = 10
 meal.tick(vera, 0.1, jukebox)
@@ -655,13 +660,17 @@ meal.tick(vera, 0.1, jukebox)
 assert(vera._villages_meal and vera._villages_meal.item == "mcl_farming:bread", "served from the pantry")
 assert(pantry_items["mcl_farming:bread"] == nil, "taken out of the pantry")
 assert(vera._villages_food == 4, "fed when served")
-assert(vera._villages_belongings["mcl_core:emerald"] == 110 and pantry_items["mcl_core:emerald"] == 18, "paid a dinner")
-assert(logs[#logs]:find("villager vera paid 18 emerald%(s%) for dinner at the tavern at"), "the payment is logged")
+assert(vera._villages_belongings["mcl_core:emerald"] == 128 - P and pantry_items["mcl_core:emerald"] == P, "paid a dinner")
+assert(logs[#logs]:find("villager vera paid " .. P .. " emerald%(s%) for dinner at the tavern at"), "the payment is logged")
+-- Paying taught her what a dinner costs (dinner.lua).
+assert(math.abs(dinner.reference(vera) - P) < math.abs(ledger.DINNER - P))
 now = now + 20
 meal.tick(vera, 0.1, jukebox)
 assert(not vera._villages_meal)
 -- No dish in the pantry, but carrots: a last-resort plate of four, at dinner's price.
+-- (Her first evening, broke with a loaf left, marked the dinner down: back to 1 here.)
 day = day + 1
+kate._villages_dinner = nil
 pantry_items["mcl_core:emerald"] = nil
 pantry_items["mcl_farming:carrot_item"] = 3
 vera._villages_food = 0
@@ -672,7 +681,7 @@ pantry_items["mcl_farming:carrot_item"] = 5
 meal.tick(vera, 0.1, jukebox)
 assert(vera._villages_meal and vera._villages_meal.item == "mcl_farming:carrot_item", "a plate of carrots")
 assert(pantry_items["mcl_farming:carrot_item"] == 1 and vera._villages_food == 4, "four carrots, four points")
-assert(pantry_items["mcl_core:emerald"] == 18, "paid a dinner")
+assert(pantry_items["mcl_core:emerald"] == P, "paid a dinner")
 now = now + 20
 meal.tick(vera, 0.1, jukebox)
 -- With a dish in the pantry, the carrots stay.
@@ -728,7 +737,7 @@ now = now + 20
 meal.tick(hal, 0.1, jukebox)
 pantry_items["mcl_core:emerald"] = nil
 
--- A player pays a dinner's price, 18 with the economy on, into the pantry for the meal.
+-- A player pays the tavern's posted dinner price (dinner.lua) into the pantry for the meal.
 day = day + 1
 local purses = {}
 local plain_player = player
@@ -739,12 +748,15 @@ player = function(name, h)
 	return object
 end
 player("pat", 5)
-purses.pat["mcl_core:emerald"] = 18
+-- Posted by the keeper each tick (keeper_supply.lua).
+local posted = dinner.settle(kate, jukebox, day)
+assert(dinner.posted(jukebox) == posted)
+purses.pat["mcl_core:emerald"] = posted
 pantry_items["mcl_farming:potato_item_baked"] = 1
 sit("pat", west)
 step(5)
 assert(eating(), "a paying player is served")
-assert(purses.pat["mcl_core:emerald"] == nil and pantry_items["mcl_core:emerald"] == 18, "paid into the pantry")
+assert(purses.pat["mcl_core:emerald"] == nil and pantry_items["mcl_core:emerald"] == posted, "paid into the pantry")
 assert(pantry_items["mcl_farming:potato_item_baked"] == nil, "the meal came out of the pantry")
 step(14)
 assert(hunger.pat == 8, "fed by the bites as before")
@@ -758,7 +770,7 @@ pantry_items["mcl_farming:bread"] = 2
 sit("pat", west)
 step(6)
 assert(not eating() and pm.report("pat"):find("cannot pay"), pm.report("pat"))
-assert(pantry_items["mcl_farming:bread"] == 2 and pantry_items["mcl_core:emerald"] == 18)
+assert(pantry_items["mcl_farming:bread"] == 2 and pantry_items["mcl_core:emerald"] == posted)
 mcl_cozy.players.pat = nil
 step(0.4)
 

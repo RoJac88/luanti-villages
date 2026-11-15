@@ -34,9 +34,11 @@ local SATURATION = 1.5
 -- meal never gives more than HUNGER, so a slow server still feeds in full.
 local BITES = 10
 local EMERALD = "mcl_core:emerald"
--- Unset, a villager's dinner price (ledger.DINNER) with the economy on, else 1.
+-- Unset, the tavern's posted dinner price (dinner.lua, ticket 21e; ledger.DINNER where its
+-- keeper never posted one) with the economy on, else 1.
 local DEFAULT_PRICE = 1
 local DINNER = dofile(core.get_modpath("living_villages") .. "/ledger.lua").DINNER
+local dinner = dofile(core.get_modpath("living_villages") .. "/dinner.lua")
 local clock = dofile(core.get_modpath("living_villages") .. "/economy_clock.lua")
 
 local meal
@@ -80,24 +82,25 @@ local function feed(diner)
 	if share > 0 then mcl_hunger.saturate(diner.name, share) end
 end
 
-local function price()
+local function price(jukebox)
 	local value = core.settings and tonumber(core.settings:get("living_villages_player_meal_price"))
-	return math.max(math.floor(value or (clock.enabled() and DINNER or DEFAULT_PRICE)), 0)
+	if not value and clock.enabled() then value = jukebox and dinner.posted(jukebox) or DINNER end
+	return math.max(math.floor(value or DEFAULT_PRICE), 0)
 end
 
-local function payment(name)
+local function payment(name, cost)
 	local player = core.get_player_by_name(name)
-	return player and player:get_inventory(), EMERALD .. " " .. price()
+	return player and player:get_inventory(), EMERALD .. " " .. cost
 end
 
-local function can_pay(name)
-	local inv, cost = payment(name)
-	return inv ~= nil and inv:contains_item("main", cost)
+local function can_pay(name, cost)
+	local inv, stack = payment(name, cost)
+	return inv ~= nil and inv:contains_item("main", stack)
 end
 
-local function pay(name)
-	local inv, cost = payment(name)
-	if inv then inv:remove_item("main", cost) end
+local function pay(name, cost)
+	local inv, stack = payment(name, cost)
+	if inv then inv:remove_item("main", stack) end
 end
 
 local function say(diner, text)
@@ -134,9 +137,9 @@ local function start(name, chair, seat)
 		end,
 		_villages_meal_day = eaten[diner.eaten_key],
 		_villages_on_bite = function() feed(diner) end,
-		_villages_price = price(),
-		_villages_can_pay = function() return can_pay(name) end,
-		_villages_pay = function() pay(name) end,
+		_villages_price = price(jukebox),
+		_villages_can_pay = function() return can_pay(name, diner.table._villages_price) end,
+		_villages_pay = function() pay(name, diner.table._villages_price) end,
 		object = core.get_player_by_name(name),
 	}
 end
@@ -162,6 +165,8 @@ function M.step(dtime, seat)
 		local diner = diners[name]
 		if diner and diner.table then
 			diner.table.object = core.get_player_by_name(name)
+			-- The posted price may move while it sits (a new day).
+			diner.table._villages_price = price(diner.jukebox)
 			meal.tick(diner.table, dtime, diner.jukebox)
 			say(diner, diner.table._villages_meal and "eating" or "sat; " .. meal.explain(diner.table, diner.jukebox))
 			if diner.table._villages_meal_day then eaten[diner.eaten_key] = diner.table._villages_meal_day end

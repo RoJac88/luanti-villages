@@ -47,6 +47,7 @@ local wants = dofile(core.get_modpath("living_villages") .. "/wants.lua")
 local comforts = dofile(core.get_modpath("living_villages") .. "/comforts.lua")
 local tally = dofile(core.get_modpath("living_villages") .. "/economy_tally.lua")
 local asks = dofile(core.get_modpath("living_villages") .. "/asks.lua")
+local dinner = dofile(core.get_modpath("living_villages") .. "/dinner.lua")
 local goods = dofile(core.get_modpath("living_villages") .. "/goods.lua")
 local alchemist = dofile(core.get_modpath("living_villages") .. "/alchemist.lua")
 
@@ -496,10 +497,10 @@ function M.step(self, now)
 	M.claim_stash(self)
 	M.collect_stash_emeralds(self)
 	-- It takes up comforts it holds, and puts down those used up (comforts.lua).
-	comforts.update(self, M.emeralds(self), M.take, now)
+	comforts.update(self, M.in_dinners(self, M.emeralds(self)), M.take, now)
 	-- Its asks for what it did not sell yesterday come down (asks.lua).
 	local day = today()
-	if self._villages_asks_day ~= day then asks.daily(self, M.assess(self).surplus, day, M.money(self)) end
+	if self._villages_asks_day ~= day then asks.daily(self, M.assess(self).surplus, day, M.in_dinners(self, M.money(self))) end
 end
 
 function M.install(def)
@@ -572,12 +573,19 @@ function M.money(self)
 	return math.max(emeralds, 0)
 end
 
+-- `emeralds` counted at the seed dinner price (ledger.DINNER) rather than its own reference
+-- price for one (dinner.lua, ticket 21e), for the thresholds counted in dinners: savings,
+-- the comfort step, the cushion. Nil stays nil.
+function M.in_dinners(self, emeralds)
+	return emeralds and emeralds / dinner.scale(self)
+end
+
 -- The ledger's view of this villager (ledger.lua): its targets, needs, surplus and values.
 -- A keeper by its role; a Builder or an alchemist has no vanilla trade of its own.
 function M.assess(self)
 	local extra, worth = wants.targets(self)
 	-- Comforts for its savings (comforts.lua, ticket 19).
-	local comfort, comfort_worth = comforts.targets(self, M.emeralds(self), core.get_gametime())
+	local comfort, comfort_worth = comforts.targets(self, M.in_dinners(self, M.emeralds(self)), core.get_gametime())
 	for item, count in pairs(comfort) do extra[item] = (extra[item] or 0) + count end
 	for item, value in pairs(comfort_worth) do worth[item] = math.max(worth[item] or 0, value) end
 	for item, count in pairs(self._villages_builder and self._villages_builder_wants or {}) do
@@ -634,6 +642,7 @@ function M.assess(self)
 		prices = self._villages_prices,
 		-- What it has to spend, for the money factor (ledger.lambda, ticket 21a).
 		money = M.money(self),
+		dinner = dinner.reference(self),
 	})
 end
 

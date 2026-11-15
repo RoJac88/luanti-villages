@@ -52,6 +52,7 @@
 local core = minetest
 local ledger = dofile(core.get_modpath("living_villages") .. "/ledger.lua")
 local goods = dofile(core.get_modpath("living_villages") .. "/goods.lua")
+local dinner = dofile(core.get_modpath("living_villages") .. "/dinner.lua")
 local alchemist = dofile(core.get_modpath("living_villages") .. "/alchemist.lua")
 
 local EMERALD = "mcl_core:emerald"
@@ -76,11 +77,13 @@ local M = {
 	REP_MAX = REP_MAX, REFUSE = REFUSE, URGENT = URGENT, ROWS = ROWS, GIFT_MINOR = GIFT_MINOR, GIFT_MAJOR = GIFT_MAJOR,
 }
 
--- The gossip a gift of `amount` emeralds makes, in the order to add it.
-function M.gift_gossip(amount)
+-- The gossip a gift of `amount` emeralds makes, in the order to add it, its dinners at
+-- `scale` (the villager's dinner.scale, ticket 21e; 1 unset).
+function M.gift_gossip(amount, scale)
 	local kinds = {}
-	if amount >= GIFT_MAJOR then kinds[#kinds + 1] = "major_positive" end
-	if amount >= GIFT_MINOR then kinds[#kinds + 1] = "minor_positive" end
+	scale = scale or 1
+	if amount >= GIFT_MAJOR * scale then kinds[#kinds + 1] = "major_positive" end
+	if amount >= GIFT_MINOR * scale then kinds[#kinds + 1] = "minor_positive" end
 	return kinds
 end
 
@@ -418,7 +421,7 @@ function M.install(def, deps)
 		end
 		possessions.add(villager, EMERALD, amount)
 		if gossip then
-			for _, kind in ipairs(M.gift_gossip(amount)) do gossip.add(villager, name, kind) end
+			for _, kind in ipairs(M.gift_gossip(amount, dinner.scale(villager))) do gossip.add(villager, name, kind) end
 		end
 		log("%s gave villager %s %d emerald(s)", name, tostring(villager._id):sub(1, 6), amount)
 	end
