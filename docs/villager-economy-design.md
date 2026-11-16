@@ -2991,6 +2991,37 @@ for n held) instead of the best.
   stray set back; a feather a hen, a chick bred on 2 seeds, a slaughter past 4 adults;
   wheat seeds wanted, not by the keeper).
 
+### 25. Dinner that catches up
+
+**What happened.** In ColonyFood (days 424-429, main 33cec90), dinner cost 1 emerald,
+the farm chests held about 480 potatoes, and still 6 to 12 adults woke hungry each day.
+Each morning the adults stood in two groups 4 points apart, about 5.5 and about 1.5. A
+dish is 4 points and an adult loses 4 a day, so one dinner a day only held a guest where
+it was, and one that missed a dinner stayed 4 points down for good. Between dinners a
+starving villager ate only up to 4, out of starving and no further. On day 428 the keeper
+could not reach either farm chest, the pantry was empty, 16 adults went without, and 5
+woke starving. Villagers holding bread and hundreds of emeralds stayed hungry, because
+they had already dined that day.
+
+- **Seconds** (`meal.lua`). Once a villager guest has been served a dish, it is served
+  more, one dish after another, while it is still at or below EAT_AT (8), up to
+  MAX_DISHES (3) in all. That is enough to take it from 0 to 12. Each dish is paid at the
+  price of the first and counted toward the evening's demand (`dinner.served`). Only dishes
+  count: a raw plate is a last resort and is never a second. If the pantry has no dish
+  left, it counts as running out (`dinner.ran_out`), as it does for a guest who found none.
+  Each payment is logged as "for another dish", and the seconds as "had N more dish(es)".
+- **Eat to full when starving** (`possessions.lua`). A villager still eats between dinners
+  only when starving, but it then eats everything it has, raw food too, best first, until
+  full (12) or until it has nothing left.
+- **Stock margin** (`keeper_supply.lua`). The keeper stocks the pantry to the last
+  evening's demand plus a quarter (STOCK_MARGIN 1.25, rounded up), at least TARGET_MEALS.
+  It had been stocking exactly 21 for 21 diners, which left 5 dishes after dinner and
+  nothing to cover a day it could not fetch.
+- **Tests:** `tests/meal.lua` (three loaves from 0, two from 4, the pantry running out on
+  seconds, carrots never a second); `tests/possessions.lua` (starving, it eats all it has
+  up to 12 and no further, its raw catch too); `tests/keeper_supply.lua` (30 wanted, 38
+  stocked).
+
 ## Open questions
 
 - Price discovery (ticket 21):

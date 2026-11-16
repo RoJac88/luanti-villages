@@ -229,8 +229,8 @@ possessions.install(plain)
 assert(plain.do_custom == before)
 
 -- Eating, once a day: dinner at home (when it had none at the tavern), its own prepared
--- food, at or below 8 points, until above; between dinners only when starving, anything,
--- until hungry no more (4). Not a child.
+-- food, at or below 8 points, until above; between dinners only when starving, but then
+-- anything, until full (12). Not a child.
 settings.living_villages_economy = nil
 local kim = {_id = "kim", _villages_food = 8, _villages_belongings = {["mcl_farming:bread"] = 2, ["mcl_farming:carrot_item"] = 3}}
 assert(#possessions.eat(kim) == 0, "not at work")
@@ -251,15 +251,20 @@ day = 2
 kim._villages_food = 5
 kim._villages_belongings["mcl_farming:bread"] = 0
 assert(#possessions.eat(kim) == 0 and possessions.count(kim, "mcl_farming:carrot_item") == 3)
--- Starving, at any time: anything, raw too, until hungry no more.
+-- Starving, at any time: anything, raw too, all it has until full (2026-11-16: eating
+-- only until hungry no more left it a dinner short for good).
 stage = "work"
 kim._villages_food = 0
 kim._villages_belongings["mcl_farming:bread"] = 1
 possessions.eat(kim)
-assert(kim._villages_food == 4 and possessions.count(kim, "mcl_farming:bread") == 0, tostring(kim._villages_food))
+assert(kim._villages_food == 7 and possessions.count(kim, "mcl_farming:bread") == 0
+	and possessions.count(kim, "mcl_farming:carrot_item") == 0, tostring(kim._villages_food))
+-- No further than full.
 kim._villages_food = 0
+possessions.add(kim, "mcl_farming:bread", 5)
 possessions.eat(kim)
-assert(kim._villages_food == 3 and possessions.count(kim, "mcl_farming:carrot_item") == 0)
+assert(kim._villages_food == 12 and possessions.count(kim, "mcl_farming:bread") == 2, tostring(kim._villages_food))
+possessions.take(kim, "mcl_farming:bread", 2)
 kim._villages_food = 1
 assert(#possessions.eat(kim) == 0, "hungry is not starving")
 -- Raw fish is a last resort too (2026-11-13): no dinner, but eaten when starving.
@@ -270,8 +275,7 @@ assert(#possessions.eat(kim) == 0 and possessions.count(kim, "mcl_fishing:fish_r
 stage = "work"
 kim._villages_food = 0
 possessions.eat(kim)
-assert(kim._villages_food == 4 and possessions.count(kim, "mcl_fishing:fish_raw") == 2, "starving, it eats its catch")
-possessions.take(kim, "mcl_fishing:fish_raw", 2)
+assert(kim._villages_food == 6 and possessions.count(kim, "mcl_fishing:fish_raw") == 0, "starving, it eats its catch")
 kim._villages_food = 1
 stage = "home"
 -- Its stash, only within reach.

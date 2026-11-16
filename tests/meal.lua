@@ -695,6 +695,47 @@ assert(vera._villages_meal and vera._villages_meal.item == "mcl_farming:bread" a
 now = now + 20
 meal.tick(vera, 0.1, jukebox)
 pantry_items["mcl_farming:carrot_item"] = nil
+-- Seconds (2026-11-16): still at or below 8 points after a dish, she is served more, each
+-- at the price of the first, up to 3 in all. (A raw plate is never a second: above, the
+-- carrots stayed after the loaf.)
+day = day + 1
+pantry_items["mcl_core:emerald"] = nil
+pantry_items["mcl_farming:bread"] = 5
+vera._villages_food = 0
+local vera_had = vera._villages_belongings["mcl_core:emerald"]
+now = now + 10
+meal.tick(vera, 0.1, jukebox)
+assert(vera._villages_meal and vera._villages_food == 12, "three loaves: " .. tostring(vera._villages_food))
+assert(pantry_items["mcl_farming:bread"] == 2)
+local vera_paid = vera_had - vera._villages_belongings["mcl_core:emerald"]
+assert(vera_paid > 0 and vera_paid % 3 == 0 and pantry_items["mcl_core:emerald"] == vera_paid, "paid for each")
+assert(logs[#logs]:find("villager vera had 2 more dish%(es%) at the tavern"), logs[#logs])
+now = now + 20
+meal.tick(vera, 0.1, jukebox)
+-- Hungry, at 4 (and well off, so a dinner is worth its price to her): two dishes take her
+-- above 8, and that is all.
+day = day + 1
+vera._villages_belongings["mcl_core:emerald"] = 5000
+vera._villages_food = 4
+now = now + 10
+meal.tick(vera, 0.1, jukebox)
+assert(vera._villages_meal and vera._villages_food == 12 and pantry_items["mcl_farming:bread"] == nil,
+	tostring(vera._villages_food) .. " " .. meal.explain(vera, jukebox))
+now = now + 20
+meal.tick(vera, 0.1, jukebox)
+-- The pantry runs out before she is above 8: that counts as running out (dinner.lua).
+day = day + 1
+pantry_items["mcl_farming:bread"] = 1
+vera._villages_food = 0
+now = now + 10
+meal.tick(vera, 0.1, jukebox)
+assert(vera._villages_meal and vera._villages_food == 4 and pantry_items["mcl_farming:bread"] == nil)
+assert(kate._villages_dinner and kate._villages_dinner.out, "ran out on her seconds")
+now = now + 20
+meal.tick(vera, 0.1, jukebox)
+-- Back to a dinner factor of 1 for what follows.
+day = day + 1
+kate._villages_dinner = nil
 -- Broke (2026-11-13): short of a dinner's price, a raw plate of carrots or beetroot for
 -- one emerald, dish or no dish in the pantry; with no emerald, nothing, and no seat.
 day = day + 1

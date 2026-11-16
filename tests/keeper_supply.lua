@@ -190,21 +190,22 @@ now = now + supply.CHECK_SECONDS
 supply.step(kate, now)
 assert(not trip, "pantry stocked: stays")
 
--- Stocked to demand (ticket 22c): last evening 30 meals were wanted, so 14 is short, and
--- it carries 30. Busier still, at most CARRY_MAX a trip; the tab's cap grows with it.
+-- Stocked to demand (ticket 22c): last evening 30 meals were wanted, so 14 is short of the 38 it stocks to (a quarter over), and
+-- it carries 38. Busier still, at most CARRY_MAX a trip; the tab's cap grows with it.
 do
 	local dinner = dofile("dinner.lua")
 	assert(supply.target(kate) == supply.TARGET_MEALS and supply.carry(kate) == supply.CARRY)
+	-- A quarter over the demand (STOCK_MARGIN): 30 wanted, 38 stocked.
 	kate._villages_dinner = {day = day, factor = 1, demand = 30}
-	assert(supply.target(kate) == 30 and supply.carry(kate) == 30)
-	assert(math.abs(supply.tab_cap(kate) - supply.TAB_CAP * 30 / supply.TARGET_MEALS) < 1e-9)
+	assert(supply.target(kate) == 38 and supply.carry(kate) == 38, supply.target(kate))
+	assert(math.abs(supply.tab_cap(kate) - supply.TAB_CAP * 38 / supply.TARGET_MEALS) < 1e-9)
 	inventories[key(farm_chest)]["mcl_farming:potato_item"] = 50
 	now = now + supply.CHECK_SECONDS
 	supply.step(kate, now)
-	assert(trip and vector.equals(trip.target, farm_chest), "14 is short of 30")
+	assert(trip and vector.equals(trip.target, farm_chest), "14 is short of 38")
 	arrive_at(farm_chest)
-	assert(kate._villages_farm_pouch["mcl_farming:potato_item"] == 30, "carries the target")
-	assert(inventories[key(farm_chest)]["mcl_farming:potato_item"] == 20)
+	assert(kate._villages_farm_pouch["mcl_farming:potato_item"] == 38, "carries the target")
+	assert(inventories[key(farm_chest)]["mcl_farming:potato_item"] == 12)
 	kate._villages_dinner.demand = 500
 	assert(supply.carry(kate) == supply.CARRY_MAX)
 	assert(dinner.demand(kate) == 500)
