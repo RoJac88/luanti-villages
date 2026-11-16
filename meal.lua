@@ -29,7 +29,9 @@
 -- otherwise it eats its own food, or buys some. A guest who would not pay while dishes
 -- were left, and one who would have paid but found none, move the keeper's price for the
 -- next day. At a pantry it is served only when it has room for a meal, at or below
--- possessions.EAT_AT points. Served, it has had its dinner for the day
+-- possessions.EAT_AT points. A villager guest served a dish is served more, one after
+-- another and each at the same price, while it is still at or below EAT_AT, up to
+-- MAX_DISHES in all (seconds, below). Served, it has had its dinner for the day
 -- (`_villages_dined_day`); one that was not eats its own food at home afterwards
 -- (possessions.lua). One that cannot pay is not served. Each payment is
 -- logged (ticket 11b), so a probe run shows where the money goes.
@@ -69,6 +71,9 @@ local HOLD_SECONDS = 5
 -- emerald at all gets nothing (and takes no seat, tavern.lua).
 local RAW_PLATES, RAW_PORTION = {"mcl_farming:carrot_item", "mcl_farming:beetroot_item"}, 4
 local BROKE_PRICE = 1
+-- Dishes a villager guest may have in one evening: enough to take it from starving (0)
+-- to above EAT_AT (4 + 4 + 4 points).
+local MAX_DISHES = 3
 -- How far from the jukebox its keeper is looked for: keeper.lua's staffing
 -- distance, with room to spare.
 local KEEPER_RADIUS = 4
@@ -331,7 +336,7 @@ end
 
 -- Takes the meal out of the pantry and the payment into it. False if either fails,
 -- having changed nothing.
-local function settle(self, jukebox, chests, item, portion, price, pay)
+local function settle(self, jukebox, chests, item, portion, price, pay, what)
 	if price > 0 and not pantry.has_room(chests, pantry.EMERALD, price) then return false end
 	if pantry.count(chests, item) < portion then return false end
 	for _ = 1, portion do pantry.take(chests, item) end
@@ -339,11 +344,47 @@ local function settle(self, jukebox, chests, item, portion, price, pay)
 		pay()
 		pantry.put(chests, pantry.EMERALD, price)
 		if is_villager(self) then
-			core.log("action", string.format("[living_villages] villager %s paid %d emerald(s) for dinner at the tavern at %s",
-				tostring(self._id):sub(1, 6), price, core.pos_to_string(jukebox)))
+			core.log("action", string.format("[living_villages] villager %s paid %d emerald(s) for %s at the tavern at %s",
+				tostring(self._id):sub(1, 6), price, what or "dinner", core.pos_to_string(jukebox)))
 		end
 	end
 	return true
+end
+
+-- Seconds (2026-11-16): a dish is 4 points, a day's hunger, so one dinner a day only
+-- held a guest where it was. One that missed a dinner stayed 4 points down for good
+-- (ColonyFood day 428: the keeper could not reach a farm chest, 16 went without, and sat
+-- hungry at 1.5 points each morning after, while about 480 potatoes sat in the farm
+-- chests). Served its dinner, a villager guest is served dish after dish, each at the
+-- price it paid for the first, while it is at or below EAT_AT, up to MAX_DISHES in all.
+-- Only dishes: a raw plate is a last resort, never a second. A pantry with no dish left
+-- counts as running out, as for a guest that found none (dinner.ran_out). Each dish counts
+-- toward the evening's demand, which the keeper stocks the pantry to. Returns how many
+-- more it had.
+local function seconds(self, jukebox, chests)
+	local price, can_pay, pay = terms(self, jukebox)
+	local day = core.get_day_count()
+	local keeper = price > 0 and keeper_state(jukebox) or nil
+	local more = 0
+	for _ = 2, MAX_DISHES do
+		if food.points(self) > possessions.EAT_AT then break end
+		if price > 0 and not can_pay() then break end
+		local dishes = pantry.available(chests, menu())
+		if #dishes == 0 then
+			dinner.ran_out(keeper, day, self._id)
+			break
+		end
+		local item = dishes[math.random(#dishes)]
+		if not settle(self, jukebox, chests, item, 1, price, pay, "another dish") then break end
+		dinner.served(keeper_on_duty(jukebox), day)
+		food.receive(self, item)
+		more = more + 1
+	end
+	if more > 0 then
+		core.log("action", string.format("[living_villages] villager %s had %d more dish(es) at the tavern at %s",
+			tostring(self._id):sub(1, 6), more, core.pos_to_string(jukebox)))
+	end
+	return more
 end
 
 local function serve(self, jukebox)
@@ -386,6 +427,8 @@ local function serve(self, jukebox)
 	-- by its bites.
 	if chests and not self._villages_on_bite then
 		for _ = 1, portion do food.receive(self, item) end
+		-- A dish, not a raw plate: more while it is still hungry.
+		if portion == 1 then seconds(self, jukebox, chests) end
 		-- Its dinner for the day: it eats nothing of its own tonight (possessions.lua).
 		self._villages_dined_day = core.get_day_count()
 	end

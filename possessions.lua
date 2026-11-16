@@ -24,8 +24,9 @@
 -- marks the day in `_villages_dined_day`), and one that did not dine there (no tavern in
 -- reach, nothing in its pantry, no money) eats its own prepared food (food.is_prepared)
 -- in the home stage that follows, at or below EAT_AT points, until above it. Between
--- dinners it eats only when starving: anything it has, raw food too, until hungry
--- (food.HUNGRY) instead of starving. It takes the best food in its belongings, then in
+-- dinners it eats only when starving, but then anything it has, raw food too, until full
+-- (food.FULL): eating only until hungry no more left it a dinner short for good
+-- (2026-11-16, see meal.lua's seconds). It takes the best food in its belongings, then in
 -- its stash if it stands within STASH_REACH of it. An adult never fed
 -- (`_villages_food` unset, never 0 once set) starts at EAT_AT points: fed, not full.
 -- Otherwise a new village starts out starving, crafting nothing and restocking nothing
@@ -404,7 +405,7 @@ local function today()
 	return core.get_day_count and core.get_day_count() or 0
 end
 
--- Whether it may eat now: "starving" (anything, up to food.HUNGRY), "dinner" (its own
+-- Whether it may eat now: "starving" (anything, up to food.FULL), "dinner" (its own
 -- prepared food in the home stage after a dinner it did not have at the tavern, up to
 -- above EAT_AT), or nil.
 function M.meal_now(self)
@@ -424,7 +425,7 @@ function M.eat(self, meal)
 		or function(item) return food.POINTS[item] ~= nil or food.LAST_RESORT[item] ~= nil end
 	local function more()
 		if meal == "dinner" then return food.points(self) <= EAT_AT end
-		return food.points(self) < food.HUNGRY
+		return food.points(self) < food.FULL
 	end
 	local eaten = {}
 	while more() do

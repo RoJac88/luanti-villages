@@ -9,8 +9,11 @@
 --   to its carry of bread, potatoes and then carrots and carries them back to its jukebox, from where it
 --   fills the pantry (a pantry chest behind the bar may have nowhere to stand by it).
 --   Stocked to demand (ticket 22c): the target is the last evening's demand (dinner.demand:
---   meals served and guests it ran out on), at least TARGET_MEALS, and it carries that
---   many, at least CARRY and at most CARRY_MAX. ColonyRich, 2026-11-15: at a fixed 12
+--   meals served and guests it ran out on) and a quarter more (STOCK_MARGIN), at least TARGET_MEALS,
+--   and it carries that many, at least CARRY and at most CARRY_MAX. A dish served as
+--   seconds (meal.lua) counts as a meal. The margin (2026-11-16): stocked to exactly the
+--   last evening's 21, the pantry was down to 5 after dinner, and one day the keeper
+--   could not reach a farm chest left 16 without. ColonyRich, 2026-11-15: at a fixed 12
 --   and 24, the tavern ran out most evenings, dinner rose to 13 and 352 potatoes sat in the
 --   farm chest. Now a dinner in demand draws more food out, and its price falls back.
 --   Only the farmer bakes bread, and only the butcher cooks meat and fish (recipes.lua):
@@ -58,6 +61,7 @@ local COMPOSTER_HEIGHT = 8
 local CARRY = 24
 local CARRY_MAX = 64
 local TARGET_MEALS = 12
+local STOCK_MARGIN = 1.25
 local CHECK_SECONDS = 30
 local RETRY_SECONDS = 120
 -- A source it could not walk to is passed over this long, so the next nearest gets a
@@ -100,7 +104,7 @@ local COMPOSTERS = {"mcl_composters:composter", "mcl_composters:composter_ready"
 for level = 1, 7 do COMPOSTERS[#COMPOSTERS + 1] = "mcl_composters:composter_" .. level end
 
 local M = {
-	SUPPLY_RADIUS = SUPPLY_RADIUS, CARRY = CARRY, CARRY_MAX = CARRY_MAX, TARGET_MEALS = TARGET_MEALS,
+	SUPPLY_RADIUS = SUPPLY_RADIUS, CARRY = CARRY, CARRY_MAX = CARRY_MAX, TARGET_MEALS = TARGET_MEALS, STOCK_MARGIN = STOCK_MARGIN,
 	CHECK_SECONDS = CHECK_SECONDS, RETRY_SECONDS = RETRY_SECONDS, SKIP_SECONDS = SKIP_SECONDS, COOK_SECONDS = COOK_SECONDS,
 	STARTING_STOCK = STARTING_STOCK, PURSE = PURSE, DINNER = DINNER, TAB_CAP = TAB_CAP, TAB = TAB, FLOAT = FLOAT,
 }
@@ -169,7 +173,7 @@ end
 
 -- The meals it stocks the pantry to, and carries a trip (ticket 22c).
 function M.target(self)
-	return math.max(TARGET_MEALS, dinner.demand(self))
+	return math.max(TARGET_MEALS, math.ceil(dinner.demand(self) * STOCK_MARGIN))
 end
 
 function M.carry(self)
