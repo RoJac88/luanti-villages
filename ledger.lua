@@ -166,7 +166,7 @@ local MAKES = {
 	-- Its herd's (herd.lua, ticket 11e).
 	leatherworker = {["mcl_mobitems:leather"] = true, ["mcl_mobitems:beef"] = true},
 	-- Its chickens' (coop.lua, ticket 24).
-	butcher = {["mcl_mobitems:feather"] = true},
+	butcher = {["mcl_mobitems:feather"] = true, ["mcl_mobitems:chicken"] = true},
 }
 for name in pairs({white = 1, brown = 1, black = 1, grey = 1}) do MAKES.shepherd["mcl_wool:" .. name] = true end
 

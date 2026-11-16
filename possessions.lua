@@ -63,6 +63,8 @@ local OWNER, OWNER_BED = "villages_owner", "villages_owner_bed"
 local EMERALD = "mcl_core:emerald"
 -- herd.lua's HERD_WHEAT, held by a leatherworker for breeding (ticket 11e).
 local HERD_WHEAT_ITEM, HERD_WHEAT = "mcl_farming:wheat_item", 4
+-- coop.lua's COOP_SEEDS, held by a butcher for breeding its chickens (ticket 24).
+local COOP_SEEDS_ITEM, COOP_SEEDS = "mcl_farming:wheat_seeds", 4
 -- market_stall.lua's banner and BANNER_DAYS (ticket 12): a stall keeper wants a banner.
 local BANNER, BANNER_DAYS = "mcl_banners:banner_item_white", 3
 -- Work chests, and how near their node they are.
@@ -630,6 +632,10 @@ function M.assess(self)
 	-- A leatherworker breeds its herd on wheat (herd.lua's HERD_WHEAT).
 	if self._profession == "leatherworker" and not self.child then
 		extra[HERD_WHEAT_ITEM] = (extra[HERD_WHEAT_ITEM] or 0) + HERD_WHEAT
+	end
+	-- A butcher breeds its chickens on wheat seeds (coop.lua's COOP_SEEDS); not the keeper.
+	if self._profession == "butcher" and not self._villages_keeper and self._jobsite and not self.child then
+		extra[COOP_SEEDS_ITEM] = (extra[COOP_SEEDS_ITEM] or 0) + COOP_SEEDS
 	end
 	-- One that kept a stall lately and has no banner flying wants one, worth no more than
 	-- its price (market_stall.lua).

@@ -1358,7 +1358,7 @@ branch, and each leaves the game playable with `living_villages_economy` on or o
 | 21 | Price discovery: the money factor and gifts (21a), reference prices that learn (21b), players at the villagers' prices (21c), production by margin (21d), a dinner that floats (21e) | 20 |
 | 22 | Flows that answer prices: money that comes back (22a), the starving eat (22b), a tavern stocked to demand (22c) | 21 |
 | 23 | Comforts the labourers make: labourers craft while they wait (23a), new comforts and flowers in pots (23b), slots that grow with wealth (23c), comforts at the bids heard and labourers that buy their inputs (23d) | 22 |
-| 24 | Demand for the crafts with none: the cleric eats free, the alchemist hears all, leather clothes, bows and arrows and any carpet as comforts, the butcher's feathers | 23 |
+| 24 | Demand for the crafts with none: the cleric eats free, the alchemist hears all, leather clothes, bows and arrows and any carpet as comforts, the butcher's chickens | 23 |
 
 ### 1. Clock, hunger and the tavern
 
@@ -2944,12 +2944,24 @@ banners, paintings and white carpet.
 - With 17 comforts and 4 tastes each villager's tastes change (they are rolled by `_id`
   over the list); a comfort in use from a taste it no longer has is used up as before.
 
-**The butcher's feathers** (`coop.lua`). Nobody made feathers, an input of every arrow. A
-butcher with a jobsite (not the keeper) collects, in its work stage every COLLECT_SECONDS
-(150), a feather for each adult chicken within RADIUS (16) of its jobsite, at most
-COOP_SIZE (8), while it holds fewer than KEEP (64). It keeps no flock: the chickens are
-the ones the player keeps in its house, and none is bred, marked or killed. Feathers are
-its own make (`ledger.lua`'s MAKES), so it sells them.
+**The butcher's chickens** (`coop.lua`). Nobody made feathers, an input of every arrow. A
+butcher with a jobsite (not the keeper) keeps a flock as the leatherworker keeps its herd
+(11e): chickens marked `_villages_coop`, bound to the jobsite by `herd.keep_near` (back
+past 10, set down beside it past 20 with no player near).
+- **Never given any.** No chickens are spawned for it. While its flock, chicks included,
+  is under MIN_FLOCK (2), the next unmarked chicken or chick within ADOPT_RADIUS (10) of
+  the jobsite joins it: the player lures some there, or hands the butcher eggs.
+- **Eggs.** In its work stage it picks up the eggs its hens lay within 16 of the jobsite
+  (up to 16 held; eggs have no price, so it keeps them). With a flock under MIN_FLOCK it
+  throws one every THROW_SECONDS (20) near the jobsite through `mcl_throwing`, as a player
+  would: a chick one time in eight, which then joins the flock.
+- **Tending**, every TEND_SECONDS (300) of work: a feather from each adult (up to 64
+  held), then with more than COOP_SIZE (4) adults it slaughters one for a raw chicken and
+  0 to 2 feathers (vanilla's drops), or else, with two adults, room for a chick and 2
+  wheat seeds, it breeds them. It wants 4 wheat seeds held (`possessions.assess`), bought
+  from the farmers.
+- Feathers and raw chicken are its own make (`ledger.lua`'s MAKES): it sells feathers, and
+  cooks its chicken at the smoker.
 
 **Why comfort prices are stuck at ×4.** Not a fault in the arithmetic. COUNT_SPAN (4) is
 as far as the daily balance of needs and offers can take a price from its base (21b); a
@@ -2974,9 +2986,10 @@ for n held) instead of the best.
   a child's or its own, and makes its prices' day move); `tests/market.lua` (the alchemist
   opens no stall); `tests/trade_trips.lua` (the alchemist plans a trip for cobble in its
   work stage); `tests/comforts.lua` (a grey carpet fills a carpet slot; leather clothes,
-  bows and arrows are wanted); `tests/coop.lua` (a feather a chicken per collection, chicks
-  and far chickens not counted, never past KEEP, none for the keeper, a child, one without
-  a jobsite or outside the work stage; feathers are the butcher's make).
+  bows and arrows are wanted); `tests/coop.lua` (no chickens of its own; eggs thrown only under MIN_FLOCK, one a
+  THROW_SECONDS; a hatched chick and a lured hen join, a third does not; eggs picked up; a
+  stray set back; a feather a hen, a chick bred on 2 seeds, a slaughter past 4 adults;
+  wheat seeds wanted, not by the keeper).
 
 ## Open questions
 
