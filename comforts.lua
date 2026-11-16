@@ -39,13 +39,18 @@ local M = {}
 
 -- What the village makes that a villager may want for its own sake, and how many game
 -- days each lasts: the foragers' flowers and apples, the shepherd's carpets (two wool make
--- three, at sale), the cartographer's banners and item frames, the librarian's
--- bookshelves, and what labourers make from stone and wood (ticket 23a).
+-- three, at sale; any colour, ticket 24), the cartographer's banners and item frames, the
+-- librarian's bookshelves, what labourers make from stone and wood (ticket 23a), and
+-- (ticket 24) the leatherworker's clothes and the fletcher's bows and arrows: both sat on
+-- their goods with no money (ColonyFood, day 416), and the fletcher could not buy flint.
+-- VoxeLibre 0.92 has no bundle or harness.
 M.FLOWER = "flower"
+M.CARPET = "carpet"
 M.COMFORTS = {
 	{item = "mcl_flowers:poppy", category = M.FLOWER, days = 2},
 	{item = "mcl_core:apple", days = 2},
-	{item = "mcl_wool:white_carpet", days = 4},
+	{item = "mcl_wool:white_carpet", category = M.CARPET, days = 4},
+	{item = "mcl_bows:arrow", days = 2},
 	{item = "mcl_banners:banner_item_white", days = 6},
 	{item = "mcl_paintings:painting", days = 6},
 	{item = "mcl_barrels:barrel_closed", days = 6},
@@ -54,6 +59,11 @@ M.COMFORTS = {
 	{item = "mcl_books:bookshelf", days = 8},
 	{item = "mcl_itemframes:frame", days = 8},
 	{item = "mcl_lanterns:lantern_floor", days = 10},
+	{item = "mcl_armor:helmet_leather", days = 10},
+	{item = "mcl_armor:boots_leather", days = 10},
+	{item = "mcl_armor:chestplate_leather", days = 12},
+	{item = "mcl_armor:leggings_leather", days = 12},
+	{item = "mcl_bows:bow", days = 12},
 }
 M.FLOWER_DAYS = 2
 M.MAX_DAYS = 12

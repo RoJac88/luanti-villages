@@ -88,6 +88,15 @@ return {
 		{makes = STICK, count = 4, tier = 1, from = {{"mcl_core:wood", 2}}},
 		{makes = "mcl_core:wood", count = 4, tier = 1, from = {{"mcl_core:tree", 1}}},
 	},
+	-- The leatherworker's clothes (ticket 24), comforts, from its herd's leather (herd.lua,
+	-- ticket 11e): vanilla's armour recipes. Its leather still sells to the librarian and the
+	-- cartographer when that pays better (production by margin, ticket 21d).
+	leatherworker = {
+		{makes = "mcl_armor:helmet_leather", count = 1, tier = 2, from = {{LEATHER, 5}}},
+		{makes = "mcl_armor:chestplate_leather", count = 1, tier = 1, from = {{LEATHER, 8}}},
+		{makes = "mcl_armor:leggings_leather", count = 1, tier = 1, from = {{LEATHER, 7}}},
+		{makes = "mcl_armor:boots_leather", count = 1, tier = 2, from = {{LEATHER, 4}}},
+	},
 	librarian = {
 		{makes = "mcl_core:paper", count = 3, tier = 1, from = {{"mcl_core:reeds", 3}}},
 		{makes = "mcl_books:book", count = 1, tier = 1, from = {{"mcl_core:paper", 3}, {LEATHER, 1}}},
@@ -109,9 +118,6 @@ return {
 		{makes = "mcl_core:iron_nugget", count = 1, tier = 1, from = {{"mcl_core:cobble", 4, "stone"}}, share = 1 / 18,
 			rank = 3},
 	},
-	-- No leatherworker: its leather comes from its herd (herd.lua, ticket 11e) and goes to
-	-- the librarian's books. Armour no villager wears would hold a recipe batch of leather
-	-- (32) back from them, and its player trades need no stock.
 	mason = {
 		{makes = "mcl_core:brick", count = 1, tier = 1, from = {{"mcl_core:clay_lump", 1}}, fuel = 1},
 		-- Smelted from a quarrier's cobble (ticket 19d), for its carved stone and to sell.

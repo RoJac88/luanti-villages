@@ -616,6 +616,8 @@ core.register_on_mods_loaded(function()
 	dofile(core.get_modpath("living_villages") .. "/production.lua").install(def)
 	-- The leatherworker's cow herd (herd.lua, ticket 11e): leather and beef.
 	dofile(core.get_modpath("living_villages") .. "/herd.lua").install(def)
+	-- The butcher's chickens (coop.lua, ticket 24): feathers for the fletcher.
+	dofile(core.get_modpath("living_villages") .. "/coop.lua").install(def)
 	cleric.install(def)
 	woodcutter.install(def)
 	alchemist.install(def)
@@ -684,6 +686,8 @@ core.register_on_mods_loaded(function()
 	end
 	-- After the well and bell, which it only reads; before wander.lua, whose legs it stops.
 	local market_news = dofile(core.get_modpath("living_villages") .. "/market_news.lua")
+	-- The alchemist overhears every loaded villager's news (ticket 24).
+	market_news.install(def)
 	local market_exchange = dofile(core.get_modpath("living_villages") .. "/exchange.lua")
 	-- Trade trips (trade_trips.lua): its own walks, and porters hired when a conversation ends.
 	trade_trips.install(def)

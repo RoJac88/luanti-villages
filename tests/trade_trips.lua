@@ -405,6 +405,12 @@ do
 	hungry._villages_trade_trip = nil
 	trips.step(hungry, now + 100)
 	assert(hungry._villages_trade_trip == nil)
+	-- The alchemist plans one in its work stage too (ticket 24): it has no putter time.
+	local alch = villager("alc", {x = 0, y = 1, z = -12}, {_profession = "cleric", _villages_alchemist = true,
+		_villages_belongings = {[EMERALD] = 5 * 64}})
+	alch._villages_market_news = {has_news("quinn", COBBLE, {x = -10, y = 1, z = 4}, 0.01)}
+	trips.step(alch, now + 100)
+	assert(alch._villages_trade_trip and alch._villages_trade_trip.item == COBBLE, "the alchemist goes for cobble")
 end
 
 -- An empty stash (ticket 12b): the news of its spare is forgotten and the seller passed

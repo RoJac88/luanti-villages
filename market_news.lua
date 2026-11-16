@@ -47,9 +47,15 @@ local INTEREST_MATCH = 4
 -- Freshness never falls below this share, so old news can still be told.
 local MIN_FRESHNESS = 0.1
 local DEFAULT_TIME_SPEED = 72
+-- The alchemist overhears (ticket 24): every OVERHEAR_SECONDS, every loaded adult's own
+-- news, kept up to OVERHEAR_ENTRIES.
+local OVERHEAR_SECONDS = 60
+local OVERHEAR_ENTRIES = 96
+local VILLAGER = "mobs_mc:villager"
 
 local M = {
 	NEWS_ENTRIES = NEWS_ENTRIES, NEWS_SHARE = NEWS_SHARE, NEWS_DAYS = NEWS_DAYS, OWN_ITEMS = OWN_ITEMS,
+	OVERHEAR_SECONDS = OVERHEAR_SECONDS, OVERHEAR_ENTRIES = OVERHEAR_ENTRIES,
 }
 
 local function short_id(id)
@@ -292,13 +298,14 @@ local function receive(listener, entry)
 	return true
 end
 
--- Drops the least interesting entries past NEWS_ENTRIES.
-local function trim(listener, view, now)
+-- Drops the least interesting entries past NEWS_ENTRIES (`limit`, if given).
+local function trim(listener, view, now, limit)
+	limit = limit or (listener._villages_alchemist and OVERHEAR_ENTRIES) or NEWS_ENTRIES
 	local list = listener._villages_market_news
-	if not list or #list <= NEWS_ENTRIES then return end
+	if not list or #list <= limit then return end
 	local known = M.wanted_and_had(list)
 	table.sort(list, function(a, b) return M.interest(view, a, now, known) > M.interest(view, b, now, known) end)
-	for i = #list, NEWS_ENTRIES + 1, -1 do list[i] = nil end
+	for i = #list, limit + 1, -1 do list[i] = nil end
 end
 
 -- A speaker tells `listener` up to NEWS_SHARE of what it knows (`known`: its own news
@@ -374,6 +381,61 @@ function M.exchange(members)
 			table.concat(ids, " "), kept))
 	end
 	return kept
+end
+
+-- The alchemist hears everything (ticket 24). It goes to neither the tavern nor the church
+-- and talked once in 70 minutes (ColonyFood, 2026-11-15), so it never heard who wanted
+-- its nuggets or who had stone and logs to spare: `heard=0` at day 416. It takes in the
+-- own news (M.own) of every loaded adult villager in `villagers`, one hop away, as if told
+-- face to face, and makes its prices' move for the day first, which a villager otherwise
+-- makes in its first conversation. Returns how many entries it kept.
+function M.overhear(listener, villagers, now)
+	if not clock.enabled() then return 0 end
+	now = now or core.get_gametime()
+	price_day(listener, now)
+	local kept = 0
+	for _, villager in ipairs(villagers) do
+		if villager ~= listener and villager._id and villager._id ~= listener._id and not villager.child then
+			for _, entry in ipairs(M.own(villager, possessions.assess(villager), now)) do
+				local told = copy(entry)
+				told.hops = (told.hops or 0) + 1
+				if receive(listener, told) then kept = kept + 1 end
+			end
+		end
+	end
+	trim(listener, possessions.assess(listener), now, OVERHEAR_ENTRIES)
+	return kept
+end
+
+-- The loaded adult villagers: every active villager entity.
+local function loaded_villagers()
+	local out = {}
+	for _, entity in pairs(core.luaentities or {}) do
+		if entity.name == VILLAGER and entity._id and not entity.child then out[#out + 1] = entity end
+	end
+	return out
+end
+
+-- Wraps do_custom: an alchemist overhears every OVERHEAR_SECONDS.
+local next_overhear = setmetatable({}, {__mode = "k"})
+function M.install(def)
+	if not clock.enabled() then return end
+	local original = def.do_custom
+	def.do_custom = function(self, dtime)
+		local result = original(self, dtime)
+		if self._villages_alchemist and not self.child and self._id then
+			local now = core.get_gametime()
+			if now >= (next_overhear[self] or 0) then
+				next_overhear[self] = now + OVERHEAR_SECONDS
+				local kept = M.overhear(self, loaded_villagers(), now)
+				if kept > 0 then
+					core.log("action", string.format("[living_villages] market news: alchemist %s overheard %d entries",
+						short_id(self._id), kept))
+				end
+			end
+		end
+		return result
+	end
 end
 
 -- One line for the Lookup Tool inspector (diagnostic.lua): how much it has heard, and

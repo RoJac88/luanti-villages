@@ -93,6 +93,8 @@ function M.eligible(villager, attempt)
 	if villager.child or villager._is_baby then return false, "child" end
 	if villager._villages_keeper then return false, "keeper" end
 	if villager._villages_builder then return false, "builder" end
+	-- The alchemist browses the stalls but opens none (ticket 24).
+	if villager._villages_alchemist then return false, "alchemist" end
 	if not villager._id then return false, "missing_id" end
 	if villager.following then return false, "following" end
 	local day = core.get_day_count and core.get_day_count()
@@ -355,8 +357,8 @@ function M.new(options)
 			end
 			local eligible, why = M.eligible(self, {})
 			if not eligible then
-				-- Keepers, Builders and children never sell; no goods is logged by goods_for.
-				local quiet = {no_goods = true, keeper = true, builder = true, child = true}
+				-- Keepers, Builders, alchemists and children never sell; no goods is logged by goods_for.
+				local quiet = {no_goods = true, keeper = true, builder = true, alchemist = true, child = true}
 				if not quiet[why] then
 					core.log("action", string.format("[living_villages] market seller browsing: villager %s (%s) %s",
 						tostring(self._id):sub(1, 6), tostring(M.profession(self)), tostring(why)))

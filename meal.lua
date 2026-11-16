@@ -23,7 +23,8 @@
 -- A villager guest pays too (ticket 8, once crafting gives every profession something
 -- to sell): the keeper's posted dinner price (dinner.lua, ticket 21e; ledger.DINNER where
 -- none was ever posted) from its belongings (possessions.lua) into the pantry, unless it
--- is the keeper or of the keeper's household (possessions.same_house), who eat free. It
+-- is the keeper or of the keeper's household (possessions.same_house), or the cleric
+-- (ticket 24), who eat free. It
 -- dines only when the price is no more than a meal is worth to it (dinner.wants);
 -- otherwise it eats its own food, or buys some. A guest who would not pay while dishes
 -- were left, and one who would have paid but found none, move the keeper's price for the
@@ -157,6 +158,10 @@ local function terms(self, jukebox)
 	if not is_villager(self) then return self._villages_price or 0, self._villages_can_pay, self._villages_pay end
 	local keeper = keeper_state(jukebox)
 	if keeper and (keeper == self or possessions.same_house(keeper._bed, self._bed)) then return 0 end
+	-- The cleric eats free (ticket 24): it lives on alms and sells nothing a village wants,
+	-- and starved at 15 emeralds while dinner cost 1 (ColonyFood, 2026-11-16). Not the
+	-- alchemist, a cleric underneath, which never eats.
+	if self._profession == "cleric" and not self._villages_alchemist then return 0 end
 	local price = dinner.posted(jukebox, keeper, core.get_day_count()) or VILLAGER_PRICE
 	return price,
 		function() return possessions.emeralds(self) >= price end,

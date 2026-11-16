@@ -30,7 +30,9 @@
 -- at the cell it stands in (cells.standing_cell), not its rounded position.
 --
 -- When. Anyone plans its own trip in the putter stage, outside a conversation; the
--- Builder, whose bench chests are short (builder_market.lua), also in its work stage. A
+-- Builder, whose bench chests are short (builder_market.lua), also in its work stage, and
+-- so does the alchemist (ticket 24), whose timetable has no putter time to speak of and
+-- which hears of every seller (market_news.overhear). A
 -- trip under way goes on in the work stage too (the putter stage is about 75 s, too
 -- short for most trips), with M.activity_override, or builder.lua's for the Builder,
 -- keeping vanilla from calling it back to its jobsite. It is dropped once the day after
@@ -511,12 +513,12 @@ function M.advance(self, trip, now)
 	end
 end
 
--- Whether a stage lets it go on a trip: plan one in the putter stage (the Builder in
--- the work stage too), and go on with one under way in either.
+-- Whether a stage lets it go on a trip: plan one in the putter stage (the Builder and the
+-- alchemist in the work stage too), and go on with one under way in either.
 local function may_travel(self, trip, stage)
 	if stage == "putter" then return true end
 	if stage ~= "work" then return false end
-	return trip ~= nil or self._villages_builder_wants ~= nil or self._villages_builder_logs ~= nil
+	return trip ~= nil or self._villages_alchemist or self._villages_builder_wants ~= nil or self._villages_builder_logs ~= nil
 		or self._villages_builder_wool ~= nil
 end
 

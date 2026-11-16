@@ -72,6 +72,8 @@ local ok, reason = market.eligible({_profession = "farmer", _id = "child", child
 assert(not ok and reason == "child")
 ok, reason = market.eligible({_profession = "farmer", _id = "keeper", _villages_keeper = true})
 assert(not ok and reason == "keeper")
+ok, reason = market.eligible({_profession = "cleric", _id = "alch", _villages_alchemist = true})
+assert(not ok and reason == "alchemist", "the alchemist browses, opens no stall (ticket 24)")
 ok, reason = market.eligible({_profession = "unemployed", _id = "unemployed"})
 assert(not ok and reason == "no_goods")
 ok, reason = market.eligible({_profession = "nitwit", _id = "nitwit"})

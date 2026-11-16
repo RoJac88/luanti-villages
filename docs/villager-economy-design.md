@@ -1358,6 +1358,7 @@ branch, and each leaves the game playable with `living_villages_economy` on or o
 | 21 | Price discovery: the money factor and gifts (21a), reference prices that learn (21b), players at the villagers' prices (21c), production by margin (21d), a dinner that floats (21e) | 20 |
 | 22 | Flows that answer prices: money that comes back (22a), the starving eat (22b), a tavern stocked to demand (22c) | 21 |
 | 23 | Comforts the labourers make: labourers craft while they wait (23a), new comforts and flowers in pots (23b), slots that grow with wealth (23c), comforts at the bids heard and labourers that buy their inputs (23d) | 22 |
+| 24 | Demand for the crafts with none: the cleric eats free, the alchemist hears all, leather clothes, bows and arrows and any carpet as comforts, the butcher's chickens | 23 |
 
 ### 1. Clock, hunger and the tavern
 
@@ -2884,6 +2885,111 @@ painting made, though seven labourers planned paintings and three lanterns.
 **Not in this ticket:** placing comforts in the villager's house (out of scope: a
 comfort is held, used up and gone), and the Builder buying torches from labourers for
 its houses.
+
+### 24. Demand for the crafts with none
+
+ColonyFood at day 416 (main b8d3957, 2026-11-16): 7 of 23 adults hold under 25
+emeralds, among them the leatherworker (0, holding 76 beef), the three shepherds (14, 9
+and 104), the fletcher (0, starving, wanting 23 flint) and the cleric (15). The alchemist
+has heard nothing (`heard=0`) and holds 1,161 emeralds it cannot spend well. Comfort
+prices sit at ×4.
+
+**The cleric eats free** (`meal.lua`). It lives on alms and sells nothing a village wants,
+so a dinner at 1 emerald was one it could not always pay. At the tavern it pays nothing,
+as the keeper's household does. Not the alchemist, a cleric underneath, which never eats.
+
+**The alchemist hears everything** (`market_news.lua`, `market.lua`, `trade_trips.lua`).
+It goes to neither the tavern nor the church, and talked once in 70 minutes, so it never
+learnt who had stone and logs to spare or who wanted its nuggets.
+- **Overhearing** (`market_news.overhear`, installed by `market_news.install`): every
+  OVERHEAR_SECONDS (60) it takes in the own news (`market_news.own`) of every loaded adult
+  villager, a hop away, and keeps up to OVERHEAR_ENTRIES (96) rather than 24. It makes its
+  prices' daily move there first, which a villager otherwise makes in its first
+  conversation, so its reference prices for stone and logs follow what the village needs
+  and has, and with them whether glass, flint or nuggets pay (ticket 21d).
+- **No stall.** On a holiday it goes to the bell and browses the stalls, buying there as
+  any browser does (`market_stall.serve`), and opens none of its own (`market.eligible`:
+  `alchemist`). It tells its news in the conversations there.
+- **Straight to a seller.** It plans trade trips in its work stage too, as the Builder
+  does, since its timetable has almost no putter time: it walks to whoever it heard has
+  the stone or logs its plan wants, at the seller's home, its stall or its stash.
+
+**New comforts** (`comforts.lua`, `goods.lua`, `recipes.lua`). The leatherworker and the
+fletcher had goods nobody wanted for themselves, and the shepherds' wool went only into
+banners, paintings and white carpet.
+
+| Comfort | Made by | Days |
+|---|---|---|
+| A carpet (any colour) | Shepherd, two wool for three at sale | 4 |
+| Arrow | Fletcher, 4 from a flint, a stick and a feather | 2 |
+| Leather cap (`helmet_leather`) | Leatherworker, 5 leather | 10 |
+| Leather boots | Leatherworker, 4 leather | 10 |
+| Leather tunic (`chestplate_leather`) | Leatherworker, 8 leather | 12 |
+| Leather pants (`leggings_leather`) | Leatherworker, 7 leather | 12 |
+| Bow | Fletcher, 3 sticks and 3 string | 12 |
+
+- **A carpet** is a category, as a flower is (`goods.CATEGORIES.carpet`, the 16 colours,
+  after `flower` in ORDER): any colour fills the slot, so the shepherds' grey, black and
+  brown wool sells as carpet too. An old save's white carpet in use keeps its days, and a
+  per-item white carpet price folds into `group:carpet` (`prices.migrate`).
+- **The leatherworker crafts** at its cauldron, from vanilla's armour recipes (its trade
+  table sells all four). Its leather still goes to the librarian and the cartographer when
+  that pays better: production by margin decides. An input a profession makes itself
+  (`ledger.lua`'s MAKES) is now wanted for one craft, not a batch (`ledger.inputs`), so the
+  leatherworker holds 8 leather, not 32, before it sells; the shepherd likewise holds one
+  grey wool for its white, and sells the rest, as carpet or wool.
+- **The fletcher** already made bows and arrows; now they sell, and pay for the flint its
+  arrows need.
+- VoxeLibre 0.92 has no bundle and no harness, so neither is a comfort.
+- With 17 comforts and 4 tastes each villager's tastes change (they are rolled by `_id`
+  over the list); a comfort in use from a taste it no longer has is used up as before.
+
+**The butcher's chickens** (`coop.lua`). Nobody made feathers, an input of every arrow. A
+butcher with a jobsite (not the keeper) keeps a flock as the leatherworker keeps its herd
+(11e): chickens marked `_villages_coop`, bound to the jobsite by `herd.keep_near` (back
+past 10, set down beside it past 20 with no player near).
+- **Never given any.** No chickens are spawned for it. While its flock, chicks included,
+  is under MIN_FLOCK (2), the next unmarked chicken or chick within ADOPT_RADIUS (10) of
+  the jobsite joins it: the player lures some there, or hands the butcher eggs.
+- **Eggs.** In its work stage it picks up the eggs its hens lay within 16 of the jobsite
+  (up to 16 held; eggs have no price, so it keeps them). With a flock under MIN_FLOCK it
+  throws one every THROW_SECONDS (20) near the jobsite through `mcl_throwing`, as a player
+  would: a chick one time in eight, which then joins the flock.
+- **Tending**, every TEND_SECONDS (300) of work: a feather from each adult (up to 64
+  held), then with more than COOP_SIZE (4) adults it slaughters one for a raw chicken and
+  0 to 2 feathers (vanilla's drops), or else, with two adults, room for a chick and 2
+  wheat seeds, it breeds them. It wants 4 wheat seeds held (`possessions.assess`), bought
+  from the farmers.
+- Feathers and raw chicken are its own make (`ledger.lua`'s MAKES): it sells feathers, and
+  cooks its chicken at the smoker.
+
+**Why comfort prices are stuck at ×4.** Not a fault in the arithmetic. COUNT_SPAN (4) is
+as far as the daily balance of needs and offers can take a price from its base (21b); a
+trade or a heard price can take it further. Painting (×3.99), banner (×3.99), bookshelf
+(×3.97) and white carpet (×3.91) had demand told every day and no offer at all, so every
+villager's price climbed to the ceiling and stayed, with nothing to bring it down. They
+had no offer because their inputs never came: labourers planned a painting about 1,000
+times in the run and made one (no wool), the librarian made 4 bookshelves and sold none
+(books need leather), one banner sold and 4 carpets. Comforts that do sell, barrels (42)
+and armor stands (25), are not at the ceiling. The fix is supply, which this ticket's
+leather, wool and feathers go toward.
+
+One side effect of 23d's floor is worth watching: a comfort is asked at no less than half
+the best bid heard, and the best bid is the richest bidder's. The cartographer asked
+3,296 for an item frame, a bid from the villager with 4,054 emeralds, while 12 frames sat
+unsold and the other bidders held a few hundred. The ask came down as that bid aged (453
+by day 416). If it recurs, ask the bid that would clear the seller's spare (the n-th best
+for n held) instead of the best.
+
+- **Tests:** `tests/meal.lua` (the cleric eats free with no emerald); `tests/market_news.lua`
+  (the alchemist overhears every loaded adult's news, a hop away, past NEWS_ENTRIES, never
+  a child's or its own, and makes its prices' day move); `tests/market.lua` (the alchemist
+  opens no stall); `tests/trade_trips.lua` (the alchemist plans a trip for cobble in its
+  work stage); `tests/comforts.lua` (a grey carpet fills a carpet slot; leather clothes,
+  bows and arrows are wanted); `tests/coop.lua` (no chickens of its own; eggs thrown only under MIN_FLOCK, one a
+  THROW_SECONDS; a hatched chick and a lured hen join, a third does not; eggs picked up; a
+  stray set back; a feather a hen, a chick bred on 2 seeds, a slaughter past 4 adults;
+  wheat seeds wanted, not by the keeper).
 
 ## Open questions
 
