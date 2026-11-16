@@ -196,4 +196,26 @@ do
 	assert(count(forager, BONE) == 3 and count(grower, MEAL) == 3)
 end
 
+-- A comfort is asked at no less than half the buyer's own bid, at most its emeralds
+-- (ticket 23d): a barrel bid at 374 sold for 18 when the seller had not heard the bid.
+do
+	local BARREL = "mcl_barrels:barrel_closed"
+	local ledger = dofile("ledger.lua")
+	local maker = villager("maker", {[BARREL] = 1})
+	local base = exchange.asking(maker, {}, BARREL, nil)
+	assert(math.abs(exchange.asking(maker, {}, BARREL, nil, nil, 374) - 187) < 1e-9)
+	assert(exchange.asking(maker, {}, BARREL, nil, nil, 10) == base, "a low bid leaves the ask")
+	assert(exchange.asking(maker, {}, "mcl_mobitems:beef", nil, nil, 1000) == ledger.price("mcl_mobitems:beef"),
+		"no comfort, no bid")
+	-- In a conversation: the trade still goes ahead, at half the buyer's value.
+	local rich = villager("rich", {["mcl_core:emerald"] = 2000})
+	local rich_view = {needs = {[BARREL] = 1}, surplus = {}, value = function(item)
+		if item == BARREL then return 300 end
+		return item == "mcl_core:emerald" and 1 or nil
+	end}
+	local maker_view = {needs = {}, surplus = {[BARREL] = 1}, value = function() return 1 end}
+	local q = exchange.quote(maker, maker_view, rich, rich_view, BARREL, 1, BARREL, 1)
+	assert(q and q.pay and q.pay >= 150 and q.pay <= 151, q and tostring(q.pay))
+end
+
 print("exchange.lua: ok")

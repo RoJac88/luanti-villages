@@ -319,7 +319,8 @@ function M.buy_in_person(self, trip, seller)
 	local item = trip.item
 	local seller_view = possessions.assess(seller)
 	local seller_value = seller_view.value(item) or 0
-	local unit = exchange.asking(seller, self, item, seller_view) or (value + seller_value) / 2
+	local unit = exchange.asking(seller, self, item, seller_view, nil, math.min(value, budget))
+		or (value + seller_value) / 2
 	if unit <= 0 then return 0, "no price" end
 	if value < unit then return 0, string.format("asks %.2f each, over our %.2f", unit, value) end
 	if budget < 1 then return 0, "no budget" end
