@@ -2863,7 +2863,11 @@ painting made, though seven labourers planned paintings and three lanterns.
   (2) game days, a bid capped at its bidder's emeralds. The reference price found it one
   5% markup a sale, and comforts sell a few a day. The bid ages out with its news, so the
   ask falls back once the bidder has its comfort. A converted comfort (carpets from wool)
-  stays capped by its source's ask (#103).
+  stays capped by its source's ask (#103), and an apple, a food, is left out.
+- **Fix after landing** (ColonyFood, 2026-11-15): a buyer tells only its top three needs,
+  so a weapon smith that never heard the leatherworker's barrel bid sold it one for 18 in
+  their conversation. A bid made to the seller's face, in a conversation or on a trade
+  trip, now counts too (`asks.with_bid`): half of it, never over it, so the sale goes ahead.
 - **Plan inputs** (`production.labour_caps`, `possessions.assess`): the plan's caps
   price its output at the best bid heard, as its gain does, and come with the plan; an
   input it is short of for one craft is worth at least PLAN_SHARE (½) of its cap, its

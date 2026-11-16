@@ -35,11 +35,14 @@
 -- one 5% markup a sale, and comforts sell a few a day, so labourers sold barrels for 28
 -- to buyers who valued them at 374 and armor stands for 31 against bids near 200
 -- (ColonyFood, 2026-11-15): the buyer kept most of the bid, and little money moved. The
--- bid ages out with its news, so the ask falls back once the bidder has its comfort.
+-- bid ages out with its news, so the ask falls back once the bidder has its comfort. A
+-- bid made to its face counts too (M.with_bid: exchange.lua, trade_trips.lua), since a
+-- buyer tells only its top needs. Not a flower or an apple (food).
 local core = minetest
 local ledger = dofile(core.get_modpath("living_villages") .. "/ledger.lua")
 local prices = dofile(core.get_modpath("living_villages") .. "/prices.lua")
 local comforts = dofile(core.get_modpath("living_villages") .. "/comforts.lua")
+local goods = dofile(core.get_modpath("living_villages") .. "/goods.lua")
 
 local MIN, MAX = 0.25, 4
 local MARKUP, MARKDOWN = 1.05, 0.9
@@ -69,12 +72,20 @@ local function set_factor(seller, item, factor)
 	seller._villages_asks = next(asks) and asks or nil
 end
 
+-- Whether the item is asked at the bids for it (ticket 23d): a comfort, but not a flower
+-- (told as its category, and cheap) or a food (an apple: a hungry buyer's bid is for a
+-- meal, and food has its own pricing, ticket 22b).
+local function bid_priced(item)
+	local comfort = comforts.by_item[item]
+	return comfort ~= nil and not comfort.category and goods.category_of(item) ~= "food"
+end
+M.bid_priced = bid_priced
+
 -- The best bid for a comfort the seller heard in the last BID_DAYS game days, at most its
 -- bidder's emeralds; 0 for none, or for an item no comfort is (flowers are told as their
 -- category, and fetch little).
 function M.best_bid(seller, item, now)
-	local comfort = comforts.by_item[item]
-	if not comfort or comfort.category or not seller._villages_market_news then return 0 end
+	if not bid_priced(item) or not seller._villages_market_news then return 0 end
 	local speed = core.settings and tonumber(core.settings:get("time_speed")) or DEFAULT_TIME_SPEED
 	if speed <= 0 then speed = DEFAULT_TIME_SPEED end
 	local oldest = (now or (core.get_gametime and core.get_gametime()) or 0) - BID_DAYS * 86400 / speed
@@ -101,6 +112,16 @@ function M.ask(seller, item, view)
 	local peddle = seller._villages_peddle
 	if peddle and peddle.item == item and not peddle.buying and peddle.bid then ask = math.max(ask, peddle.bid) end
 	return ask
+end
+
+-- Its ask for a comfort raised to BID_SHARE of a bid made to its face (a buyer in its
+-- conversation, or come on a trade trip), at most the buyer's emeralds: a buyer tells
+-- only its top needs as news, so a leatherworker's barrel bid of 374 never reached the
+-- weapon smith that sold it one for 18 (ColonyFood, 2026-11-15). Never over the bid, so
+-- the sale still goes ahead. Any other item's ask stands.
+function M.with_bid(item, ask, bid)
+	if not ask or not bid or not bid_priced(item) then return ask end
+	return math.max(ask, BID_SHARE * bid)
 end
 
 -- What the seller asks for one of a conversion's product (goods.lua): no more than its ask
