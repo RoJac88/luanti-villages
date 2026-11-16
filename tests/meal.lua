@@ -756,6 +756,19 @@ meal.tick(hal, 0.1, jukebox)
 assert(hal._villages_meal and hal._villages_food == 4 and pantry_items["mcl_core:emerald"] == 18, "household eats free")
 now = now + 20
 meal.tick(hal, 0.1, jukebox)
+-- The cleric eats free too (ticket 24), with no emerald.
+day = day + 1
+local cleo = {_id = "cleo", _profession = "cleric", _villages_seat = {table = tabletop}, _bed = {x = 30, y = 0, z = 30}}
+cleo.object = {get_pos = function() return {x = 2, y = 0, z = 0} end}
+assert(not (meal.explain(cleo, jukebox) or ""):find("cannot pay"), meal.explain(cleo, jukebox))
+pantry_items["mcl_farming:bread"] = 1
+now = now + 10
+meal.tick(cleo, 0.1, jukebox)
+now = now + 5
+meal.tick(cleo, 0.1, jukebox)
+assert(cleo._villages_meal and cleo._villages_food == 4 and pantry_items["mcl_core:emerald"] == 18, "the cleric eats free")
+now = now + 20
+meal.tick(cleo, 0.1, jukebox)
 pantry_items["mcl_core:emerald"] = nil
 
 -- A player pays the tavern's posted dinner price (dinner.lua) into the pantry for the meal.

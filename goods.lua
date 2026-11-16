@@ -49,7 +49,7 @@ local WOOL_COLOURS = {"white", "grey", "silver", "black", "red", "yellow", "gree
 -- Burn seconds, as VoxeLibre's furnaces take them.
 local BURN = {[COAL] = 80, [CHARCOAL] = 80, [STICK] = 5, [KELP_BLOCK] = 200}
 
-local categories = {food = {}, fuel = {}, log = {}, planks = {}, wool = {}, stone = {}, flower = {}}
+local categories = {food = {}, fuel = {}, log = {}, planks = {}, wool = {}, stone = {}, flower = {}, carpet = {}}
 for item, points in pairs(food.POINTS) do categories.food[item] = points end
 for item, seconds in pairs(BURN) do categories.fuel[item] = seconds end
 for log, planks in pairs(SPECIES) do
@@ -66,8 +66,11 @@ for _, flower in ipairs({"poppy", "dandelion", "tulip_red", "allium", "azure_blu
 	"tulip_orange", "tulip_white", "tulip_pink", "cornflower", "lily_of_the_valley"}) do
 	categories.flower["mcl_flowers:" .. flower] = 1
 end
+-- Any carpet, for a comfort (comforts.lua, ticket 24), so a shepherd's grey, black or
+-- brown wool sells as carpet as well as its white. Like flowers, no job's target category.
+for _, colour in ipairs(WOOL_COLOURS) do categories.carpet["mcl_wool:" .. colour .. "_carpet"] = 1 end
 -- Which category a member belongs to first, when it is in two (a log is fuel too).
-local ORDER = {"log", "planks", "wool", "stone", "flower", "food", "fuel"}
+local ORDER = {"log", "planks", "wool", "stone", "flower", "carpet", "food", "fuel"}
 
 local conversions = {
 	shepherd = {},

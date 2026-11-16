@@ -27,6 +27,7 @@ local trade_trips = dofile(core.get_modpath("living_villages") .. "/trade_trips.
 local rent = dofile(core.get_modpath("living_villages") .. "/rent.lua")
 local alms = dofile(core.get_modpath("living_villages") .. "/alms.lua")
 local herd = dofile(core.get_modpath("living_villages") .. "/herd.lua")
+local coop = dofile(core.get_modpath("living_villages") .. "/coop.lua")
 local builder_market = dofile(core.get_modpath("living_villages") .. "/builder_market.lua")
 local BIRTH_RADIUS = 24
 local BIRTH_HEIGHT = 12
@@ -549,6 +550,7 @@ local function show(player, villager)
 		"Rent: " .. rent.status(villager),
 		"Standing: " .. alms.status(villager),
 		"Herd: " .. herd.status(villager),
+		"Coop: " .. coop.status(villager),
 		"Jobsite route: " .. route_status(villager._villages_job_route),
 		"Jobsite planner: " .. planner_status(villager._villages_job_route),
 		"Jobsite planner trail: " .. planner_trail(villager._villages_job_route),

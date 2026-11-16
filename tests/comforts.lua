@@ -126,7 +126,7 @@ do
 	comforts.update(v, 0, take_from(held), clock)
 	assert(#v._villages_comforts == 1 and held[first] == 1)
 	assert(next((comforts.targets(v, 0, clock))) == nil)
-	clock = clock + 10 * DAY
+	clock = clock + comforts.MAX_DAYS * DAY
 	comforts.update(v, 0, take_from(held), clock)
 	assert(v._villages_comforts == nil)
 end
@@ -192,6 +192,30 @@ do
 	-- Wilted after its days: gone from the villager.
 	comforts.update(f, 0, take_from(held), clock + 2 * DAY)
 	assert(f._villages_comforts == nil and held["mcl_flowers:lily_of_the_valley"] == 1)
+end
+
+-- Carpets (ticket 24): any colour fills a carpet slot, so a shepherd's grey wool sells as
+-- carpet; an old save's white carpet keeps its days.
+local CARPET_TASTE = comforts.by_item["mcl_wool:white_carpet"]
+assert(CARPET_TASTE and CARPET_TASTE.category == comforts.CARPET)
+assert(comforts.by_item["mcl_wool:grey_carpet"] == CARPET_TASTE and comforts.by_item["mcl_wool:black_carpet"] == CARPET_TASTE)
+do
+	local c = {_id = with_tastes("rug", CARPET_TASTE)}
+	local rich = comforts.SAVINGS + comforts.STEP
+	local targets, worth, categories = comforts.targets(c, rich, clock)
+	assert(total(targets) == 0 and categories.carpet == 1, "a carpet is wanted as the category")
+	assert(worth["mcl_wool:brown_carpet"] > 0)
+	local held = {["mcl_wool:grey_carpet"] = 1}
+	comforts.update(c, rich, take_from(held), clock)
+	assert(#c._villages_comforts == 1 and c._villages_comforts[1].item == "mcl_wool:grey_carpet")
+end
+-- The leatherworker's clothes and the fletcher's bows and arrows are comforts (ticket 24).
+for _, item in ipairs({"mcl_armor:helmet_leather", "mcl_armor:chestplate_leather", "mcl_armor:leggings_leather",
+	"mcl_armor:boots_leather", "mcl_bows:bow", "mcl_bows:arrow"}) do
+	assert(comforts.by_item[item] and not comforts.by_item[item].category, item)
+	local id = with_tastes("t" .. item, comforts.by_item[item])
+	local targets = comforts.targets({_id = id}, comforts.SAVINGS + comforts.STEP, clock)
+	assert(targets[item] == 1, item .. " is wanted")
 end
 
 -- A flower pot holds a flower: it wants one every FLOWER_DAYS, takes one it holds, and

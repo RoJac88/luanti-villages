@@ -261,6 +261,29 @@ do
 		"the keeper makes nothing of the butcher's")
 end
 
+-- The alchemist overhears (ticket 24): every loaded villager's own news, a hop away,
+-- however many, past NEWS_ENTRIES; never its own, nor a child's.
+do
+	local crowd = {}
+	for i = 1, 12 do
+		crowd[i] = villager("v" .. i, {["mcl_core:cobble"] = 40 + i, ["mcl_core:tree"] = 20 + i})
+	end
+	crowd[#crowd + 1] = villager("kid", {["mcl_core:cobble"] = 50}, {child = true})
+	local alch = villager("alch", {["mcl_core:emerald"] = 500},
+		{_profession = "cleric", _villages_alchemist = true, _jobsite = {x = 0, y = 0, z = 0}})
+	crowd[#crowd + 1] = alch
+	minetest.get_day_count = function() return 7 end
+	local kept = news.overhear(alch, crowd, now)
+	local list = news.heard(alch, now)
+	assert(kept == #list and #list > news.NEWS_ENTRIES and #list <= news.OVERHEAR_ENTRIES, #list)
+	local cobble = knows(alch, "v12", "has", "mcl_core:cobble")
+	assert(cobble and cobble.hops == 1 and cobble.count == 52, "it heard v12's cobble at first hand")
+	assert(not knows(alch, "kid", "has") and not knows(alch, "alch", "has"), "no child, never itself")
+	assert(alch._villages_prices_day ~= nil, "its prices make the day's move")
+	assert(news.overhear(alch, crowd, now) == 0, "the same news again is nothing new")
+	minetest.get_day_count = nil
+end
+
 settings.living_villages_economy = false
 local hal, ivy = villager("hal", {["mcl_core:coal_lump"] = 40}), villager("ivy", {})
 assert(news.exchange({hal, ivy}) == 0 and ivy._villages_market_news == nil)

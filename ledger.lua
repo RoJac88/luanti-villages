@@ -165,6 +165,8 @@ local MAKES = {
 	shepherd = {},
 	-- Its herd's (herd.lua, ticket 11e).
 	leatherworker = {["mcl_mobitems:leather"] = true, ["mcl_mobitems:beef"] = true},
+	-- Its chickens' (coop.lua, ticket 24).
+	butcher = {["mcl_mobitems:feather"] = true},
 }
 for name in pairs({white = 1, brown = 1, black = 1, grey = 1}) do MAKES.shepherd["mcl_wool:" .. name] = true end
 
@@ -328,7 +330,11 @@ function M.inputs(profession, max_tier)
 	end
 	for _, recipe in ipairs(recipes[profession] or {}) do
 		for _, input in ipairs(recipe.from) do
-			found[input[1]] = math.max(found[input[1]] or 0, math.min(input[2] * CRAFT_BATCH, INPUT_CAP))
+			-- One it makes itself (MAKES) only for a craft, not a batch: it never buys it, and
+			-- a batch would hold back what it sells, a leatherworker's leather from the
+			-- librarian's books (ticket 24).
+			local batch = makes[input[1]] and 1 or CRAFT_BATCH
+			found[input[1]] = math.max(found[input[1]] or 0, math.min(input[2] * batch, INPUT_CAP))
 		end
 		if recipe.fuel then found[COAL] = math.max(found[COAL] or 0, FUEL_BATCH) end
 	end
