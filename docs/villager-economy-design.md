@@ -1357,7 +1357,7 @@ branch, and each leaves the game playable with `living_villages_economy` on or o
 | 20 | The alchemist: its stand and role (20a), cost-based prices (20b), alchemy at the stand (20c), trades with players (20d) | 19 |
 | 21 | Price discovery: the money factor and gifts (21a), reference prices that learn (21b), players at the villagers' prices (21c), production by margin (21d), a dinner that floats (21e) | 20 |
 | 22 | Flows that answer prices: money that comes back (22a), the starving eat (22b), a tavern stocked to demand (22c) | 21 |
-| 23 | Comforts the labourers make: labourers craft while they wait (23a), new comforts and flowers in pots (23b), slots that grow with wealth (23c) | 22 |
+| 23 | Comforts the labourers make: labourers craft while they wait (23a), new comforts and flowers in pots (23b), slots that grow with wealth (23c), comforts at the bids heard and labourers that buy their inputs (23d) | 22 |
 
 ### 1. Clock, hunger and the tavern
 
@@ -2852,6 +2852,30 @@ SAVINGS one a slot up to BASE_SLOTS, then a span of 2, 4, 8 … STEPs a slot. Te
 (`tests/comforts.lua`): 719 and 720 emeralds give 6 and 7 slots, 1,008 gives 8, farmer
 84ebb7's 1,163 gives 8, then 9 to 12 at 1,584, 2,736, 5,040 and 9,648, never more; 9 slots
 want the first taste once each round of its tastes.
+
+**23d. Comforts sold at what buyers bid, and labourers that buy their inputs**
+(ColonyFood, days 340–346, after 23a–c landed). Money moved, but little of it: 9 comfort
+sales in six days, labour-made ones at their cost (a barrel for 28 to a leatherworker
+that valued it at 374, armor stands for 31 against bids near 200), and no lantern or
+painting made, though seven labourers planned paintings and three lanterns.
+- **Asks** (`asks.lua`): a comfort (not a flower, told as its category) is asked at no
+  less than BID_SHARE (½) of the best bid for it the seller heard in the last BID_DAYS
+  (2) game days, a bid capped at its bidder's emeralds. The reference price found it one
+  5% markup a sale, and comforts sell a few a day. The bid ages out with its news, so the
+  ask falls back once the bidder has its comfort. A converted comfort (carpets from wool)
+  stays capped by its source's ask (#103).
+- **Plan inputs** (`production.labour_caps`, `possessions.assess`): the plan's caps
+  price its output at the best bid heard, as its gain does, and come with the plan; an
+  input it is short of for one craft is worth at least PLAN_SHARE (½) of its cap, its
+  money factor left out, since it buys to sell on. A labourer with 134 emeralds valued
+  wool at 8 for a painting bid at 500, while shepherds asked 90.
+- **Nuggets** were not short by price: the only seller, the alchemist-cleric, was stuck
+  at its bed exit, talked once in 70 minutes, sold all 63 of its nuggets to the armorer
+  as ingots at its stall, and died on fire. Lanterns wait on an alchemist that talks.
+- **Tests:** `tests/asks.lua` (the floor at half the best affordable bid, none for beef
+  or flowers, none once the bid is stale); `tests/production.lua` (the plan's caps price
+  nuggets at the lantern bid, its nugget value at least half the cap and urgent; wool for
+  a painting bid at 500 worth over 90, in any colour, until it holds one).
 
 **Not in this ticket:** placing comforts in the villager's house (out of scope: a
 comfort is held, used up and gone), and the Builder buying torches from labourers for

@@ -492,14 +492,32 @@ function M.labour_step(self, now, waiting)
 	local day = core.get_day_count()
 	local plan = self._villages_labour_plan
 	if not (plan and plan.day == day and now - (plan.checked or 0) < PLAN_SECONDS) then
-		local recipe = M.labour_plan(self)
-		self._villages_labour_plan = {day = day, checked = now, index = recipe and M.labour_index(recipe)}
+		local asks = news.asking(news.heard(self, now))
+		local recipe = M.labour_plan(self, nil, asks)
+		self._villages_labour_plan = {day = day, checked = now, index = recipe and M.labour_index(recipe),
+			caps = recipe and M.labour_caps(self, recipe, asks)}
 		if recipe then
 			core.log("action", string.format("[living_villages] production: villager %s (labourer) would make %s",
 				short_id(self), recipe.makes))
 		end
 	end
 	return made
+end
+
+-- What each of a labour recipe's inputs is worth to it at most (ledger.imputed), its
+-- output priced as M.gain prices it, at no less than the best bid heard (`asks`): the plan
+-- is chosen by that gain, so its inputs are bid for by it too. Capped at the reference
+-- price, a lantern wanted at 1,550 left nuggets worth what a lantern costs to make, and
+-- a painting wanted at 500 left wool at 40 against the shepherds' 90: no labourer ever
+-- set off to buy them (ColonyFood, 2026-11-15; ticket 23d).
+function M.labour_caps(self, recipe, asks)
+	local price_of = possessions.prices_of(self)
+	local function priced(item)
+		local price = price_of(item)
+		if item == recipe.makes and asks and asks[item] then return math.max(price or 0, asks[item]) end
+		return price
+	end
+	return ledger.imputed({recipe}, priced, MAX_TIER)
 end
 
 -- A labour recipe's place in recipes.labour, which the plan keeps (two make torches).
