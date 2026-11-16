@@ -74,4 +74,23 @@ asks.daily(broke, {[BEEF] = 5}, 2, 10)
 asks.daily(comfy, {[BEEF] = 5}, 2, 1000)
 assert(near(asks.factor(broke, BEEF), asks.MARKDOWN ^ 2) and near(asks.factor(comfy, BEEF), asks.MARKDOWN))
 
+-- A comfort is asked at no less than BID_SHARE of the best bid heard, a bid capped at its
+-- bidder's emeralds (ticket 23d: barrels sold for 28 to buyers who valued them at 374).
+local BARREL = "mcl_barrels:barrel_closed"
+local maker = {_id = "maker", _villages_market_news = {
+	{kind = "needs", item = BARREL, who = "rich", price = 374, budget = 1000, heard = 0, hops = 1},
+	{kind = "needs", item = BARREL, who = "poor", price = 900, budget = 100, heard = 0, hops = 1},
+	{kind = "needs", item = BEEF, who = "rich", price = 900, budget = 1000, heard = 0, hops = 1},
+}}
+assert(near(asks.best_bid(maker, BARREL, 0), 374), "the poor bidder's 900 counts as its 100")
+assert(near(asks.ask(maker, BARREL), 374 * asks.BID_SHARE))
+assert(near(asks.ask(maker, BEEF), ledger.price(BEEF)), "beef is no comfort: no floor")
+-- The bid ages out with its news, and the ask falls back to the reference price.
+assert(asks.best_bid(maker, BARREL, 1e6) == 0)
+assert(near(asks.ask({_id = "maker"}, BARREL), ledger.price(BARREL)))
+-- Flowers are told as their category: no floor.
+local florist = {_id = "f", _villages_market_news = {
+	{kind = "needs", item = "mcl_flowers:poppy", group = "flower", who = "rich", price = 90, heard = 0, hops = 1}}}
+assert(asks.best_bid(florist, "mcl_flowers:poppy", 0) == 0)
+
 print("asks.lua: ok")

@@ -452,6 +452,34 @@ do
 	assert((view.needs["mcl_core:iron_nugget"] or 0) == 8, tostring(view.needs["mcl_core:iron_nugget"]))
 	assert((view.needs[TORCH] or 0) == 1)
 	assert(dofile("market_news.lua").recipe_inputs(p)["mcl_core:iron_nugget"])
+	-- Its plan's inputs are worth what the bid makes them (ticket 23d): at the lantern's
+	-- reference price nuggets were worth no more than their cost, never urgent enough for
+	-- a trip. labour_step keeps the caps with the plan.
+	local cheap = view.value("mcl_core:iron_nugget")
+	p._villages_labour_plan = nil
+	p._villages_econ_clock = 0
+	production.labour_step(p, now + 100, true)
+	p._villages_econ_clock = 10
+	production.labour_step(p, now + 200, true)
+	local caps = p._villages_labour_plan.caps
+	assert(caps and caps["mcl_core:iron_nugget"] > 100, caps and tostring(caps["mcl_core:iron_nugget"]))
+	local dear = possessions.assess(p).value("mcl_core:iron_nugget")
+	assert(dear >= caps["mcl_core:iron_nugget"] / 2 and dear > cheap, dear .. " vs " .. cheap)
+	assert(dofile("trade_trips.lua").urgency(possessions.assess(p), "mcl_core:iron_nugget") >= 2)
+	-- A painting asked at 500: wool at the shepherds' 90 is worth buying.
+	local pt = labourer("painter")
+	possessions.add(pt, "mcl_core:stick", 8)
+	asked(pt, "mcl_paintings:painting", 500)
+	local wool_plan = production.labour_plan(pt)
+	assert(wool_plan and wool_plan.makes == "mcl_paintings:painting", wool_plan and wool_plan.makes)
+	local asks_heard = dofile("market_news.lua").asking(dofile("market_news.lua").heard(pt, now))
+	pt._villages_labour_plan = {day = day, checked = now, index = production.labour_index(wool_plan),
+		caps = production.labour_caps(pt, wool_plan, asks_heard)}
+	local pview = possessions.assess(pt)
+	assert(pview.value("mcl_wool:white") > 90 and pview.value("mcl_wool:red") > 90, tostring(pview.value("mcl_wool:white")))
+	-- Once it holds the wool, its floor goes: it is not bought twice.
+	possessions.add(pt, "mcl_wool:red", 1)
+	assert(possessions.assess(pt).value("mcl_wool:white") < 90)
 	-- Asked for pots: it wants three stone or cobble, either.
 	local c = labourer("cat")
 	asked(c, POT, 200)

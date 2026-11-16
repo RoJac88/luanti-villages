@@ -28,16 +28,29 @@
 -- at its inputs' cost went with ticket 21b (ColonyFood, 2026-11-15: broke, it held 30
 -- flint it could not sell at cost to a fletcher with one emerald). An item with no base
 -- price has no ask: exchange.lua falls back to the midpoint for it.
+--
+-- A comfort (comforts.lua) is asked at no less than BID_SHARE of the best bid for it the
+-- seller heard in the last BID_DAYS game days (market news "needs" entries, a bid capped
+-- at its bidder's emeralds): ticket 23d. Its reference price and factor found it slowly,
+-- one 5% markup a sale, and comforts sell a few a day, so labourers sold barrels for 28
+-- to buyers who valued them at 374 and armor stands for 31 against bids near 200
+-- (ColonyFood, 2026-11-15): the buyer kept most of the bid, and little money moved. The
+-- bid ages out with its news, so the ask falls back once the bidder has its comfort.
 local core = minetest
 local ledger = dofile(core.get_modpath("living_villages") .. "/ledger.lua")
 local prices = dofile(core.get_modpath("living_villages") .. "/prices.lua")
+local comforts = dofile(core.get_modpath("living_villages") .. "/comforts.lua")
 
 local MIN, MAX = 0.25, 4
 local MARKUP, MARKDOWN = 1.05, 0.9
 local SLOW_SHARE = 0.25
 local NEAR_ONE = 0.01
+local BID_SHARE = 0.5
+local BID_DAYS = 2
+local DEFAULT_TIME_SPEED = 72
 
-local M = {MIN = MIN, MAX = MAX, MARKUP = MARKUP, MARKDOWN = MARKDOWN, SLOW_SHARE = SLOW_SHARE}
+local M = {MIN = MIN, MAX = MAX, MARKUP = MARKUP, MARKDOWN = MARKDOWN, SLOW_SHARE = SLOW_SHARE,
+	BID_SHARE = BID_SHARE, BID_DAYS = BID_DAYS}
 
 local function clamp(factor)
 	return math.min(MAX, math.max(MIN, factor))
@@ -56,14 +69,35 @@ local function set_factor(seller, item, factor)
 	seller._villages_asks = next(asks) and asks or nil
 end
 
+-- The best bid for a comfort the seller heard in the last BID_DAYS game days, at most its
+-- bidder's emeralds; 0 for none, or for an item no comfort is (flowers are told as their
+-- category, and fetch little).
+function M.best_bid(seller, item, now)
+	local comfort = comforts.by_item[item]
+	if not comfort or comfort.category or not seller._villages_market_news then return 0 end
+	local speed = core.settings and tonumber(core.settings:get("time_speed")) or DEFAULT_TIME_SPEED
+	if speed <= 0 then speed = DEFAULT_TIME_SPEED end
+	local oldest = (now or (core.get_gametime and core.get_gametime()) or 0) - BID_DAYS * 86400 / speed
+	local best = 0
+	for _, entry in ipairs(seller._villages_market_news or {}) do
+		if entry.kind == "needs" and entry.item == item and not entry.group and entry.who ~= seller._id
+			and (entry.heard or 0) >= oldest and entry.price then
+			best = math.max(best, math.min(entry.price, entry.budget or entry.price))
+		end
+	end
+	return best
+end
+
 -- What the seller asks for one, or nil for an item with no base price. With its view
--- (possessions.assess), never less than its own value for the item.
+-- (possessions.assess), never less than its own value for the item; a comfort never less
+-- than BID_SHARE of the best bid it heard.
 function M.ask(seller, item, view)
 	local reference = prices.price(seller._villages_prices, item)
 	if not reference then return nil end
 	local ask = reference * M.factor(seller, item)
 	local own = view and view.value(item)
 	if own then ask = math.max(ask, own) end
+	ask = math.max(ask, BID_SHARE * M.best_bid(seller, item))
 	local peddle = seller._villages_peddle
 	if peddle and peddle.item == item and not peddle.buying and peddle.bid then ask = math.max(ask, peddle.bid) end
 	return ask

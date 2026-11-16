@@ -57,6 +57,8 @@ local DEFAULT_STASH_RADIUS = 8
 local STASH_HEIGHT = 3
 local CLAIM_SECONDS = 60
 local STACK = 64
+-- What share of a labour plan's input cap it is worth at least while short (ticket 23d).
+local PLAN_SHARE = 0.5
 local OWNER, OWNER_BED = "villages_owner", "villages_owner_bed"
 local EMERALD = "mcl_core:emerald"
 -- herd.lua's HERD_WHEAT, held by a leatherworker for breeding (ticket 11e).
@@ -665,9 +667,34 @@ function M.assess(self)
 	-- recipe's output returns, and one only recipes that do not pay take is not wanted.
 	-- A labourer's plan caps its own inputs alike, and no others: its cobble and logs sell
 	-- at their own price.
+	-- The caps come with the plan (production.labour_caps), its output at the best bid heard.
+	-- An input it is short of for one craft is worth at least PLAN_SHARE of its cap (ticket
+	-- 23d): bought to sell on, not to use, its money factor does not shrink it. A labourer
+	-- with 134 emeralds valued wool at 8 for a painting bid at 500 while the shepherds asked
+	-- 90 (ColonyFood, 2026-11-15).
 	if plan then
-		for item, cap in pairs(ledger.imputed({plan}, M.prices_of(self), 5)) do
+		local caps = self._villages_labour_plan.caps or ledger.imputed({plan}, M.prices_of(self), 5)
+		for item, cap in pairs(caps) do
 			worth[item] = math.min(worth[item] or math.huge, cap)
+		end
+		if self._villages_labour_plan.caps then
+			local held = M.held(self)
+			for _, input in ipairs(plan.from) do
+				local category = input[3] or goods.target_category(input[1])
+				if category ~= input[3] and category ~= "log" and category ~= "planks" then category = nil end
+				local members = category and goods.CATEGORIES[category] or {[input[1]] = true}
+				local have = 0
+				for item in pairs(members) do have = have + (held[item] or 0) end
+				if have < input[2] then
+					for item in pairs(members) do
+						local floor = PLAN_SHARE * (caps[item] or 0)
+						if floor > 0 then
+							least = least or {}
+							least[item] = math.max(least[item] or 0, floor)
+						end
+					end
+				end
+			end
 		end
 	end
 	local list = not self.child and M.recipes_of(self)
