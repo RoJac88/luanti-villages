@@ -221,6 +221,26 @@ assert(berries >= 2 and berries <= 3)
 assert(count(nina, "mcl_core:reeds") == 2 and nodes[key({x = 6, y = 1, z = 0})] == "mcl_core:reeds"
 	and not nodes[key({x = 6, y = 2, z = 0})], "the bottom block stays")
 assert(count(nina, "mcl_core:apple") == 2 and apple.removed)
+-- A crafter idle for the day forages nearer its bed than a nitwit or the unemployed
+-- (ColonyFood, 2026-11-16: a weapon smith went out of the loaded area for flowers).
+do
+	assert(labour.EMPLOYED_FORAGE_RADIUS < labour.FORAGE_RADIUS)
+	local far = {x = labour.EMPLOYED_FORAGE_RADIUS + 8, y = 1, z = 0}
+	nodes[key(far)] = "mcl_farming:sweet_berry_bush_3"
+	local function sees_far(v)
+		for _, target in ipairs(labour.forage_targets(v)) do
+			if target.pos.x == far.x and target.pos.z == far.z then return true end
+		end
+		return false
+	end
+	assert(labour.forage_radius(villager()) == labour.FORAGE_RADIUS)
+	assert(sees_far(villager()), "a nitwit roams")
+	assert(sees_far(villager({_profession = "unemployed"})), "so does one with no job block")
+	local smith = villager({_profession = "weapon_smith", _jobsite = {x = 2, y = 1, z = 2}})
+	assert(labour.forage_radius(smith) == labour.EMPLOYED_FORAGE_RADIUS)
+	assert(not sees_far(smith), "an idle crafter stays near home")
+	nodes[key(far)] = nil
+end
 -- Dropped goods: anything priced, plain, picked up first, since it would despawn; dirt,
 -- a worn tool and a named item are left.
 do
