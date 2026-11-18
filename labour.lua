@@ -16,7 +16,8 @@
 -- for. An activity with no site is never chosen.
 --
 -- Activities take only what comes back:
--- * forager: within FORAGE_RADIUS of its bed, sweet berry bushes at their last two
+-- * forager: within FORAGE_RADIUS of its bed (EMPLOYED_FORAGE_RADIUS for a crafter idle
+--   for the day, M.forage_radius), sweet berry bushes at their last two
 --   stages (left at the first, as a player's picking leaves them), sugar cane above its
 --   bottom block, and apples lying on the ground. Flowers and mushrooms do not come
 --   back once picked, so they are not dug: of a poppy, dandelion or lily of the valley it
@@ -123,6 +124,10 @@ local KEEP_GATHERED = 32
 -- day 112). A trip past far_trips.lua's WANDER is an errand there, so vanilla does not
 -- call it home.
 local FORAGE_RADIUS, FORAGE_HEIGHT = 64, 8
+-- A crafter with a job block forages nearer home (ColonyFood, 2026-11-16: a weapon smith
+-- idle for the day went 115 from the village's middle for flowers, out of the loaded
+-- area, and froze there holding its grindstone). Only the unemployed and nitwits roam.
+local EMPLOYED_FORAGE_RADIUS = 32
 local GROVE_MAX = 8
 -- A woodcutter with a chopping block (woodcutter.lua, ticket 16): woodcutting is its job.
 local GROVE_MAX_JOB = 12
@@ -210,6 +215,7 @@ local NAMES = {"forager", "woodcutter", "quarrier", "porter", "peddler"}
 local M = {
 	ACTIVITIES = ACTIVITIES, YESTERDAY_BIAS = YESTERDAY_BIAS, GROVE_MAX = GROVE_MAX,
 	KEEP_GATHERED = KEEP_GATHERED, CHARCOAL_KEEP = CHARCOAL_KEEP, QUARRY_KEEP = QUARRY_KEEP,
+	FORAGE_RADIUS = FORAGE_RADIUS, EMPLOYED_FORAGE_RADIUS = EMPLOYED_FORAGE_RADIUS,
 	QUARRY_RADIUS = QUARRY_RADIUS, MINE_SECONDS = MINE_SECONDS, REGEN_SECONDS = REGEN_SECONDS,
 	PEDDLE_MARGIN = PEDDLE_MARGIN, PEDDLE_MAX = PEDDLE_MAX, BID_SHARE = BID_SHARE,
 	PEDDLE_BUY_DAYS = PEDDLE_BUY_DAYS, PEDDLE_DAYS = PEDDLE_DAYS,
@@ -468,19 +474,19 @@ end
 
 -- Within FORAGE_RADIUS of the bed, not just inside the box around it, whose corners lie
 -- half as far again.
-local function in_reach(bed, found)
+local function in_reach(bed, found, radius)
 	local kept = {}
 	for _, pos in ipairs(found) do
-		if vector.distance(bed, pos) <= FORAGE_RADIUS then kept[#kept + 1] = pos end
+		if vector.distance(bed, pos) <= radius then kept[#kept + 1] = pos end
 	end
 	return kept
 end
 
-local function ripe_bushes(bed)
+local function ripe_bushes(bed, radius)
 	local names = {}
 	for name in pairs(RIPE_BUSHES) do names[#names + 1] = name end
-	local minp, maxp = area(bed, FORAGE_RADIUS, FORAGE_HEIGHT)
-	return in_reach(bed, core.find_nodes_in_area(minp, maxp, names))
+	local minp, maxp = area(bed, radius, FORAGE_HEIGHT)
+	return in_reach(bed, core.find_nodes_in_area(minp, maxp, names), radius)
 end
 
 -- Whether the flower at pos has a bloom to pick: not picked in the last BLOOM_DAYS.
@@ -491,15 +497,15 @@ local function in_bloom(pos)
 end
 
 -- The flowers in bloom of the kinds it holds fewer than FLOWER_KEEP of.
-local function blooms(self, bed)
+local function blooms(self, bed, radius)
 	local names = {}
 	for _, flower in ipairs(FLOWERS) do
 		if possessions.count(self, flower) < FLOWER_KEEP then names[#names + 1] = flower end
 	end
 	if #names == 0 then return {} end
-	local minp, maxp = area(bed, FORAGE_RADIUS, FORAGE_HEIGHT)
+	local minp, maxp = area(bed, radius, FORAGE_HEIGHT)
 	local found = {}
-	for _, pos in ipairs(in_reach(bed, core.find_nodes_in_area(minp, maxp, names))) do
+	for _, pos in ipairs(in_reach(bed, core.find_nodes_in_area(minp, maxp, names), radius)) do
 		if in_bloom(pos) then found[#found + 1] = pos end
 	end
 	return found
@@ -519,10 +525,10 @@ end
 M.beside_cane = beside_cane
 
 -- Cane tops: a cane block on a cane block, the highest of its column.
-local function cane_tops(bed)
+local function cane_tops(bed, radius)
 	local found = {}
-	local minp, maxp = area(bed, FORAGE_RADIUS, FORAGE_HEIGHT)
-	for _, pos in ipairs(in_reach(bed, core.find_nodes_in_area(minp, maxp, {CANE}))) do
+	local minp, maxp = area(bed, radius, FORAGE_HEIGHT)
+	for _, pos in ipairs(in_reach(bed, core.find_nodes_in_area(minp, maxp, {CANE}), radius)) do
 		local below = core.get_node_or_nil({x = pos.x, y = pos.y - 1, z = pos.z})
 		local above = core.get_node_or_nil({x = pos.x, y = pos.y + 1, z = pos.z})
 		if below and below.name == CANE and not (above and above.name == CANE) then found[#found + 1] = pos end
@@ -531,9 +537,9 @@ local function cane_tops(bed)
 end
 
 -- Dropped stacks within reach of bed that `wanted(stack)` takes, as {pos, object, stack}.
-local function fallen(bed, wanted)
+local function fallen(bed, wanted, radius)
 	local found = {}
-	for _, object in ipairs(core.get_objects_inside_radius(bed, FORAGE_RADIUS)) do
+	for _, object in ipairs(core.get_objects_inside_radius(bed, radius)) do
 		local entity = object:get_luaentity()
 		local stack = entity and entity.name == "__builtin:item" and entity.itemstring
 			and entity.itemstring ~= "" and ItemStack(entity.itemstring)
@@ -559,26 +565,36 @@ end
 
 local function is_apple(stack) return stack:get_name() == APPLE end
 
+-- How far from its bed it forages: FORAGE_RADIUS for a nitwit or a villager with no job
+-- block, EMPLOYED_FORAGE_RADIUS for a crafter labouring on a day it has nothing to make.
+function M.forage_radius(self)
+	if self._profession == "nitwit" or (self._profession == "unemployed" and not self._jobsite) then
+		return FORAGE_RADIUS
+	end
+	return EMPLOYED_FORAGE_RADIUS
+end
+
 -- Every forager target, as {pos, kind, object}.
 function M.forage_targets(self)
 	local bed = home(self)
 	local targets = {}
 	if not bed then return targets end
+	local radius = M.forage_radius(self)
 	if possessions.count(self, BERRY) < KEEP_GATHERED then
-		for _, pos in ipairs(ripe_bushes(bed)) do targets[#targets + 1] = {pos = pos, kind = "berries"} end
+		for _, pos in ipairs(ripe_bushes(bed, radius)) do targets[#targets + 1] = {pos = pos, kind = "berries"} end
 	end
 	if possessions.count(self, CANE) < KEEP_GATHERED then
-		for _, pos in ipairs(cane_tops(bed)) do targets[#targets + 1] = {pos = pos, kind = "cane"} end
+		for _, pos in ipairs(cane_tops(bed, radius)) do targets[#targets + 1] = {pos = pos, kind = "cane"} end
 	end
 	if possessions.count(self, APPLE) < KEEP_GATHERED then
-		for _, item in ipairs(fallen(bed, is_apple)) do
+		for _, item in ipairs(fallen(bed, is_apple, radius)) do
 			targets[#targets + 1] = {pos = item.pos, kind = "apple", object = item.object}
 		end
 	end
-	for _, item in ipairs(fallen(bed, M.worth_picking)) do
+	for _, item in ipairs(fallen(bed, M.worth_picking, radius)) do
 		targets[#targets + 1] = {pos = item.pos, kind = "pickup", object = item.object}
 	end
-	for _, pos in ipairs(blooms(self, bed)) do targets[#targets + 1] = {pos = pos, kind = "flower"} end
+	for _, pos in ipairs(blooms(self, bed, radius)) do targets[#targets + 1] = {pos = pos, kind = "flower"} end
 	return targets
 end
 
