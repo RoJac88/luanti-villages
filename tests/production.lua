@@ -192,6 +192,52 @@ do
 	assert(production.make(carto, recipe))
 	assert(count(carto, "mcl_core:paper") == 3 and count(carto, "mcl_core:reeds") == 0)
 end
+-- Making for itself (ticket 26d): a cartographer that wants a banner for its own sake values
+-- the banner's wool by its own value for a banner, not the banner's market price, and makes
+-- one where the market price would not pay. One that wants none does not (ColonyFood, day
+-- 693: it valued wool at 60 for a 3,072 banner while the shepherds asked 120).
+do
+	local comforts = dofile("comforts.lua")
+	local BANNER, WOOL = "mcl_banners:banner_item_white", "mcl_wool:white"
+	local function wants_banner(id)
+		for _, taste in ipairs(comforts.tastes(id)) do
+			if taste.item == BANNER then return true end
+		end
+		return false
+	end
+	local fond, plain
+	for i = 1, 5000 do
+		local id = "carto-" .. i
+		if not fond and comforts.tastes(id)[1].item == BANNER then fond = id end
+		if not plain and not wants_banner(id) then plain = id end
+		if fond and plain then break end
+	end
+	assert(fond and plain)
+	-- Wool dear and banners cheap at market: six wool and a stick cost more than a banner.
+	local beliefs = {[WOOL] = 4, ["group:wool"] = 4, [BANNER] = 0.25}
+	local function carto(id)
+		local v = smith({_id = id, _profession = "cartographer", _villages_food = 20, _max_trade_tier = 4,
+			_villages_prices = beliefs})
+		possessions.add(v, "mcl_core:emerald", 3000)
+		return v
+	end
+	local yes, no = carto(fond), carto(plain)
+	local yes_view, no_view = possessions.assess(yes), possessions.assess(no)
+	assert((yes_view.needs[BANNER] or 0) > 0 and yes_view.own_use and yes_view.own_use[BANNER], "it wants a banner")
+	assert(not (no_view.own_use and no_view.own_use[BANNER]), "the other does not")
+	assert(yes_view.value(WOOL) > 2 * no_view.value(WOOL),
+		string.format("wool %.1f against %.1f", yes_view.value(WOOL), no_view.value(WOOL)))
+	for _, v in ipairs({yes, no}) do
+		possessions.add(v, WOOL, 6)
+		possessions.add(v, "mcl_core:stick", 1)
+	end
+	local made = production.choose(yes)
+	assert(made and made.makes == BANNER, "it makes its own banner")
+	made = production.choose(no)
+	assert(not made or made.makes ~= BANNER, "a banner does not pay at market")
+	-- Sticks, an input of its own recipes, are never lifted.
+	assert(not yes_view.own_use["mcl_core:stick"])
+end
 -- No fuel and no lump: raw meat stays raw.
 local cold = smith({_id = "cold", _profession = "butcher"})
 possessions.add(cold, "mcl_mobitems:chicken", 3)
