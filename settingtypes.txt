@@ -190,3 +190,12 @@ living_villages_tier_supply_days (Villager days of village supply per trade tier
 # An unemployed villager takes the free job block nearest its bed, of any kind, and looks
 # this far from its bed for one (24 nodes up and down).
 living_villages_farm_job_radius (Range from its bed to look for a free job) int 96 48 120
+
+# Time the villagers' callbacks module by module (profile.lua): each do_custom and
+# on_step wrapper's own time, the mod's globalsteps, ABMs and timers, and what
+# get_staticdata saves. Read it with /living_villages_profile. Costs a little time
+# itself, so leave it off outside measuring.
+living_villages_profile (Profile villager callbacks) bool false
+# With profiling on, log the figures and start over every this many seconds; 0 only
+# answers the chat command.
+living_villages_profile_log_seconds (Profile log interval) int 60 0 3600
