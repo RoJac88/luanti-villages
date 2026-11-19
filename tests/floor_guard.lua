@@ -11,6 +11,7 @@ minetest = {
 		air = {walkable = false},
 		["mcl_core:stone"] = {},
 		["mcl_stairs:slab_stone"] = {},
+		["mcl_wool:white_carpet"] = {},
 	},
 	get_node_or_nil = function(pos)
 		return {name = nodes[key(pos.x, pos.y, pos.z)] or "air"}
@@ -196,5 +197,29 @@ def.on_step(v, 0.05)
 engine_moves(v, {x = 0, y = 1.01, z = 0.8})
 def.on_step(v, 2.1)
 assert_pos(v, 0, 1.01, 0.8, "a fall beside a column it only touches is left alone")
+
+-- The ColonyFood shepherd (2026-11-19 15:16): on a cobble floor at y=9, beside a bed at
+-- y=10, it was snapped down with its head against the bed's underside (9.5): feet at
+-- 7.56, the floor and the dirt under it around its body, nothing above its head.
+reset()
+fill(0, 0, 5, 9)
+fill(0, 1, 5, 9)
+nodes[key(0, 10, 1)] = "mcl_core:stone" -- the bed
+v = villager({x = 0, y = 9.51, z = 0.2})
+def.on_step(v, 0.05)
+engine_moves(v, {x = 0, y = 9.5 - BOX[5], z = 0.2})
+def.on_step(v, 2.1)
+assert_pos(v, 0, 9.51, 0.2, "a villager sunk with the floor around its body is put back")
+assert(logs[1] and logs[1]:find("dropped through mcl_core:stone at %(0.0,9.0,0.0%)"), tostring(logs[1]))
+-- A real fall in a long step onto a carpet: the carpet is in the row its feet are in.
+reset()
+fill(0, 0, -5, 6)
+fill(2, 0, -5, 1)
+nodes[key(2, 2, 0)] = "mcl_wool:white_carpet"
+v = villager({x = 0, y = 6.51, z = 0})
+def.on_step(v, 0.05)
+engine_moves(v, {x = 2, y = 1.5625 - BOX[2], z = 0})
+def.on_step(v, 2.6)
+assert_pos(v, 2, 1.5725, 0, "a fall onto a carpet is left alone")
 
 print("floor_guard tests passed")
