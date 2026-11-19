@@ -3024,6 +3024,102 @@ they had already dined that day.
   up to 12 and no further, its raw catch too); `tests/keeper_supply.lua` (30 wanted, 38
   stocked).
 
+### 26. Making what nobody sells
+
+ColonyFood at day 693 (5ebbfc7, 2026-11-19): money is stable at 14.2k but sits with
+whoever wants only what nobody offers. The fletcher's 7.2k went to the leatherworker for
+three leather caps, and on to the cartographer for item frames; the cartographer now holds
+6.6k and wants a bookshelf, a white banner and glass panes, none of them offered. Trade fell
+from 67 deals in ten days to 14-37. Four unemployed villagers and the mason hold 2-19
+emeralds and starve on and off; they portered on 565 days and were hired 19 times, always
+for bread, fish or wheat that the client could have fetched itself. Three things kept the
+poorest from making what the rich want:
+
+- **The alchemist is never heard.** It opens no stall and goes nowhere news is told, and
+  ticket 24's overhearing ran one way. It held 63 nuggets at 0.29 while labourers planned a
+  lantern 880 times and two villagers bid 2,081 for one: no villager heard of a nugget for
+  sale, and none was ever traded. With no sales it had no emeralds, so it bought no stone or
+  logs, and glass, flint and iron stopped.
+- **The poorest cannot pay for inputs.** A painting's wool costs about 120, a lantern's
+  nuggets about 100 at their reference price; they hold under 20, and the money factor
+  lowers their bids further.
+- **A crafter values a good it makes for itself at its market price.** The cartographer
+  makes banners and wants three at 3,072 each, but valued white wool at 60 (a banner's
+  reference price over six wool) while the shepherds asked 120.
+
+Labourers making banners and bookshelves (raised in review) waits for these to land.
+
+#### 26a. The alchemist is overheard
+
+`market_news.overhear` also hands the alchemist's own news (`market_news.own`) to every
+loaded adult villager it overheard, a hop away, as if told face to face, each trimmed to
+NEWS_ENTRIES. A buyer then plans a trip to it as to any seller (`trade_trips.plan`): to its
+bed, then after it where it stands. Its asks start at its own low value and rise with each
+sale (`asks.lua`), so its emeralds come back and it buys stone and logs again. The log line
+says how many entries it took in and how many the others kept of its news.
+
+- **Tests:** `tests/market_news.lua` (four villagers hear of its nuggets at first hand, a
+  child hears nothing, the same news again is nothing new).
+
+#### 26b. Commissions
+
+A porter is paid to walk, and walking is cheap, so nobody hires one. What a rich villager
+cannot get is a good nobody has. A commission is portering with a craft in the middle: the
+client pays a labourer up front to make the good and bring it. The porter hire stays as the
+case with no craft. Saved state keeps its names (the activity is still `porter`).
+
+- **Hire** (`trade_trips.hire`, end of a conversation, the same once-a-day client rules). A
+  client with no porter trip to plan (`trade_trips.plan` finds no seller) commissions instead
+  when one of its urgent needs (urgency at least URGENT) is the output of a labour recipe
+  (`recipes.labour`). The price is the recipe's inputs at the client's prices
+  (`possessions.prices_of`, a category at its cheapest member) times PRICE_SLACK, plus
+  PORTER_FEE, at most PURSE. The client pays it only when it values the output at least that
+  much and holds it. It is handed over in full, as a porter's purse is: that money is what
+  lets one with 3 emeralds buy wool at 120.
+- **The commission** (`_villages_commission` on the worker, saved: recipe index, item,
+  count, client id, delivery chest, price, day). While it lasts:
+  - the worker's labour plan is the commissioned recipe (`possessions.labour_plan`), its
+    input caps reckoned with the output at the client's value, so the inputs are needs with
+    23d's floors and are told as news;
+  - the output is a target worth the client's value to it, so it never sells it;
+  - it plans trade trips for the inputs in its work stage too, as the alchemist does, with
+    its own emeralds (the price included);
+  - it crafts at home as any labourer does (`production.labour_work`).
+- **Delivery.** Holding the count, it walks to the client's delivery chest (its stash, or a
+  Builder's bench chest) on the porter's delivery leg and leaves the goods. What it did not
+  spend of the price is its pay.
+- **Expiry.** A commission not delivered by the end of the day after the hire is dropped:
+  the worker leaves the price, or what it still holds of it, in the client's chest, and keeps
+  any inputs it bought.
+- **Choosing the work** (`labour.lua`). A commission counts as a porter hire in the porter's
+  record, so villagers who are commissioned choose portering again.
+- **As built** (`commission.lua`). Only the labour goods no labour recipe takes in are
+  commissioned (`commission.goods`: not planks, sticks or torches), and a heard need for one
+  opens portering (`labour.craft_waiting`). A client orders no second commission for a good
+  while one is out (`_villages_commissioned`). The undelivered price counts neither in the
+  worker's money factor nor toward its comforts (`commission.reserve`). The commissioned
+  craft is made at the price (`production.choose` asks no less for its output).
+- **Tests:** `tests/trade_trips.lua` (a client with no seller for a lantern commissions a
+  porter at the price; the plan, the inputs as needs, the output held back, the reserve; no
+  second for the same good; made and delivered with the price kept; run out, the price
+  returned and the inputs kept; none over what the client holds); `tests/labour.lua` (a
+  heard need for a lantern opens portering, one for sticks does not; a commission keeps it
+  portering).
+
+#### 26d. Making for itself
+
+A crafter that needs one of its own outputs reckons that output at no less than its own
+value for it, not only its market price: in its inputs' caps (`possessions.assess`'s
+`ledger.imputed`, recomputed with the lifted price when an output is among its needs) and in
+what a craft gains (`production.choose`, `production.labour_plan`). The cartographer then
+values six wool for a 3,072 banner near 500 each, buys at the shepherds' 120 and makes its
+own banners. The lift covers only the outputs it needs, and only up to its need, so what it
+makes to sell is priced as before.
+
+- **Tests:** `tests/possessions.lua` (wool caps for a cartographer needing banners, and not
+  for one that does not); `tests/production.lua` (it makes a banner for itself where the
+  market price would not pay).
+
 ## Open questions
 
 - Price discovery (ticket 21):
