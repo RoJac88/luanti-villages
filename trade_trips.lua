@@ -65,6 +65,7 @@ local prices = dofile(core.get_modpath("living_villages") .. "/prices.lua")
 local stock = dofile(core.get_modpath("living_villages") .. "/farm_stock.lua")
 local cells = dofile(core.get_modpath("living_villages") .. "/cells.lua")
 local goods_mod = dofile(core.get_modpath("living_villages") .. "/goods.lua")
+local commission = dofile(core.get_modpath("living_villages") .. "/commission.lua")
 -- As builder_market.lua splits them.
 local PLANKS_PER_LOG = 4
 
@@ -374,6 +375,11 @@ function M.deliver(self, trip)
 	possessions.take(self, trip.item, goods - left_goods)
 	local left_back = back - put(client.deliver, EMERALD, back)
 	possessions.take(self, EMERALD, back - left_back)
+	if trip.commission then
+		log("commission: porter %s delivered %d %s and %d emerald(s) for %s at %s", short_id(self._id),
+			goods - left_goods, trip.item, back - left_back, short_id(client.id), core.pos_to_string(client.deliver))
+		return
+	end
 	log("porter %s delivered %d %s and %d emerald(s) for %s at %s, kept %d", short_id(self._id), goods - left_goods,
 		trip.item, back - left_back, short_id(client.id), core.pos_to_string(client.deliver), fee)
 end
@@ -518,7 +524,7 @@ end
 local function may_travel(self, trip, stage)
 	if stage == "putter" then return true end
 	if stage ~= "work" then return false end
-	return trip ~= nil or self._villages_alchemist or self._villages_builder_wants ~= nil or self._villages_builder_logs ~= nil
+	return trip ~= nil or self._villages_alchemist or commission.of(self) ~= nil or self._villages_builder_wants ~= nil or self._villages_builder_logs ~= nil
 		or self._villages_builder_wool ~= nil
 end
 
@@ -568,6 +574,22 @@ function M.step(self, now)
 		end
 		walking[self] = nil
 	end
+	-- A commission made, or run out: to the client's chest with the goods, or the price.
+	local commissioned = not trip and commission.of(self)
+	if commissioned then
+		local made = possessions.count(self, commissioned.item) >= commissioned.count
+		if made or commission.expired(commissioned, today()) then
+			trip = M.commission_delivery(self, commissioned, made)
+			self._villages_trade_trip, self._villages_commission = trip, nil
+			if made then
+				log("commission: porter %s made %d %s for %s", short_id(self._id), commissioned.count,
+					commissioned.item, short_id(commissioned.client))
+			else
+				log("commission: porter %s ran out of time on %s for %s, returns %d emerald(s)", short_id(self._id),
+					commissioned.item, short_id(commissioned.client), trip.client.purse)
+			end
+		end
+	end
 	if not trip then
 		if now < (next_plan[self] or 0) then return end
 		next_plan[self] = now + PLAN_SECONDS
@@ -581,6 +603,18 @@ function M.step(self, now)
 			short_id(trip.who), core.pos_to_string(trip.home))
 	end
 	M.advance(self, trip, now)
+end
+
+-- The delivery leg of a commission (ticket 26b): the goods with no change once made, or
+-- else the price, or what it still holds of it, and no goods.
+function M.commission_delivery(self, c, made)
+	return {
+		item = c.item, who = c.client, home = vector.new(c.deliver), want = c.count, price = 0,
+		leg = "deliver", tries = 0, day = today(), commission = true,
+		bought = made and c.count or 0, spent = 0,
+		client = {id = c.client, deliver = vector.new(c.deliver), fee = 0,
+			purse = made and 0 or math.min(c.price, possessions.emeralds(self)), value = c.price / math.max(c.count, 1)},
+	}
 end
 
 -- Where a member would have a porter deliver to: its stash, or a Builder's bench chest.
@@ -620,7 +654,7 @@ function M.hire(members)
 	local now = core.get_gametime()
 	local hires = {}
 	for _, porter in ipairs(members) do
-		if is_porter(porter) and not porter._villages_trade_trip then
+		if is_porter(porter) and not porter._villages_trade_trip and not commission.of(porter) then
 			for _, client in ipairs(members) do
 				-- One porter a day: with the purse no longer all it has, it could send a second
 				-- for the same need.
@@ -650,6 +684,29 @@ function M.hire(members)
 						hires[#hires + 1] = {porter = porter, client = client, trip = trip}
 						log("villager %s hired porter %s with %d emerald(s) for %d %s from %s", short_id(client._id),
 							short_id(porter._id), purse, trip.want, trip.item, short_id(trip.who))
+						break
+					end
+					-- No seller to send it to: a commission to make it (ticket 26b).
+					-- Not a second for a good it has one out for.
+					local out = client._villages_commissioned
+					local pending = type(out) == "table" and not commission.expired(out, today()) and out.item or nil
+					local offer = commission.offer(view, possessions.prices_of(client), emeralds, URGENT, PORTER_FEE, PURSE,
+						M.urgency, pending)
+					if offer then
+						possessions.take(client, EMERALD, offer.price)
+						possessions.add(porter, EMERALD, offer.price)
+						client._villages_porter_day = today()
+						client._villages_commissioned = {item = offer.item, day = today()}
+						porter._villages_commission = {
+							index = offer.index, item = offer.item, count = offer.count, client = client._id,
+							deliver = deliver, price = offer.price, day = today(),
+						}
+						local record = porter._villages_porter_record or {days = 1, hires = 0}
+						record.hires = record.hires + 1
+						porter._villages_porter_record = record
+						hires[#hires + 1] = {porter = porter, client = client, commission = porter._villages_commission}
+						log("villager %s commissioned porter %s with %d emerald(s) for %d %s", short_id(client._id),
+							short_id(porter._id), offer.price, offer.count, offer.item)
 						break
 					end
 				end

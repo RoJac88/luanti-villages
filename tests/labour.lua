@@ -699,6 +699,16 @@ do
 	labour.step(pam, now + 5000)
 	assert(#pam.walks == 0, "it walks only on a trip")
 	assert(labour.status(pam) == "porter, waiting for hire")
+	-- A need for a labour good is work for a porter on commission, with no seller (ticket
+	-- 26b); a need for sticks is not: a crafter makes its own.
+	local lantern = {item = "mcl_lanterns:lantern_floor", kind = "needs", price = 900, who = "farm", heard = now, hops = 1}
+	local sticks = {item = "mcl_core:stick", kind = "needs", price = 1, who = "farm", heard = now, hops = 1}
+	assert(labour.craft_waiting({lantern}) and not labour.craft_waiting({sticks}))
+	assert(labour.incomes({lantern}).porter > 0)
+	-- One with a commission under way goes portering every day until it delivers.
+	local cam = villager({_id = "cam", _villages_commission = {index = 10, item = "mcl_lanterns:lantern_floor",
+		count = 1, client = "farm", deliver = {x = 0, y = 1, z = 9}, price = 100, day = day}})
+	assert(labour.today(cam) == "porter", "a commission keeps it portering")
 end
 
 -- No bed: it works from the nearest bell near it, or where it stands; a bed takes over.
