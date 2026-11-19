@@ -23,16 +23,22 @@ local core = minetest
 --
 -- Delivery and expiry (trade_trips.step). Holding the count, it takes the porter's
 -- delivery leg to the client's chest with the goods and no change: what it did not spend
--- of the price is its pay. Not delivered by the end of the day after the hire, it takes
--- the price, or what it still holds of it, back to the chest instead, and keeps any inputs.
+-- of the price is its pay. Not delivered once WORK_DAYS of its work stages have passed
+-- since the hire (`worked`, `worked_day`, counted by M.worked from trade_trips.step), or
+-- MAX_DAYS days, it takes the price, or what it still holds of it, back to the chest
+-- instead, and keeps any inputs. Work stages, not days: hires fall at the evening tavern,
+-- so "the day after the hire" left one work stage, none when that day was a holiday (every
+-- fourth), and all four of ColonyFood's first commissions ran out (2026-11-19).
 local ledger = dofile(core.get_modpath("living_villages") .. "/ledger.lua")
 local recipes = dofile(core.get_modpath("living_villages") .. "/recipes.lua")
 
 local PRICE_SLACK = 1.25
--- How long a commission lasts: the day of the hire and DAYS - 1 more.
-local DAYS = 2
+-- How long a commission lasts: WORK_DAYS of the worker's work stages, at most MAX_DAYS
+-- days counting the hire's.
+local WORK_DAYS = 2
+local MAX_DAYS = 6
 
-local M = {PRICE_SLACK = PRICE_SLACK, DAYS = DAYS}
+local M = {PRICE_SLACK = PRICE_SLACK, WORK_DAYS = WORK_DAYS, MAX_DAYS = MAX_DAYS}
 
 local function today()
 	return core.get_day_count and core.get_day_count() or 0
@@ -87,9 +93,18 @@ function M.of(self)
 	return c
 end
 
--- Whether a commission has run out: the day after its hire is over.
+-- Counts `day` as one of the commission's work days, once: called in the worker's work stage.
+function M.worked(c, day)
+	day = day or today()
+	if c.worked_day == day then return end
+	c.worked, c.worked_day = (c.worked or 0) + 1, day
+end
+
+-- Whether a commission has run out: its last work day over, or MAX_DAYS days.
 function M.expired(c, day)
-	return (day or today()) > c.day + DAYS - 1
+	day = day or today()
+	if day > c.day + MAX_DAYS - 1 then return true end
+	return (c.worked or 0) >= WORK_DAYS and day > c.worked_day
 end
 
 -- The emeralds of a commission's price it still holds back from its own spending.

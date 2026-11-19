@@ -3088,9 +3088,13 @@ case with no craft. Saved state keeps its names (the activity is still `porter`)
 - **Delivery.** Holding the count, it walks to the client's delivery chest (its stash, or a
   Builder's bench chest) on the porter's delivery leg and leaves the goods. What it did not
   spend of the price is its pay.
-- **Expiry.** A commission not delivered by the end of the day after the hire is dropped:
-  the worker leaves the price, or what it still holds of it, in the client's chest, and keeps
-  any inputs it bought.
+- **Expiry.** A commission not delivered once the worker has had WORK_DAYS (2) work stages
+  since the hire, or within MAX_DAYS (6) days, is dropped: the worker leaves the price, or
+  what it still holds of it, in the client's chest, and keeps any inputs it bought. At first
+  it lasted to the end of the day after the hire; hires fall at the evening tavern, so that
+  left one work stage, none when the day was a holiday (every fourth), and all four of
+  ColonyFood's first commissions ran out (2026-11-19): two porters never worked, one bought
+  the nuggets in its last minutes, one found the alchemist's stash empty.
 - **Choosing the work** (`labour.lua`). A commission counts as a porter hire in the porter's
   record, so villagers who are commissioned choose portering again.
 - **As built** (`commission.lua`). Only the labour goods no labour recipe takes in are

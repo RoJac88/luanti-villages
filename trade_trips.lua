@@ -555,6 +555,9 @@ function M.step(self, now)
 		end
 	end
 	local stage = common.schedule_stage(nil, self)
+	-- A commission's time is counted in work stages (commission.expired).
+	local working_on = stage == "work" and commission.of(self)
+	if working_on then commission.worked(working_on, today()) end
 	if not may_travel(self, trip, stage) or busy(self) then return end
 	if trip and walking[self] then
 		-- Arrived, whatever the walk reports: the probe saw a walk's callback go unfired and
