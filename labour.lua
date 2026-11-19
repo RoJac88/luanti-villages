@@ -1197,9 +1197,17 @@ local function work(self, activity, target)
 	end
 end
 
--- Pins a quarrier to its standing cell at the generator, facing it: vanilla's stand
--- state rolls a walk every second unless its order is "stand", and a mined cell is an
--- open dead end to walk into.
+-- How far a held quarrier may drift from the middle of its standing cell. Its box is 0.6
+-- across, so past 0.2 it reaches into the next cell, and vanilla's environment check
+-- (mcl_mobs physics.lua's get_env_hits, find_nodes_in_area over the box) counts a lava
+-- cell it reaches into as touched: it burns standing still. At 0.45 the cartographer
+-- stood 0.2 off its cell beside the user's generator's lava and burned to death with
+-- 6,600 emeralds (ColonyFood, 2026-11-19).
+local HOLD_SLACK = 0.15
+
+-- Pins a quarrier to the middle of its standing cell at the generator, facing it:
+-- vanilla's stand state rolls a walk every second unless its order is "stand", and a
+-- mined cell is an open dead end to walk into.
 function M.hold(self)
 	local hold = self._villages_quarry_hold
 	if not hold or not self.object then return end
@@ -1212,8 +1220,8 @@ function M.hold(self)
 	local pos = self.object:get_pos()
 	if not pos then return end
 	local at = cells.standing_cell(pos)
-	if not vector.equals(at, hold.stand) or math.abs(pos.x - hold.stand.x) > 0.45
-		or math.abs(pos.z - hold.stand.z) > 0.45 then
+	if not vector.equals(at, hold.stand) or math.abs(pos.x - hold.stand.x) > HOLD_SLACK
+		or math.abs(pos.z - hold.stand.z) > HOLD_SLACK then
 		self.object:set_pos(cells.standing_position(hold.stand))
 	end
 	local dx, dz = hold.cell.x - hold.stand.x, hold.cell.z - hold.stand.z

@@ -614,6 +614,16 @@ do
 	labour.hold(cole)
 	local pos = cole.object:get_pos()
 	assert(pos.x == 0 and pos.z == -1, "back on its cell")
+	-- Drifted 0.25 toward the lava diagonal to it, still in its cell: its 0.6 box then
+	-- reaches into the next cells, which vanilla counts as touching the lava, so it is put
+	-- back in the middle (ColonyFood, 2026-11-19: the cartographer burned at 0.2 off).
+	cole.move_to(at(0.25, 0.5, -0.8))
+	labour.hold(cole)
+	pos = cole.object:get_pos()
+	assert(pos.x == 0 and pos.z == -1, "back in the middle of its cell")
+	cole.move_to(at(0.1, 0.5, -1))
+	labour.hold(cole)
+	assert(cole.object:get_pos().x == 0.1, "a little off, it is left be")
 	-- The refill: cobble where the lava is beside the cell, never on someone in it.
 	cole.move_to(at(0, 0.5, 0))
 	objects[#objects + 1] = cole.object
