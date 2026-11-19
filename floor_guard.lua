@@ -43,21 +43,25 @@ end
 local OVERLAP = 0.01
 
 -- The walkable node the villager was carried down through, if any. A move is
--- impossible when a node in a column its box now stands in starts at or above
--- its new head and below its old feet: the box would have had to pass through
--- that node. Every column the box reaches into counts, not only the one under
+-- impossible when a node in a column its box now stands in lies between its new
+-- feet and its old feet: the box would have had to pass through that node. Not
+-- only nodes above its new head: under a bed by a wall the snap puts the head
+-- against the bed's underside, with the floor it stood on around its body
+-- (ColonyFood shepherd, 2026-11-19 15:16). The row its new feet are in is not
+-- counted, since a real fall can land on a carpet or slab there. Every column the box reaches into counts, not only the one under
 -- its middle: a villager on a bed by a wall was sunk under the bed with its
 -- middle in the next column, which held only air at bed height, so nothing was
 -- undone and it suffocated in the ground (ColonyFood, 2026-11-18 and -19). The
 -- column it came from is not checked, because walking off a ledge leaves the
 -- ledge there.
 local function passed_through(before, pos, box)
-	local head = pos.y + box[5]
 	local feet = before.y + box[2]
-	if feet - (pos.y + box[2]) <= 1 then return end
+	local new_feet = pos.y + box[2]
+	if feet - new_feet <= 1 then return end
 	local x1, x2 = math.floor(pos.x + box[1] + OVERLAP + 0.5), math.floor(pos.x + box[4] - OVERLAP + 0.5)
 	local z1, z2 = math.floor(pos.z + box[3] + OVERLAP + 0.5), math.floor(pos.z + box[6] - OVERLAP + 0.5)
-	for y = math.ceil(head - 0.05 + 0.5), math.floor(feet + 0.5) do
+	-- From the top down, so the floor it stood on is the one named.
+	for y = math.floor(feet + 0.5), math.floor(new_feet + 0.05 + 0.5) + 1, -1 do
 		if y - 0.5 < feet - 0.05 then
 			for x = x1, x2 do
 				for z = z1, z2 do
