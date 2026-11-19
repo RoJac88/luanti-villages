@@ -1279,6 +1279,8 @@ New `_villages_*` entity fields, never to be renamed once released:
 | `_villages_builder_wants`, `_villages_builder_drop` | A short Builder's missing priced materials, and its delivery chest |
 | `_villages_rent` | Rent owed, the clock reading it was last charged at, the bench, and the last payment |
 | `_villages_rent_errand` | A rent errand under way: the bench chest it walks to |
+| `_villages_commission` | A commission under way (ticket 26b): the labour recipe, item, count, client, its chest, the price and the hire's day |
+| `_villages_commissioned` | The good a client last commissioned and the day, so it orders no second while the first is out |
 
 Existing fields reused: `_villages_food`, `_villages_fed_day`. Node metadata:
 `villages_owner` and `villages_owner_bed` on stash chests, and `villages_missing`

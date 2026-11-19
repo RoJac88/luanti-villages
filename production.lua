@@ -58,6 +58,7 @@ local possessions = dofile(core.get_modpath("living_villages") .. "/possessions.
 local food = dofile(core.get_modpath("living_villages") .. "/food.lua")
 local ledger = dofile(core.get_modpath("living_villages") .. "/ledger.lua")
 local recipes = dofile(core.get_modpath("living_villages") .. "/recipes.lua")
+local commission = dofile(core.get_modpath("living_villages") .. "/commission.lua")
 local tally = dofile(core.get_modpath("living_villages") .. "/economy_tally.lua")
 local news = dofile(core.get_modpath("living_villages") .. "/market_news.lua")
 local wants = dofile(core.get_modpath("living_villages") .. "/wants.lua")
@@ -208,6 +209,17 @@ function M.choose(self, held, view, asks, list)
 	held = held or possessions.held(self)
 	view = view or possessions.assess(self)
 	asks = asks or news.asking(news.heard(self, core.get_gametime()))
+	-- A commission's output counts at the price it is paid (ticket 26b).
+	local commissioned = commission.of(self)
+	if commissioned then
+		local unit = commissioned.price / math.max(commissioned.count, 1)
+		if (asks[commissioned.item] or 0) < unit then
+			local lifted = {}
+			for item, ask in pairs(asks) do lifted[item] = ask end
+			lifted[commissioned.item] = unit
+			asks = lifted
+		end
+	end
 	local price_of = possessions.prices_of(self)
 	-- A ranked list (the alchemist's) stops at each recipe's `upto` and breaks ties by rank.
 	local ranked = list[1] and list[1].rank
@@ -491,7 +503,8 @@ function M.labour_step(self, now, waiting)
 	local made = M.labour_work(self, reading - last)
 	local day = core.get_day_count()
 	local plan = self._villages_labour_plan
-	if not (plan and plan.day == day and now - (plan.checked or 0) < PLAN_SECONDS) then
+	-- A commission is its plan while it lasts (ticket 26b, possessions.labour_plan).
+	if not commission.of(self) and not (plan and plan.day == day and now - (plan.checked or 0) < PLAN_SECONDS) then
 		local asks = news.asking(news.heard(self, now))
 		local recipe = M.labour_plan(self, nil, asks)
 		self._villages_labour_plan = {day = day, checked = now, index = recipe and M.labour_index(recipe),
