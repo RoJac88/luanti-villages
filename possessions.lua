@@ -705,11 +705,13 @@ function M.assess(self)
 		end
 	end
 	local list = not self.child and M.recipes_of(self)
-	local unpaid
+	local unpaid, uncapped, tier
+	local price_of = M.prices_of(self)
 	if list then
-		local price_of = M.prices_of(self)
-		local tier = self._max_trade_tier or 1
+		tier = self._max_trade_tier or 1
 		if self._villages_alchemist then tier = 5 end
+		uncapped = {}
+		for item, value in pairs(worth) do uncapped[item] = value end
 		for item, cap in pairs(ledger.imputed(list, price_of, tier)) do
 			worth[item] = math.min(worth[item] or math.huge, cap)
 		end
@@ -737,7 +739,7 @@ function M.assess(self)
 		categories = categories or {}
 		categories[category] = (categories[category] or 0) + count
 	end
-	return ledger.assess({
+	local input = {
 		id = self._id,
 		profession = M.trade_key(self),
 		max_tier = self._max_trade_tier or 1,
@@ -758,7 +760,67 @@ function M.assess(self)
 		-- What it has to spend, for the money factor (ledger.lambda, ticket 21a).
 		money = M.money(self),
 		dinner = dinner.reference(self),
-	})
+	}
+	local view = ledger.assess(input)
+	-- Making for itself (ticket 26d): an output it wants for its own sake is reckoned at no
+	-- less than its own value for it, so its inputs are worth what that good is to it.
+	local own = M.own_use(self, view, extra)
+	view.own_use = own
+	if own and list then
+		local lifted = M.lifted(price_of, own)
+		input.worth = uncapped
+		for item, cap in pairs(ledger.imputed(list, lifted, tier)) do
+			uncapped[item] = math.min(uncapped[item] or math.huge, cap)
+		end
+		input.unpaid = ledger.unpaid(list, lifted, tier)
+		view = ledger.assess(input)
+		view.own_use = own
+	end
+	return view
+end
+
+-- The goods it makes and wants for its own sake (`extra`: comforts, goods that wear out),
+-- at its value for them where that is over its market price; nil if none (ticket 26d).
+-- Its recipes' and, labouring, the labour recipes' outputs; never one of those recipes'
+-- inputs (sticks, planks, paper, torches), whose need comes from the recipes. The cartographer
+-- wanted three banners at 3,072 and made banners, but valued their wool at 60, a banner's
+-- price over six, while the shepherds asked 120 (ColonyFood, day 693).
+function M.own_use(self, view, extra)
+	if self.child then return nil end
+	local lists = {}
+	lists[#lists + 1] = M.recipes_of(self)
+	if M.labouring(self) then lists[#lists + 1] = recipes.labour end
+	local inputs = {}
+	for _, list in ipairs(lists) do
+		for _, recipe in ipairs(list) do
+			for _, input in ipairs(recipe.from) do inputs[input[1]] = true end
+		end
+	end
+	local price_of, own = M.prices_of(self), nil
+	for _, list in ipairs(lists) do
+		for _, recipe in ipairs(list) do
+			local item = recipe.makes
+			if (extra[item] or 0) > 0 and (view.needs[item] or 0) > 0 and not inputs[item] then
+				local value, price = view.value(item), price_of(item)
+				if value and value > (price or 0) then
+					own = own or {}
+					own[item] = value
+				end
+			end
+		end
+	end
+	return own
+end
+
+-- `price_of` with the goods in `own` (M.own_use) at no less than its value for them.
+function M.lifted(price_of, own)
+	if not own then return price_of end
+	return function(item)
+		local price = price_of(item)
+		local value = own[item]
+		if value and value > (price or 0) then return value end
+		return price
+	end
 end
 
 local function list_status(list, value)

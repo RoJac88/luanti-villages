@@ -208,7 +208,8 @@ function M.choose(self, held, view, asks, list)
 	held = held or possessions.held(self)
 	view = view or possessions.assess(self)
 	asks = asks or news.asking(news.heard(self, core.get_gametime()))
-	local price_of = possessions.prices_of(self)
+	-- A good it wants for itself counts at its own value (ticket 26d).
+	local price_of = possessions.lifted(possessions.prices_of(self), view.own_use)
 	-- A ranked list (the alchemist's) stops at each recipe's `upto` and breaks ties by rank.
 	local ranked = list[1] and list[1].rank
 	local best, best_rate
@@ -457,7 +458,7 @@ end
 function M.labour_plan(self, view, asks)
 	view = view or possessions.assess(self)
 	asks = asks or news.asking(news.heard(self, core.get_gametime()))
-	local price_of = possessions.prices_of(self)
+	local price_of = possessions.lifted(possessions.prices_of(self), view.own_use)
 	local held = possessions.held(self)
 	local best, best_rate
 	for _, recipe in ipairs(recipes.labour) do
@@ -493,9 +494,10 @@ function M.labour_step(self, now, waiting)
 	local plan = self._villages_labour_plan
 	if not (plan and plan.day == day and now - (plan.checked or 0) < PLAN_SECONDS) then
 		local asks = news.asking(news.heard(self, now))
-		local recipe = M.labour_plan(self, nil, asks)
+		local view = possessions.assess(self)
+		local recipe = M.labour_plan(self, view, asks)
 		self._villages_labour_plan = {day = day, checked = now, index = recipe and M.labour_index(recipe),
-			caps = recipe and M.labour_caps(self, recipe, asks)}
+			caps = recipe and M.labour_caps(self, recipe, asks, view)}
 		if recipe then
 			core.log("action", string.format("[living_villages] production: villager %s (labourer) would make %s",
 				short_id(self), recipe.makes))
@@ -510,8 +512,9 @@ end
 -- price, a lantern wanted at 1,550 left nuggets worth what a lantern costs to make, and
 -- a painting wanted at 500 left wool at 40 against the shepherds' 90: no labourer ever
 -- set off to buy them (ColonyFood, 2026-11-15; ticket 23d).
-function M.labour_caps(self, recipe, asks)
-	local price_of = possessions.prices_of(self)
+function M.labour_caps(self, recipe, asks, view)
+	view = view or possessions.assess(self)
+	local price_of = possessions.lifted(possessions.prices_of(self), view.own_use)
 	local function priced(item)
 		local price = price_of(item)
 		if item == recipe.makes and asks and asks[item] then return math.max(price or 0, asks[item]) end
