@@ -395,6 +395,16 @@ assert(hank_props.textures[1]:find("badge_iron", 1, true))
 -- leave another. A villager can claim a different bed between two nights, and
 -- teleporting it back to the old bed's exit throws it across the village,
 -- frequently into solid nodes, where it suffocates and appears to vanish.
+-- Waking with no usable exit, a villager is set down at the middle of a free standing cell
+-- beside its bed, or left where it lies if there is none; never at the exit it could not
+-- use (that cell's middle may be fine where the exit's spot was not).
+local function off_bad_exit(v, sleep_pos, bad)
+	local pos = v.object:get_pos()
+	if vector.equals(pos, sleep_pos) then return true end
+	if math.abs(pos.x - bad.x) < 0.05 and math.abs(pos.z - bad.z) < 0.05 then return false end
+	return math.abs(pos.x - bed.x) <= 2 and math.abs(pos.z - bed.z) <= 2
+end
+
 time = 0.9
 nodes[key(bed)] = {name = "mcl_beds:bed_red_bottom", param2 = 0} -- restored after the bed-removal test above
 local ivy = make_villager("alice", false, {x = 1, y = 0, z = 0})
@@ -408,7 +418,7 @@ local ivy_sleep_pos = ivy.object:get_pos()
 time = 0.5
 entity_def.do_custom(ivy, 1)
 assert(not ivy._villages_sleeping)
-assert(vector.equals(ivy.object:get_pos(), ivy_sleep_pos),
+assert(off_bad_exit(ivy, ivy_sleep_pos, {x = 40, y = 0, z = 40}),
 	"an exit belonging to another bed must not be teleported to")
 
 -- Regression test (#84): the world can change while a villager sleeps. An exit
@@ -424,7 +434,7 @@ nodes[key({x = 1, y = 0, z = 0})] = {name = "mcl_core:stone", param2 = 0}
 time = 0.5
 entity_def.do_custom(jack, 1)
 assert(not jack._villages_sleeping)
-assert(vector.equals(jack.object:get_pos(), jack_sleep_pos),
+assert(off_bad_exit(jack, jack_sleep_pos, {x = 1, y = 0, z = 0}),
 	"an exit that is no longer a standing space must not be teleported to")
 nodes[key({x = 1, y = 0, z = 0})] = {name = "air", param2 = 0}
 
@@ -462,7 +472,7 @@ nodes[key({x = 1, y = 0, z = 0})] = {name = "mcl_fire:fire", param2 = 0}
 time = 0.5
 entity_def.do_custom(mae, 1)
 assert(not mae._villages_sleeping)
-assert(vector.equals(mae.object:get_pos(), mae_sleep_pos),
+assert(off_bad_exit(mae, mae_sleep_pos, {x = 1, y = 0, z = 0}),
 	"an exit that has caught fire must not be teleported to")
 nodes[key({x = 1, y = 0, z = 0})] = {name = "air", param2 = 0}
 
@@ -482,7 +492,7 @@ nodes[key({x = 2, y = 1, z = 0})] = {name = "mcl_core:stone", param2 = 0}
 time = 0.5
 entity_def.do_custom(nils, 1)
 assert(not nils._villages_sleeping)
-assert(vector.equals(nils.object:get_pos(), nils_sleep_pos),
+assert(off_bad_exit(nils, nils_sleep_pos, {x = 1.4, y = 0, z = 0}),
 	"an exit whose standing box now overlaps a wall must not be teleported to")
 nodes[key({x = 2, y = 0, z = 0})] = {name = "air", param2 = 0}
 nodes[key({x = 2, y = 1, z = 0})] = {name = "air", param2 = 0}
@@ -576,5 +586,29 @@ assert(not rue._villages_sleeping)
 assert(vector.equals(rue.object:get_pos(), {x = 1, y = 0, z = 0}),
 	"an exit on carpet must be returned to on waking")
 nodes[key({x = 1, y = 0, z = 0})] = {name = "air", param2 = 0}
+
+-- A bed against a wall is climbed onto and got into from the top. That spot on the bed
+-- is no exit: none is recorded, and waking sets the villager down at the middle of a
+-- free cell beside the bed rather than leaving it lying there, where stepping off in a
+-- lag spike sank two ColonyFood villagers under the bed into the ground (2026-11-18, -19).
+time = 0.9
+local sol = make_villager("alice", false, {x = 0, y = 0.5625, z = -0.3})
+objects = {sol.object}
+entity_def.on_activate(sol, "", 0)
+assert(sol._villages_sleeping)
+assert(not sol._villages_bed_exit, "a spot on the bed itself is not recorded as an exit")
+time = 0.5
+logged = {}
+entity_def.do_custom(sol, 1)
+assert(not sol._villages_sleeping)
+local sol_pos = sol.object:get_pos()
+assert(sol_pos.y == -0.49 and sol_pos.x == math.floor(sol_pos.x) and sol_pos.z == math.floor(sol_pos.z)
+	and not (sol_pos.x == 0 and (sol_pos.z == 0 or sol_pos.z == 1)),
+	string.format("set down beside the bed, at (%s,%s,%s)", sol_pos.x, sol_pos.y, sol_pos.z))
+local said = false
+for _, entry in ipairs(logged) do
+	if entry.message:find("set down beside its bed") then said = true end
+end
+assert(said, "the set-down is logged")
 
 print("villager sleep tests passed")

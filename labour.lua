@@ -104,6 +104,7 @@ local clock = dofile(core.get_modpath("living_villages") .. "/economy_clock.lua"
 local common = dofile(core.get_modpath("living_villages") .. "/common.lua")
 local possessions = dofile(core.get_modpath("living_villages") .. "/possessions.lua")
 local news = dofile(core.get_modpath("living_villages") .. "/market_news.lua")
+local commission = dofile(core.get_modpath("living_villages") .. "/commission.lua")
 local tally = dofile(core.get_modpath("living_villages") .. "/economy_tally.lua")
 local wants = dofile(core.get_modpath("living_villages") .. "/wants.lua")
 local goods = dofile(core.get_modpath("living_villages") .. "/goods.lua")
@@ -311,6 +312,20 @@ function M.activity_override(villager, stage)
 end
 
 -- Whether it has heard of a trade waiting: an item one villager needs and another has.
+-- Whether it has heard someone needs a good the labour recipes make (commission.goods):
+-- work for a porter on commission (ticket 26b), with no seller needed.
+function M.craft_waiting(heard)
+	local goods = commission.goods()
+	for _, entry in ipairs(heard) do
+		if entry.kind == "needs" then
+			for item in pairs(news.items_of(entry)) do
+				if goods[item] then return true end
+			end
+		end
+	end
+	return false
+end
+
 function M.trade_waiting(heard)
 	local needed, offered = {}, {}
 	for _, entry in ipairs(heard) do
@@ -429,7 +444,7 @@ function M.incomes(heard, emeralds, record, yields, held)
 	for name, activity in pairs(ACTIVITIES) do
 		local income = 0
 		if name == "porter" then
-			income = M.trade_waiting(heard) and M.porter_income(record) or 0
+			income = (M.trade_waiting(heard) or M.craft_waiting(heard)) and M.porter_income(record) or 0
 		elseif name == "peddler" then
 			local deal = M.deal(heard, emeralds)
 			income = deal and deal.income or 0
@@ -1060,7 +1075,7 @@ local function available(self)
 	if #M.forage_targets(self) > 0 then open.forager = true end
 	if #grove(self) > 0 or carried_sapling(self) or wild_tree(self) then open.woodcutter = true end
 	if #M.quarry_targets(self) > 0 then open.quarrier = true end
-	if M.trade_waiting(news.heard(self)) then open.porter = true end
+	if M.trade_waiting(news.heard(self)) or M.craft_waiting(news.heard(self)) then open.porter = true end
 	if self._villages_peddle or M.deal(news.heard(self), possessions.emeralds(self)) then open.peddler = true end
 	return open
 end
@@ -1117,6 +1132,8 @@ function M.today(self)
 		self._villages_porter_record, self._villages_gather_record, held)
 	-- A peddle under way goes on: what it bought is still to sell.
 	if self._villages_peddle and activity ~= "peddler" then activity = "peddler" end
+	-- So does a commission (ticket 26b): it waits as a porter, crafting at home.
+	if commission.of(self) then activity = "porter" end
 	if activity == "peddler" and not self._villages_peddle and not M.start_peddle(self, heard, day) then
 		activity = nil
 	end

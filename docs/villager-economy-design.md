@@ -1279,6 +1279,8 @@ New `_villages_*` entity fields, never to be renamed once released:
 | `_villages_builder_wants`, `_villages_builder_drop` | A short Builder's missing priced materials, and its delivery chest |
 | `_villages_rent` | Rent owed, the clock reading it was last charged at, the bench, and the last payment |
 | `_villages_rent_errand` | A rent errand under way: the bench chest it walks to |
+| `_villages_commission` | A commission under way (ticket 26b): the labour recipe, item, count, client, its chest, the price and the hire's day |
+| `_villages_commissioned` | The good a client last commissioned and the day, so it orders no second while the first is out |
 
 Existing fields reused: `_villages_food`, `_villages_fed_day`. Node metadata:
 `villages_owner` and `villages_owner_bed` on stash chests, and `villages_missing`
@@ -3059,7 +3061,7 @@ says how many entries it took in and how many the others kept of its news.
 - **Tests:** `tests/market_news.lua` (four villagers hear of its nuggets at first hand, a
   child hears nothing, the same news again is nothing new).
 
-#### 26b. Commissions (design)
+#### 26b. Commissions
 
 A porter is paid to walk, and walking is cheap, so nobody hires one. What a rich villager
 cannot get is a good nobody has. A commission is portering with a craft in the middle: the
@@ -3091,12 +3093,20 @@ case with no craft. Saved state keeps its names (the activity is still `porter`)
   any inputs it bought.
 - **Choosing the work** (`labour.lua`). A commission counts as a porter hire in the porter's
   record, so villagers who are commissioned choose portering again.
+- **As built** (`commission.lua`). Only the labour goods no labour recipe takes in are
+  commissioned (`commission.goods`: not planks, sticks or torches), and a heard need for one
+  opens portering (`labour.craft_waiting`). A client orders no second commission for a good
+  while one is out (`_villages_commissioned`). The undelivered price counts neither in the
+  worker's money factor nor toward its comforts (`commission.reserve`). The commissioned
+  craft is made at the price (`production.choose` asks no less for its output).
 - **Tests:** `tests/trade_trips.lua` (a client with no seller for a lantern commissions a
-  porter; the price; no commission it cannot pay or does not value); `tests/possessions.lua`
-  (the commissioned recipe is the plan, the output is held back); `tests/production.lua`
-  (the commissioned craft is made); delivery and expiry with the price returned.
+  porter at the price; the plan, the inputs as needs, the output held back, the reserve; no
+  second for the same good; made and delivered with the price kept; run out, the price
+  returned and the inputs kept; none over what the client holds); `tests/labour.lua` (a
+  heard need for a lantern opens portering, one for sticks does not; a commission keeps it
+  portering).
 
-#### 26d. Making for itself (design)
+#### 26d. Making for itself
 
 A crafter that needs one of its own outputs reckons that output at no less than its own
 value for it, not only its market price: in its inputs' caps (`possessions.assess`'s

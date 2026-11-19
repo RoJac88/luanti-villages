@@ -517,6 +517,88 @@ do
 	assert(trips.activity_override(own, "work") == nil, "the Builder has its own")
 end
 
+-- Commissions (ticket 26b): a client with an urgent need for a labour good and nobody
+-- selling it pays a porter up front to make it and bring it. The porter's plan is the
+-- recipe, its inputs needs; it holds the output back; the price is not its money to spend
+-- until it delivers. Made, it leaves the goods in the client's chest and keeps the price;
+-- run out of time, it brings the price back.
+do
+	local comforts = dofile("comforts.lua")
+	local commission = dofile("commission.lua")
+	local production = dofile("production.lua")
+	local recipes = dofile("recipes.lua")
+	local LANTERN, NUGGET, TORCH = "mcl_lanterns:lantern_floor", "mcl_core:iron_nugget", "mcl_torches:torch"
+	local fond
+	for i = 1, 5000 do
+		if comforts.tastes("farm-" .. i)[1].item == LANTERN then fond = "farm-" .. i break end
+	end
+	assert(fond, "an id whose first taste is a lantern")
+	local stash = chest({x = 90, y = 1, z = 2}, fond, {})
+	local client = villager(fond, {x = 90, y = 1, z = 0}, {_profession = "farmer", _jobsite = {x = 91, y = 1, z = 0},
+		_villages_stash = stash, _villages_belongings = {[EMERALD] = 600}})
+	local view = possessions.assess(client)
+	assert((view.needs[LANTERN] or 0) > 0 and trips.urgency(view, LANTERN) >= trips.URGENT, "it wants a lantern")
+	local hand = villager("hand", {x = 90, y = 1, z = 12}, {_villages_belongings = {[EMERALD] = 2},
+		_villages_labour = {day = day, activity = "porter"}})
+	time = 6000 / 24000
+	local hires = trips.hire({hand, client})
+	assert(#hires == 1 and hires[1].commission, "no seller: a commission")
+	local c = hand._villages_commission
+	local recipe = recipes.labour[c.index]
+	assert(c.item == LANTERN and recipe.makes == LANTERN and c.client == fond and c.count == 1)
+	local cost = commission.cost(recipe, possessions.prices_of(client))
+	assert(c.price == math.min(math.ceil(cost * commission.PRICE_SLACK) + trips.PORTER_FEE, trips.PURSE), c.price)
+	assert(count(client, EMERALD) == 600 - c.price and count(hand, EMERALD) == 2 + c.price)
+	assert(logs[#logs]:find("commissioned porter hand with " .. c.price))
+	-- Its plan is the recipe; nuggets and a torch are needs, worth at least a share of what
+	-- the lantern is paid; the price is not its own to spend.
+	assert(possessions.labour_plan(hand).makes == LANTERN)
+	local hand_view = possessions.assess(hand)
+	assert(hand_view.needs[NUGGET] == 8 and (hand_view.needs[TORCH] or 0) >= 1, "the inputs are needs")
+	assert(hand_view.value(NUGGET) > 0)
+	assert(possessions.money(hand) == 2, possessions.money(hand))
+	-- Nor a second for the same good while the first is out, from this porter or another.
+	client._villages_porter_day = nil
+	local other = villager("other", {x = 90, y = 1, z = 1}, {_villages_labour = {day = day, activity = "porter"}})
+	assert(#trips.hire({other, client}) == 0, "one lantern commissioned is enough")
+	-- With the inputs in hand it makes the lantern, and holds it back.
+	possessions.add(hand, NUGGET, 8)
+	possessions.add(hand, TORCH, 1)
+	local chosen = production.choose(hand, nil, nil, nil, recipes.labour)
+	assert(chosen and chosen.makes == LANTERN, "it makes the commissioned lantern")
+	assert(production.make(hand, chosen, true))
+	assert(count(hand, LANTERN) == 1 and (possessions.assess(hand).surplus[LANTERN] or 0) == 0, "held back")
+	-- Its work stage: off to the client's chest with it.
+	time = 9000 / 24000
+	trips.step(hand, now)
+	assert(hand._villages_commission == nil and hand._villages_trade_trip.commission, "made: delivering")
+	assert(hand.walks[#hand.walks].z == 2, "to the client's chest")
+	hand.arrive()
+	trips.step(hand, now + 2)
+	assert(hand._villages_trade_trip == nil and chest_count(stash, LANTERN) == 1 and count(hand, LANTERN) == 0)
+	assert(count(hand, EMERALD) == 2 + c.price and chest_count(stash, EMERALD) == 0, "the price is its pay")
+	assert(logs[#logs]:find("commission: porter hand delivered 1 mcl_lanterns:lantern_floor"))
+	-- One that runs out of time brings the price back, and keeps what it bought.
+	local stash2 = chest({x = 120, y = 1, z = 2}, fond .. "b", {})
+	local lazy = villager("lazy", {x = 120, y = 1, z = 12}, {_villages_belongings = {[EMERALD] = 1, [NUGGET] = 3}})
+	lazy._villages_commission = {index = c.index, item = LANTERN, count = 1, client = fond .. "b",
+		deliver = vector.new(stash2), price = 150, day = day - commission.DAYS}
+	assert(commission.expired(lazy._villages_commission, day))
+	possessions.add(lazy, EMERALD, 150)
+	assert(possessions.money(lazy) == 1)
+	trips.step(lazy, now + 10)
+	assert(lazy._villages_commission == nil and lazy._villages_trade_trip.client.purse == 150, "the price goes back")
+	lazy.arrive()
+	trips.step(lazy, now + 12)
+	assert(chest_count(stash2, EMERALD) == 150 and count(lazy, EMERALD) == 1 and count(lazy, NUGGET) == 3)
+	-- No commission it cannot pay for.
+	local poor = villager(fond .. "c", {x = 150, y = 1, z = 0}, {_profession = "farmer", _jobsite = {x = 151, y = 1, z = 0},
+		_villages_stash = chest({x = 150, y = 1, z = 2}, fond .. "c", {}), _villages_belongings = {[EMERALD] = trips.PORTER_FEE + 1}})
+	local idle = villager("idle", {x = 150, y = 1, z = 1}, {_villages_labour = {day = day, activity = "porter"}})
+	assert(#trips.hire({idle, poor}) == 0, "the price is over what it holds")
+	time = 6000 / 24000
+end
+
 -- A farmer with no hoe plans a trip to a tool smith that has one, whatever the hoe is worth
 -- next to URGENT times its price (wants.lua caps it at what it brings; run 46, when that
 -- was under, before wheat yielded two a harvest).

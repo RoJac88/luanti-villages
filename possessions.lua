@@ -53,6 +53,7 @@ local goods = dofile(core.get_modpath("living_villages") .. "/goods.lua")
 local alchemist = dofile(core.get_modpath("living_villages") .. "/alchemist.lua")
 local prices = dofile(core.get_modpath("living_villages") .. "/prices.lua")
 local recipes = dofile(core.get_modpath("living_villages") .. "/recipes.lua")
+local commission = dofile(core.get_modpath("living_villages") .. "/commission.lua")
 
 local DEFAULT_STASH_RADIUS = 8
 local STASH_HEIGHT = 3
@@ -577,6 +578,8 @@ function M.money(self)
 	local trip = self._villages_trade_trip
 	local client = type(trip) == "table" and trip.client
 	if client and client.purse then emeralds = emeralds - math.max(client.purse - (trip.spent or 0), 0) end
+	-- Nor a commission's price while undelivered (ticket 26b).
+	emeralds = emeralds - commission.reserve(self, math.max(emeralds, 0))
 	return math.max(emeralds, 0)
 end
 
@@ -613,6 +616,9 @@ end
 
 -- The labour recipe it plans to buy inputs for today (production.labour_step), or nil.
 function M.labour_plan(self)
+	-- A commission's recipe, whatever the day's activity (ticket 26b).
+	local commissioned = not self.child and commission.of(self)
+	if commissioned then return recipes.labour[commissioned.index] end
 	local plan = self._villages_labour_plan
 	if not plan or not plan.index or not M.labouring(self) or plan.day ~= core.get_day_count() then return nil end
 	return recipes.labour[plan.index]
@@ -623,7 +629,10 @@ end
 function M.assess(self)
 	local extra, worth = wants.targets(self)
 	-- Comforts for its savings (comforts.lua, ticket 19).
-	local comfort, comfort_worth, comfort_categories = comforts.targets(self, M.in_dinners(self, M.emeralds(self)),
+	-- Not on a commission's price it has yet to earn (ticket 26b).
+	local own_emeralds = M.emeralds(self)
+	own_emeralds = own_emeralds - commission.reserve(self, own_emeralds)
+	local comfort, comfort_worth, comfort_categories = comforts.targets(self, M.in_dinners(self, own_emeralds),
 		core.get_gametime())
 	for item, count in pairs(comfort) do extra[item] = (extra[item] or 0) + count end
 	for item, value in pairs(comfort_worth) do worth[item] = math.max(worth[item] or 0, value) end
@@ -679,12 +688,24 @@ function M.assess(self)
 	-- 23d): bought to sell on, not to use, its money factor does not shrink it. A labourer
 	-- with 134 emeralds valued wool at 8 for a painting bid at 500 while the shepherds asked
 	-- 90 (ColonyFood, 2026-11-15).
+	-- A commission's (ticket 26b) are reckoned with its output at the price it is paid, and
+	-- the output is a need it holds back at that price: worth no more to it, sold for no less.
+	local commissioned = plan and commission.of(self)
+	if commissioned then
+		local unit = commissioned.price / math.max(commissioned.count, 1)
+		extra[commissioned.item] = (extra[commissioned.item] or 0) + commissioned.count
+		worth[commissioned.item] = math.min(worth[commissioned.item] or math.huge, unit)
+		least = least or {}
+		least[commissioned.item] = math.max(least[commissioned.item] or 0, unit)
+	end
 	if plan then
-		local caps = self._villages_labour_plan.caps or ledger.imputed({plan}, M.prices_of(self), 5)
+		local planned = commissioned and commission.caps(commissioned, M.prices_of(self))
+			or self._villages_labour_plan.caps
+		local caps = planned or ledger.imputed({plan}, M.prices_of(self), 5)
 		for item, cap in pairs(caps) do
 			worth[item] = math.min(worth[item] or math.huge, cap)
 		end
-		if self._villages_labour_plan.caps then
+		if planned then
 			local held = M.held(self)
 			for _, input in ipairs(plan.from) do
 				local category = input[3] or goods.target_category(input[1])

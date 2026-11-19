@@ -1,0 +1,129 @@
+local core = minetest
+-- Commissions (docs/villager-economy-design.md, ticket 26b): portering with a craft in the
+-- middle. A porter is paid to walk, and walking is cheap: in ColonyFood (days 570-693)
+-- villagers portered on 565 days and were hired 19 times, always for bread, fish or wheat
+-- the client could have fetched itself. What a rich villager cannot get is a good nobody
+-- has, while the poorest cannot pay for the inputs to make it. So a client with no seller
+-- to send a porter to pays one up front to make a labour recipe's output (recipes.lua's
+-- `labour`) and bring it.
+--
+-- The offer (M.offer). Of the client's urgent needs (urgency at least trade_trips.URGENT)
+-- that a labour recipe makes, the one it gains most on. The price is the recipe's inputs
+-- at the client's prices (possessions.prices_of, a category or any log or planks at its
+-- cheapest member) times PRICE_SLACK, plus the porter's fee, at most the purse; the client
+-- pays it only when one craft's worth of the output is worth that much to it.
+--
+-- The commission (`_villages_commission` on the worker, saved): {index (in recipes.labour),
+-- item, count (one craft's output), client, deliver (the client's chest), price, day (the
+-- hire's)}. While it lasts the worker's labour plan is the recipe (possessions.labour_plan),
+-- its inputs capped as if the output sold at the price; the output is a need it holds back
+-- at the price; it goes portering every day; it plans trade trips for the inputs in its work
+-- stage too; and it crafts at home as any labourer does. The price is its own money, but
+-- it is not counted in what it has to spend (possessions.money) while undelivered.
+--
+-- Delivery and expiry (trade_trips.step). Holding the count, it takes the porter's
+-- delivery leg to the client's chest with the goods and no change: what it did not spend
+-- of the price is its pay. Not delivered by the end of the day after the hire, it takes
+-- the price, or what it still holds of it, back to the chest instead, and keeps any inputs.
+local ledger = dofile(core.get_modpath("living_villages") .. "/ledger.lua")
+local recipes = dofile(core.get_modpath("living_villages") .. "/recipes.lua")
+
+local PRICE_SLACK = 1.25
+-- How long a commission lasts: the day of the hire and DAYS - 1 more.
+local DAYS = 2
+
+local M = {PRICE_SLACK = PRICE_SLACK, DAYS = DAYS}
+
+local function today()
+	return core.get_day_count and core.get_day_count() or 0
+end
+
+-- What a recipe's inputs cost at `price_of`, each at its cheapest member; nil if one has no
+-- price at all.
+function M.cost(recipe, price_of)
+	local total = 0
+	for _, input in ipairs(recipe.from) do
+		local best
+		for item in pairs(ledger.members_of(input) or {[input[1]] = true}) do
+			local price = price_of(item)
+			if price and (not best or price < best) then best = price end
+		end
+		if not best then return nil end
+		total = total + best * input[2]
+	end
+	return total
+end
+
+-- The commission a client would pay for, or nil: {index, recipe, item, count, price, value}.
+-- `view` is its ledger view, `price_of` its prices, `emeralds` what it holds, `urgent` the
+-- least urgency, `fee` and `purse` the porter's, `urgency` trade_trips.urgency, `pending` a
+-- good it already has a commission out for.
+function M.offer(view, price_of, emeralds, urgent, fee, purse, urgency, pending)
+	local best, best_gain
+	for index, recipe in ipairs(recipes.labour) do
+		local item = recipe.makes
+		local need = view.needs[item] or 0
+		if need > 0 and item ~= pending and M.goods()[item] and urgency(view, item) >= urgent then
+			local value = view.value(item)
+			local cost = M.cost(recipe, price_of)
+			if value and cost then
+				local price = math.min(math.ceil(cost * PRICE_SLACK) + fee, purse)
+				local worth = value * math.min(need, recipe.count)
+				local gain = worth - price
+				if price <= emeralds and gain >= 0 and (not best or gain > best_gain) then
+					best, best_gain = {index = index, recipe = recipe, item = item, count = recipe.count, price = price,
+						value = value}, gain
+				end
+			end
+		end
+	end
+	return best
+end
+
+-- Its commission, if it has one under way (not yet delivered or returned), else nil.
+function M.of(self)
+	local c = self._villages_commission
+	if type(c) ~= "table" or not recipes.labour[c.index] then return nil end
+	return c
+end
+
+-- Whether a commission has run out: the day after its hire is over.
+function M.expired(c, day)
+	return (day or today()) > c.day + DAYS - 1
+end
+
+-- The emeralds of a commission's price it still holds back from its own spending.
+function M.reserve(self, emeralds)
+	local c = M.of(self)
+	if not c then return 0 end
+	return math.min(c.price, emeralds)
+end
+
+-- The caps of its commissioned recipe's inputs: the output at what one is paid.
+function M.caps(c, price_of)
+	local recipe = recipes.labour[c.index]
+	local unit = c.price / math.max(c.count, 1)
+	return ledger.imputed({recipe}, function(item)
+		if item == c.item then return math.max(price_of(item) or 0, unit) end
+		return price_of(item)
+	end, 5)
+end
+
+-- The labour recipes' goods, {item = true}: their outputs that no labour recipe takes in
+-- (not planks, sticks or torches). A need for one is work for a porter, and only these are
+-- commissioned: a crafter short of sticks makes its own.
+local GOODS
+function M.goods()
+	if GOODS then return GOODS end
+	local inputs = {}
+	for _, recipe in ipairs(recipes.labour) do
+		for _, input in ipairs(recipe.from) do inputs[input[1]] = true end
+	end
+	GOODS = {}
+	for _, recipe in ipairs(recipes.labour) do
+		if not inputs[recipe.makes] then GOODS[recipe.makes] = true end
+	end
+	return GOODS
+end
+
+return M

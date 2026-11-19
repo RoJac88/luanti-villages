@@ -2,6 +2,7 @@
 -- adapted from Mineclonia and bed-limited village births.
 local core = minetest
 local common = dofile(core.get_modpath("living_villages") .. "/common.lua")
+local cells = dofile(core.get_modpath("living_villages") .. "/cells.lua")
 local is_sleep_time = common.is_sleep_time
 local is_standing_space = common.is_standing_space
 local is_suffocating = common.is_suffocating
@@ -187,6 +188,38 @@ local function claimed_bed(self)
 	return pos, node
 end
 
+-- Where a sleeper with no usable exit is set down on waking: the standing cell beside
+-- either half of its bed, level with it or a step up or down, nearest `from`; nil if
+-- there is none. A bed pushed against a wall is climbed onto and got into from the top,
+-- so the exit recorded was on the bed itself and no standing space, and the villager was
+-- left lying there: stepping off it in a lag spike, the engine sank it under the bed into
+-- the ground (floor_guard.lua), twice beside one ColonyFood bed (2026-11-18 and -19).
+local function beside_bed(bed, from)
+	local halves = {{x = bed.x, y = bed.y, z = bed.z}}
+	local top = mcl_beds and mcl_beds.get_bed_top and mcl_beds.get_bed_top(bed)
+	if top and (top.x ~= bed.x or top.z ~= bed.z) then halves[2] = {x = top.x, y = top.y, z = top.z} end
+	local best, best_distance
+	for _, half in ipairs(halves) do
+		for _, d in ipairs({{1, 0}, {-1, 0}, {0, 1}, {0, -1}}) do
+			for _, dy in ipairs({0, -1, 1}) do
+				local cell = {x = half.x + d[1], y = half.y + dy, z = half.z + d[2]}
+				local is_bed = false
+				for _, other in ipairs(halves) do
+					if other.x == cell.x and other.z == cell.z then is_bed = true end
+				end
+				if not is_bed and cells.can_stand(cell) then
+					local pos = cells.standing_position(cell)
+					local distance = from and vector.distance(from, pos) or 0
+					if is_standing_space(pos, true) and (not best or distance < best_distance) then
+						best, best_distance = pos, distance
+					end
+				end
+			end
+		end
+	end
+	return best
+end
+
 local function occupied_by_other(self, bed)
 	for _, object in ipairs(core.get_objects_inside_radius(bed, 0.6)) do
 		if object ~= self.object then
@@ -362,10 +395,21 @@ core.register_on_mods_loaded(function()
 
 	local function wake(self)
 		local exit = usable_bed_exit(self)
-		if self._villages_bed_exit and not exit then
-			core.log("action", string.format(
-				"[living_villages] villager %s woke with no usable bed exit (%s); leaving it where it lies",
-				tostring(self._id), pos_string(self._villages_bed_exit)))
+		if not exit then
+			-- Beside the bed instead, rather than left lying on it.
+			-- The bed it lies in: an exit's bed may be another, across the village (#84).
+			local bed = claimed_bed(self)
+			local beside = bed and beside_bed(bed, self.object:get_pos())
+			if beside then
+				core.log("action", string.format(
+					"[living_villages] villager %s woke with no usable bed exit (%s); set down beside its bed at %s",
+					tostring(self._id), pos_string(self._villages_bed_exit), pos_string(beside)))
+				exit = beside
+			elseif self._villages_bed_exit then
+				core.log("action", string.format(
+					"[living_villages] villager %s woke with no usable bed exit (%s); leaving it where it lies",
+					tostring(self._id), pos_string(self._villages_bed_exit)))
+			end
 		end
 		self._villages_sleeping = nil
 		self._villages_bed_exit = nil
@@ -398,7 +442,8 @@ core.register_on_mods_loaded(function()
 		-- which is where a villager reactivating in its bed already stands --
 		-- keep the exit it entered from in that case.
 		local standing = self.object:get_pos()
-		if standing and vector.distance(standing, pos) >= 0.5 then
+		-- Never a spot it could not stand in again: got into from the top, that is the bed.
+		if standing and vector.distance(standing, pos) >= 0.5 and is_standing_space(standing, true) then
 			self._villages_bed_exit = {x = standing.x, y = standing.y, z = standing.z}
 			self._villages_bed_exit_bed = {x = bed.x, y = bed.y, z = bed.z}
 		end
