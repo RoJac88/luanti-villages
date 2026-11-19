@@ -280,7 +280,39 @@ do
 	assert(cobble and cobble.hops == 1 and cobble.count == 52, "it heard v12's cobble at first hand")
 	assert(not knows(alch, "kid", "has") and not knows(alch, "alch", "has"), "no child, never itself")
 	assert(alch._villages_prices_day ~= nil, "its prices make the day's move")
-	assert(news.overhear(alch, crowd, now) == 0, "the same news again is nothing new")
+	local again, told_again = news.overhear(alch, crowd, now)
+	assert(again == 0 and told_again == 0, "the same news again is nothing new")
+	minetest.get_day_count = nil
+end
+
+-- They overhear the alchemist too (ticket 26a): it opens no stall and goes nowhere news is
+-- told, so nobody heard of its nuggets (ColonyFood, day 694). Not a child; kept within
+-- NEWS_ENTRIES.
+do
+	minetest.get_day_count = function() return 7 end
+	local crowd = {}
+	for i = 1, 4 do
+		crowd[i] = villager("w" .. i, {["mcl_core:cobble"] = 40 + i})
+	end
+	local kid = villager("kid2", {}, {child = true})
+	crowd[#crowd + 1] = kid
+	local alch = villager("alch2", {["mcl_core:emerald"] = 5, ["mcl_core:iron_nugget"] = 63},
+		{_profession = "cleric", _villages_alchemist = true, _jobsite = {x = 0, y = 0, z = 0}})
+	crowd[#crowd + 1] = alch
+	local own = news.own(alch, possessions.assess(alch), now)
+	local spare = false
+	for _, entry in ipairs(own) do
+		if entry.kind == "has" and entry.item == "mcl_core:iron_nugget" then spare = true end
+	end
+	assert(spare, "its nuggets are its own news")
+	local _, told = news.overhear(alch, crowd, now)
+	assert(told > 0 and told % 4 == 0, told)
+	for i = 1, 4 do
+		local nugget = knows(crowd[i], "alch2", "has", "mcl_core:iron_nugget")
+		assert(nugget and nugget.hops == 1, "w" .. i .. " heard of its nuggets at first hand")
+		assert(#crowd[i]._villages_market_news <= news.NEWS_ENTRIES)
+	end
+	assert(kid._villages_market_news == nil, "a child hears nothing")
 	minetest.get_day_count = nil
 end
 
