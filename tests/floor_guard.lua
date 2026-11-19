@@ -173,4 +173,28 @@ def.on_step(v, 0.05)
 def.on_step(v, 0.05)
 assert_pos(v, 0, 6.56, 0, "a move made during on_step is not undone on the next step")
 
+-- The ColonyFood case (2026-11-18 and -19): a villager on a bed by a wall is sunk under
+-- the bed with its middle in the next column, which holds only air at bed height; its
+-- box still reaches into the bed's column, so the move is undone all the same.
+reset()
+nodes[key(0, 4, 0)] = "mcl_core:stone" -- the bed, under a villager standing on it
+fill(0, 0, 2, 3)
+fill(0, 1, 2, 3) -- the floor and the ground in the next column; open above
+v = villager({x = 0, y = 4.56, z = 0.2})
+def.on_step(v, 0.05)
+engine_moves(v, {x = 0, y = 3.5 - BOX[5], z = 0.7})
+def.on_step(v, 2.1)
+assert_pos(v, 0, 4.56, 0.2, "a villager sunk under the bed beside it is put back")
+assert(logs[1] and logs[1]:find("dropped through mcl_core:stone at %(0.0,4.0,0.0%)"), tostring(logs[1]))
+-- A box that only touches the bed's column, as against a wall, does not count: it
+-- spans z 0.5 to 1.1, and a fall there passed nothing.
+reset()
+nodes[key(0, 4, 0)] = "mcl_core:stone"
+fill(0, 1, -5, 0)
+v = villager({x = 0, y = 4.51, z = 0.8})
+def.on_step(v, 0.05)
+engine_moves(v, {x = 0, y = 1.01, z = 0.8})
+def.on_step(v, 2.1)
+assert_pos(v, 0, 1.01, 0.8, "a fall beside a column it only touches is left alone")
+
 print("floor_guard tests passed")
