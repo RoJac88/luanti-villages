@@ -3124,6 +3124,23 @@ makes to sell is priced as before.
   for one that does not); `tests/production.lua` (it makes a banner for itself where the
   market price would not pay).
 
+#### 26e. Goods left in the stash
+
+- **Problem.** A buyer that finds the seller away and out of reach buys from its stash,
+  but a stash only held what was put in it: emeralds and food, never goods. The
+  alchemist carried 228 spare nuggets, its value for them down to 8, while three of seven
+  trips for them found it out and its stash empty, among them a commission's porter
+  (ColonyFood, days 700-735). Its rate of making them was never the limit.
+- **Rule** (`possessions.stash_spare`). Within STASH_REACH of its stash, and near its bed
+  as it gets up, a villager puts its spare goods in the stash, keeping half of each
+  surplus, at most CARRY (8), on itself for sales in person (exchange.lua sells from
+  belongings). Food stays with it (it eats from its belongings first), and emeralds, and
+  a peddler's stock, its trade being to carry it. What the chest has no room for stays
+  carried. What it holds (belongings and stash) is unchanged, so its asks and news are.
+- **Tests:** `tests/possessions.lua` (only within reach; keeps 8 of 40 nuggets; a single
+  spare lantern stays carried; food and emeralds stay; nothing more once only the keep is
+  carried; a full chest; a peddler keeps its stock).
+
 ## Open questions
 
 - Price discovery (ticket 21):

@@ -79,6 +79,8 @@ for level = 1, 7 do COMPOSTERS[#COMPOSTERS + 1] = "mcl_composters:composter_" ..
 -- It eats at or below this many points, one item at a time, best first.
 local EAT_AT = food.FULL - food.HUNGRY
 local STASH_REACH = 4
+-- Of a good it sells, the most it keeps on itself for a sale in person (M.stash_spare).
+local CARRY = 8
 -- How often it looks at its food: the home stage after dinner is a game hour, 50 s.
 local EAT_CHECK_SECONDS = 10
 local STARVING_SPEED = 0.7
@@ -396,6 +398,51 @@ function M.collect_stash_emeralds(self, reach)
 	return taken
 end
 
+-- Spare goods go into its stash when it stands within `reach` of it (STASH_REACH, or near
+-- its bed as it gets up, M.step), so a buyer who finds it away from home can still buy:
+-- a stash only ever held what was put in it, and villagers put in emeralds and food,
+-- never their goods. The alchemist carried 228 spare nuggets while three of seven trips
+-- for them found it out and its stash empty, a commission among them (ColonyFood,
+-- 2026-11-19). Of each good's surplus it keeps half on itself, at most CARRY, for sales in
+-- person (exchange.lua sells from belongings); food stays with it (it eats from its
+-- belongings first), and so does a peddler's stock, its trade being to carry it. What
+-- the chest has no room for stays carried. Returns how many it put in.
+function M.stash_spare(self, reach, view)
+	local stash = self._villages_stash
+	local pos = self.object and self.object:get_pos()
+	if not stash or not pos or vector.distance(pos, stash) > (reach or STASH_REACH) or not owned_by(stash, self) then
+		return 0
+	end
+	local labour = self._villages_labour
+	local day = core.get_day_count and core.get_day_count() or 0
+	if labour and labour.day == day and labour.activity == "peddler" then return 0 end
+	view = view or M.assess(self)
+	local put = 0
+	local items = {}
+	for item in pairs(view.surplus or {}) do items[#items + 1] = item end
+	table.sort(items)
+	for _, item in ipairs(items) do
+		local spare = math.floor(view.surplus[item])
+		local carried = M.count(self, item)
+		local move = math.min(carried, spare) - math.min(CARRY, math.ceil(spare / 2))
+		if item ~= EMERALD and not food.POINTS[item] and move > 0 then
+			local left = move
+			for _, half in ipairs(halves(stash)) do
+				if left <= 0 then break end
+				left = core.get_meta(half):get_inventory():add_item("main", item .. " " .. left):get_count()
+			end
+			local moved = move - left
+			if moved > 0 then
+				M.take(self, item, moved)
+				put = put + moved
+				core.log("action", string.format("[living_villages] villager %s left %d %s in its stash at %s, keeps %d",
+					tostring(self._id):sub(1, 6), moved, item, core.pos_to_string(stash), carried - moved))
+			end
+		end
+	end
+	return put
+end
+
 -- The villager's stage of the day; common.lua's, loaded when first asked (a test may set it).
 function M.stage_of(self)
 	M.common = M.common or dofile(core.get_modpath("living_villages") .. "/common.lua")
@@ -492,6 +539,7 @@ function M.step(self, now)
 		was_sleeping[self] = nil
 		M.claim_stash(self)
 		M.collect_stash_emeralds(self, 2 * stash_radius())
+		M.stash_spare(self, 2 * stash_radius())
 	end
 	if now >= (next_meal[self] or 0) then
 		next_meal[self] = now + EAT_CHECK_SECONDS
@@ -504,6 +552,7 @@ function M.step(self, now)
 	M.endow(self)
 	M.claim_stash(self)
 	M.collect_stash_emeralds(self)
+	M.stash_spare(self)
 	-- It takes up comforts it holds, and puts down those used up (comforts.lua).
 	comforts.update(self, M.in_dinners(self, M.emeralds(self)), M.take, now)
 	-- Its asks for what it did not sell yesterday come down (asks.lua).

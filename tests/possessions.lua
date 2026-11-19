@@ -285,6 +285,7 @@ chest(kim_chest)
 kim._bed = kim_bed
 assert(possessions.claim_stash(kim))
 local larder = {["mcl_farming:bread"] = 3}
+local larder_room -- items the chest still takes; nil for no limit
 local stash_meta = minetest.get_meta
 minetest.get_meta = function(pos)
 	local meta = stash_meta(pos)
@@ -301,6 +302,14 @@ minetest.get_meta = function(pos)
 						end
 					end
 					return list
+				end,
+				add_item = function(_, _, item)
+					local name, given = item:match("^(%S+)%s*(%d*)")
+					given = tonumber(given) or 1
+					local n = larder_room and math.min(larder_room, given) or given
+					if larder_room then larder_room = larder_room - n end
+					larder[name] = (larder[name] or 0) + n
+					return {get_count = function() return given - n end}
 				end,
 				remove_item = function(_, _, item)
 					local name, wanted = item:match("^(%S+)%s*(%d*)")
@@ -337,6 +346,37 @@ possessions.add(kim, "mcl_core:cobble", 2)
 assert(possessions.take_held(kim, "mcl_core:cobble", 4) == 4)
 assert(possessions.count(kim, "mcl_core:cobble") == 0 and larder["mcl_core:cobble"] == 3)
 assert(possessions.take_held(kim, "mcl_core:cobble", 9) == 3, "all there is")
+-- Spare goods go into its stash once it is there, so a buyer who finds it out can buy
+-- (the alchemist's nuggets, ColonyFood 2026-11-19): of each surplus it keeps half, at
+-- most 8, on itself; food and emeralds stay carried.
+local NUG = "mcl_core:iron_nugget"
+local function spare_view(surplus) return {surplus = surplus} end
+possessions.add(kim, NUG, 40)
+possessions.add(kim, "mcl_lanterns:lantern_floor", 1)
+kim_at = {x = 520, y = 0, z = 0}
+assert(possessions.stash_spare(kim, nil, spare_view({[NUG] = 40})) == 0, "too far")
+kim_at = {x = 501, y = 0, z = 0}
+local bread_before, emeralds_before = larder["mcl_farming:bread"] or 0, possessions.emeralds(kim)
+possessions.add(kim, "mcl_farming:bread", 5)
+local put = possessions.stash_spare(kim, nil, spare_view({[NUG] = 40, ["mcl_lanterns:lantern_floor"] = 1,
+	["mcl_farming:bread"] = 5, ["mcl_core:emerald"] = 10}))
+assert(put == 32 and larder[NUG] == 32 and possessions.count(kim, NUG) == 8, "keeps 8 nuggets: " .. put)
+assert(possessions.count(kim, "mcl_lanterns:lantern_floor") == 1 and not larder["mcl_lanterns:lantern_floor"],
+	"a single spare lantern stays with it")
+assert((larder["mcl_farming:bread"] or 0) == bread_before and possessions.emeralds(kim) == emeralds_before,
+	"food and emeralds stay carried")
+assert(possessions.held(kim)[NUG] == 40, "what it holds is the same")
+-- Only spare goods: a surplus counted with the stash moves only what is beyond the keep.
+assert(possessions.stash_spare(kim, nil, spare_view({[NUG] = 40})) == 0, "nothing more to put in")
+-- A full chest: what does not fit stays carried.
+possessions.add(kim, NUG, 20)
+larder_room = 5
+assert(possessions.stash_spare(kim, nil, spare_view({[NUG] = 28})) == 5 and possessions.count(kim, NUG) == 23)
+larder_room = nil
+-- A peddler's stock is its trade: it keeps it on itself.
+kim._villages_labour = {day = minetest.get_day_count(), activity = "peddler"}
+assert(possessions.stash_spare(kim, nil, spare_view({[NUG] = 28})) == 0, "a peddler carries its stock")
+kim._villages_labour = nil
 assert(possessions.same_house({x = 0, y = 0, z = 0}, {x = 5, y = 4, z = -5}))
 assert(not possessions.same_house({x = 0, y = 0, z = 0}, {x = 6, y = 0, z = 0}) and not possessions.same_house(nil, kim_bed))
 minetest.get_meta = stash_meta
