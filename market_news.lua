@@ -48,7 +48,7 @@ local INTEREST_MATCH = 4
 local MIN_FRESHNESS = 0.1
 local DEFAULT_TIME_SPEED = 72
 -- The alchemist overhears (ticket 24): every OVERHEAR_SECONDS, every loaded adult's own
--- news, kept up to OVERHEAR_ENTRIES.
+-- news, kept up to OVERHEAR_ENTRIES; and they overhear its own (ticket 26a).
 local OVERHEAR_SECONDS = 60
 local OVERHEAR_ENTRIES = 96
 local VILLAGER = "mobs_mc:villager"
@@ -388,14 +388,19 @@ end
 -- its nuggets or who had stone and logs to spare: `heard=0` at day 416. It takes in the
 -- own news (M.own) of every loaded adult villager in `villagers`, one hop away, as if told
 -- face to face, and makes its prices' move for the day first, which a villager otherwise
--- makes in its first conversation. Returns how many entries it kept.
+-- makes in its first conversation. It is overheard alike (ticket 26a): each of them takes in
+-- its own news, a hop away, so its nuggets, glass and flint have buyers. It opens no stall
+-- and goes nowhere news is told, so nobody heard of the 63 nuggets it held at 0.29 while
+-- labourers planned 880 lanterns, and broke, it bought no stone or logs again (ColonyFood,
+-- day 694). Returns how many entries it kept, and how many the others kept of its news.
 function M.overhear(listener, villagers, now)
-	if not clock.enabled() then return 0 end
+	if not clock.enabled() then return 0, 0 end
 	now = now or core.get_gametime()
 	price_day(listener, now)
-	local kept = 0
+	local kept, others = 0, {}
 	for _, villager in ipairs(villagers) do
 		if villager ~= listener and villager._id and villager._id ~= listener._id and not villager.child then
+			others[#others + 1] = villager
 			for _, entry in ipairs(M.own(villager, possessions.assess(villager), now)) do
 				local told = copy(entry)
 				told.hops = (told.hops or 0) + 1
@@ -403,8 +408,22 @@ function M.overhear(listener, villagers, now)
 			end
 		end
 	end
-	trim(listener, possessions.assess(listener), now, OVERHEAR_ENTRIES)
-	return kept
+	local view = possessions.assess(listener)
+	trim(listener, view, now, OVERHEAR_ENTRIES)
+	local own, told_kept = M.own(listener, view, now), 0
+	for _, villager in ipairs(others) do
+		local took = false
+		for _, entry in ipairs(own) do
+			local told = copy(entry)
+			told.hops = (told.hops or 0) + 1
+			if receive(villager, told) then
+				told_kept = told_kept + 1
+				took = true
+			end
+		end
+		if took then trim(villager, possessions.assess(villager), now) end
+	end
+	return kept, told_kept
 end
 
 -- The loaded adult villagers: every active villager entity.
@@ -427,10 +446,11 @@ function M.install(def)
 			local now = core.get_gametime()
 			if now >= (next_overhear[self] or 0) then
 				next_overhear[self] = now + OVERHEAR_SECONDS
-				local kept = M.overhear(self, loaded_villagers(), now)
-				if kept > 0 then
-					core.log("action", string.format("[living_villages] market news: alchemist %s overheard %d entries",
-						short_id(self._id), kept))
+				local kept, told = M.overhear(self, loaded_villagers(), now)
+				if kept > 0 or told > 0 then
+					core.log("action", string.format(
+						"[living_villages] market news: alchemist %s overheard %d entries, was overheard %d times",
+						short_id(self._id), kept, told))
 				end
 			end
 		end
