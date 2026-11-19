@@ -568,9 +568,11 @@ do
 	assert(chosen and chosen.makes == LANTERN, "it makes the commissioned lantern")
 	assert(production.make(hand, chosen, true))
 	assert(count(hand, LANTERN) == 1 and (possessions.assess(hand).surplus[LANTERN] or 0) == 0, "held back")
-	-- Its work stage: off to the client's chest with it.
+	-- Its work stage: counted as one of the commission's work days, and off to the
+	-- client's chest with the lantern.
 	time = 9000 / 24000
 	trips.step(hand, now)
+	assert(c.worked == 1 and c.worked_day == day, "a work stage counts toward its time")
 	assert(hand._villages_commission == nil and hand._villages_trade_trip.commission, "made: delivering")
 	assert(hand.walks[#hand.walks].z == 2, "to the client's chest")
 	hand.arrive()
@@ -582,8 +584,18 @@ do
 	local stash2 = chest({x = 120, y = 1, z = 2}, fond .. "b", {})
 	local lazy = villager("lazy", {x = 120, y = 1, z = 12}, {_villages_belongings = {[EMERALD] = 1, [NUGGET] = 3}})
 	lazy._villages_commission = {index = c.index, item = LANTERN, count = 1, client = fond .. "b",
-		deliver = vector.new(stash2), price = 150, day = day - commission.DAYS}
+		deliver = vector.new(stash2), price = 150, day = day - commission.MAX_DAYS}
 	assert(commission.expired(lazy._villages_commission, day))
+	-- Its time is its work stages: a holiday, or a day it was not loaded, is not counted.
+	local timed = {day = day}
+	assert(not commission.expired(timed, day + 3), "no work stage yet")
+	commission.worked(timed, day + 1)
+	commission.worked(timed, day + 1)
+	assert(timed.worked == 1 and not commission.expired(timed, day + 3), "one work stage, counted once")
+	commission.worked(timed, day + 3)
+	assert(not commission.expired(timed, day + 3), "during its last work stage")
+	assert(commission.expired(timed, day + 4), "after its last work stage")
+	assert(commission.expired({day = day}, day + commission.MAX_DAYS), "at most MAX_DAYS days")
 	possessions.add(lazy, EMERALD, 150)
 	assert(possessions.money(lazy) == 1)
 	trips.step(lazy, now + 10)
