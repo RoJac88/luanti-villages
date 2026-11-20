@@ -29,7 +29,9 @@
 -- * Gear (ticket 37d: the smiths' and the armorer's) is a good with its own enchantments
 --   (`enchants`, priced from ENCHANTS) made from `inputs`: a piece it made itself (an iron
 --   pick) or the real recipe's diamonds and sticks. Every offer carries `inputs`; its
---   `base` and `count` are the first.
+--   `base` and `count` are the first. An input's `leave` is how many it never sells of it
+--   (ticket 37e: the rod a fisherman fishes with). A good with no enchantments (the
+--   leatherworker's saddle) has its own `dinners`.
 --
 -- Premium goods never enter villager trade, market news or asks: they exist only once a
 -- player buys one.
@@ -40,6 +42,7 @@ local ENCHANTED_BOOK = "mcl_enchanting:book_enchanted"
 local BOTTLE = "mcl_potions:glass_bottle"
 local WHEAT, POTATO = "mcl_farming:wheat_item", "mcl_farming:potato_item"
 local DIAMOND, STICK = "mcl_core:diamond", "mcl_core:stick"
+local BOW, ROD, LEATHER = "mcl_bows:bow", "mcl_fishing:fishing_rod", "mcl_mobitems:leather"
 
 M.MIN_LEVEL, M.MAX_LEVEL = 3, 5
 M.SCALE = 1
@@ -126,6 +129,40 @@ M.LINES = {
 		keeps = {[DIAMOND] = 8},
 		goods = {},
 	},
+	-- Ticket 37e: the fletcher's bows, from a bow it made.
+	fletcher = {
+		goods = {
+			{id = "bow_power", from = BOW, label = "Bow", level = 3, enchants = {power = 3}, inputs = {{item = BOW, count = 1}}},
+			{id = "bow_unbreaking", from = BOW, label = "Bow", level = 4, enchants = {power = 4, unbreaking = 2},
+				inputs = {{item = BOW, count = 1}}},
+			{id = "bow_infinity", from = BOW, label = "Bow", level = 5, enchants = {power = 5, infinity = 1},
+				inputs = {{item = BOW, count = 1}}},
+		},
+	},
+	-- The fisherman's rods, from one it bought past the one it fishes with (wants.lua's rod),
+	-- so it keeps one more.
+	fisherman = {
+		keeps = {[ROD] = 1},
+		goods = {
+			{id = "rod_1", from = ROD, label = "Fishing rod", level = 3, enchants = {lure = 1, luck_of_the_sea = 1},
+				inputs = {{item = ROD, count = 1, leave = 1}}},
+			{id = "rod_2", from = ROD, label = "Fishing rod", level = 4, enchants = {lure = 2, luck_of_the_sea = 2},
+				inputs = {{item = ROD, count = 1, leave = 1}}},
+			{id = "rod_3", from = ROD, label = "Fishing rod", level = 5, enchants = {lure = 3, luck_of_the_sea = 3},
+				inputs = {{item = ROD, count = 1, leave = 1}}},
+		},
+	},
+	-- The leatherworker's saddle from 4 leather (VoxeLibre has no recipe for one), and
+	-- leather boots it made with Feather Falling IV. It keeps 4 leather.
+	leatherworker = {
+		keeps = {[LEATHER] = 4},
+		goods = {
+			{id = "saddle", from = "mcl_mobitems:saddle", label = "Saddle", level = 4, dinners = 8,
+				inputs = {{item = LEATHER, count = 4}}},
+			{id = "boots_feather_falling", from = "mcl_armor:boots_leather", label = "Leather boots", level = 5,
+				enchants = {feather_falling = 4}, inputs = {{item = "mcl_armor:boots_leather", count = 1}}},
+		},
+	},
 }
 -- The armorer's: each iron piece it made with Protection II; diamond leggings and boots
 -- with Protection III; a diamond helmet and chestplate with Protection IV and Unbreaking III.
@@ -190,7 +227,8 @@ function M.offers(profession)
 		if good.inputs then
 			local first = good.inputs[1]
 			list[#list + 1] = {id = good.id, makes = good.from, from = good.from, enchants = good.enchants,
-				level = good.level, dinners = M.dinners(good.enchants), label = good.label .. ": " .. M.describe(good.enchants),
+				level = good.level, dinners = good.dinners or M.dinners(good.enchants),
+				label = good.enchants and (good.label .. ": " .. M.describe(good.enchants)) or good.label,
 				inputs = good.inputs, base = first.item, count = first.count}
 		else
 			local bases = good.bases or {{item = line.base.item, count = line.base.count}}
@@ -257,7 +295,7 @@ function M.keeps(villager)
 		for item, count in pairs(line.keeps) do keeps[item] = count end
 		return keeps
 	end
-	return {[line.base.item] = line.base.keep}
+	return line.base and {[line.base.item] = line.base.keep} or nil
 end
 
 -- An offer's price in whole emeralds: its dinners at `dinner` emeralds a dinner (the
@@ -280,7 +318,7 @@ end
 function M.stock(offer, held)
 	local stock = math.huge
 	for _, input in ipairs(offer.inputs or {{item = offer.base, count = offer.count}}) do
-		stock = math.min(stock, math.floor((held[input.item] or 0) / input.count))
+		stock = math.min(stock, math.floor(math.max((held[input.item] or 0) - (input.leave or 0), 0) / input.count))
 	end
 	return stock
 end

@@ -54,7 +54,7 @@ assert(premium.keeps({_profession = "librarian", _max_trade_tier = 2}) == nil)
 assert(premium.keeps({_profession = "librarian", _max_trade_tier = 3})[BOOK] == 4)
 assert(premium.keeps({_profession = "librarian", _max_trade_tier = 5, child = true}) == nil)
 assert(premium.keeps({_profession = "cleric", _max_trade_tier = 5, _villages_alchemist = true}) == nil)
-assert(premium.keeps({_profession = "fisherman", _max_trade_tier = 5}) == nil)
+assert(premium.keeps({_profession = "shepherd", _max_trade_tier = 5}) == nil)
 
 -- Rows: every offer, its price, the sales its books allow, and why it is locked.
 local rows = premium.rows("librarian", 4, 50, {[BOOK] = 3}, 18, function() return 16 end, 0.125)
@@ -155,6 +155,35 @@ do
 	assert(premium.stock(tools[1], {[DIAMOND] = 7, [STICK] = 2}) == 1)
 	assert(premium.stock(tools[1], {[DIAMOND] = 7, [STICK] = 9}) == 2)
 	assert(premium.stock(tools[1], {[STICK] = 9}) == 0)
+end
+
+-- The fletcher, fisherman and leatherworker (ticket 37e).
+do
+	local BOW, ROD, LEATHER = "mcl_bows:bow", "mcl_fishing:fishing_rod", "mcl_mobitems:leather"
+	local function find(list, id)
+		for _, offer in ipairs(list) do
+			if offer.id == id then return offer end
+		end
+	end
+	local bows = premium.offers("fletcher")
+	assert(#bows == 3 and bows[1].id == "bow_infinity" and bows[1].dinners == 56)
+	assert(bows[1].label == "Bow: Infinity, Power V")
+	assert(find(bows, "bow_unbreaking").dinners == 28 and find(bows, "bow_power").dinners == 8)
+	assert(premium.keeps({_profession = "fletcher", _max_trade_tier = 5}) == nil, "it keeps nothing")
+	local rods = premium.offers("fisherman")
+	assert(#rods == 3 and find(rods, "rod_3").dinners == 28 and find(rods, "rod_2").dinners == 14)
+	assert(find(rods, "rod_1").dinners == 7 and find(rods, "rod_1").level == 3)
+	assert(premium.keeps({_profession = "fisherman", _max_trade_tier = 3})[ROD] == 1)
+	-- It never sells the rod it fishes with.
+	assert(premium.stock(find(rods, "rod_3"), {[ROD] = 1}) == 0 and premium.stock(find(rods, "rod_3"), {[ROD] = 3}) == 2)
+	local leather = premium.offers("leatherworker")
+	local saddle = find(leather, "saddle")
+	assert(#leather == 2 and saddle.dinners == 8 and saddle.label == "Saddle" and saddle.level == 4)
+	assert(saddle.inputs[1].item == LEATHER and saddle.inputs[1].count == 4 and not saddle.enchants)
+	assert(find(leather, "boots_feather_falling").dinners == 16 and find(leather, "boots_feather_falling").level == 5)
+	assert(premium.keeps({_profession = "leatherworker", _max_trade_tier = 3})[LEATHER] == 4)
+	assert(premium.price(saddle, 18, function() return 5 end, 0) == 8 * 18 + 20)
+	assert(premium.stock(find(bows, "bow_power"), {[BOW] = 2}) == 2)
 end
 
 print("premium ok")
