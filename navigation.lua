@@ -1151,21 +1151,20 @@ local function install(def)
 					self.order = "sleep"
 				end
 			end
-			local bed_destination = {
+			-- Each destination only for a route there is: built every step, they were waste.
+			if self._villages_bed_route and recover_route(self, {
 				pos = self._bed, route_field = "_villages_bed_route", kind = "bed", sleep = true,
 				claimed = has_claimed_bed,
-			}
-			if recover_route(self, bed_destination) then return result end
+			}) then return result end
 		end
 
 		if not is_tavern_time(self) then
 			cancel_route(self, "_villages_tavern_route")
 		else
-			local tavern_destination = {
+			if self._villages_tavern_route and recover_route(self, {
 				pos = self._villages_tavern_target, route_field = "_villages_tavern_route", kind = "tavern",
 				claimed = has_tavern_target,
-			}
-			if recover_route(self, tavern_destination) then
+			}) then
 				return result
 			end
 		end
@@ -1178,23 +1177,20 @@ local function install(def)
 			self._villages_farm_target = nil
 			self._villages_fish_target = nil
 		else
-			local job_destination = {
-			pos = self._jobsite, route_field = "_villages_job_route", kind = "jobsite",
-			claimed = has_claimed_jobsite,
-			}
-			if recover_route(self, job_destination) then return result end
+			if self._villages_job_route and recover_route(self, {
+				pos = self._jobsite, route_field = "_villages_job_route", kind = "jobsite",
+				claimed = has_claimed_jobsite,
+			}) then return result end
 		end
-		local farm_destination = {
+		if working and self._villages_farm_route and recover_route(self, {
 			pos = self._villages_farm_target, route_field = "_villages_farm_route", kind = "farm plot",
 			claimed = has_farm_target,
-		}
-		if working and (recover_route(self, farm_destination)) then return result end
-		local fish_destination = {
+		}) then return result end
+		if working and self._villages_fish_route and recover_route(self, {
 			pos = self._villages_fish_target, route_field = "_villages_fish_route", kind = "fishing spot",
 			cardinal_only = true, raised_ok = true, candidate_filter = unoccupied_candidates,
 			claimed = has_fish_target,
-		}
-		if working and (recover_route(self, fish_destination)) then return result end
+		}) then return result end
 		if self._jobsite or is_home_time(self) then
 			cancel_route(self, "_villages_job_search_route")
 		else

@@ -179,10 +179,29 @@ end
 -- third of its working day early, and putters about until tavern time.
 local STARVING_WORK_END = 12500
 
+-- Thunder and a holiday are the same for every villager at one moment, and reading them
+-- (the override setting, the moon, the weather) is most of a stage's cost; every villager
+-- asks for its stage many times a step (profile.lua, 2026-11-19). Kept for one server
+-- step: the uptime moves on every step, frozen time of day or not. Without it (tests) they
+-- are read each time.
+local world_now = {}
+
+local function world_state()
+	local uptime = core.get_server_uptime and core.get_server_uptime()
+	if uptime == nil or world_now.uptime ~= uptime then
+		world_now.uptime = uptime
+		world_now.tod = core.get_timeofday()
+		world_now.thunder = is_thunder()
+		world_now.holiday = is_holiday()
+	end
+	return world_now
+end
+
 local function stage_at(tod, villager)
-	if is_thunder() then return "sleep" end
-	local schedule = schedule_of(villager, is_holiday())
-	local ticks = ((tod or core.get_timeofday()) * 24000) % 24000
+	local world = world_state()
+	if world.thunder then return "sleep" end
+	local schedule = schedule_of(villager, world.holiday)
+	local ticks = ((tod or world.tod) * 24000) % 24000
 	local stage = schedule[#schedule].stage
 	for _, entry in ipairs(schedule) do
 		if ticks < entry.start then break end

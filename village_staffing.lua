@@ -39,6 +39,15 @@ local awaiting = {}
 -- Mod storage, for jobs given to villagers not loaded when their village was staffed.
 local storage
 local PENDING = "staffing:"
+-- Bumped by every pending write. A villager that found nothing at one value does not read
+-- storage again, every step, until a write moves it on.
+local pending_writes = 0
+local checked_at = setmetatable({}, {__mode = "k"})
+
+local function hold_pending(id, value)
+	storage:set_string(PENDING .. id, value)
+	pending_writes = pending_writes + 1
+end
 local UNEMPLOYED = "unemployed"
 
 -- How many of a new village's villagers are left without a job.
@@ -89,7 +98,7 @@ end
 local function reserve(id, block, roles)
 	if not job_blocks.is_free(block, roles) then return false end
 	core.get_meta(block):set_string("villager", id)
-	if storage then storage:set_string(PENDING .. id, core.pos_to_string(block)) end
+	if storage then hold_pending(id, core.pos_to_string(block)) end
 	return true
 end
 
@@ -167,7 +176,7 @@ function M.staff(batch, roles, unemployed)
 				if v.entity then
 					v.entity[job_blocks.LEFT_UNEMPLOYED] = true
 				elseif storage then
-					storage:set_string(PENDING .. v.id, UNEMPLOYED)
+					hold_pending(v.id, UNEMPLOYED)
 				end
 			end
 		end
@@ -258,7 +267,8 @@ end
 -- Finishes what staffing gave a villager that was not loaded then: the job held in
 -- its block's meta, through that block's own claim, or being left out of work.
 function M.apply_pending(self, roles)
-	if not storage or not self._id then return end
+	if not storage or not self._id or checked_at[self] == pending_writes then return end
+	checked_at[self] = pending_writes
 	local held = storage:get_string(PENDING .. self._id)
 	if held == "" then return end
 	storage:set_string(PENDING .. self._id, "")

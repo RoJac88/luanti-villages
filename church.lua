@@ -606,6 +606,8 @@ local function social(self, pos, attended)
 			return
 		end
 	end
+	local anchor = self._villages_wander_anchor
+	if held and held.pulpit == pulpit and anchor and anchor.pos == pulpit then return end
 	self._villages_social = {pulpit = pulpit}
 	self._villages_wander_anchor = {pos = pulpit, radius = SOCIAL_RADIUS}
 end

@@ -11,6 +11,11 @@ local BED_HEIGHT = 12
 local MATE_RADIUS = 16
 local BIRTH_INTERVAL_DAYS = 2
 local LAST_BIRTH = "villages_last_birth"
+-- How often an unfed would-be parent asks again whether it owns food enough: the answer
+-- reads its stash, too dear for every tick of the morning.
+local PARENT_CHECK_SECONDS = 30
+-- When each villager may next ask, kept out of the save.
+local next_parent_check = setmetatable({}, {__mode = "k"})
 
 local function valid_claim(villager, near)
 	local bed = villager._bed
@@ -139,10 +144,15 @@ return function(def)
 		if result == false then return false end
 		local time = core.get_timeofday()
 		if self.child or time < 0.25 or time > 0.6 then return result end
-		-- Before the day is marked, as a parent fed later this morning may yet qualify.
-		if not possessions.can_parent(self) then return result end
 		local day = core.get_day_count()
 		if self._villages_birth_check_day == day then return result end
+		-- Before the day is marked, as a parent fed later this morning may yet qualify.
+		local now = core.get_gametime()
+		if now < (next_parent_check[self] or 0) then return result end
+		if not possessions.can_parent(self) then
+			next_parent_check[self] = now + PARENT_CHECK_SECONDS
+			return result
+		end
 		self._villages_birth_check_day = day
 		local pos = self.object:get_pos()
 		if not pos or not valid_claim(self, pos) then return result end
