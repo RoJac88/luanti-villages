@@ -115,7 +115,9 @@ local tavern = {
 		return true
 	end,
 }
-window.install(def, {possessions = possessions, gossip = gossip, tavern = tavern,
+local fund = {}
+local alms = {receive = function(priest, gift) fund[#fund + 1] = {priest = priest, gift = gift} end}
+window.install(def, {possessions = possessions, gossip = gossip, tavern = tavern, alms = alms,
 	clock = {enabled = function() return enabled end}})
 
 local function inventory(contents)
@@ -168,6 +170,11 @@ assert(player_inv.contents[IRON] == 7 and belongings[IRON] == 3 and belongings[E
 assert(gossiped[#gossiped] == "minor_positive")
 -- A purchase like any: its reference price for iron learnt the 40 it paid.
 assert(near(prices.factor(villager._villages_prices, IRON), (40 / ledger.price(IRON)) ^ prices.LEARN_TRADE))
+-- No Give field (ticket 36): a farmer takes no donations.
+assert(not shown[#shown].spec:find("give_amount", 1, true))
+player_inv.contents[EMERALD] = 180
+handlers.fields(player, window.FORMNAME, {give = true, give_amount = "50"})
+assert(player_inv.contents[EMERALD] == 180 and #fund == 0, "nothing given")
 -- Closing lets it go.
 handlers.fields(player, window.FORMNAME, {quit = "true"})
 assert(not villager._trading_players.rskj)
@@ -208,6 +215,29 @@ do
 	handlers.fields(player, window.FORMNAME, {quit = "true"})
 	view = {surplus = {[BREAD] = 6}, needs = {[IRON] = 5}, value = function(item) return values[item] end,
 		urgency = function(item) return item == IRON and 3 or 1 end}
+end
+-- The cleric (ticket 36): a donation goes to the alms fund, and a dinner or more is
+-- donation gossip, once a day.
+do
+	local day = 7
+	minetest.get_day_count = function() return day end
+	local cleric = {_id = "cler-1", _profession = "cleric", _villages_belongings = {[EMERALD] = 0}, object = villager.object}
+	player_inv.contents[EMERALD] = 200
+	def.on_rightclick(cleric, player)
+	assert(shown[#shown].spec:find("give_amount", 1, true) and shown[#shown].spec:find("alms fund", 1, true))
+	local before = #gossiped
+	handlers.fields(player, window.FORMNAME, {give = true, give_amount = "40"})
+	assert(player_inv.contents[EMERALD] == 160 and fund[1].priest == cleric and fund[1].gift == 40)
+	assert(#gossiped == before + 1 and gossiped[#gossiped] == "donation" and cleric._villages_donors.rskj == 7)
+	handlers.fields(player, window.FORMNAME, {give = true, give_amount = "40"})
+	assert(player_inv.contents[EMERALD] == 120 and #fund == 2 and #gossiped == before + 1, "once a day")
+	day = 8
+	handlers.fields(player, window.FORMNAME, {give = true, give_amount = "1"})
+	assert(#fund == 3 and #gossiped == before + 1 and not cleric._villages_donors, "too small, and yesterday's forgotten")
+	handlers.fields(player, window.FORMNAME, {give = true, give_amount = "500"})
+	assert(#fund == 3 and chats[#chats]:find("too few"), "no more than it has")
+	handlers.fields(player, window.FORMNAME, {quit = "true"})
+	minetest.get_day_count = nil
 end
 enabled = false
 local other = {_id = "o", object = villager.object}

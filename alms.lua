@@ -89,6 +89,18 @@ function M.donation(emeralds, scale)
 	return math.max(math.floor((emeralds - savings) / 10), 1)
 end
 
+-- Puts `gift` emeralds a player donated (trade_window.lua, ticket 36) with the cleric:
+-- KEEP_SHARE in its belongings, the rest in its alms fund, as a villager's donation.
+-- Returns what it kept.
+function M.receive(priest, gift)
+	local kept = math.floor(gift * KEEP_SHARE)
+	if kept > 0 then possessions.add(priest, EMERALD, kept) end
+	priest._villages_alms = (priest._villages_alms or 0) + gift - kept
+	core.log("action", string.format("[living_villages] alms: a player gave %d emerald(s) to cleric %s (kept %d, fund %d)",
+		gift, short_id(priest._id), kept, priest._villages_alms))
+	return kept
+end
+
 -- Takes the donor's gift, if it owes one today, no more than `room` (what the fund lacks
 -- of its target; nil, no limit). `witnesses` note it. Returns the gift.
 function M.collect(priest, donor, witnesses, day, gossip, room)

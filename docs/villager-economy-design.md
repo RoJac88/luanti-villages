@@ -1052,7 +1052,7 @@ The player trades at the villager's own prices. The window's rows are:
 - **A gift in the window.** A "Give" field gives the villager emeralds outright. A gift
   of at least GIFT_GOSSIP (a dinner) is `minor_positive` gossip, and one of 8 dinners
   or more is `major_positive`. The villager thinks better of the giver, so it gives the
-  player better prices.
+  player better prices. Ticket 36 replaced it with a donation at the cleric only.
 - **The stash.** Emeralds left in a villager's stash are collected (`possessions.
   collect_stash_emeralds`). On 2026-11-15, emeralds left in two chests did nothing:
   - The first chest was a trapped chest, and `farm_stock.CHEST_NODES` doesn't include
@@ -3439,6 +3439,39 @@ cooked chicken it bought never reached a plate. Now it keeps a few of every dish
   need, capped at the dinner, a carried dish not spare); `tests/market_news.lua` (a keeper notes
   an offered dish, not a need, not a raw food, no one else); `tests/meal.lua` (a cooked chicken
   served).
+
+### 36. Donations at the cleric only
+
+Every villager's window had a "Give emeralds" field (ticket 21a). A gift of 8 dinners was
+`major_positive` (100 reputation, which never fades) on top of `minor_positive` (25), so a
+player could buy the best prices with money alone. Now only donations to the cleric count,
+and they count for little. A player should earn a good name by trading, selling to urgent
+needs and errands.
+
+- **The window.** Only the cleric's window (`trade_window.takes_donations`: a cleric, not
+  the keeper or the alchemist) has a field, "Donate to the alms fund". A donation goes to
+  the fund as a villager's does (`alms.receive`): the cleric keeps a tenth, and the rest
+  goes to the poor at the next holiday, with anything over the fund's target paid out
+  toward `SAVINGS`. Money a player gives still reaches the village.
+- **Reputation.** A donation of a dinner or more (`DONATION_MIN`, at the cleric's scale) is
+  `donation` gossip (gossip.lua: gain 5, cap 10, decays 1 a game day, shared less 3). It
+  counts once a day per player (`_villages_donors` on the cleric, holding only today).
+  Donations alone get a player 10 at the cleric, a 2.5% discount (the discount maxes at
+  100), and 7 or less at the villagers who hear of it. Trading caps at 25 and good deeds at
+  25 plus 100.
+- **Other ways to give.** Emeralds left in a villager's stash are still collected. Emeralds
+  thrown to a villager are now picked up (`possessions.pick_up`, through vanilla's item
+  pickup, which waits until no player is within 2 nodes). An adult takes them into its
+  belongings; a child leaves them. Neither way makes gossip. Before this, villagers picked
+  up only food.
+- **Kept.** `major_positive` and `minor_positive` gossip already earned by gifts stays until
+  it fades (`major_positive` never fades). Villagers' own donations at the holiday service
+  are unchanged.
+- **Tests:** `tests/trade_window.lua` (no field at a farmer and nothing taken; the cleric's
+  donation goes to the fund, gossips once a day, not below a dinner, not past what the player
+  holds); `tests/money.lua` (`donation_counts`, `takes_donations`); `tests/gossip.lua`
+  (capped at 10, shared as 7); `tests/possessions.lua` (an adult picks up emeralds, a child
+  doesn't, the block and food are left alone).
 
 ## Open questions
 

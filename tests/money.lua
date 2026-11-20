@@ -128,12 +128,13 @@ local porter = villager("pat", {[EMERALD] = 300}, {_villages_trade_trip = {clien
 assert(possessions.money(porter) == 50)
 assert(possessions.money(villager("keep", {[EMERALD] = 5}, {_villages_keeper = true})) == nil)
 
--- Gifts: gossip by size, and what a Give field may hold.
-assert(#window.gift_gossip(window.GIFT_MINOR - 1) == 0)
-local kinds = window.gift_gossip(window.GIFT_MINOR)
-assert(#kinds == 1 and kinds[1] == "minor_positive")
-kinds = window.gift_gossip(window.GIFT_MAJOR)
-assert(#kinds == 2 and kinds[1] == "major_positive")
+-- Donations (ticket 36): a dinner or more, once a day, counts; only the cleric takes them.
+assert(not window.donation_counts(window.DONATION_MIN - 1, 1, nil, 5))
+assert(window.donation_counts(window.DONATION_MIN, 1, nil, 5) and window.donation_counts(window.DONATION_MIN, 1, 4, 5))
+assert(not window.donation_counts(window.DONATION_MIN, 1, 5, 5), "one a day")
+assert(not window.donation_counts(window.DONATION_MIN, 2, nil, 5), "a dinner at its scale")
+assert(window.takes_donations({_profession = "cleric"}) and not window.takes_donations({_profession = "farmer"}))
+assert(not window.takes_donations({_profession = "cleric", _villages_keeper = true}))
 assert(window.gift_amount("64") == 64 and window.gift_amount(" 12.7") == 12)
 assert(window.gift_amount("") == nil and window.gift_amount("0") == nil and window.gift_amount("-5") == nil)
 assert(window.gift_amount("abc") == nil and window.gift_amount("nan") == nil and window.gift_amount("inf") == nil)
