@@ -107,14 +107,9 @@ local function now()
 	return core.get_gametime()
 end
 
+-- Every dish it serves: MENU's, then any other prepared food (keeper.dishes, ticket 35).
 local function menu()
-	local items = {}
-	for _, entry in ipairs(keeper.MENU) do
-		if not core.registered_items or core.registered_items[entry.offered] then
-			table.insert(items, entry.offered)
-		end
-	end
-	return items
+	return keeper.dishes()
 end
 
 -- The plate on the guest's table, if it is free for a meal: a plate with

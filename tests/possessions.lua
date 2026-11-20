@@ -306,6 +306,20 @@ do
 	assert(f(BREAD) == 1 and f("mcl_farming:potato_item") < 1 and f(BAKED) == f("mcl_farming:potato_item"))
 	stage = saved_stage
 end
+-- A keeper's few of each dish (ticket 35): a need, worth no more than its dinner, and one it
+-- carries is never spare, even with the pantry stocked (a want of 0).
+do
+	local CHICKEN, SALMON = "mcl_mobitems:cooked_chicken", "mcl_fishing:salmon_cooked"
+	local dinner = dofile("dinner.lua")
+	local k = {_id = "kd", _villages_keeper = true, _villages_food = 8,
+		_villages_belongings = {[SALMON] = 4}, _villages_dish_wants = {[CHICKEN] = 3, [SALMON] = 0}}
+	local v = possessions.assess(k)
+	assert(v.needs[CHICKEN] == 3 and v.value(CHICKEN) <= dinner.price(k), tostring(v.value(CHICKEN)))
+	assert(not v.needs[SALMON] and not (v.surplus or {})[SALMON], "carried to the pantry, not sold")
+	-- Without the wants, a keeper has no such need and no cap.
+	k._villages_dish_wants = nil
+	assert(not possessions.assess(k).needs[CHICKEN])
+end
 kim._villages_food = 1
 stage = "home"
 -- Its stash, only within reach.

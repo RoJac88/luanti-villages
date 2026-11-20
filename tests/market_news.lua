@@ -95,6 +95,27 @@ dee._villages_market_news = {{item = "mcl_core:coal_lump", who = "ann", kind = "
 assert(news.tell({{item = "mcl_core:coal_lump", who = "ann", kind = "has", count = 40, heard = now, hops = 0}},
 	dee, nil, now) == 0, "older news does not replace fresher")
 
+-- A keeper notes every dish it hears offered (ticket 35); not a need, not a raw food, and
+-- no one else.
+do
+	minetest.get_day_count = function() return 12 end
+	local CHICKEN = "mcl_mobitems:cooked_chicken"
+	local told = {
+		{item = CHICKEN, who = "ann", kind = "has", count = 4, heard = now, hops = 0},
+		{item = "mcl_fishing:salmon_cooked", who = "ann", kind = "needs", count = 4, heard = now, hops = 0},
+		{item = "mcl_farming:potato_item", who = "ann", kind = "has", count = 4, heard = now, hops = 0},
+	}
+	local keeper = villager("kip", {}, {_villages_keeper = true})
+	for _ = 1, 5 do news.tell(told, keeper, nil, now) end
+	local known = keeper._villages_known_dishes
+	assert(known and known[CHICKEN] == 12, "heard of chicken on day 12")
+	assert(not known["mcl_fishing:salmon_cooked"] and not known["mcl_farming:potato_item"])
+	local other = villager("oth", {})
+	for _ = 1, 5 do news.tell(told, other, nil, now) end
+	assert(other._villages_known_dishes == nil)
+	minetest.get_day_count = nil
+end
+
 -- Interest: a listener short of food cares more for an offer of bread; fresh and near
 -- news more than old and far.
 local hungry = villager("eve", {}, {_villages_food = 0})

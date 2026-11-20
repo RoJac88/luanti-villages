@@ -1,8 +1,10 @@
 -- Tavern keepers (#15): a villager who claims a jukebox, keeps the tavern's
 -- hours (#22), and sells prepared food through ordinary villager trades.
 -- With the economy on, trade_window.lua's own window replaces them (ticket 33):
--- it sells the pantry's dishes at the dinner price, and MENU only says which
--- items are dishes. The vanilla menu below is for the economy off.
+-- it sells the pantry's dishes at the dinner price. Its dishes (`dishes`) are
+-- MENU's and every other prepared food (ticket 35); it keeps MIN_DISHES of each
+-- one it heard offered lately (keeper_supply.lua). The vanilla menu below is for
+-- the economy off.
 --
 -- VoxeLibre cannot be given a new profession: its professions table is a
 -- file-local in mobs_mc/villager.lua, and employ() only ever grants one of
@@ -26,6 +28,7 @@ local core = minetest
 local common = dofile(core.get_modpath("living_villages") .. "/common.lua")
 local music = dofile(core.get_modpath("living_villages") .. "/music.lua")
 local stock = dofile(core.get_modpath("living_villages") .. "/farm_stock.lua")
+local food = dofile(core.get_modpath("living_villages") .. "/food.lua")
 local S = core.get_translator and core.get_translator("living_villages") or function(message) return message end
 local JUKEBOX = "mcl_jukebox:jukebox"
 local BASE_PROFESSION = "butcher"
@@ -46,6 +49,42 @@ local MENU = {
 	{tier = 2, wanted = "mcl_core:emerald 2", offered = "mcl_mushrooms:mushroom_stew", count = 1},
 	{tier = 3, wanted = "mcl_core:emerald 3", offered = "mcl_farming:pumpkin_pie", count = 2},
 }
+
+-- Ticket 35: the dishes it keeps a little of, MIN_DISHES each, once it has heard one
+-- offered (`_villages_known_dishes`, item to the day last heard, market_news.lua), until
+-- KNOWN_DAYS pass without news of one.
+local MIN_DISHES = 3
+local KNOWN_DAYS = 7
+
+-- Every dish it serves: MENU's first, in order, then any other prepared food (food.lua),
+-- so a dish it bought (a cooked chicken, a salmon) reaches a plate.
+local function dishes()
+	local list, seen = {}, {}
+	local function add(item)
+		if not seen[item] and (core.registered_items == nil or core.registered_items[item]) then
+			seen[item] = true
+			list[#list + 1] = item
+		end
+	end
+	for _, entry in ipairs(MENU) do add(entry.offered) end
+	local rest = {}
+	for item in pairs(food.POINTS) do
+		if food.is_prepared(item) and not seen[item] then rest[#rest + 1] = item end
+	end
+	table.sort(rest)
+	for _, item in ipairs(rest) do add(item) end
+	return list
+end
+
+-- The dishes it heard offered within KNOWN_DAYS of `day`, sorted; older ones forgotten.
+local function known_dishes(self, day)
+	local known, list = self._villages_known_dishes, {}
+	for item, heard in pairs(known or {}) do
+		if day - heard >= KNOWN_DAYS then known[item] = nil else list[#list + 1] = item end
+	end
+	table.sort(list)
+	return list
+end
 
 -- The same shape vanilla's init_trades serializes into `_trades`.
 local function keeper_trades()
@@ -337,4 +376,8 @@ return {
 	end,
 	trades = keeper_trades,
 	MENU = MENU,
+	MIN_DISHES = MIN_DISHES,
+	KNOWN_DAYS = KNOWN_DAYS,
+	dishes = dishes,
+	known_dishes = known_dishes,
 }

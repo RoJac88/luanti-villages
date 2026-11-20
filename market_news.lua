@@ -26,6 +26,9 @@
 -- one about itself. News older than NEWS_DAYS game days is forgotten when the list is
 -- next read; past NEWS_ENTRIES the least interesting entries go.
 --
+-- A keeper notes each dish it hears offered (`_villages_known_dishes`, ticket 35), and
+-- keeps a few of each in its pantry (keeper_supply.lua).
+--
 -- Hearsay ages by game time, since it describes the world rather than the villager.
 -- With the economy off nothing is told or kept.
 local core = minetest
@@ -37,6 +40,7 @@ local asks = dofile(core.get_modpath("living_villages") .. "/asks.lua")
 local goods = dofile(core.get_modpath("living_villages") .. "/goods.lua")
 local stock = dofile(core.get_modpath("living_villages") .. "/farm_stock.lua")
 local recipes = dofile(core.get_modpath("living_villages") .. "/recipes.lua")
+local food = dofile(core.get_modpath("living_villages") .. "/food.lua")
 local COAL = "mcl_core:coal_lump"
 
 local NEWS_ENTRIES = 24
@@ -290,6 +294,13 @@ end
 -- Takes in one entry it was told. Returns whether it kept it.
 local function receive(listener, entry)
 	if entry.who == listener._id then return false end
+	-- A keeper notes every dish it hears offered (ticket 35, keeper.lua's known dishes),
+	-- kept or not.
+	if listener._villages_keeper and entry.kind == "has" and not entry.group and food.is_prepared(entry.item)
+		and core.get_day_count then
+		listener._villages_known_dishes = listener._villages_known_dishes or {}
+		listener._villages_known_dishes[entry.item] = core.get_day_count()
+	end
 	local list = listener._villages_market_news or {}
 	listener._villages_market_news = list
 	for i, known in ipairs(list) do

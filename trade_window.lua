@@ -45,7 +45,7 @@
 -- better prices.
 --
 -- The tavern keeper (ticket 33) sells the dishes in its pantry (tavern_pantry.lua: a
--- keeper.MENU item), each one dinner at its posted dinner price (dinner.lua), paid into
+-- keeper.dishes item), each one dinner at its posted dinner price (dinner.lua), paid into
 -- the pantry, its till, as a player's meal is (player_meals.lua). It keeps the last
 -- evening's demand (dinner.demand) in meals, cookable potatoes counted, for the village's
 -- dinner. It buys its inputs (ledger.lua's keeper role) as anyone, from its float. With
@@ -278,9 +278,9 @@ function M.pantry_till()
 			local jukebox, found = chests(villager)
 			if not found then return nil end
 			local dishes = {}
-			for _, entry in ipairs(keeper.MENU) do
-				local count = pantry.count(found, entry.offered)
-				if count > 0 then dishes[entry.offered] = count end
+			for _, item in ipairs(keeper.dishes()) do
+				local count = pantry.count(found, item)
+				if count > 0 then dishes[item] = count end
 			end
 			local day = core.get_day_count and core.get_day_count() or 0
 			return {dishes = dishes, meals = supply.meals(found), reserve = dinner.demand(villager),

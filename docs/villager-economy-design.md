@@ -3406,6 +3406,40 @@ though it feeds as much, so it buys, eats and dines on others first, and the tav
   the keeper's record); `tests/dinner.lua` (tired of the only dish against a new one, starving
   tires of nothing); `tests/meal.lua` (served the less eaten dish, noted on guest and keeper).
 
+### 35. A little of every dish
+
+Since ticket 34 a guest is served the dish it is least tired of, but the tavern could hold only
+dishes it is tired of. The keeper bought from a fixed list (bread, potatoes, cooked fish, cooked
+beef) whatever the pantry held, and only `keeper.MENU` dishes were ever shelved or served, so a
+cooked chicken it bought never reached a plate. Now it keeps a few of every dish it has heard of:
+
+- **Dishes it knows.** A keeper notes each prepared food it hears offered ("has" news,
+  `market_news.lua`'s `receive`) in `_villages_known_dishes` (item to day). It hears every
+  diner's news at the tavern. One not heard of in `KNOWN_DAYS` (7) is forgotten, so it doesn't
+  chase a seller that is gone (`keeper.known_dishes`).
+- **A minimum stock.** On its shift `keeper_supply.dish_wants` sets `_villages_dish_wants`:
+  `MIN_DISHES` (3) less what the pantry holds of each known dish, 0 when it has enough. Its
+  fixed inputs (wanted already) and the baked potato it bakes are left out.
+  `possessions.assess` adds each to `extra`, no fewer than it holds, so a dish it carries to the
+  pantry is never spare. A shortfall is a need like any, in its news, trades and porter hires.
+- **Never at a loss.** Its value for such a dish is capped at its dinner price (`worth`): a dish
+  served earns one dinner. While dinner is cheap, a dear dish isn't bought. The fixed inputs
+  keep their values as they were.
+- **Every dish reaches a plate.** The menu is `keeper.dishes()`: MENU's, then every other
+  prepared food. The meal, the pantry's meal count, the keeper's own meals, shelving and the
+  trade window all use it. Shelving takes from its stash too, where a porter leaves what it
+  bought.
+- **Guards.** At most 3 of each dish, at no more than a dinner, so the float isn't drained and a
+  hungry villager who values food more outbids it. It forgets a dish after a week, and porter
+  hires stay one a day. A pantry holding the new dishes counts them as meals, so the keeper
+  fetches a little less from the farms.
+- **Tests:** `tests/keeper.lua` (dishes' order, known dishes forgotten after a week);
+  `tests/keeper_supply.lua` (wants to 3, 0 when stocked, none for fixed inputs, the baked potato
+  or a forgotten dish; a new dish counts as a meal and is shelved); `tests/possessions.lua` (a
+  need, capped at the dinner, a carried dish not spare); `tests/market_news.lua` (a keeper notes
+  an offered dish, not a need, not a raw food, no one else); `tests/meal.lua` (a cooked chicken
+  served).
+
 ## Open questions
 
 - Price discovery (ticket 21):

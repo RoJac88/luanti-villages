@@ -236,4 +236,17 @@ do
 	assert(minetest.get_meta(free):get_string("villager") == "")
 end
 
+-- Its dishes (ticket 35): MENU's first, in order, then every other prepared food, no raw.
+do
+	local list = keeper.dishes()
+	for i, entry in ipairs(keeper.MENU) do assert(list[i] == entry.offered) end
+	local set = {}
+	for _, item in ipairs(list) do set[item] = true end
+	assert(set["mcl_mobitems:cooked_chicken"] and set["mcl_fishing:salmon_cooked"] and not set["mcl_farming:potato_item"])
+	-- Known dishes: those heard of within KNOWN_DAYS, sorted; older ones forgotten.
+	local k = {_villages_known_dishes = {["mcl_mobitems:cooked_chicken"] = 10, ["mcl_fishing:salmon_cooked"] = 3}}
+	local known = keeper.known_dishes(k, 10)
+	assert(#known == 1 and known[1] == "mcl_mobitems:cooked_chicken" and not k._villages_known_dishes["mcl_fishing:salmon_cooked"])
+	assert(#keeper.known_dishes({}, 10) == 0)
+end
 print("keeper.lua: ok")

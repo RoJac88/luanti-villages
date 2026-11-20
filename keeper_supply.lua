@@ -44,6 +44,12 @@
 --   its shift, before it cooks. It pays for them with the tavern's money: on shift it
 --   tops its own emeralds up to FLOAT from the pantry, where dinner money goes, so it
 --   does not run out of its starting money.
+-- * A few of every dish (ticket 35): each dish it heard offered in the last week
+--   (keeper.known_dishes), but its fixed inputs and the baked potato, it wants up to
+--   keeper.MIN_DISHES of in the pantry (M.dish_wants, `_villages_dish_wants`, set on its
+--   shift), at no more than its dinner price for one (possessions.assess), so the menu has
+--   something new for a guest tired of the rest (ticket 34) and never at a loss. Every
+--   prepared food is on the menu (keeper.dishes), and shelving takes from its stash too.
 -- * A newly generated tavern's chest gets STARTING_STOCK on top of its loot, through
 --   settlements.fill_chest, which the village generator calls for every chest it places.
 --
@@ -115,10 +121,26 @@ local M = {
 	STARTING_STOCK = STARTING_STOCK, PURSE = PURSE, DINNER = DINNER, TAB_CAP = TAB_CAP, TAB = TAB, FLOAT = FLOAT,
 }
 
+-- Every dish it serves (keeper.dishes, ticket 35: MENU's and any other prepared food).
 local function menu_items()
-	local items = {}
-	for _, entry in ipairs(keeper.MENU) do items[#items + 1] = entry.offered end
-	return items
+	return keeper.dishes()
+end
+
+-- Ticket 35: for each dish it heard offered lately (keeper.known_dishes), how many short
+-- of keeper.MIN_DISHES the pantry is, 0 for none. None for its fixed inputs (ledger.lua's keeper role,
+-- wanted already) nor what it cooks itself (RECIPES).
+function M.dish_wants(self, chests, day)
+	local wants = {}
+	local fixed = ledger.inputs("keeper")
+	local cooked = {}
+	for _, recipe in ipairs(RECIPES) do cooked[recipe.to] = true end
+	for _, item in ipairs(keeper.known_dishes(self, day)) do
+		if not fixed[item] and not cooked[item] then
+			-- 0 for one it has enough of: still its own, so one it carries is never spare.
+			wants[item] = math.max(keeper.MIN_DISHES - pantry.count(chests, item), 0)
+		end
+	end
+	return wants
 end
 
 -- How many dinners the pantry holds, counting what it can cook.
@@ -395,13 +417,14 @@ local function supply(self, jukebox, now)
 	go(self, source, now, function(entity) fetch(entity, source) end)
 end
 
--- Moves the menu's dishes from its belongings into the pantry. Returns how many.
+-- Moves the menu's dishes from its belongings, and its stash, where a porter leaves what
+-- it bought (ticket 35), into the pantry. Returns how many.
 function M.shelve(self, chests)
 	local moved = 0
+	local held = possessions.held(self)
 	for _, item in ipairs(menu_items()) do
-		local count = possessions.count(self, item)
-		while count > 0 and pantry.has_room(chests, item, 1) do
-			possessions.take(self, item, 1)
+		local count = held[item] or 0
+		while count > 0 and pantry.has_room(chests, item, 1) and possessions.take_held(self, item, 1) == 1 do
 			pantry.put(chests, item, 1)
 			count, moved = count - 1, moved + 1
 		end
@@ -456,6 +479,8 @@ local function cook_tick(self, jukebox, now)
 		M.shelve(self, chests)
 		M.cook(chests)
 		M.feed_keeper(self, chests)
+		-- What it buys to keep a few of each dish it knows (possessions.assess).
+		self._villages_dish_wants = M.dish_wants(self, chests, core.get_day_count())
 	end
 end
 
