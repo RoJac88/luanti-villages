@@ -44,11 +44,18 @@
 -- (eight dinners) "major_positive" besides, so it thinks better of the giver and gives it
 -- better prices.
 --
+-- The tavern keeper (ticket 33) sells the dishes in its pantry (tavern_pantry.lua: a
+-- keeper.MENU item), each one dinner at its posted dinner price (dinner.lua), paid into
+-- the pantry, its till, as a player's meal is (player_meals.lua). It keeps the last
+-- evening's demand (dinner.demand) in meals, cookable potatoes counted, for the village's
+-- dinner. It buys its inputs (ledger.lua's keeper role) as anyone, from its float. With
+-- no pantry it sells what it holds, as anyone.
+--
 -- Vanilla's tables, tiers and rare goods (enchanted books, diamond gear) are left out of
 -- player trade, to be brought back once the economy works. `_trades` is left alone:
--- vanilla and this mod read it as the mark of a villager that keeps its job. The keeper
--- (its menu, keeper.lua), the Builder (its status window) and children keep their own
--- right-click; with the economy off every villager keeps vanilla's.
+-- vanilla and this mod read it as the mark of a villager that keeps its job. The Builder
+-- (its status window) and children keep their own right-click; with the economy off every
+-- villager keeps vanilla's (the keeper its menu, keeper.lua).
 local core = minetest
 local ledger = dofile(core.get_modpath("living_villages") .. "/ledger.lua")
 local goods = dofile(core.get_modpath("living_villages") .. "/goods.lua")
@@ -171,11 +178,31 @@ function M.alchemy_rows(view, held, emeralds, share, player_has, ask, converted)
 	return sells, buys
 end
 
-function M.rows(view, held, emeralds, reputation, player_has, is_alchemist, ask, converted)
+-- The keeper's sell rows from its pantry (see the header): `tavern` is {dishes = {item =
+-- count}, meals = meals it holds, reserve = meals it keeps, price = a dinner's}. Each
+-- row sells as many of its dish as the pantry holds past the reserve, all told.
+function M.keeper_rows(tavern, share)
+	local sells = {}
+	local spare = math.max((tavern.meals or 0) - (tavern.reserve or 0), 0)
+	local lot, price = M.lot((tavern.price or 0) * (1 - share), true)
+	if not lot then return sells end
+	for item, count in pairs(tavern.dishes or {}) do
+		local have = math.min(count, spare)
+		if have >= lot then
+			sells[#sells + 1] = {item = item, lot = lot, price = price, lots = math.floor(have / lot), pantry = true}
+		end
+	end
+	return sells
+end
+
+-- `tavern` (may be nil) is a keeper's pantry, as M.keeper_rows takes it: its dishes are
+-- what it sells, in place of its surplus.
+function M.rows(view, held, emeralds, reputation, player_has, is_alchemist, ask, converted, tavern)
 	local share = M.rep_share(reputation)
 	local sells, buys = {}, {}
 	if is_alchemist then sells, buys = M.alchemy_rows(view, held, emeralds, share, player_has, ask, converted) end
-	for item, spare in pairs(view.surplus or {}) do
+	if tavern then sells = M.keeper_rows(tavern, share) end
+	for item, spare in pairs(not tavern and view.surplus or {}) do
 		local have = math.min(spare, held[item] or 0)
 		local unit = asking(view, ask, item)
 		if item ~= EMERALD and have > 0 and unit and not (is_alchemist and alchemist.GOODS[item]) then
@@ -234,10 +261,49 @@ local function reputation_word(r)
 	return "not to be trusted"
 end
 
+-- The keeper's pantry as the window trades with it, in the engine: `stock(keeper)` (nil
+-- without a pantry), `take(keeper, item, count)` (how many it took) and `put(keeper,
+-- item, count)` (whether it fitted).
+function M.pantry_till()
+	local modpath = core.get_modpath("living_villages")
+	local keeper = dofile(modpath .. "/keeper.lua")
+	local pantry = dofile(modpath .. "/tavern_pantry.lua")
+	local supply = dofile(modpath .. "/keeper_supply.lua")
+	local function chests(villager)
+		local jukebox = keeper.claimed_jukebox(villager)
+		return jukebox, jukebox and pantry.chests(jukebox)
+	end
+	return {
+		stock = function(villager)
+			local jukebox, found = chests(villager)
+			if not found then return nil end
+			local dishes = {}
+			for _, entry in ipairs(keeper.MENU) do
+				local count = pantry.count(found, entry.offered)
+				if count > 0 then dishes[entry.offered] = count end
+			end
+			local day = core.get_day_count and core.get_day_count() or 0
+			return {dishes = dishes, meals = supply.meals(found), reserve = dinner.demand(villager),
+				price = dinner.posted(jukebox, villager, day)}
+		end,
+		take = function(villager, item, count)
+			local _, found = chests(villager)
+			local taken = 0
+			while found and taken < count and pantry.take(found, item) do taken = taken + 1 end
+			return taken
+		end,
+		put = function(villager, item, count)
+			local _, found = chests(villager)
+			return found ~= nil and pantry.put(found, item, count)
+		end,
+	}
+end
+
 function M.install(def, deps)
 	local possessions, gossip, clock = deps.possessions, deps.gossip, deps.clock
 	local asks = deps.asks or dofile(core.get_modpath("living_villages") .. "/asks.lua")
 	local prices = deps.prices or dofile(core.get_modpath("living_villages") .. "/prices.lua")
+	local tavern = deps.tavern or M.pantry_till()
 	local sessions = {}
 
 	local function reputation(villager, name)
@@ -263,7 +329,8 @@ function M.install(def, deps)
 		local function ask(item) return asks.ask(villager, item, view) end
 		local function converted(conversion) return asks.converted(villager, conversion, view) end
 		return M.rows(view, possessions.held(villager), possessions.emeralds(villager), reputation(villager, name),
-			player_has(name), villager._villages_alchemist == true, ask, converted), view
+			player_has(name), villager._villages_alchemist == true, ask, converted,
+			villager._villages_keeper and tavern.stock(villager) or nil), view
 	end
 
 	local function form(villager, name)
@@ -274,7 +341,8 @@ function M.install(def, deps)
 			"formspec_version[4]", "size[13,14.6]",
 			string.format("label[0.5,0.6;%s]", esc(string.format("%s, %s. Purse: %d emeralds. You are %s to it (%d).",
 				(villager.nametag and villager.nametag ~= "" and villager.nametag) or "Villager",
-				villager._villages_alchemist and "alchemist" or tostring(villager._profession or "villager"),
+				villager._villages_alchemist and "alchemist" or villager._villages_keeper and "tavern keeper"
+					or tostring(villager._profession or "villager"),
 				possessions.emeralds(villager), reputation_word(r), r))),
 			"label[0.5,1.3;It sells]", "label[6.8,1.3;It buys]",
 		}
@@ -329,6 +397,23 @@ function M.install(def, deps)
 		core.log("action", "[living_villages] trade window: " .. string.format(text, ...))
 	end
 
+	-- The player buys dishes from the keeper's pantry, paying into it.
+	local function player_buys_dishes(player, villager, entry, count, pay)
+		local inv = player:get_inventory()
+		local name = player:get_player_name()
+		local taken = tavern.take(villager, entry.item, count)
+		if taken < count then
+			if taken > 0 then tavern.put(villager, entry.item, taken) end
+			return
+		end
+		inv:remove_item("main", EMERALD .. " " .. pay)
+		if not tavern.put(villager, EMERALD, pay) then possessions.add(villager, EMERALD, pay) end
+		inv:add_item("main", entry.item .. " " .. count)
+		if gossip then gossip.add(villager, name, "trading") end
+		log("%s bought %d %s from the keeper %s's pantry for %d emerald(s)", name, count, entry.item,
+			tostring(villager._id):sub(1, 6), pay)
+	end
+
 	-- The player buys `lots` lots of a row the villager sells.
 	local function player_buys(player, villager, entry, lots)
 		local inv = player:get_inventory()
@@ -344,6 +429,7 @@ function M.install(def, deps)
 			core.chat_send_player(name, "You have no room for that.")
 			return
 		end
+		if entry.pantry then return player_buys_dishes(player, villager, entry, count, pay) end
 		-- The alchemist's own first, then made from its sources (whole batches, past any
 		-- reserve), as a sale to a villager would be.
 		local from, from_count = nil, 0
@@ -437,7 +523,7 @@ function M.install(def, deps)
 	local original_rightclick = def.on_rightclick
 	def.on_rightclick = function(self, clicker)
 		local name = clicker and clicker.is_player and clicker:is_player() and clicker:get_player_name()
-		if not name or not clock.enabled() or self.child or self._villages_keeper or self._villages_builder
+		if not name or not clock.enabled() or self.child or self._villages_builder
 			or not self._id then
 			return original_rightclick(self, clicker)
 		end

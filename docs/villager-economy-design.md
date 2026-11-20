@@ -3350,6 +3350,27 @@ makes to sell is priced as before.
   and record, per ingot and per nugget); `tests/trade_window.lua` (an ingot at its cost and
   margin; gold past 24).
 
+### 33. The tavern keeper's window
+
+Every villager but the keeper traded through the mod's window (ticket 14); the keeper still
+opened vanilla's, with keeper.lua's fixed menu (3 bread for 1 emerald) and tiers, outside the
+economy. Now it opens the mod's window like everyone else (`trade_window.lua`):
+
+- **It sells its pantry's dishes.** Each `keeper.MENU` dish in the pantry is a row, one
+  dinner at its posted dinner price (`dinner.posted`), reputation's share off as anyone's.
+  The player pays into the pantry, the tavern's till, as for a meal at a table
+  (`player_meals.lua`), so the money reaches the farms as dinner money does.
+- **It keeps dinner.** It sells only the meals past the last evening's demand
+  (`dinner.demand`, cookable potatoes counted as `keeper_supply.meals` counts them), so a
+  player cannot empty the pantry before the village eats.
+- **It buys as anyone.** Its needs are its role's inputs (bread, potatoes, cooked fish and
+  beef, `ledger.lua`), bought at its value from its float; keeper_supply.lua carries them to
+  the pantry on its shift. With no pantry it sells what it holds, as anyone.
+- With the economy off it keeps vanilla's window and menu, as everyone does.
+- **Tests:** `tests/trade_window.lua` (rows from the pantry past the reserve, not its
+  surplus; the friend's share; the window named for the keeper; a purchase takes the
+  dishes and pays the pantry, not its purse).
+
 ## Open questions
 
 - Price discovery (ticket 21):
