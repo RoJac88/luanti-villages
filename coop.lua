@@ -19,7 +19,9 @@
 --   jobsite (mcl_throwing, as a player throws one: a chick one time in eight), and a chick
 --   that hatches joins the flock as above;
 -- * every TEND_SECONDS (`_villages_coop_next`, game time) it collects a feather from each
---   adult, then with more than COOP_SIZE adults slaughters one, as a kill would drop it
+--   adult, up to FEATHER_KEEP held in its belongings and stash together (ticket 32: counted
+--   on its belongings alone, each feather it left in its stash made room for another, and a
+--   butcher held 339 the fletcher would never buy, ColonyFood day 834), then with more than COOP_SIZE adults slaughters one, as a kill would drop it
 --   (mobs_mc/chicken.lua: a raw chicken and 0 to 2 feathers), or else, with two adults,
 --   room for a chick and BREED_SEEDS wheat seeds (a chicken's `follow`), breeds them.
 -- The seeds it buys from farmers: possessions.assess wants COOP_SEEDS of them held.
@@ -171,11 +173,11 @@ function M.breed(self, jobsite)
 	return true
 end
 
--- One tending: a feather from each adult (up to FEATHER_KEEP held), then slaughter past
+-- One tending: a feather from each adult (up to FEATHER_KEEP held, stash too), then slaughter past
 -- COOP_SIZE adults, else breed with room for a chick.
 function M.tend(self, jobsite, flock)
 	local grown = adults(flock)
-	local feathers = math.min(#grown, math.max(FEATHER_KEEP - possessions.count(self, FEATHER), 0))
+	local feathers = math.min(#grown, math.max(FEATHER_KEEP - (possessions.held(self)[FEATHER] or 0), 0))
 	if feathers > 0 then
 		possessions.add(self, FEATHER, feathers)
 		log("butcher %s collected %d feather(s)", short_id(self._id), feathers)

@@ -429,8 +429,8 @@ do
 	-- with its armour's price. One with no taste for a cauldron or a clock, which would
 	-- value iron for its own use (ticket 26d).
 	local IRON = "mcl_core:iron_ingot"
-	local armorer = smith({_id = "arm", _profession = "armorer", _max_trade_tier = 1})
-	for _, taste in ipairs(dofile("comforts.lua").tastes("arm")) do
+	local armorer = smith({_id = "arm2", _profession = "armorer", _max_trade_tier = 1})
+	for _, taste in ipairs(dofile("comforts.lua").tastes("arm2")) do
 		assert(taste.item ~= "mcl_cauldrons:cauldron" and taste.item ~= "mcl_clock:clock")
 	end
 	possessions.add(armorer, "mcl_core:emerald", 5000)
@@ -555,6 +555,16 @@ do
 	c._villages_labour_plan.day = day
 	c._villages_labour = {day = day - 1, activity = "quarrier"}
 	assert(possessions.labour_plan(c) == nil)
+end
+
+-- A librarian binds a book and a feather into a book and quill (ticket 32), a comfort.
+do
+	local librarian = smith({_id = "lib-quill", _profession = "librarian"})
+	possessions.add(librarian, "mcl_books:book", 1)
+	possessions.add(librarian, "mcl_mobitems:feather", 1)
+	local recipe = production.choose(librarian)
+	assert(recipe and recipe.makes == "mcl_books:writable_book", recipe and recipe.makes)
+	assert(possessions.assess(librarian).targets["mcl_mobitems:feather"] == 4, "it buys feathers")
 end
 
 print("production.lua: ok")

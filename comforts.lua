@@ -44,7 +44,8 @@ local M = {}
 -- (ticket 24) the leatherworker's clothes and the fletcher's bows and arrows: both sat on
 -- their goods with no money (ColonyFood, day 416), and the fletcher could not buy flint;
 -- (ticket 29) the armorer's cauldron, so iron has a use beyond the smiths' wares, and
--- the cleric's clock, so gold has one.
+-- the cleric's clock, so gold has one; (ticket 32) the librarian's book and quill, so the
+-- butcher's feathers have one beyond arrows.
 -- VoxeLibre 0.92 has no bundle or harness.
 M.FLOWER = "flower"
 M.CARPET = "carpet"
@@ -72,6 +73,8 @@ M.COMFORTS = {
 	{item = "mcl_armor:chestplate_leather", days = 12},
 	{item = "mcl_armor:leggings_leather", days = 12},
 	{item = "mcl_bows:bow", days = 12},
+	-- The librarian's book and quill (ticket 32), a use for the butcher's feathers.
+	{item = "mcl_books:writable_book", days = 8},
 }
 M.FLOWER_DAYS = 2
 M.MAX_DAYS = 12
