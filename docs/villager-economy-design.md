@@ -3275,9 +3275,20 @@ makes to sell is priced as before.
 - **29c. A cauldron comfort.** The armorer makes a cauldron from 7 ingots (7 smelts), a
   comfort lasting 12 days. Adding a comfort reshuffles every villager's tastes (they are
   picked from the list by `_id`), as ticket 24 did.
-- **Pricing.** Neither the iron pick nor the cauldron has a trade table price, so the cost
-  floor now prices a recipe output from iron, gold or flint that nothing else prices:
-  the pick at 518 (1.25 × 3 ingots, 2 sticks and fuel), the cauldron at 1,198.
+- **29d. A clock comfort, for gold.** No recipe took gold, so the alchemist's gold (an
+  ingot from 162 nuggets past its 108 reserve) had no buyer, and a gold tool, at three
+  gold ingots (about 9,200), could never pay over its 16 uses. The cleric makes a clock
+  from one gold ingot and one iron ingot, a comfort lasting 12 days: cheaper than a
+  player's craft (four gold and a redstone), which is unchanged. A cleric's vanilla
+  trades still restock with nothing to make a clock from, as a shepherd's do
+  (production.restock_held). A player's held clock turns into one of VoxeLibre's 64
+  frames (`mcl_clock:clock_N`), which is no comfort; villagers' and chests' stay
+  `mcl_clock:clock`.
+- **Pricing.** Neither the iron pick, the iron hoe, the cauldron nor the clock has a trade
+  table price, so the cost floor now prices a recipe output from iron, gold or flint that
+  nothing else prices: the pick at 518 (1.25 × 3 ingots, 2 sticks and fuel), the hoe at
+  347, the cauldron at 1,198 and the clock at 3,238. Its real price follows the
+  alchemist's: at a nugget ask of 0.2 a gold ingot is 32.
 - **Tests:** `tests/trade_trips.lua` (three ingots from 30 nuggets in a stash, 3 left; none
   without the sources told; a plan carries them; an alchemist holding only nuggets sells
   ingots to its face at nine nuggets' ask); `tests/alchemist_trade.lua` (a told ingot
@@ -3286,7 +3297,9 @@ makes to sell is priced as before.
   has the four tiers, faster by tier, gold as fast as diamond and wearing out first, the
   iron one asked for and paying at base prices; an iron axe fells at 2, a gold pick mines
   at 5); `tests/labour.lua` (a stone, iron and gold pick refill the generator in 1/3, 1/4
-  and 1/5 of REGEN_SECONDS); `tests/ledger.lua` (the floor prices of the pick and cauldron;
+  and 1/5 of REGEN_SECONDS); `tests/production.lua` (a cleric restocks with nothing to make
+  a clock from, and makes one from a gold and an iron ingot); `tests/ledger.lua` (the floor
+  prices of the pick, cauldron and clock; the cleric wants gold;
   the tool smith wants ingots); `tests/need_bubble.lua`, `tests/production.lua`.
 
 ## Open questions
@@ -3306,7 +3319,7 @@ makes to sell is priced as before.
   could fall with its savings.
 - Iron: the alchemist (ticket 20) is its village supply. Since ticket 29 quarriers buy iron
   picks and hoes from the tool smith, woodcutters the weapon smith's axes and villagers
-  the armorer's cauldrons, but iron armour still sells only to players until warriors
+  the armorer's cauldrons and the cleric's clocks (gold), but iron armour still sells only to players until warriors
   exist (Warriors), against Principle 6.
 - The alchemist: whether the `stone` category should also take andesite, diorite,
   granite and cobbled deepslate; and whether to keep the cost floor once probe runs show

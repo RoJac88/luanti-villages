@@ -562,8 +562,11 @@ end
 function M.restock_held(self)
 	if not clock.enabled() or self.child then return nil end
 	if food.state(self) == "starving" then return "starving" end
-	-- A shepherd's goods are its flock's wool, not its dyeing (19h).
-	if self._profession == "shepherd" then return nil end
+	-- A shepherd's goods are its flock's wool, not its dyeing (19h); a cleric's are its
+	-- vanilla trades', not its clock (ticket 29).
+	if self._profession == "shepherd" or (self._profession == "cleric" and not self._villages_alchemist) then
+		return nil
+	end
 	local list = M.recipes(self)
 	if not list then return nil end
 	local held = possessions.held(self)

@@ -64,13 +64,16 @@ for profession, list in pairs(recipes) do
 		end
 	end
 end
-assert(checked == 10, "the four iron pieces, the iron axe, pick and hoe, the cauldron, arrows and the labourers' lantern: "
+assert(checked == 11, "the four iron pieces, the iron axe, pick and hoe, the cauldron, the clock, arrows and the labourers' lantern: "
 	.. checked)
 -- Priced by their floor alone, as no trade table prices them (ticket 29).
 assert(near(ledger.price("mcl_tools:pick_iron"), ledger.COST_FLOOR * (3 * ledger.price("mcl_core:iron_ingot")
 	+ 2 * ledger.price("mcl_core:stick") + 3 / 8 * ledger.price("mcl_core:coal_lump"))))
 assert(near(ledger.price("mcl_cauldrons:cauldron"), ledger.COST_FLOOR * (7 * ledger.price("mcl_core:iron_ingot")
 	+ 7 / 8 * ledger.price("mcl_core:coal_lump"))))
+-- The cleric's clock: one gold ingot and one iron (ticket 29).
+assert(near(ledger.price("mcl_clock:clock"), ledger.COST_FLOOR * (ledger.price("mcl_core:gold_ingot")
+	+ ledger.price("mcl_core:iron_ingot"))))
 -- 724 and 439 before the alchemist's fuel (ticket 28c) went into an ingot's cost.
 assert(math.floor(ledger.price("mcl_armor:helmet_iron") + 0.5) == 856)
 assert(math.floor(ledger.price("mcl_tools:axe_iron") + 0.5) == 518)
@@ -82,10 +85,10 @@ local smith = ledger.inputs("tool_smith")
 assert(smith["mcl_core:coal_lump"] == 15 and smith["mcl_core:diamond"] == 1)
 assert(ledger.inputs("tool_smith", 1)["mcl_core:diamond"] == nil, "only up to its tier")
 -- A trade's want for iron, gold or flint counts only where the profession's recipes take it
--- (ticket 20): the tool smith's flint, the cleric's gold and the leatherworker's flint go. The
--- tool smith's iron stays, for its iron pick (ticket 29).
+-- (ticket 20): the tool smith's flint and the leatherworker's flint go. The tool smith's iron
+-- stays, for its iron pick, and the cleric's gold, for its clock (ticket 29).
 assert(smith["mcl_core:iron_ingot"] and smith["mcl_core:flint"] == nil)
-assert(ledger.inputs("cleric")["mcl_core:gold_ingot"] == nil and ledger.inputs("cleric")["mcl_mobitems:rotten_flesh"])
+assert(ledger.inputs("cleric")["mcl_core:gold_ingot"] and ledger.inputs("cleric")["mcl_mobitems:rotten_flesh"])
 assert(ledger.inputs("leatherworker")["mcl_core:flint"] == nil)
 assert(ledger.inputs("weapon_smith")["mcl_core:iron_ingot"] and not ledger.inputs("weapon_smith")["mcl_core:flint"])
 assert(ledger.inputs("armorer")["mcl_core:iron_ingot"] == 32 and ledger.inputs("fletcher")["mcl_core:flint"] == 26)

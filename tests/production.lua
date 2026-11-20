@@ -308,9 +308,17 @@ local working = smith({_trades = "locked", order = "work"})
 def.do_custom(working, 0.1)
 assert(working._trades == "unlocked")
 -- Not a crafting profession: vanilla restocks.
+local nitwit = smith({_profession = "nitwit", _trades = "locked"})
+def.do_custom(nitwit, 0.1)
+assert(nitwit._trades == "unlocked" and production.status(nitwit) == "not a crafting profession")
+-- A cleric makes clocks (ticket 29), but its trades are vanilla's: it restocks with nothing
+-- to make one from.
 local cleric = smith({_profession = "cleric", _trades = "locked"})
 def.do_custom(cleric, 0.1)
-assert(cleric._trades == "unlocked" and production.status(cleric) == "not a crafting profession")
+assert(cleric._trades == "unlocked" and production.restock_held(cleric) == nil, "restocked")
+possessions.add(cleric, "mcl_core:gold_ingot", 1)
+possessions.add(cleric, "mcl_core:iron_ingot", 1)
+assert(production.make(cleric, recipes.cleric[1]) and possessions.count(cleric, "mcl_clock:clock") == 1, "a clock")
 
 -- Tiers from village supply: three days with a craft from belongings at the tier raise it.
 minetest.serialize = function(v) return v end
@@ -418,9 +426,13 @@ do
 	assert(production.idle_today(loser) == true)
 	time = saved
 	-- An armorer's iron is worth no more to it than its armour returns, so its bid falls
-	-- with its armour's price.
+	-- with its armour's price. One with no taste for a cauldron or a clock, which would
+	-- value iron for its own use (ticket 26d).
 	local IRON = "mcl_core:iron_ingot"
-	local armorer = smith({_id = "ari", _profession = "armorer", _max_trade_tier = 1})
+	local armorer = smith({_id = "arm", _profession = "armorer", _max_trade_tier = 1})
+	for _, taste in ipairs(dofile("comforts.lua").tastes("arm")) do
+		assert(taste.item ~= "mcl_cauldrons:cauldron" and taste.item ~= "mcl_clock:clock")
+	end
 	possessions.add(armorer, "mcl_core:emerald", 5000)
 	local dear = possessions.assess(armorer).value(IRON)
 	armorer._villages_asks = {}
