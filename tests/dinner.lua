@@ -102,6 +102,21 @@ assert(calls == 0)
 -- One with food of its own values a dinner less, and passes it up.
 local stocked = villager("sam", {[EMERALD] = 72, [BREAD] = 20}, {_villages_food = 0})
 assert(possessions.assess(stocked).value(BREAD) < value)
+-- Variety (ticket 34): tired of the only dish on offer, a dinner is worth less to it; with
+-- a dish it has not had, a loaf's full worth, however tired of bread it is.
+do
+	local BAKED, FISH = "mcl_farming:potato_item_baked", "mcl_fishing:fish_cooked"
+	local function guest(id) return villager(id, {[EMERALD] = 72}, {_villages_food = 0,
+		_villages_meals = {[1] = {[BAKED] = 6, [BREAD] = 6}}}) end
+	local fresh = villager("fr", {[EMERALD] = 72}, {_villages_food = 0})
+	local worth = possessions.assess(fresh).value(BREAD)
+	-- Starving tires of nothing: the hungry are fed first.
+	assert(dinner.wants(guest("g0"), math.floor(worth), 1, possessions.assess, {BAKED}))
+	local function peckish(id) local g = guest(id); g._villages_food = 2; return g end
+	local base = possessions.assess(villager("fr2", {[EMERALD] = 72}, {_villages_food = 2})).value(BREAD)
+	assert(not dinner.wants(peckish("g1"), math.floor(base), 1, possessions.assess, {BAKED}), "tired of the dish")
+	assert(dinner.wants(peckish("g2"), math.floor(base), 1, possessions.assess, {BAKED, FISH}), "a new dish")
+end
 -- Paying teaches it more than seeing: LEARN_TRADE.
 local payer = villager("pay", {})
 dinner.paid(payer, 9)

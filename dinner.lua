@@ -145,10 +145,19 @@ end
 
 -- Whether a villager dines at `price`: no more than a loaf is worth to it. Asked of its
 -- view once a day and price (`_villages_dinner_choice`), learning the price the first time.
-function M.wants(self, price, day, assess)
+-- With the `dishes` the pantry offers (ticket 34), a loaf's worth without its own variety
+-- times the best variety factor among them (view.variety, variety.lua): a guest tired of
+-- every dish on offer values the dinner less.
+function M.wants(self, price, day, assess, dishes)
 	local choice = self._villages_dinner_choice
 	if choice and choice.day == day and choice.price == price then return choice.dines end
-	local value = assess(self).value(BREAD) or 0
+	local view = assess(self)
+	local value = view.value(BREAD) or 0
+	if dishes and #dishes > 0 and view.variety then
+		local best = 0
+		for _, dish in ipairs(dishes) do best = math.max(best, view.variety(dish)) end
+		value = value / view.variety(BREAD) * best
+	end
 	local dines = value >= price
 	if not choice or choice.day ~= day then prices.learn(self, ITEM, price, prices.LEARN_NEWS) end
 	self._villages_dinner_choice = {day = day, price = price, dines = dines}

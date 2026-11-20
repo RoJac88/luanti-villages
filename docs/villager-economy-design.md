@@ -3371,6 +3371,41 @@ economy. Now it opens the mod's window like everyone else (`trade_window.lua`):
   surplus; the friend's share; the window named for the keeper; a purchase takes the
   dishes and pays the pantry, not its purse).
 
+### 34. Variety in meals
+
+Food was valued by its points alone, so nothing told a villager what it had eaten before:
+villages settled on one dish (bread, the baked potato), and the tavern served what it had.
+Now a villager tires of a food it ate a lot of lately (`variety.lua`). It is worth less to it,
+though it feeds as much, so it buys, eats and dines on others first, and the tavern follows.
+
+- **The record.** Every adult meal goes through `food.receive`, which notes it in
+  `_villages_meals`, `{[day] = {[item] = count}}` over the last 7 days. That covers tavern
+  dishes, seconds, raw plates and food eaten at home. A child's feeds are not noted.
+- **The factor.** A meal weighs (7 - age) / 7. An item's share is its weight over all the
+  weight plus PRIOR (3) meals, so one meal is not a whole diet, and its factor is
+  1 - DEPTH (0.5) × share. Bread every day for a week gives about 0.71, two dishes in turn
+  about 0.85 each, and a whole diet of one food no less than 0.5. No food becomes worthless.
+- **Values.** `ledger.assess` multiplies a food's value by its factor (`input.variety`,
+  before `worth`, `least` and `ceiling`). Needs, targets and points don't change, so a
+  villager wants as much food as before, but exchange.lua's trades, chosen by buyer value
+  over the ask, buy the food it is tired of last. A starving villager tires of nothing (food
+  first, ticket 22b), and nor does the alchemist, which doesn't eat.
+- **Eating at home.** `possessions.eat` takes the food with the most points × factor, from
+  its belongings and then its stash. A pie still beats a fresh loaf.
+- **The tavern.** A villager guest is served the dish it is least tired of, at random among
+  equals; a player is served any. `dinner.wants` values a dinner at a loaf's worth without
+  bread's own factor, times the best factor among the dishes on offer. A tavern serving one
+  dish to tired guests is turned down more, and `dinner.turned` marks its price down.
+- **The keeper.** Each dish served, seconds too, is noted on the keeper
+  (`_villages_served_dishes`). Its buying (`possessions.variety_of`) follows that record, so it
+  bids less for the inputs of the dish it served most (a potato counts as the baked potato it
+  makes) and buys the others first. Its farm fetches don't change.
+- **Tests:** `tests/variety.lua` (weights, PRIOR, the floor, trimming past the week, one dish
+  against two in turn, `best`); `tests/ledger.lua` (food values only, needs unchanged);
+  `tests/possessions.lua` (eating the less eaten food, a pie over a loaf, values, starving,
+  the keeper's record); `tests/dinner.lua` (tired of the only dish against a new one, starving
+  tires of nothing); `tests/meal.lua` (served the less eaten dish, noted on guest and keeper).
+
 ## Open questions
 
 - Price discovery (ticket 21):

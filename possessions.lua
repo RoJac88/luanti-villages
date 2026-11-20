@@ -54,6 +54,7 @@ local alchemist = dofile(core.get_modpath("living_villages") .. "/alchemist.lua"
 local prices = dofile(core.get_modpath("living_villages") .. "/prices.lua")
 local recipes = dofile(core.get_modpath("living_villages") .. "/recipes.lua")
 local commission = dofile(core.get_modpath("living_villages") .. "/commission.lua")
+local variety = dofile(core.get_modpath("living_villages") .. "/variety.lua")
 
 local DEFAULT_STASH_RADIUS = 8
 local STASH_HEIGHT = 3
@@ -376,12 +377,30 @@ function M.food_carried(self)
 	return total
 end
 
+-- The foods `allowed`, most points for what it is tired of first (ticket 34), then as
+-- FOODS_BY_POINTS: a last resort, with no points, after every food.
+function M.by_taste(self, allowed)
+	local factor = M.variety_of(self)
+	local list, score, rank = {}, {}, {}
+	for i, item in ipairs(FOODS_BY_POINTS) do
+		if allowed(item) then
+			list[#list + 1] = item
+			score[item], rank[item] = (food.POINTS[item] or 0) * factor(item), i
+		end
+	end
+	table.sort(list, function(a, b)
+		if math.abs(score[a] - score[b]) > 1e-9 then return score[a] > score[b] end
+		return rank[a] < rank[b]
+	end)
+	return list
+end
+
 local function stash_food(self, allowed)
 	local stash = self._villages_stash
 	local pos = self.object and self.object:get_pos()
 	if not stash or not pos or vector.distance(pos, stash) > STASH_REACH or not owned_by(stash, self) then return nil end
-	for _, item in ipairs(FOODS_BY_POINTS) do
-		if allowed(item) then
+	for _, item in ipairs(M.by_taste(self, allowed)) do
+		do
 			for _, half in ipairs(halves(stash)) do
 				local inv = core.get_meta(half):get_inventory()
 				if inv:remove_item("main", item .. " 1"):get_count() == 1 then return item end
@@ -525,8 +544,8 @@ function M.eat(self, meal)
 	local eaten = {}
 	while more() do
 		local item
-		for _, candidate in ipairs(FOODS_BY_POINTS) do
-			if allowed(candidate) and M.take(self, candidate, 1) == 1 then item = candidate break end
+		for _, candidate in ipairs(M.by_taste(self, allowed)) do
+			if M.take(self, candidate, 1) == 1 then item = candidate break end
 		end
 		item = item or stash_food(self, allowed)
 		if not item then break end
@@ -720,6 +739,26 @@ function M.labour_plan(self)
 	return recipes.labour[plan.index]
 end
 
+-- A keeper's inputs count as the dish they make (variety, ticket 34).
+local DISH_OF = {["mcl_farming:potato_item"] = "mcl_farming:potato_item_baked"}
+
+-- Its factor for a food, from what it ate lately (variety.lua, ticket 34): 1 for every
+-- food when starving, for the alchemist, which does not eat, or with no day count. A
+-- keeper's, for what it buys, is from the dishes its guests ate (`_villages_served_dishes`,
+-- meal.lua), each input as the dish it makes.
+function M.variety_of(self)
+	local day = core.get_day_count and core.get_day_count()
+	if not day or self.child or self._villages_alchemist or food.state(self) == "starving" then
+		return function() return 1 end
+	end
+	if self._villages_keeper then
+		local served = self._villages_served_dishes
+		return function(item) return variety.factor(served, DISH_OF[item] or item, day) end
+	end
+	local meals = self._villages_meals
+	return function(item) return variety.factor(meals, item, day) end
+end
+
 -- The ledger's view of this villager (ledger.lua): its targets, needs, surplus and values.
 -- A keeper by its role; a Builder or an alchemist has no vanilla trade of its own.
 function M.assess(self)
@@ -882,6 +921,7 @@ function M.assess(self)
 		-- What it has to spend, for the money factor (ledger.lambda, ticket 21a).
 		money = M.money(self),
 		dinner = dinner.reference(self),
+		variety = M.variety_of(self),
 	}
 	local view = ledger.assess(input)
 	-- Making for itself (ticket 26d): an output it wants for its own sake is reckoned at no

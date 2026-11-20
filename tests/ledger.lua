@@ -190,4 +190,20 @@ assert(burner.value("mcl_core:charcoal_lump") > ledger.price("mcl_core:charcoal_
 local stocked = ledger.assess({id = "sam", profession = "tool_smith", max_tier = 1, held = {["mcl_core:charcoal_lump"] = 30}})
 assert(not stocked.needs["mcl_core:coal_lump"] and stocked.surplus["mcl_core:charcoal_lump"] == 11)
 
+-- Variety (ticket 34): a food's value times its factor; needs and other goods unchanged.
+do
+	local BREAD = "mcl_farming:bread"
+	local function input(variety)
+		return {id = "v", profession = "nitwit", max_tier = 1, held = {["mcl_core:emerald"] = 500}, food_points = 6,
+			hunger_per_day = 4, foods = {}, variety = variety}
+	end
+	local plain = ledger.assess(input())
+	local tired = ledger.assess(input(function(item) return item == BREAD and 0.6 or 1 end))
+	assert(math.abs(tired.value(BREAD) - 0.6 * plain.value(BREAD)) < 1e-9, tired.value(BREAD) .. " " .. plain.value(BREAD))
+	assert(tired.variety(BREAD) == 0.6 and plain.variety(BREAD) == 1)
+	assert(tired.needs[BREAD] == plain.needs[BREAD])
+	local all = ledger.assess(input(function() return 0.5 end))
+	assert(all.value("mcl_core:coal_lump") == plain.value("mcl_core:coal_lump"), "food only")
+end
+
 print("ledger.lua: ok")

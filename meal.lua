@@ -43,6 +43,10 @@
 -- run 50 a farmer had four conversations in three hours and never heard of the tool
 -- smith's hoe. `_villages_tavern_news` holds the day.
 --
+-- Variety (ticket 34, variety.lua): a villager guest is served the dish it is least tired
+-- of, values a dinner by the best of the dishes on offer (dinner.wants), and each dish
+-- served is noted on the keeper, whose buying follows what its guests ate.
+--
 -- Load this once, at top-level load time (init.lua): it registers the entity,
 -- which Luanti allows only then, and the plate holds are its own in-memory
 -- table.
@@ -54,6 +58,7 @@ local pantry = dofile(core.get_modpath("living_villages") .. "/tavern_pantry.lua
 local possessions = dofile(core.get_modpath("living_villages") .. "/possessions.lua")
 local news = dofile(core.get_modpath("living_villages") .. "/market_news.lua")
 local dinner = dofile(core.get_modpath("living_villages") .. "/dinner.lua")
+local variety = dofile(core.get_modpath("living_villages") .. "/variety.lua")
 local ENTITY = "living_villages:meal"
 local PLATE = "mcl_itemframes:plate"
 -- A guest waits this long after sitting down before it is served.
@@ -161,6 +166,23 @@ local function is_villager(self)
 	return not self._villages_on_bite and self._villages_price == nil
 end
 
+-- The dish a guest is served (ticket 34): a villager the one it is least tired of
+-- (variety.best, at random among equals), a player any.
+local function pick_dish(self, dishes)
+	if not is_villager(self) then return dishes[math.random(#dishes)] end
+	return variety.best(self._villages_meals, dishes, core.get_day_count(), math.random)
+end
+
+-- A dish served at the keeper's tavern, in its record of what its guests ate (ticket 34):
+-- what it buys follows it (possessions.variety_of).
+local function note_dish(jukebox, item)
+	local keeper_entity = keeper_on_duty(jukebox)
+	if keeper_entity then
+		keeper_entity._villages_served_dishes = variety.note(keeper_entity._villages_served_dishes, item,
+			core.get_day_count())
+	end
+end
+
 -- What the diner pays, and how: a player's terms come with its diner table
 -- (player_meals.lua); a villager's are worked out here.
 local function terms(self, jukebox)
@@ -207,12 +229,12 @@ local function order(self, jukebox, chests, choose)
 	local day = core.get_day_count()
 	-- A villager pays only what a meal is worth to it (dinner.lua, ticket 21e).
 	local willing = price == 0
-		or (can_pay() and (not villager or always or dinner.wants(self, price, day, possessions.assess)))
+		or (can_pay() and (not villager or always or dinner.wants(self, price, day, possessions.assess, dishes)))
 	local keeper = villager and price > 0 and keeper_state(jukebox) or nil
 	if #dishes == 0 and willing then dinner.ran_out(keeper, day, self._id) end
 	if #dishes == 0 and not (villager and raw_plate(chests)) then return nil, "the pantry is empty" end
 	if willing then
-		if #dishes > 0 then return dishes[choose and math.random(#dishes) or 1], 1, price, pay end
+		if #dishes > 0 then return choose and pick_dish(self, dishes) or dishes[1], 1, price, pay end
 		local raw = villager and raw_plate(chests)
 		if raw then return raw, RAW_PORTION, price, pay end
 		return nil, "the pantry is empty"
@@ -383,9 +405,10 @@ local function seconds(self, jukebox, chests)
 			dinner.ran_out(keeper, day, self._id)
 			break
 		end
-		local item = dishes[math.random(#dishes)]
+		local item = pick_dish(self, dishes)
 		if not settle(self, jukebox, chests, item, 1, price, pay, "another dish") then break end
 		dinner.served(keeper_on_duty(jukebox), day)
+		note_dish(jukebox, item)
 		food.receive(self, item)
 		more = more + 1
 	end
@@ -427,7 +450,10 @@ local function serve(self, jukebox)
 	end
 	served[key(jukebox)] = now()
 	-- The evening's demand, which the keeper stocks the pantry to (ticket 22c).
-	if chests then dinner.served(keeper_on_duty(jukebox), core.get_day_count()) end
+	if chests then
+		dinner.served(keeper_on_duty(jukebox), core.get_day_count())
+		if portion == 1 then note_dish(jukebox, item) end
+	end
 	-- Counted from the moment it is served, so a meal cut short by standing
 	-- up, a reload or a player's item still spends the evening's meal.
 	self._villages_meal_day = core.get_day_count()
