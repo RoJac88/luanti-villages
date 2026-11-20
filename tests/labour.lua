@@ -636,6 +636,19 @@ do
 	nodes[key(at(1, 1, 0))] = "mcl_core:stone"
 	nodes[key(at(0, 2, 0))] = "mcl_core:lava_source"
 	assert(labour.refill(at(0, 1, 0)) == "mcl_core:stone")
+	-- A better pick refills the generator faster too (ticket 29): REGEN_SECONDS over its
+	-- rate, stone's 3, gold's or diamond's 5.
+	local delays = {}
+	local saved_after = minetest.after
+	minetest.after = function(delay, fn, ...) delays[#delays + 1] = delay end
+	for _, case in ipairs({{"mcl_tools:pick_stone", 3}, {"mcl_tools:pick_iron", 4}, {"mcl_tools:pick_gold", 5}}) do
+		cole._villages_wants = {pickaxe = {item = case[1], left = 10}}
+		nodes[key(at(0, 1, 0))] = "mcl_core:stone"
+		assert(labour.quarry(cole, {pos = at(0, 1, 0)}), case[1])
+		assert(math.abs(delays[#delays] - labour.REGEN_SECONDS / case[2]) < 1e-9, case[1] .. " " .. delays[#delays])
+	end
+	minetest.after = saved_after
+	cole._villages_wants = nil
 	-- Off work, it is let go with its order back.
 	labour.release(cole)
 	assert(cole._villages_quarry_hold == nil and cole.order == "work")

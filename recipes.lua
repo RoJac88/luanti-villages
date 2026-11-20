@@ -18,7 +18,8 @@
 --   goods a village can supply, never enchanted ones.
 --
 -- Left out, so they restock as vanilla does: the farmer and fisherman, whose work loops
--- make their goods, and the shepherd's wool (flock.lua); the cleric, whose goods have no recipe. The cartographer
+-- make their goods, and the shepherd's wool (flock.lua); the cleric's trade goods, which have no recipe
+-- (it makes only the clock, a comfort, ticket 29). The cartographer
 -- makes banners (ticket 12), for stalls (market_stall.lua), and the paper its trade
 -- table buys: its map needs a compass a village cannot make. Fletching flint from
 -- gravel is one for one, where a player digging gets flint one time in ten: the
@@ -46,6 +47,10 @@ return {
 		-- Its own sticks, from a woodcutter's logs (ticket 11d): no villager sells sticks.
 		{makes = STICK, count = 4, tier = 1, from = {{"mcl_core:wood", 2}}},
 		{makes = "mcl_core:wood", count = 4, tier = 1, from = {{"mcl_core:tree", 1}}},
+		-- What a quarrier asks for (wants.lua, ticket 29), from the alchemist's ingots.
+		{makes = "mcl_tools:pick_iron", count = 1, tier = 1, from = {{IRON, 3}, {STICK, 2}}, fuel = 3},
+		-- What a farmer asks for (ticket 29); the woodcutter's iron axe is the weapon smith's.
+		{makes = "mcl_farming:hoe_iron", count = 1, tier = 1, from = {{IRON, 2}, {STICK, 2}}, fuel = 2},
 	},
 	weapon_smith = {
 		{makes = "mcl_tools:axe_iron", count = 1, tier = 1, from = {{IRON, 3}, {STICK, 2}}, fuel = 3},
@@ -55,6 +60,8 @@ return {
 		{makes = "mcl_armor:chestplate_iron", count = 1, tier = 1, from = {{IRON, 8}}, fuel = 8},
 		{makes = "mcl_armor:leggings_iron", count = 1, tier = 1, from = {{IRON, 7}}, fuel = 7},
 		{makes = "mcl_armor:boots_iron", count = 1, tier = 1, from = {{IRON, 4}}, fuel = 4},
+		-- A comfort (comforts.lua, ticket 29): its armour found no buyer.
+		{makes = "mcl_cauldrons:cauldron", count = 1, tier = 1, from = {{IRON, 7}}, fuel = 7},
 	},
 	butcher = {
 		{makes = "mcl_mobitems:cooked_porkchop", count = 1, tier = 2, from = {{"mcl_mobitems:porkchop", 1}}, fuel = 1},
@@ -103,6 +110,12 @@ return {
 		{makes = "mcl_core:wood", count = 4, tier = 1, from = {{"mcl_core:tree", 1}}},
 		{makes = "mcl_books:bookshelf", count = 1, tier = 1, from = {{"mcl_core:wood", 6}, {"mcl_books:book", 3}}},
 		{makes = "mcl_core:glass", count = 1, tier = 3, from = {{"mcl_core:sand", 1}}, fuel = 1},
+	},
+	-- A clock, a comfort (comforts.lua, ticket 29), from one of the alchemist's gold ingots
+	-- and one iron ingot: cheaper than a player's craft (four gold and a redstone), which
+	-- stays as it is, so the village has a use for gold. An alchemist has its own list.
+	cleric = {
+		{makes = "mcl_clock:clock", count = 1, tier = 1, from = {{"mcl_core:gold_ingot", 1}, {IRON, 1}}},
 	},
 	-- The alchemist (ticket 20): a role over a cleric, at its stand (alchemist.lua). Its
 	-- recipes are no vanilla craft, so none is checked against a trade table. Each takes

@@ -214,6 +214,11 @@ function M.own(self, view, now)
 				group = kind == "needs" and view.group and view.group[item] or nil,
 				-- What it has to pay with, so a need counts only as far as it can pay (prices.lua).
 				budget = kind == "needs" and possessions.emeralds(self) or nil,
+				-- A product it makes on sale (goods.lua): what from, so a trip buys it from
+				-- the sources in person and in its stash (ticket 29: an armorer's 20 trips
+				-- for the alchemist's ingots all failed, its stash holding only nuggets).
+				from = converted and converted.from or nil, ratio = converted and converted.ratio or nil,
+				takes = converted and converted.takes or nil, reserve = converted and converted.reserve or nil,
 			}
 		end
 		for _, top in ipairs(ledger.top(list, view.value, OWN_ITEMS)) do add(top.item, top.count) end

@@ -191,6 +191,8 @@ function M.plan(self, view, heard, from)
 	return {
 		item = best.item, who = best.who, home = vector.new(best.home), price = best.price or 0,
 		want = view.needs[best.item], leg = "seller", day = today(),
+		-- A product the seller makes on sale (ticket 29): its sources, as told.
+		from = best.from, ratio = best.ratio, takes = best.takes, reserve = best.reserve,
 	}
 end
 
@@ -288,18 +290,35 @@ local function budget_and_value(self, trip)
 end
 
 -- Buys from the stash. Returns how many it bought, and with none why not.
+-- A trip for a product made on sale (an ingot from nine nuggets, ticket 29) takes the
+-- sources when the stash holds none of the product: whole lots of `takes`, none of the
+-- `reserve`, at the told price for each product.
 function M.buy_from_stash(self, trip, chest)
 	local budget, value = budget_and_value(self, trip)
 	local want = trip.want - (trip.bought or 0)
 	local held = chest_count(chest, trip.item)
-	local count, pay = M.terms(want, held, value, trip.price, budget)
-	if not count or possessions.emeralds(self) < pay then
-		return 0, string.format("stash holds %d, %d wanted, worth %.2f each to it, asked %.2f, budget %d", held, want,
-			value, trip.price, budget)
+	local conversion
+	if held == 0 and trip.from and trip.ratio then
+		conversion = {ratio = trip.ratio, takes = trip.takes, reserve = trip.reserve}
+		held = goods_mod.yield(conversion, chest_count(chest, trip.from))
 	end
-	local taken = take(chest, trip.item, count)
-	if taken < count then
-		if taken > 0 then put(chest, trip.item, taken) end
+	local count, pay = M.terms(want, held, value, trip.price, budget)
+	local item, taking = trip.item, count
+	if count and conversion then
+		-- Whole batches only: the products a whole number of `takes` sources give.
+		local gives = goods_mod.yield(conversion, (conversion.takes or 1) + (conversion.reserve or 0))
+		count = math.floor(count / gives) * gives
+		pay = count >= 1 and math.max(math.floor(count * trip.price + 0.5), 1) or nil
+		if not pay or pay > budget then count = nil end
+		item, taking = trip.from, count and goods_mod.sources_for(conversion, count)
+	end
+	if not count or possessions.emeralds(self) < pay then
+		return 0, string.format("stash holds %d%s, %d wanted, worth %.2f each to it, asked %.2f, budget %d", held,
+			conversion and (" from " .. trip.from) or "", want, value, trip.price, budget)
+	end
+	local taken = take(chest, item, taking)
+	if taken < taking then
+		if taken > 0 then put(chest, item, taken) end
 		return 0, "the stash came up short"
 	end
 	possessions.take(self, EMERALD, pay)
@@ -314,6 +333,22 @@ function M.buy_from_stash(self, trip, chest)
 	return count
 end
 
+-- The seller's ask for the item to its face: the lowest of its own stock's and of each
+-- product it makes on sale that it has the sources for (goods.lua), as exchange.offer
+-- would sell it. Without the conversions an alchemist holding only nuggets asked an
+-- ingot's base price, 149, for the 16 it told (ticket 29).
+local function in_person_ask(seller, buyer, item, seller_view, bid)
+	local best = possessions.count(seller, item) > 0 and exchange.asking(seller, buyer, item, seller_view, nil, bid) or nil
+	for _, conversion in ipairs(goods_mod.conversions(seller)) do
+		local sources = possessions.count(seller, conversion.from) - (conversion.reserve or 0)
+		if conversion.to == item and sources > 0 and goods_mod.yield(conversion, sources) >= 1 then
+			local unit = exchange.asking(seller, buyer, item, seller_view, conversion, bid)
+			if unit and (not best or unit < best) then best = unit end
+		end
+	end
+	return best or exchange.asking(seller, buyer, item, seller_view, nil, bid)
+end
+
 -- Buys from the seller in person. Returns how many it bought. It asks for no more than
 -- its budget covers at the seller's ask (the midpoint for an item with none), so a lot
 -- it cannot afford whole is bought in part.
@@ -322,7 +357,7 @@ function M.buy_in_person(self, trip, seller)
 	local item = trip.item
 	local seller_view = possessions.assess(seller)
 	local seller_value = seller_view.value(item) or 0
-	local unit = exchange.asking(seller, self, item, seller_view, nil, math.min(value, budget))
+	local unit = in_person_ask(seller, self, item, seller_view, math.min(value, budget))
 		or (value + seller_value) / 2
 	if unit <= 0 then return 0, "no price" end
 	if value < unit then return 0, string.format("asks %.2f each, over our %.2f", unit, value) end

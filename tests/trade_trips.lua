@@ -129,6 +129,7 @@ minetest = {
 
 local trips = dofile("trade_trips.lua")
 local possessions = dofile("possessions.lua")
+local ledger = dofile("ledger.lua")
 local market = dofile("builder_market.lua")
 local stock = dofile("farm_stock.lua")
 
@@ -733,6 +734,40 @@ do
 	market.update(bb, {rows = {{item = blue, need = 1, in_chests = 0, carried = 0, missing = 1}},
 		short = true, chests = {bed_chest}})
 	assert(bb._villages_builder_wants[blue] == 1 and bb._villages_builder_wool == nil)
+end
+
+-- Ingots from the alchemist's nuggets (ticket 29): a trip for a product it makes on sale
+-- carries its sources from the news, and buys them in its stash and to its face.
+do
+	local NUGGET, INGOT = "mcl_core:iron_nugget", "mcl_core:iron_ingot"
+	local stash = chest({x = 40, y = 1, z = 40}, "alch-away", {{name = NUGGET, count = 30}})
+	local armo = villager("armo", {x = 40, y = 1, z = 30}, {_villages_belongings = {[EMERALD] = 100}})
+	local trip = {item = INGOT, who = "alch-away", want = 5, price = 16, from = NUGGET, ratio = 1 / 9, takes = 9,
+		client = {purse = 100, value = 50}}
+	-- 30 nuggets make three ingots, whole batches: 27 go, 3 stay.
+	assert(trips.buy_from_stash(armo, trip, stash) == 3, "three ingots from 30 nuggets")
+	assert(count(armo, INGOT) == 3 and chest_count(stash, NUGGET) == 3 and chest_count(stash, EMERALD) == 48)
+	local bought, why = trips.buy_from_stash(armo, trip, stash)
+	assert(bought == 0 and why:find("stash holds 0 from " .. NUGGET, 1, true), why)
+	-- Without the sources told, nuggets are no ingots.
+	local plain = chest({x = 44, y = 1, z = 40}, "alch-away", {{name = NUGGET, count = 30}})
+	assert(trips.buy_from_stash(armo, {item = INGOT, who = "alch-away", want = 5, price = 16,
+		client = {purse = 100, value = 50}}, plain) == 0)
+	-- A plan carries the sources from what it heard.
+	local planned = trips.plan(villager("buyer", {x = 40, y = 1, z = 20}, {_villages_belongings = {[EMERALD] = 100}}),
+		{needs = {[INGOT] = 3}, value = function() return 50 end, urgency = function() return 4 end},
+		{{item = INGOT, who = "alch-away", kind = "has", count = 3, price = 16, home = {x = 40, y = 1, z = 41},
+			heard = now, hops = 1, from = NUGGET, ratio = 1 / 9, takes = 9}}, {x = 40, y = 1, z = 20})
+	assert(planned and planned.from == NUGGET and planned.ratio == 1 / 9 and planned.takes == 9)
+	-- To its face: an alchemist holding only nuggets, asked at a quarter of their price,
+	-- asks nine nuggets' ask for an ingot, not an ingot's base price.
+	local alch = villager("alch-here", {x = 60, y = 1, z = 60}, {_profession = "cleric", _villages_alchemist = true,
+		_villages_belongings = {[NUGGET] = 90}, _villages_asks = {[NUGGET] = 0.25}})
+	local porter = villager("porter", {x = 60, y = 1, z = 61}, {_villages_belongings = {[EMERALD] = 200}})
+	local face = {item = INGOT, who = "alch-here", want = 2, price = 16, client = {purse = 200, value = 100}}
+	local got, reason = trips.buy_in_person(porter, face, alch)
+	assert(got == 2 and count(porter, INGOT) == 2 and count(alch, NUGGET) == 72, tostring(got) .. " " .. tostring(reason))
+	assert(face.spent < 2 * ledger.price(INGOT), "at nuggets' price: " .. face.spent)
 end
 
 -- Off with the economy: no hire.
