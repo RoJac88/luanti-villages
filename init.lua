@@ -1,6 +1,8 @@
 -- Keep VoxeLibre's villager AI, trades, and bed ownership. Add a sleeping pose
 -- adapted from Mineclonia and bed-limited village births.
 local core = minetest
+-- Off unless living_villages_profile is set; first, so it sees the globalsteps registered below.
+local profile = dofile(core.get_modpath("living_villages") .. "/profile.lua")
 local common = dofile(core.get_modpath("living_villages") .. "/common.lua")
 local cells = dofile(core.get_modpath("living_villages") .. "/cells.lua")
 local is_sleep_time = common.is_sleep_time
@@ -333,9 +335,14 @@ core.register_on_mods_loaded(function()
 		return
 	end
 
+	-- Times each install's do_custom and on_step (profile.lua); nothing unless profiling.
+	local function mark(name) profile.mark(def, name) end
+	mark("vanilla")
+
 	-- Wraps vanilla's do_custom alone, before anything below captures it, so
 	-- only vanilla ever sees the stand-in trade list it gives a nitwit.
 	dofile(core.get_modpath("living_villages") .. "/nitwit.lua")(def)
+	mark("nitwit")
 
 	local original_box = table.copy(def.initial_properties.collisionbox)
 	-- A villager on carpet stands 1/16 node higher. The vanilla 1.94 top
@@ -646,28 +653,45 @@ core.register_on_mods_loaded(function()
 		core.log("warning", "[living_villages] VoxeLibre's get_activity is gone; villagers keep the vanilla schedule")
 	end
 
+	mark("init")
 	dofile(core.get_modpath("living_villages") .. "/births.lua")(def)
+	mark("births")
 	child_growth.install(def)
+	mark("child_growth")
 	local install_navigation, navigation_api = dofile(core.get_modpath("living_villages") .. "/navigation.lua")
 	install_navigation(def)
+	mark("navigation")
 	local farmer = dofile(core.get_modpath("living_villages") .. "/farmer.lua")
 	farmer.install(def)
+	mark("farmer")
 	install_fisherman(def)
+	mark("fisherman")
 	keeper.install(def)
+	mark("keeper")
 	dofile(core.get_modpath("living_villages") .. "/keeper_supply.lua").install(def)
+	mark("keeper_supply")
 	dofile(core.get_modpath("living_villages") .. "/possessions.lua").install(def)
+	mark("possessions")
 	local labour = dofile(core.get_modpath("living_villages") .. "/labour.lua")
 	labour.install(def)
+	mark("labour")
 	dofile(core.get_modpath("living_villages") .. "/production.lua").install(def)
+	mark("production")
 	-- The leatherworker's cow herd (herd.lua, ticket 11e): leather and beef.
 	dofile(core.get_modpath("living_villages") .. "/herd.lua").install(def)
+	mark("herd")
 	-- The butcher's chickens (coop.lua, ticket 24): feathers for the fletcher.
 	dofile(core.get_modpath("living_villages") .. "/coop.lua").install(def)
+	mark("coop")
 	cleric.install(def)
+	mark("cleric")
 	woodcutter.install(def)
+	mark("woodcutter")
 	alchemist.install(def)
+	mark("alchemist")
 	-- Outside every job above, which it keeps from an unemployed villager with a block to go to.
 	dofile(core.get_modpath("living_villages") .. "/job_seek.lua").install(def, navigation_api, job_roles)
+	mark("job_seek")
 	-- Outside job_seek, so that a Builder's house keeps its own villager.
 	local builder
 	-- Asked by activity_override, which is set further down.
@@ -675,18 +699,23 @@ core.register_on_mods_loaded(function()
 		builder = dofile(core.get_modpath("living_villages") .. "/builder.lua")
 		builder.install(def, navigation_api, village_index)
 		job_roles.builder = builder
+		mark("builder")
 	end
 	-- Outside every role above, so none of them sees a child with a job (#262).
 	dofile(core.get_modpath("living_villages") .. "/child_jobs.lua").install(def)
+	mark("child_jobs")
 	-- Outside every job module: a villager of a village still being placed waits for staffing.
 	village_staffing.install_villager(def, job_roles)
+	mark("village_staffing")
 	-- One copy of seat.lua, so that its reservations cover both the tavern's
 	-- chairs and the church's.
 	local seat = dofile(core.get_modpath("living_villages") .. "/seat.lua")
 	dofile(core.get_modpath("living_villages") .. "/tavern.lua")(def, meal, seat)
+	mark("tavern")
 	dofile(core.get_modpath("living_villages") .. "/player_meals.lua").install(meal, seat)
 	-- After the tavern, so its seated-guest check sees a pew first.
 	dofile(core.get_modpath("living_villages") .. "/church.lua").install(def, seat, cleric)
+	mark("church")
 	local bell = dofile(core.get_modpath("living_villages") .. "/bell.lua")
 	-- With the economy on, stalls show and sell real surplus (market_stall.lua, ticket 12).
 	if dofile(core.get_modpath("living_villages") .. "/economy_clock.lua").enabled() then
@@ -696,10 +725,12 @@ core.register_on_mods_loaded(function()
 	-- /living_villages_market, for testing the market and labour by hand.
 	dofile(core.get_modpath("living_villages") .. "/market_test.lua").install()
 	bell.install(def, market_controller, navigation_api)
+	mark("bell")
 	-- The shepherd's flock (#215) steers VoxeLibre's own sheep and, while the shepherd
 	-- grazes it, answers get_activity for it. A farmer out in its field and a fisherman at the water are answered the same way.
 	local flock = dofile(core.get_modpath("living_villages") .. "/flock.lua")
 	flock.install(def, core.registered_entities["mobs_mc:sheep"], bell, navigation_api)
+	mark("flock")
 	local trade_trips = dofile(core.get_modpath("living_villages") .. "/trade_trips.lua")
 	-- A trade trip first: a farmer on one is not sent back to its field.
 	common.activity_override = function(villager, stage)
@@ -709,10 +740,13 @@ core.register_on_mods_loaded(function()
 			or woodcutter.activity_override(villager, stage) or labour.activity_override(villager, stage)
 	end
 	dofile(core.get_modpath("living_villages") .. "/well.lua").install(def)
+	mark("well")
 	-- The morning at the bell (#329), the well's visit at the bell; one of the two a morning.
 	dofile(core.get_modpath("living_villages") .. "/bell_hangout.lua").install(def, bell)
+	mark("bell_hangout")
 	local gossip = dofile(core.get_modpath("living_villages") .. "/gossip.lua")
 	gossip.install(def, core.registered_entities["mobs_mc:iron_golem"], core.registered_entities["mobs_mc:villager_zombie"])
+	mark("gossip")
 	-- With the economy on, the mod's own trade window in place of vanilla's (ticket 14).
 	-- Installed after gossip so it decides first on a right-click.
 	dofile(core.get_modpath("living_villages") .. "/trade_window.lua").install(def, {
@@ -722,8 +756,10 @@ core.register_on_mods_loaded(function()
 	})
 	-- Taking from a stash in sight of a villager is gossip about the taker.
 	dofile(core.get_modpath("living_villages") .. "/theft.lua").install(gossip, def)
+	mark("theft")
 	-- Donations and alms at the holiday service (alms.lua): good gossip about donors.
 	dofile(core.get_modpath("living_villages") .. "/alms.lua").install(def, gossip)
+	mark("alms")
 	dofile(core.get_modpath("living_villages") .. "/need_bubble.lua").install()
 	-- Sounds, particles and a steady shake for the cure, whose vanilla cues are easy to miss.
 	if core.registered_entities["mobs_mc:villager_zombie"] then
@@ -733,13 +769,16 @@ core.register_on_mods_loaded(function()
 	local market_news = dofile(core.get_modpath("living_villages") .. "/market_news.lua")
 	-- The alchemist overhears every loaded villager's news (ticket 24).
 	market_news.install(def)
+	mark("market_news")
 	local market_exchange = dofile(core.get_modpath("living_villages") .. "/exchange.lua")
 	-- Trade trips (trade_trips.lua): its own walks, and porters hired when a conversation ends.
 	trade_trips.install(def)
+	mark("trade_trips")
 	-- Rent to the Builder's bench (rent.lua): billing and its errand, and paid when a
 	-- conversation ends, before the trades.
 	local rent = dofile(core.get_modpath("living_villages") .. "/rent.lua")
 	rent.install(def)
+	mark("rent")
 	local trade = {exchange = function(members)
 		rent.settle(members)
 		local made = market_exchange.exchange(members)
@@ -747,14 +786,22 @@ core.register_on_mods_loaded(function()
 		return made
 	end}
 	dofile(core.get_modpath("living_villages") .. "/conversation.lua").install(def, gossip, market_news, trade)
+	mark("conversation")
 	-- Outermost, so it sees "walk" after everything else has had its say.
 	dofile(core.get_modpath("living_villages") .. "/wander.lua")(def)
+	mark("wander")
 	dofile(core.get_modpath("living_villages") .. "/diagnostic.lua")(def, flock, navigation_api, farmer, gossip, builder)
+	mark("diagnostic")
 	dofile(core.get_modpath("living_villages") .. "/paths.lua").install(def, path_storage)
+	mark("paths")
 	dofile(core.get_modpath("living_villages") .. "/floor_guard.lua")(def)
+	mark("floor_guard")
 	dofile(core.get_modpath("living_villages") .. "/env_touch.lua")(def)
+	mark("env_touch")
 	-- Outermost of all, so the economic clock runs whatever an inner do_custom returns.
 	dofile(core.get_modpath("living_villages") .. "/economy_clock.lua").install(def)
+	mark("economy_clock")
+	profile.wrap_staticdata(def)
 end)
 
 dofile(core.get_modpath("living_villages") .. "/tavern_schematic.lua")
