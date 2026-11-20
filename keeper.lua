@@ -1,5 +1,8 @@
 -- Tavern keepers (#15): a villager who claims a jukebox, keeps the tavern's
 -- hours (#22), and sells prepared food through ordinary villager trades.
+-- With the economy on, trade_window.lua's own window replaces them (ticket 33):
+-- it sells the pantry's dishes at the dinner price, and MENU only says which
+-- items are dishes. The vanilla menu below is for the economy off.
 --
 -- VoxeLibre cannot be given a new profession: its professions table is a
 -- file-local in mobs_mc/villager.lua, and employ() only ever grants one of

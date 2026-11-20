@@ -99,7 +99,23 @@ local rep = 0
 local gossip = {reputation = function() return rep end, add = function(_, name, kind) gossiped[#gossiped + 1] = kind end}
 local enabled = true
 local def = {on_rightclick = function(self) self.vanilla = true end}
-window.install(def, {possessions = possessions, gossip = gossip,
+-- A keeper's pantry (ticket 33), stubbed: dishes, meals counted, the reserve and its price.
+local larder = {[BREAD] = 0}
+local till = {dishes = larder, meals = 0, reserve = 0, price = 20, emeralds = 0}
+local tavern = {
+	stock = function() return till end,
+	take = function(_, item, count)
+		local taken = math.min(larder[item] or 0, count)
+		larder[item] = (larder[item] or 0) - taken
+		till.meals = till.meals - taken
+		return taken
+	end,
+	put = function(_, item, count)
+		if item == EMERALD then till.emeralds = till.emeralds + count else larder[item] = (larder[item] or 0) + count end
+		return true
+	end,
+}
+window.install(def, {possessions = possessions, gossip = gossip, tavern = tavern,
 	clock = {enabled = function() return enabled end}})
 
 local function inventory(contents)
@@ -155,14 +171,44 @@ assert(near(prices.factor(villager._villages_prices, IRON), (40 / ledger.price(I
 -- Closing lets it go.
 handlers.fields(player, window.FORMNAME, {quit = "true"})
 assert(not villager._trading_players.rskj)
--- One it distrusts will not trade; children, keepers and the economy off keep vanilla's.
+-- One it distrusts will not trade; children and the economy off keep vanilla's.
 rep = window.REFUSE
 def.on_rightclick(villager, player)
 assert(chats[#chats]:find("will not trade") and not villager._trading_players.rskj)
 rep = 0
-local keeper = {_id = "k", _villages_keeper = true, object = villager.object}
-def.on_rightclick(keeper, player)
-assert(keeper.vanilla)
+-- The keeper (ticket 33): the mod's window, selling its pantry's dishes at the dinner
+-- price into the pantry, past the meals it keeps for dinner; buying its inputs as anyone.
+do
+	-- Pure: each dish at the price, as many as the pantry holds past the reserve, all told.
+	local r = window.rows(view, {[BREAD] = 6}, 100, 0, nil, false, nil, nil,
+		{dishes = {[BREAD] = 10, [FISH] = 3}, meals = 15, reserve = 11, price = 20})
+	local bread, fish = r.sells[1], r.sells[2]
+	assert(#r.sells == 2 and bread.pantry and bread.price == 20 and bread.lots == 4 and fish.lots == 3,
+		"its pantry, not its surplus")
+	assert(#r.buys == 1 and r.buys[1].item == IRON, "its needs as anyone's")
+	assert(#window.rows(view, {}, 100, 0, nil, false, nil, nil,
+		{dishes = {[BREAD] = 10}, meals = 10, reserve = 12, price = 20}).sells == 0, "all kept for dinner")
+	-- A friend pays less for a dinner.
+	assert(window.rows(view, {}, 100, 40, nil, false, nil, nil,
+		{dishes = {[BREAD] = 10}, meals = 10, reserve = 0, price = 20}).sells[1].price == 18)
+
+	local purse = {[EMERALD] = 50}
+	local keeper = {_id = "keep-1", _profession = "butcher", _villages_keeper = true, _villages_belongings = purse,
+		object = villager.object}
+	larder[BREAD], till.meals, till.reserve = 8, 10, 4
+	view = {surplus = {[BREAD] = 6}, needs = {}, value = function(item) return values[item] end}
+	player_inv.contents[EMERALD], player_inv.contents[BREAD] = 200, 0
+	def.on_rightclick(keeper, player)
+	assert(not keeper.vanilla and shown[#shown].formname == window.FORMNAME, "the mod's window, not vanilla's")
+	assert(shown[#shown].spec:find("tavern keeper", 1, true), "named for its role, not the butcher")
+	handlers.fields(player, window.FORMNAME, {sell_all_1 = true})
+	assert(player_inv.contents[BREAD] == 6 and player_inv.contents[EMERALD] == 200 - 6 * 20, "10 meals less 4 kept")
+	assert(larder[BREAD] == 2 and till.emeralds == 120 and purse[EMERALD] == 50, "paid into the pantry")
+	assert(logs[#logs]:find("pantry", 1, true))
+	handlers.fields(player, window.FORMNAME, {quit = "true"})
+	view = {surplus = {[BREAD] = 6}, needs = {[IRON] = 5}, value = function(item) return values[item] end,
+		urgency = function(item) return item == IRON and 3 or 1 end}
+end
 enabled = false
 local other = {_id = "o", object = villager.object}
 def.on_rightclick(other, player)
