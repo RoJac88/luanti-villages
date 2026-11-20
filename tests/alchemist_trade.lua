@@ -47,6 +47,7 @@ local GOLD_NUGGET = "mcl_core:gold_nugget"
 local FLINT, GLASS, PANE = "mcl_core:flint", "mcl_core:glass", "xpanes:pane_natural_flat"
 local STONE, COBBLE, LOG = "mcl_core:stone", "mcl_core:cobble", "mcl_core:tree"
 local EMERALD = "mcl_core:emerald"
+local CHARCOAL = "mcl_core:charcoal_lump"
 local function near(a, b) return math.abs(a - b) < 1e-6 end
 
 local function villager(id, held, fields)
@@ -83,24 +84,32 @@ assert(production.cost(alch, recipes.tool_smith[1]) == production.craft_seconds(
 -- With nothing to make it waits at its stand: it never labours.
 assert(production.choose(alch) == nil and production.idle_today(alch) == false)
 
--- A whole day on cobble: 18 nuggets from 72.
-local miner = alchemist_with({[COBBLE] = 72})
+-- A whole day on cobble: 18 nuggets from 72, burning half a lump each (ticket 28c).
+local miner = alchemist_with({[COBBLE] = 72, [CHARCOAL] = 9})
 for _ = 1, 18 do production.work(miner, 525 / 18) end
 assert(count(miner, NUGGET) == 18 and count(miner, COBBLE) == 0, count(miner, NUGGET))
+assert(count(miner, CHARCOAL) == 0, "nine lumps burned")
+-- Without fuel it makes nothing.
+assert(production.choose(alchemist_with({[COBBLE] = 8})) == nil, "no fuel")
 assert(logs[#logs]:find("made 1 mcl_core:iron_nugget", 1, true))
 -- Stone and cobble both serve, the one held most first.
-local mixed = alchemist_with({[COBBLE] = 3, [STONE] = 1})
+local mixed = alchemist_with({[COBBLE] = 3, [STONE] = 1, [CHARCOAL] = 1})
 assert(production.choose(mixed).makes == NUGGET and production.make(mixed, by_makes[NUGGET]))
 assert(count(mixed, COBBLE) == 0 and count(mixed, STONE) == 0 and count(mixed, NUGGET) == 1)
 
--- A whole day on logs: 6 flint from 24, any species.
-local cutter = alchemist_with({[LOG] = 12, ["mcl_core:birchtree"] = 12})
+-- A whole day on logs: 6 flint from 24, any species, charcoal its fuel (ticket 28c).
+local cutter = alchemist_with({[LOG] = 12, ["mcl_core:birchtree"] = 12, [CHARCOAL] = 3})
 for _ = 1, 6 do production.work(cutter, 525 / 6) end
 assert(count(cutter, FLINT) == 6 and count(cutter, LOG) + count(cutter, "mcl_core:birchtree") == 0)
+assert(count(cutter, CHARCOAL) == 0)
+-- With no charcoal or coal it burns logs: 4 for a flint and 4 smelts' worth (3 logs).
+local no_coal = alchemist_with({[LOG] = 7})
+assert(production.choose(no_coal).makes == FLINT and production.make(no_coal, by_makes[FLINT]))
+assert(count(no_coal, FLINT) == 1 and count(no_coal, LOG) == 0, count(no_coal, LOG))
 
 -- It makes what pays most (ticket 21d). At their seed prices glass and flint sell for
 -- what their stone and logs would, so nuggets, which earn over their cobble, come first.
-local busy = alchemist_with({[STONE] = 40, [LOG] = 8})
+local busy = alchemist_with({[STONE] = 40, [LOG] = 8, [CHARCOAL] = 10})
 assert(production.choose(busy).makes == NUGGET)
 assert(production.status(busy):find("making iron_nugget", 1, true))
 -- Once nuggets glut and their ask falls below their stone, glass and flint tie at no gain
@@ -110,25 +119,30 @@ assert(production.choose(busy).makes == GLASS)
 possessions.add(busy, GLASS, 13)
 assert(production.choose(busy).makes == FLINT, "past 12 glass")
 possessions.add(busy, FLINT, 32)
-assert(production.choose(busy) == nil, "at 32 flint, and nuggets lose")
+-- At 32 flint it still makes nuggets, at a loss: it works its stand and spends its budget
+-- on stone (ticket 28).
+assert(production.choose(busy).makes == NUGGET, "at 32 flint, nuggets at a loss")
 -- Flint that sells dear beats glass at its seed price.
-local keen = alchemist_with({[STONE] = 40, [LOG] = 8})
+local keen = alchemist_with({[STONE] = 40, [LOG] = 8, [CHARCOAL] = 10})
 keen._villages_asks = {[FLINT] = 2}
 assert(production.choose(keen).makes == FLINT)
 
--- What it buys: a day's 72 stone or cobble always, and logs for the flint it is short of,
--- four a flint, at most 32 at once.
+-- What it buys: a day's 72 stone or cobble and 8 lumps' worth of fuel always, and logs for
+-- the flint it is short of, four a flint, at most 32 at once.
 local view = possessions.assess(alchemist_with({[EMERALD] = 1000}))
 assert(view.categories.stone.target == 72 and view.categories.log.target == 32)
+assert(view.categories.fuel.target == alchemist.FUEL_WANT * 80)
 assert(view.needs[COBBLE] == 72 and view.needs[STONE] == 72 and view.needs[LOG] == 32)
 view = possessions.assess(alchemist_with({[EMERALD] = 1000, [FLINT] = 30}))
 assert(view.categories.log.target == 8)
 view = possessions.assess(alchemist_with({[EMERALD] = 1000, [FLINT] = 32}))
-assert(view.categories.log == nil and not view.needs[LOG], "no logs at 32 flint")
--- It values an input at no more than its best recipe returns for it (ticket 21d): stone
--- at glass's 3.2 or a nugget's 3.84, cobble at a nugget's 3.84; short, it pays its price.
+assert(view.categories.log == nil, "no logs for flint at 32 flint")
+assert(view.needs[LOG] == math.ceil(alchemist.FUEL_WANT * 80 / 15), "logs only as fuel")
+-- It values an input at no more than its best recipe returns for it (ticket 21d), less the
+-- fuel (ticket 28c): stone and cobble at a nugget's over its half lump; short, it pays its price.
 local caps = ledger.imputed(recipes.alchemist, ledger.price, 5)
-assert(near(caps[STONE], ledger.price(NUGGET) / 4) and near(caps[COBBLE], caps[STONE]))
+assert(near(caps[STONE], (ledger.price(NUGGET) - ledger.price("mcl_core:coal_lump") / 2) / 4))
+assert(near(caps[COBBLE], caps[STONE]))
 assert(view.value(COBBLE) <= caps[COBBLE] + 1e-9 and view.value(STONE) <= caps[STONE] + 1e-9)
 assert(near(view.value(STONE), ledger.price(STONE)), "short, so at its price")
 local rich = possessions.assess(alchemist_with({[NUGGET] = 500, [GLASS] = 100}))
@@ -234,5 +248,57 @@ local logs_told = false
 for key, entry in pairs(told) do logs_told = logs_told or (entry.kind == "needs" and entry.group == "log") end
 assert(logs_told, "logs")
 assert(not told["has " .. GOLD_NUGGET], "no gold under the reserve")
+
+-- What it pays for stone and wood (ticket 28): no less than its budget's share and a share
+-- of what its goods last sold for.
+do
+	local unit_stone, unit_log = ledger.price(STONE), ledger.price(LOG)
+	local unit_fuel = ledger.price("mcl_core:coal_lump") / 80
+	local wanted = {stone = 72, log = 32, fuel = 640}
+	local total = 72 * unit_stone + 32 * unit_log + 640 * unit_fuel
+	-- 28a: what it holds over 8 dinners, over 30 days, shared by base price over the day's wants.
+	local reserve = alchemist.RESERVE_DINNERS * ledger.DINNER
+	local floors = alchemist.floors(wanted, reserve + 3000, 1, nil)
+	local budget = 3000 / alchemist.SPEND_DAYS
+	assert(near(floors[STONE], budget * unit_stone / total) and near(floors[COBBLE], floors[STONE]), floors[STONE])
+	assert(near(floors[LOG], budget * unit_log / total) and near(floors["mcl_core:birchtree"], floors[LOG]))
+	assert(near(floors["mcl_core:charcoal_lump"], budget * unit_fuel * 80 / total))
+	local spent = 72 * floors[STONE] + 32 * floors[LOG] + 8 * floors["mcl_core:charcoal_lump"]
+	assert(near(spent, budget), "the day's wants at its floors cost its budget: " .. spent)
+	-- At its own dinner scale: with dinner at a twentieth, its reserve is a twentieth.
+	assert(near(alchemist.floors(wanted, reserve / 20 + 3000, 1 / 20)[STONE], floors[STONE]))
+	-- Nothing over its reserve, no budget.
+	assert(next(alchemist.floors(wanted, reserve, 1)) == nil)
+	-- 28b: half what flint last sold for, over its four logs; half a nugget's over four stone.
+	local sold = alchemist.floors(wanted, 0, 1, {[FLINT] = 8.5, [NUGGET] = 1.2})
+	assert(near(sold[LOG], 0.5 * 8.5 / 4) and near(sold["mcl_core:acaciatree"], sold[LOG]))
+	assert(near(sold[COBBLE], 0.5 * 1.2 / 4) and near(sold[STONE], sold[COBBLE]))
+	-- The greater of the two.
+	local both = alchemist.floors(wanted, reserve + 3000, 1, {[FLINT] = 8.5})
+	assert(near(both[LOG], math.max(floors[LOG], sold[LOG])))
+	-- In its view: a glut of nuggets left it bidding nothing for cobble; its budget lifts it.
+	local hoarder = alchemist_with({[EMERALD] = 3000, [NUGGET] = 300})
+	hoarder._villages_asks = {[NUGGET] = asks.MIN}
+	local hview = possessions.assess(hoarder)
+	local hfloors = alchemist.floors(alchemist.targets(possessions.held(hoarder)), 3000, 1)
+	assert(hview.needs[COBBLE] == 72 and hview.value(COBBLE) >= hfloors[COBBLE] - 1e-9, hview.value(COBBLE))
+	-- A sale of its goods is kept for its bids.
+	local seller = alchemist_with({[FLINT] = 10})
+	asks.sold(seller, FLINT, day, 2, 8)
+	assert(seller._villages_sold_at[FLINT] == 8)
+	local plain = villager("plain", {})
+	asks.sold(plain, FLINT, day, 1, 8)
+	assert(plain._villages_sold_at == nil, "only an alchemist's")
+	-- A seller asks at least half the bid it heard for a material, a category's too:
+	-- cobble at the alchemist's per-unit bid for stone.
+	local quarrier = villager("quarry", {[COBBLE] = 200})
+	quarrier._villages_asks = {[COBBLE] = asks.MIN}
+	quarrier._villages_market_news = {{item = STONE, who = "alch", kind = "needs", count = 72, price = 0.8,
+		group = "stone", budget = 3000, heard = now, hops = 0}}
+	assert(asks.bid_priced(COBBLE) and asks.bid_priced(LOG) and asks.bid_priced("mcl_core:charcoal_lump"))
+	assert(near(asks.best_bid(quarrier, COBBLE), 0.8))
+	assert(asks.ask(quarrier, COBBLE) >= asks.BID_SHARE * 0.8 - 1e-9, asks.ask(quarrier, COBBLE))
+	assert(not asks.bid_priced("mcl_farming:bread"), "food has its own pricing")
+end
 
 print("alchemist_trade.lua: ok")

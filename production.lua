@@ -149,10 +149,13 @@ M.have = have
 -- of its recipes takes as an input (ticket 15), as {item, smelts}.
 local fuel_lists = {}
 local function fuels(self)
-	local profession = self._profession or ""
+	-- An alchemist burns logs too, after charcoal and coal, though its flint takes them: its
+	-- ledger counts logs toward its fuel, and wood is what it is to buy (ticket 28c).
+	local alchemist = self._villages_alchemist == true
+	local profession = alchemist and "alchemist" or self._profession or ""
 	if fuel_lists[profession] then return fuel_lists[profession] end
 	local inputs = {}
-	for _, recipe in ipairs(recipes[profession] or {}) do
+	for _, recipe in ipairs(alchemist and {} or recipes[profession] or {}) do
 		for _, input in ipairs(recipe.from) do
 			inputs[input[1]] = true
 			for member in pairs(kinds(input[1], input[3]) or {}) do inputs[member] = true end
@@ -238,8 +241,10 @@ function M.choose(self, held, view, asks, list)
 		end
 		if not stocked and M.can_make(self, recipe, held) then
 			local gain = M.gain(recipe, price_of, asks)
-			-- A craft seeded at its inputs' cost pays 0, give or take rounding.
-			if gain and gain >= -1e-6 then
+			-- A craft seeded at its inputs' cost pays 0, give or take rounding. A ranked list's
+			-- (the alchemist's) is made at a loss too, by rank after any that pays: it works
+			-- its stand and spends its budget on stone and wood (ticket 28).
+			if gain and (gain >= -1e-6 or ranked) then
 				local rate = math.max(gain, 0) / M.cost(self, recipe)
 				local better = not best or rate > best_rate
 				if not better and rate == best_rate then

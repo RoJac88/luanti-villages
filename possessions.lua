@@ -834,16 +834,17 @@ function M.assess(self)
 		end
 		unpaid = ledger.unpaid(list, price_of, tier)
 	end
-	-- An alchemist (ticket 20) wants stone while a stone recipe pays, and logs for the flint
-	-- it is short of while flint pays.
+	-- An alchemist (ticket 20) wants stone, fuel and logs for the flint it is short of,
+	-- whether they pay or not, at no less than its budget and takings bid (ticket 28).
 	local categories
 	if self._villages_alchemist and not self.child then
-		local paying = {}
-		for _, recipe in ipairs(list or {}) do
-			local margin = ledger.margin(recipe, M.prices_of(self))
-			if margin and margin >= 0 then paying[recipe.makes] = true end
+		categories = alchemist.targets(M.held(self))
+		unpaid = nil
+		for item, floor in pairs(alchemist.floors(categories, M.emeralds(self), dinner.scale(self),
+				self._villages_sold_at)) do
+			least = least or {}
+			least[item] = math.max(least[item] or 0, floor)
 		end
-		categories = alchemist.targets(M.held(self), paying)
 	elseif self._villages_builder and (self._villages_builder_logs or self._villages_builder_wool) then
 		categories = {log = self._villages_builder_logs, wool = self._villages_builder_wool}
 	end

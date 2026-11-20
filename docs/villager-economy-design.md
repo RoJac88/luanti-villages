@@ -3189,6 +3189,52 @@ makes to sell is priced as before.
   taken from the purse for it; the cap stays 1); `tests/meal.lua` (a cleric with 3,000
   pays into the pantry).
 
+### 28. The alchemist spends on stone and wood
+
+- **Problem.** The alchemist was the village's money sink. In ColonyFood (2026-11-20, days
+  772-816) it held 2,745 of the village's 8,200 emeralds, earned 540 from trades and spent
+  37. Its goods were priced at their inputs' cost and its bids at what its goods returned
+  (ledger.imputed, 21d), so a glut of stone and logs drove both down together: it believed
+  stone worth 0.05, a log 0.25 and charcoal 0.07, and bid 0.01 for cobble, while flint
+  sold at 8.5 and 2,500 logs, 1,100 cobble and 890 charcoal lay unsold. A glut of nuggets
+  (217) made nuggets lose, so it wanted no stone either. Alms were not to be the only way
+  out: the money should go to those who quarry and cut wood.
+- **28a. A daily budget** (`alchemist.floors`). Each day it means to spend what it holds over
+  RESERVE_DINNERS (8) dinners, at its own price for one, over SPEND_DAYS (30), on the day's
+  wants: 72 stone or cobble, 8 lumps' worth of fuel, and logs for the flint it is short
+  of. The budget is shared by base price, so the day's wants at those prices cost the
+  budget, and each is a least value (`least`, after the money factor) on its members. At
+  2,745 emeralds that is about 91 a day: 0.37 a stone or cobble, 1.9 a log and 0.55 a lump
+  of charcoal. Recomputed each day from what it holds, it spends its savings and its
+  takings down together, and stops at its reserve.
+- **28b. A share of its takings.** What it last sold each good for is kept
+  (`_villages_sold_at`, in asks.sold, any sale of an alchemist's); an input's least value is
+  also SALE_SHARE (0.5) of that over the input count: flint at 8.5 makes a log worth 1.06.
+  The greater of 28a and 28b stands, so a good that sells dear lifts its input at once.
+- **28c. Fuel.** Each of its crafts burns half a lump (`fuel = 4` smelts, recipes.lua): a
+  buyer for charcoal and, after charcoal and coal, logs (production.lua burns them for an
+  alchemist, though its flint takes them, since its ledger counts logs as fuel). The fuel
+  is in its goods' cost (ledger.lua's COST_PRICED), so an ingot is still nine nuggets: a
+  nugget's base price is 15.1 (12.8 before), an ingot's 136, an iron helmet's 856 (724).
+- **It works its stand.** It wants stone, fuel and logs whether its goods pay or not
+  (`targets(held)`, no `unpaid`), and makes them at a loss too, by rank after any that
+  pays (production.choose), so its budget turns into work and nuggets, not idle stone.
+- **Its bids move prices.** A buyer pays the seller's ask, so a higher bid alone would
+  only buy more at the glut's price. Stone, logs, planks and fuel are now asked at no
+  less than asks.BID_SHARE (0.5) of the best bid heard in the news (`bid_priced`), a
+  category's bid counted per unit, as comforts have been since 23d. Not at a bid made to
+  the seller's face (`with_bid` stays comforts only): there an urgent buyer, a porter
+  carrying a smith's purse, would hand over most of its value for coal.
+- **Not done.** Placing Builder orders (public works) was ruled out: no villager places
+  Builder orders.
+- **Tests:** `tests/alchemist_trade.lua` (18 nuggets burn 9 lumps; no fuel, no craft; flint
+  burns charcoal, then logs; nuggets at a loss at 32 flint; fuel wanted; the input cap less
+  the fuel; the budget's floors cost the budget, follow its dinner scale and stop at its
+  reserve; half of flint's 8.5 over four logs; the greater stands; a nugget glut no longer
+  zeroes its cobble bid; sales kept, an alchemist's only; a quarrier asks half the
+  alchemist's per-unit stone bid for cobble; bread is not bid-priced); `tests/ledger.lua`
+  (fuel in the alchemist's goods, an ingot still nine nuggets, iron goods' new floors).
+
 ## Open questions
 
 - Price discovery (ticket 21):

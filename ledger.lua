@@ -121,20 +121,22 @@ end
 -- The alchemist's goods (ticket 20), priced at what their inputs cost at base prices, in
 -- order, each from the ones before it: a nugget is four stone, an ingot nine nuggets, a
 -- gold nugget two ingots' nuggets, a gold ingot nine gold nuggets, a flint four logs, glass
--- two stone and a pane one glass. These replace the trade tables' prices, so a smith values
+-- two stone and a pane one glass, the first three with half a lump of coal (ticket 28c). These replace the trade tables' prices, so a smith values
 -- iron at what the alchemist can sell it for, and glass gets cheaper.
 local STONE, LOG = "mcl_core:stone", "mcl_core:tree"
 local IRON_NUGGET, IRON = "mcl_core:iron_nugget", "mcl_core:iron_ingot"
 local GOLD_NUGGET, GOLD = "mcl_core:gold_nugget", "mcl_core:gold_ingot"
 local FLINT, GLASS, PANE = "mcl_core:flint", "mcl_core:glass", "xpanes:pane_natural_flat"
 local TORCH, STICK, CHARCOAL, PLANKS = "mcl_torches:torch", "mcl_core:stick", "mcl_core:charcoal_lump", "mcl_core:wood"
+-- Its fuel, half a lump a craft (ticket 28c), is in the cost, so an ingot is still nine nuggets.
+local ALCHEMY_FUEL = 0.5
 local COST_PRICED = {
-	{IRON_NUGGET, {{STONE, 4}}},
+	{IRON_NUGGET, {{STONE, 4}, {COAL, ALCHEMY_FUEL}}},
 	{IRON, {{IRON_NUGGET, 9}}},
 	{GOLD_NUGGET, {{IRON_NUGGET, 18}}},
 	{GOLD, {{GOLD_NUGGET, 9}}},
-	{FLINT, {{LOG, 4}}},
-	{GLASS, {{STONE, 2}}},
+	{FLINT, {{LOG, 4}, {COAL, ALCHEMY_FUEL}}},
+	{GLASS, {{STONE, 2}, {COAL, ALCHEMY_FUEL}}},
 	{PANE, {{GLASS, 1}}},
 	-- The labourers' goods (ticket 23a) that no trade table prices, at their inputs: 4
 	-- torches from a stick and a lump of charcoal, a flower pot from 3 stone, a barrel from
