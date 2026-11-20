@@ -517,6 +517,30 @@ do
 	assert(trips.activity_override(own, "work") == nil, "the Builder has its own")
 end
 
+-- A porter at a full chest hands what does not fit to the client in person, if it is
+-- about (ColonyFood, 2026-11-19: a commissioned armor stand and its price both kept).
+do
+	local STAND = "mcl_armor_stand:armor_stand"
+	local stuffed = {{name = "a", count = 1}, {name = "b", count = 1}, {name = "c", count = 1}, {name = "d", count = 1}}
+	local full = chest({x = -90, y = 1, z = 2}, "fuller", stuffed)
+	local fuller = villager("fuller", {x = -90, y = 1, z = 0}, {_villages_belongings = {}})
+	local po = villager("po-full", {x = -90, y = 1, z = 1}, {_villages_belongings = {[EMERALD] = 12, [STAND] = 1}})
+	trips.deliver(po, {item = STAND, bought = 1, spent = 0, commission = true,
+		client = {id = "fuller", deliver = full, purse = 0, fee = 0}})
+	assert(count(fuller, STAND) == 1 and count(po, STAND) == 0 and chest_count(full, STAND) == 0)
+	assert(logs[#logs - 1]:find("handed 1 " .. STAND .. " and 0 emerald%(s%) to fuller in person"), logs[#logs - 1])
+	-- The change too.
+	trips.deliver(po, {item = STAND, bought = 0, spent = 2, client = {id = "fuller", deliver = full, purse = 10, fee = 0}})
+	assert(count(fuller, EMERALD) == 8 and count(po, EMERALD) == 4)
+	-- With the client away it keeps them, and says so.
+	local full2 = chest({x = -190, y = 1, z = 2}, "away", {{name = "a", count = 1}, {name = "b", count = 1},
+		{name = "c", count = 1}, {name = "d", count = 1}})
+	possessions.add(po, STAND, 1)
+	trips.deliver(po, {item = STAND, bought = 1, spent = 0, commission = true,
+		client = {id = "away", deliver = full2, purse = 0, fee = 0}})
+	assert(count(po, STAND) == 1 and logs[#logs - 1]:find("could not leave 1 " .. STAND), logs[#logs - 1])
+end
+
 -- Commissions (ticket 26b): a client with an urgent need for a labour good and nobody
 -- selling it pays a porter up front to make it and bring it. The porter's plan is the
 -- recipe, its inputs needs; it holds the output back; the price is not its money to spend

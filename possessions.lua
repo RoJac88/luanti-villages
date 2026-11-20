@@ -81,6 +81,8 @@ local EAT_AT = food.FULL - food.HUNGRY
 local STASH_REACH = 4
 -- Of a good it sells, the most it keeps on itself for a sale in person (M.stash_spare).
 local CARRY = 8
+-- Free slots stash_spare leaves in a stash.
+local STASH_FREE_SLOTS = 3
 -- How often it looks at its food: the home stage after dinner is a game hour, 50 s.
 local EAT_CHECK_SECONDS = 10
 local STARVING_SPEED = 0.7
@@ -407,6 +409,29 @@ end
 -- person (exchange.lua sells from belongings); food stays with it (it eats from its
 -- belongings first), and so does a peddler's stock, its trade being to carry it. What
 -- the chest has no room for stays carried. Returns how many it put in.
+-- How many of the item stash_spare may put in the stash: the room on its stacks of it,
+-- plus whole stacks in the free slots beyond STASH_FREE_SLOTS, kept for what a porter, a
+-- commission or a purchase brings. In ColonyFood (2026-11-19) a leatherworker's stash
+-- filled with 576 logs and charcoal, and a commissioned armor stand found no room.
+local function stash_room(stash, item)
+	local def = core.registered_items and core.registered_items[item]
+	local max = def and def.stack_max or 64
+	local free, partial = 0, 0
+	for _, half in ipairs(halves(stash)) do
+		local inv = core.get_meta(half):get_inventory()
+		local list = inv:get_list("main") or {}
+		local used = 0
+		for _, stack in ipairs(list) do
+			if not stack:is_empty() then
+				used = used + 1
+				if stack:get_name() == item then partial = partial + math.max(max - stack:get_count(), 0) end
+			end
+		end
+		free = free + math.max((inv:get_size("main") or 0) - used, 0)
+	end
+	return partial + math.max(free - STASH_FREE_SLOTS, 0) * max
+end
+
 function M.stash_spare(self, reach, view)
 	local stash = self._villages_stash
 	local pos = self.object and self.object:get_pos()
@@ -425,6 +450,7 @@ function M.stash_spare(self, reach, view)
 		local spare = math.floor(view.surplus[item])
 		local carried = M.count(self, item)
 		local move = math.min(carried, spare) - math.min(CARRY, math.ceil(spare / 2))
+		if move > 0 then move = math.min(move, stash_room(stash, item)) end
 		if item ~= EMERALD and not food.POINTS[item] and move > 0 then
 			local left = move
 			for _, half in ipairs(halves(stash)) do

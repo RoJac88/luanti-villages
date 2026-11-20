@@ -373,6 +373,16 @@ possessions.add(kim, NUG, 20)
 larder_room = 5
 assert(possessions.stash_spare(kim, nil, spare_view({[NUG] = 28})) == 5 and possessions.count(kim, NUG) == 23)
 larder_room = nil
+-- It leaves 3 slots free for what a porter or a commission brings: with 25 of 27 slots
+-- used, a new good takes none, and one it already stashes only tops up its stack.
+for i = 1, 24 do larder["test:filler" .. i] = 1 end
+possessions.add(kim, "mcl_core:flint", 20)
+assert(possessions.stash_spare(kim, nil, spare_view({["mcl_core:flint"] = 20})) == 0, "no slot for a new good")
+local nug_room = 64 - larder[NUG]
+assert(possessions.stash_spare(kim, nil, spare_view({[NUG] = 23 + nug_room})) == math.min(nug_room, 15),
+	"tops up its stack only")
+for i = 1, 24 do larder["test:filler" .. i] = nil end
+possessions.take(kim, "mcl_core:flint", 20)
 -- A peddler's stock is its trade: it keeps it on itself.
 kim._villages_labour = {day = minetest.get_day_count(), activity = "peddler"}
 assert(possessions.stash_spare(kim, nil, spare_view({[NUG] = 28})) == 0, "a peddler carries its stock")

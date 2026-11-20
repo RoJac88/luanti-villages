@@ -3137,9 +3137,18 @@ makes to sell is priced as before.
   belongings). Food stays with it (it eats from its belongings first), and emeralds, and
   a peddler's stock, its trade being to carry it. What the chest has no room for stays
   carried. What it holds (belongings and stash) is unchanged, so its asks and news are.
+- **Room left.** It leaves STASH_FREE_SLOTS (3) slots free, topping up stacks it already
+  has there, so what a porter, a commission or a purchase brings still fits. A porter
+  that finds the delivery chest full anyway hands what does not fit, goods and change, to
+  the client in person if it is within TRIP_RADIUS of the chest; otherwise it keeps them
+  and logs it. In ColonyFood (2026-11-19, day 763) a leatherworker's stash held 576 logs
+  and charcoal in all 27 slots, and the armorer kept the armor stand it was paid 65 to
+  make, and the price.
 - **Tests:** `tests/possessions.lua` (only within reach; keeps 8 of 40 nuggets; a single
   spare lantern stays carried; food and emeralds stay; nothing more once only the keep is
-  carried; a full chest; a peddler keeps its stock).
+  carried; a full chest; a peddler keeps its stock; 3 slots left free);
+  `tests/trade_trips.lua` (a full delivery chest: handed over in person, the change too,
+  kept with the client away).
 
 ## Open questions
 
