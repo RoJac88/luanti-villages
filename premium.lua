@@ -26,6 +26,10 @@
 --   villager by the level unlocked (`caps`): more at a higher level is how they scale.
 --   A good with several bases (`bases`, ticket 37c: the farmer's golden carrot from wheat
 --   or potatoes) is an offer for each, named for it, sharing one cap (`cap`).
+-- * Gear (ticket 37d: the smiths' and the armorer's) is a good with its own enchantments
+--   (`enchants`, priced from ENCHANTS) made from `inputs`: a piece it made itself (an iron
+--   pick) or the real recipe's diamonds and sticks. Every offer carries `inputs`; its
+--   `base` and `count` are the first.
 --
 -- Premium goods never enter villager trade, market news or asks: they exist only once a
 -- player buys one.
@@ -35,6 +39,7 @@ local BOOK = "mcl_books:book"
 local ENCHANTED_BOOK = "mcl_enchanting:book_enchanted"
 local BOTTLE = "mcl_potions:glass_bottle"
 local WHEAT, POTATO = "mcl_farming:wheat_item", "mcl_farming:potato_item"
+local DIAMOND, STICK = "mcl_core:diamond", "mcl_core:stick"
 
 M.MIN_LEVEL, M.MAX_LEVEL = 3, 5
 M.SCALE = 1
@@ -63,8 +68,9 @@ M.ENCHANTS = {
 -- Each profession's premium line: its base good (`item`, how many it keeps, how many a
 -- sale takes) and what it makes. `books` are enchantment lines sold as enchanted books;
 -- `goods` are consumables {id, makes, level, dinners, caps = {[level] = a day}}, a good's
--- own `bases` ({item, count, label}) in place of the line's base. `keeps` ({item = count})
--- stands for the line's base where it keeps more than one.
+-- own `bases` ({item, count, label}) in place of the line's base, or gear {id, from,
+-- label, level, enchants, inputs = {{item, count}}}. `keeps` ({item = count}) stands for
+-- the line's base where it keeps more than one.
 M.LINES = {
 	librarian = {
 		base = {item = BOOK, keep = 4, count = 1},
@@ -90,7 +96,52 @@ M.LINES = {
 				bases = {{item = WHEAT, count = 6, label = "6 wheat"}, {item = POTATO, count = 8, label = "8 potatoes"}}},
 		},
 	},
+	-- Ticket 37d: enchanted gear from an iron piece it made, or from diamonds it buys from
+	-- players (8 kept) and sticks (4 kept), as the real recipe takes.
+	tool_smith = {
+		keeps = {[DIAMOND] = 8, [STICK] = 4},
+		goods = {
+			{id = "iron_pick", from = "mcl_tools:pick_iron", label = "Iron pickaxe", level = 3,
+				enchants = {efficiency = 3, unbreaking = 1}, inputs = {{item = "mcl_tools:pick_iron", count = 1}}},
+			{id = "diamond_axe", from = "mcl_tools:axe_diamond", label = "Diamond axe", level = 4,
+				enchants = {efficiency = 4, unbreaking = 2}, inputs = {{item = DIAMOND, count = 3}, {item = STICK, count = 2}}},
+			{id = "diamond_shovel", from = "mcl_tools:shovel_diamond", label = "Diamond shovel", level = 4,
+				enchants = {efficiency = 4, unbreaking = 2}, inputs = {{item = DIAMOND, count = 1}, {item = STICK, count = 2}}},
+			{id = "diamond_pick", from = "mcl_tools:pick_diamond", label = "Diamond pickaxe", level = 5,
+				enchants = {efficiency = 5, unbreaking = 3}, inputs = {{item = DIAMOND, count = 3}, {item = STICK, count = 2}}},
+		},
+	},
+	weapon_smith = {
+		keeps = {[DIAMOND] = 8, [STICK] = 4},
+		goods = {
+			{id = "iron_sword", from = "mcl_tools:sword_iron", label = "Iron sword", level = 3,
+				enchants = {sharpness = 3}, inputs = {{item = "mcl_tools:sword_iron", count = 1}}},
+			{id = "diamond_axe", from = "mcl_tools:axe_diamond", label = "Diamond axe", level = 4,
+				enchants = {sharpness = 4, unbreaking = 2}, inputs = {{item = DIAMOND, count = 3}, {item = STICK, count = 2}}},
+			{id = "diamond_sword", from = "mcl_tools:sword_diamond", label = "Diamond sword", level = 5,
+				enchants = {sharpness = 5, unbreaking = 3}, inputs = {{item = DIAMOND, count = 2}, {item = STICK, count = 1}}},
+		},
+	},
+	armorer = {
+		keeps = {[DIAMOND] = 8},
+		goods = {},
+	},
 }
+-- The armorer's: each iron piece it made with Protection II; diamond leggings and boots
+-- with Protection III; a diamond helmet and chestplate with Protection IV and Unbreaking III.
+for _, piece in ipairs({{"helmet", "Iron helmet"}, {"chestplate", "Iron chestplate"}, {"leggings", "Iron leggings"},
+	{"boots", "Iron boots"}}) do
+	local item = "mcl_armor:" .. piece[1] .. "_iron"
+	table.insert(M.LINES.armorer.goods, {id = "iron_" .. piece[1], from = item, label = piece[2], level = 3,
+		enchants = {protection = 2}, inputs = {{item = item, count = 1}}})
+end
+for _, piece in ipairs({{"leggings", "Diamond leggings", 7, 4, {protection = 3}},
+	{"boots", "Diamond boots", 4, 4, {protection = 3}},
+	{"helmet", "Diamond helmet", 5, 5, {protection = 4, unbreaking = 3}},
+	{"chestplate", "Diamond chestplate", 8, 5, {protection = 4, unbreaking = 3}}}) do
+	table.insert(M.LINES.armorer.goods, {id = "diamond_" .. piece[1], from = "mcl_armor:" .. piece[1] .. "_diamond",
+		label = piece[2], level = piece[4], enchants = piece[5], inputs = {{item = DIAMOND, count = piece[3]}}})
+end
 
 local ROMAN = {"I", "II", "III", "IV", "V"}
 
@@ -136,13 +187,20 @@ function M.offers(profession)
 	if not line then return {} end
 	local list = {}
 	for _, good in ipairs(line.goods or {}) do
-		local bases = good.bases or {{item = line.base.item, count = line.base.count}}
-		for _, base in ipairs(bases) do
-			local several = #bases > 1
-			list[#list + 1] = {id = several and (good.id .. "_" .. base.item:gsub("^.*:", "")) or good.id,
-				cap = good.id, makes = good.makes, from = good.makes, level = good.level, dinners = good.dinners,
-				label = several and string.format("%s (%s)", good.label, base.label) or good.label, caps = good.caps,
-				base = base.item, count = base.count}
+		if good.inputs then
+			local first = good.inputs[1]
+			list[#list + 1] = {id = good.id, makes = good.from, from = good.from, enchants = good.enchants,
+				level = good.level, dinners = M.dinners(good.enchants), label = good.label .. ": " .. M.describe(good.enchants),
+				inputs = good.inputs, base = first.item, count = first.count}
+		else
+			local bases = good.bases or {{item = line.base.item, count = line.base.count}}
+			for _, base in ipairs(bases) do
+				local several = #bases > 1
+				list[#list + 1] = {id = several and (good.id .. "_" .. base.item:gsub("^.*:", "")) or good.id,
+					cap = good.id, makes = good.makes, from = good.makes, level = good.level, dinners = good.dinners,
+					label = several and string.format("%s (%s)", good.label, base.label) or good.label, caps = good.caps,
+					inputs = {{item = base.item, count = base.count}}, base = base.item, count = base.count}
+			end
 		end
 	end
 	for level = M.MAX_LEVEL, M.MIN_LEVEL, -1 do
@@ -152,7 +210,8 @@ function M.offers(profession)
 				local enchants = {[enchant] = at}
 				list[#list + 1] = {id = enchant .. "_" .. at, makes = ENCHANTED_BOOK, from = BOOK, enchants = enchants,
 					level = level, dinners = M.dinners(enchants), label = "Book: " .. M.describe(enchants),
-					base = line.base.item, count = line.base.count}
+					inputs = {{item = line.base.item, count = line.base.count}}, base = line.base.item,
+					count = line.base.count}
 			end
 		end
 	end
@@ -202,11 +261,28 @@ function M.keeps(villager)
 end
 
 -- An offer's price in whole emeralds: its dinners at `dinner` emeralds a dinner (the
--- seller's reference price), plus `base_value` (one base good's reference value) times
--- the count it takes, less reputation's `share`. At least 1.
-function M.price(offer, dinner, base_value, share)
-	local total = offer.dinners * M.SCALE * dinner + (base_value or 0) * offer.count
+-- seller's reference price), plus its inputs at `value(item)` (their reference values;
+-- a number stands for the one base's), less reputation's `share`. At least 1.
+function M.price(offer, dinner, value, share)
+	local inputs = 0
+	if type(value) == "function" then
+		for _, input in ipairs(offer.inputs or {{item = offer.base, count = offer.count}}) do
+			inputs = inputs + (value(input.item) or 0) * input.count
+		end
+	else
+		inputs = (value or 0) * offer.count
+	end
+	local total = offer.dinners * M.SCALE * dinner + inputs
 	return math.max(math.ceil(total * (1 - (share or 0)) - 1e-9), 1)
+end
+
+-- How many sales what it holds (`held`) makes inputs for.
+function M.stock(offer, held)
+	local stock = math.huge
+	for _, input in ipairs(offer.inputs or {{item = offer.base, count = offer.count}}) do
+		stock = math.min(stock, math.floor((held[input.item] or 0) / input.count))
+	end
+	return stock
 end
 
 -- How many more of a capped offer the player may buy today at unlocked `level`, having
@@ -229,9 +305,9 @@ function M.rows(profession, tier, rep, held, dinner, value, share, sold)
 	local rows = {}
 	local level = M.level(tier, rep)
 	for _, offer in ipairs(M.offers(profession)) do
-		local stock = math.floor((held[offer.base] or 0) / offer.count)
+		local stock = M.stock(offer, held)
 		local left = M.left(offer, level, sold and sold[offer.cap or offer.id])
-		rows[#rows + 1] = {offer = offer, price = M.price(offer, dinner, value(offer.base), share),
+		rows[#rows + 1] = {offer = offer, price = M.price(offer, dinner, value, share),
 			stock = left and math.min(stock, left) or stock, left = left, locked = M.locked(offer.level, tier, rep)}
 	end
 	return rows

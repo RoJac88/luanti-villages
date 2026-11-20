@@ -43,6 +43,13 @@ local worn = {}
 for _, good in ipairs(dofile("wants.lua").GOODS) do
 	for _, tier in ipairs(good.tiers or {good}) do worn[tier.item] = true end
 end
+-- A premium good's input (premium.lua, ticket 37d): the weapon smith's iron sword.
+local premium_inputs = {}
+for profession in pairs(dofile("premium.lua").LINES) do
+	for _, offer in ipairs(dofile("premium.lua").offers(profession)) do
+		for _, input in ipairs(offer.inputs) do premium_inputs[input.item] = true end
+	end
+end
 for profession, list in pairs(recipes) do
 	-- The alchemist is a role and makes no vanilla craft (ticket 20): tests/alchemist_trade.lua.
 	-- Nor are the labourers (ticket 23a), who have no profession: tested below.
@@ -61,7 +68,7 @@ for profession, list in pairs(recipes) do
 	for _, recipe in ipairs(list) do
 		-- Food sells to any hungry villager (goods.lua's food category, ticket 15).
 		assert(sold[recipe.makes] or used[recipe.makes] or bought[recipe.makes] or keeper_buys[recipe.makes] or foods[recipe.makes]
-			or worn[recipe.makes] or dofile("comforts.lua").by_item[recipe.makes],
+			or worn[recipe.makes] or dofile("comforts.lua").by_item[recipe.makes] or premium_inputs[recipe.makes],
 			profession .. " neither sells nor uses " .. recipe.makes)
 		assert(recipe.count >= 1 and #recipe.from >= 1 and recipe.tier >= 1)
 	end

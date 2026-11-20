@@ -496,4 +496,32 @@ do
 	minetest.get_day_count = nil
 	rep = 0
 end
+-- The tool smith (ticket 37d): a diamond pickaxe takes three diamonds and two sticks.
+do
+	local DIAMOND, STICK = "mcl_core:diamond", "mcl_core:stick"
+	local forge = {[EMERALD] = 0, [DIAMOND] = 4, [STICK] = 1}
+	local smith = {_id = "tool-2", _profession = "tool_smith", _max_trade_tier = 5, _villages_belongings = forge,
+		object = villager.object}
+	view = {surplus = {}, needs = {}, value = function(item) return values[item] end}
+	player_inv.contents[EMERALD] = 5000
+	rep = 60
+	def.on_rightclick(smith, player)
+	handlers.fields(player, window.FORMNAME, {tab = "2"})
+	assert(shown[#shown].spec:find("Diamond pickaxe: Efficiency V, Unbreaking III", 1, true))
+	-- One stick: none can be made, and nothing is taken.
+	handlers.fields(player, window.FORMNAME, {premium_buy_1 = true})
+	assert(forge[DIAMOND] == 4 and forge[STICK] == 1 and chats[#chats]:find("nothing to make", 1, true))
+	forge[STICK] = 3
+	local row1 = premium.rows("tool_smith", 5, 60, forge, 18, function(item) return prices.price(nil, item) end,
+		window.rep_share(60))[1]
+	assert(row1.offer.id == "diamond_pick" and row1.stock == 1)
+	handlers.fields(player, window.FORMNAME, {tab = "2"})
+	handlers.fields(player, window.FORMNAME, {premium_buy_1 = true})
+	assert(made[#made].id == "diamond_pick" and made[#made].enchants.efficiency == 5)
+	assert(forge[DIAMOND] == 1 and forge[STICK] == 1 and forge[EMERALD] == row1.price)
+	assert(smith._villages_tally.used[DIAMOND] == 3 and smith._villages_tally.used[STICK] == 2)
+	assert(logs[#logs]:find("(from 3 mcl_core:diamond, 2 mcl_core:stick)", 1, true))
+	handlers.fields(player, window.FORMNAME, {quit = "true"})
+	rep = 0
+end
 print("trade_window.lua: ok")
