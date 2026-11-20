@@ -375,6 +375,25 @@ function M.deliver(self, trip)
 	possessions.take(self, trip.item, goods - left_goods)
 	local left_back = back - put(client.deliver, EMERALD, back)
 	possessions.take(self, EMERALD, back - left_back)
+	-- A full chest: what did not go in is the client's, handed over in person if it is
+	-- about (else the porter keeps it, logged). In ColonyFood (2026-11-19) a commissioned
+	-- armor stand met a stash with no free slot, and the porter kept the stand and the price.
+	if left_goods > 0 or left_back > 0 then
+		local owner = M.locate(client.deliver, client.id)
+		if owner then
+			possessions.take(self, trip.item, left_goods)
+			possessions.add(owner, trip.item, left_goods)
+			possessions.take(self, EMERALD, left_back)
+			possessions.add(owner, EMERALD, left_back)
+			log("porter %s handed %d %s and %d emerald(s) to %s in person, its chest at %s full",
+				short_id(self._id), left_goods, trip.item, left_back, short_id(client.id),
+				core.pos_to_string(client.deliver))
+		else
+			log("porter %s could not leave %d %s and %d emerald(s) for %s, its chest at %s full and it away",
+				short_id(self._id), left_goods, trip.item, left_back, short_id(client.id),
+				core.pos_to_string(client.deliver))
+		end
+	end
 	if trip.commission then
 		log("commission: porter %s delivered %d %s and %d emerald(s) for %s at %s", short_id(self._id),
 			goods - left_goods, trip.item, back - left_back, short_id(client.id), core.pos_to_string(client.deliver))
