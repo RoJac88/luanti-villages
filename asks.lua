@@ -43,6 +43,7 @@ local ledger = dofile(core.get_modpath("living_villages") .. "/ledger.lua")
 local prices = dofile(core.get_modpath("living_villages") .. "/prices.lua")
 local comforts = dofile(core.get_modpath("living_villages") .. "/comforts.lua")
 local goods = dofile(core.get_modpath("living_villages") .. "/goods.lua")
+local alchemist = dofile(core.get_modpath("living_villages") .. "/alchemist.lua")
 
 local MIN, MAX = 0.25, 4
 local MARKUP, MARKDOWN = 1.05, 0.9
@@ -122,8 +123,12 @@ function M.ask(seller, item, view)
 	local reference = prices.price(seller._villages_prices, item)
 	if not reference then return nil end
 	local ask = reference * M.factor(seller, item)
+	-- An alchemist's goods at no less than their cost (ticket 30), not its own value: its
+	-- money raised that to four times what it believed a nugget worth.
+	local cost = alchemist.ask_floor(seller, item)
 	local own = view and view.value(item)
-	if own then ask = math.max(ask, own) end
+	if cost then ask = math.max(ask, cost)
+	elseif own then ask = math.max(ask, own) end
 	ask = math.max(ask, BID_SHARE * M.best_bid(seller, item))
 	local peddle = seller._villages_peddle
 	if peddle and peddle.item == item and not peddle.buying and peddle.bid then ask = math.max(ask, peddle.bid) end

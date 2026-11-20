@@ -81,8 +81,8 @@ local conversions = {
 	-- past `reserve`; a pane from a glass, so both come from two stone.
 	alchemist = {
 		{from = "mcl_core:iron_nugget", to = "mcl_core:iron_ingot", ratio = 1 / 9, takes = 9},
-		{from = "mcl_core:iron_nugget", to = "mcl_core:gold_nugget", ratio = 1 / 18, takes = 18, reserve = 108},
-		{from = "mcl_core:iron_nugget", to = "mcl_core:gold_ingot", ratio = 1 / 162, takes = 162, reserve = 108},
+		{from = "mcl_core:iron_nugget", to = "mcl_core:gold_nugget", ratio = 1 / 18, takes = 18, reserve = 24},
+		{from = "mcl_core:iron_nugget", to = "mcl_core:gold_ingot", ratio = 1 / 162, takes = 162, reserve = 24},
 		{from = "mcl_core:glass", to = "xpanes:pane_natural_flat", ratio = 1},
 	},
 }

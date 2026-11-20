@@ -759,10 +759,22 @@ do
 		{{item = INGOT, who = "alch-away", kind = "has", count = 3, price = 16, home = {x = 40, y = 1, z = 41},
 			heard = now, hops = 1, from = NUGGET, ratio = 1 / 9, takes = 9}}, {x = 40, y = 1, z = 20})
 	assert(planned and planned.from == NUGGET and planned.ratio == 1 / 9 and planned.takes == 9)
-	-- To its face: an alchemist holding only nuggets, asked at a quarter of their price,
-	-- asks nine nuggets' ask for an ingot, not an ingot's base price.
+	-- The seller, loaded though away from its stash, counts the sale as its own (ticket 30):
+	-- an alchemist keeps the price per nugget for its bids, and its asks learn the sale.
+	local owner = villager("alch-owner", {x = 80, y = 1, z = 80}, {_profession = "cleric", _villages_alchemist = true,
+		_villages_belongings = {}})
+	local owned = chest({x = 81, y = 1, z = 81}, "alch-owner", {{name = NUGGET, count = 18}})
+	local buyer2 = villager("buyer2", {x = 80, y = 1, z = 70}, {_villages_belongings = {[EMERALD] = 100}})
+	local stash_trip = {item = INGOT, who = "alch-owner", home = {x = 80, y = 1, z = 80}, want = 2, price = 18,
+		from = NUGGET, ratio = 1 / 9, takes = 9, client = {purse = 100, value = 50}}
+	assert(trips.buy_from_stash(buyer2, stash_trip, owned) == 2)
+	assert(owner._villages_sold_at[INGOT] == 18 and owner._villages_sold_at[NUGGET] == 2, "per ingot, per nugget")
+	assert(owner._villages_ask_sold[NUGGET].count == 18 and owner._villages_ask_sold[INGOT].count == 2)
+	-- To its face: an alchemist holding only nuggets, made at 2 each and asked at a quarter
+	-- of their price, asks nine nuggets' ask for an ingot, not an ingot's base price.
 	local alch = villager("alch-here", {x = 60, y = 1, z = 60}, {_profession = "cleric", _villages_alchemist = true,
-		_villages_belongings = {[NUGGET] = 90}, _villages_asks = {[NUGGET] = 0.25}})
+		_villages_belongings = {[NUGGET] = 90}, _villages_asks = {[NUGGET] = 0.25},
+		_villages_made_cost = {[NUGGET] = 2}})
 	local porter = villager("porter", {x = 60, y = 1, z = 61}, {_villages_belongings = {[EMERALD] = 200}})
 	local face = {item = INGOT, who = "alch-here", want = 2, price = 16, client = {purse = 200, value = 100}}
 	local got, reason = trips.buy_in_person(porter, face, alch)

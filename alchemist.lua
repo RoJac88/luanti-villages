@@ -23,6 +23,7 @@ local core = minetest
 local ledger = dofile(core.get_modpath("living_villages") .. "/ledger.lua")
 local goods = dofile(core.get_modpath("living_villages") .. "/goods.lua")
 local recipes = dofile(core.get_modpath("living_villages") .. "/recipes.lua")
+local prices = dofile(core.get_modpath("living_villages") .. "/prices.lua")
 
 local BLOCK = "living_villages:alchemy_stand"
 local PROFESSION = "cleric"
@@ -30,36 +31,50 @@ local FLAG = "_villages_alchemist"
 -- The cleric's robe, recoloured, as keeper.lua recolours the butcher's apron.
 local OVERLAY = "(living_villages_villager_profession_cleric.png^[multiply:#4fb3a0)"
 
--- Its trade (ticket 20c). It makes glass while it holds GLASS_KEEP or fewer and flint up
--- to FLINT_KEEP (recipes.lua's `upto`), and nuggets without end, each burning half a lump
--- of fuel (ticket 28c), and makes them whether they pay or not (production.choose: it
--- works its stand). It wants logs for the flint it is short of, at most LOG_CAP at once,
--- a day's STONE_WANT of stone or cobble and FUEL_WANT lumps' worth of fuel always. Gold is
--- sold only from the nuggets past GOLD_RESERVE (goods.lua's conversions).
+-- Its trade (ticket 20c). It makes glass while it holds GLASS_KEEP or fewer, flint up to
+-- FLINT_KEEP and nuggets up to NUGGET_KEEP (recipes.lua's `upto`), each burning half a lump
+-- of fuel (ticket 28c), by rank, whether they pay or not. Since ticket 30 a day makes twice
+-- what it did: 72 glass, 12 flint or 36 nuggets. It wants logs for the flint it is short
+-- of, at most LOG_CAP at once, a day's STONE_WANT of stone or cobble and FUEL_WANT lumps'
+-- worth of fuel always. Gold is sold only from the nuggets past GOLD_RESERVE (goods.lua's
+-- conversions), so NUGGET_KEEP leaves room for a gold ingot's 162.
 --
--- What it pays for them (ticket 28, `floors`). Its goods were priced at their inputs' cost
--- and its bids at what its goods returned, so a glut of stone and logs drove its prices
--- and its bids down together: it bid 0.01 for cobble, sold flint for 8.5 and held 2,745
--- emeralds, a third of the village's (ColonyFood, 2026-11-20, day 820). Now its value for
--- each input is at least the greater of:
--- * its budget's (28a): each day it means to spend what it holds over RESERVE_DINNERS
---   dinners (at its own price for one) over SPEND_DAYS, on the day's wants, shared by
---   their base prices, so it spends its savings and its takings back on stone and wood;
--- * its takings' (28b): SALE_SHARE of what it last sold the good made from it for
---   (`_villages_sold_at`, asks.sold), per input.
+-- It breaks even (ticket 30). Its goods were priced at their inputs' base cost and its
+-- bids lifted by a budget (ticket 28), so it bought stone at 0.18 and charcoal at 1 and
+-- sold a nugget, 1.22's worth, for 1; its asks followed its own value, which its 2,600
+-- emeralds raised to four times what it believed a nugget worth (ColonyFood, day 826).
+-- * Its book (`_villages_input_cost`): the average it paid for a unit of stone, log and
+--   fuel (a burn second), over what it holds (`bought`); a recipe's cost is its inputs and
+--   fuel at those (`cost`), and what it holds of a good is at the average cost it was made
+--   at (`_villages_made_cost`, `made`): a good made before the book at its reference price.
+-- * Its asks (asks.ask): no less than that cost times MARGIN, and no longer its own value,
+--   so its wealth is in none of its prices.
+-- * Its bids (`caps`): an input is worth no more to it than what the goods it would still
+--   make (under `upto`) sell for pays: each recipe's sale price (`_villages_sold_at`, else
+--   its reference price) over its cost at the book scales the book's unit costs, and the
+--   best recipe's sets the cap. It applies after the money factor (ledger's `ceiling`).
+-- * Its budget (ticket 28a, `floors`) still lifts its bids, above those caps too: each
+--   day it means to spend what it holds over RESERVE_DINNERS dinners over SPEND_DAYS, on
+--   the day's wants (a day's stock, so its targets bound it), shared by base price. What
+--   it pays goes into its book, so its goods' asks rise with it and its savings become
+--   stock that sells at cost, not a loss.
 -- Sellers ask at least asks.BID_SHARE of a bid they heard for stone, logs, planks or fuel
 -- (asks.bid_priced), so its bids raise their prices, not only what it buys.
 local NUGGET, FLINT, GLASS = "mcl_core:iron_nugget", "mcl_core:flint", "mcl_core:glass"
-local GLASS_KEEP, FLINT_KEEP = 12, 32
-local LOGS_PER_FLINT, LOG_CAP = 4, 32
-local STONE_WANT = 72
-local GOLD_RESERVE = 12 * 9
+local GLASS_KEEP, FLINT_KEEP, NUGGET_KEEP = 12, 32, 192
+local LOGS_PER_FLINT, LOG_CAP = 4, 48
+local STONE_WANT = 144
+local GOLD_RESERVE = 24
 local COAL = "mcl_core:coal_lump"
--- Fuel it keeps, in lumps: two hours of nuggets at half a lump each (ticket 28c).
-local FUEL_WANT = 8
+-- Fuel it keeps, in lumps: two hours of nuggets at half a lump each (ticket 28c), at
+-- ticket 30's pace.
+local FUEL_WANT = 16
 local RESERVE_DINNERS = 8
 local SPEND_DAYS = 30
-local SALE_SHARE = 0.5
+-- Over its cost it asks this much (ticket 30).
+local MARGIN = 1.05
+local SMELTS_PER_LUMP = 8
+local INPUT_CATEGORIES = {stone = true, log = true, fuel = true}
 -- What it makes or sells, by conversion too (ledger.lua prices them at their inputs' cost,
 -- the seed of every villager's reference price for them).
 local GOODS = {
@@ -70,7 +85,7 @@ local GOODS = {
 local M = {BLOCK = BLOCK, PROFESSION = PROFESSION, FLAG = FLAG, OVERLAY = OVERLAY, GOODS = GOODS,
 	GLASS_KEEP = GLASS_KEEP, FLINT_KEEP = FLINT_KEEP, LOGS_PER_FLINT = LOGS_PER_FLINT, LOG_CAP = LOG_CAP,
 	STONE_WANT = STONE_WANT, GOLD_RESERVE = GOLD_RESERVE, FUEL_WANT = FUEL_WANT, RESERVE_DINNERS = RESERVE_DINNERS,
-	SPEND_DAYS = SPEND_DAYS, SALE_SHARE = SALE_SHARE}
+	SPEND_DAYS = SPEND_DAYS, MARGIN = MARGIN, NUGGET_KEEP = NUGGET_KEEP}
 
 -- For its ledger (possessions.assess), from what it holds (possessions.held): the
 -- categories it wants ({stone = n, log = n, fuel = burn seconds}). Stone and fuel always,
@@ -83,48 +98,153 @@ function M.targets(held)
 	return wanted
 end
 
--- What a category unit of each wanted category costs at base prices, for sharing out its
--- budget.
-local UNIT_PRICES = {
-	stone = function() return ledger.price("mcl_core:stone") end,
-	log = function() return ledger.price("mcl_core:tree") end,
-	fuel = function() return ledger.price(COAL) / goods.units("fuel", COAL) end,
-}
-
--- The members a recipe input takes: its category's, or itself.
-local function members(input)
-	local category = input[3] or goods.target_category(input[1])
-	return category and goods.CATEGORIES[category] or {[input[1]] = 1}
+-- What a unit of each input category costs at base prices, for sharing out its budget,
+-- and the good each is reckoned by.
+local BASE = {stone = "mcl_core:stone", log = "mcl_core:tree", fuel = COAL}
+local function base_unit(category)
+	return ledger.price(BASE[category]) / goods.units(category, BASE[category])
 end
 
--- Its least value for each input ({item = emeralds}, ticket 28): `wanted` its categories
--- (M.targets), `emeralds` what it holds, `scale` its dinner scale (dinner.scale), `sold_at`
--- what it last sold each good for ({item = emeralds each}, asks.sold).
-function M.floors(wanted, emeralds, scale, sold_at)
-	local floors = {}
-	local function lift(item, value)
-		if value > (floors[item] or 0) then floors[item] = value end
+-- What it paid on average for a unit of the category (ticket 30): its book, else its
+-- reference price for the category's base good.
+function M.unit_cost(self, category)
+	local book = self._villages_input_cost
+	if book and book[category] then return book[category] end
+	local base = BASE[category]
+	local price = prices.price(self._villages_prices, base) or ledger.price(base)
+	return price / goods.units(category, base)
+end
+
+-- Its book learns a purchase of `count` `item` for `paid` emeralds; `held` what it holds
+-- now (possessions.held), the purchase in it.
+function M.bought(self, held, item, count, paid)
+	if not self[FLAG] or not paid or count <= 0 then return end
+	for category in pairs(INPUT_CATEGORIES) do
+		local units = goods.CATEGORIES[category][item]
+		if units then
+			local before = -count * units
+			for member, per in pairs(goods.CATEGORIES[category]) do before = before + (held[member] or 0) * per end
+			before = math.max(before, 0)
+			local cost = M.unit_cost(self, category)
+			self._villages_input_cost = self._villages_input_cost or {}
+			self._villages_input_cost[category] = (before * cost + paid) / (before + count * units)
+		end
 	end
-	-- Its budget (28a), shared by base price over the day's wants.
-	local budget = math.max((emeralds or 0) - RESERVE_DINNERS * ledger.DINNER * (scale or 1), 0) / SPEND_DAYS
-	local total = 0
-	for category, amount in pairs(wanted or {}) do
-		if UNIT_PRICES[category] then total = total + amount * UNIT_PRICES[category]() end
+end
+
+-- The input category a recipe input is reckoned in, and its units.
+local function input_category(input)
+	local category = input[3] or goods.target_category(input[1])
+	if category and INPUT_CATEGORIES[category] then return category, goods.units(category, input[1]) end
+	return nil
+end
+
+-- What one of the recipe's goods costs it at its book: inputs and fuel.
+function M.cost(self, recipe)
+	local cost = 0
+	for _, input in ipairs(recipe.from) do
+		local category, units = input_category(input)
+		if category then cost = cost + input[2] * units * M.unit_cost(self, category) end
 	end
-	if budget > 0 and total > 0 then
-		for category, amount in pairs(wanted) do
-			if UNIT_PRICES[category] and amount > 0 then
-				local per = budget * UNIT_PRICES[category]() / total
-				for item, units in pairs(goods.CATEGORIES[category]) do lift(item, per * units) end
+	if recipe.fuel then
+		cost = cost + recipe.fuel / SMELTS_PER_LUMP * goods.units("fuel", COAL) * M.unit_cost(self, "fuel")
+	end
+	return cost / recipe.count
+end
+
+local by_makes = {}
+for _, recipe in ipairs(recipes.alchemist) do by_makes[recipe.makes] = recipe end
+
+-- Its stock's cost learns a craft: `before` how many it held before, `cost` each.
+function M.made(self, item, count, before)
+	local recipe = by_makes[item]
+	if not self[FLAG] or not recipe then return end
+	local cost = M.cost(self, recipe)
+	local old = M.stock_cost(self, item)
+	before = math.max(before or 0, 0)
+	self._villages_made_cost = self._villages_made_cost or {}
+	self._villages_made_cost[item] = (before * old + count * cost) / (before + count)
+end
+
+-- What it reckons one of a good it holds cost it: the average it was made at, a product
+-- made on sale its sources' over the ratio (goods.lua). A good with no entry yet (stock
+-- from before the book) is entered at its reference price then, once: a seed that kept
+-- following the reference would rise with every sale at its margin, and never let its
+-- ask fall.
+function M.stock_cost(self, item)
+	local book = self._villages_made_cost
+	if book and book[item] then return book[item] end
+	for _, conversion in ipairs(goods.CONVERSIONS.alchemist) do
+		if conversion.to == item then return M.stock_cost(self, conversion.from) / conversion.ratio end
+	end
+	local seed = prices.price(self._villages_prices, item) or ledger.price(item) or 0
+	if self[FLAG] and by_makes[item] then
+		self._villages_made_cost = book or {}
+		self._villages_made_cost[item] = seed
+	end
+	return seed
+end
+
+-- The least it asks for one of its goods (asks.ask): its cost times MARGIN, nil for any
+-- other item.
+function M.ask_floor(self, item)
+	if not self[FLAG] or not GOODS[item] then return nil end
+	return M.stock_cost(self, item) * MARGIN
+end
+
+-- The most an input is worth to it ({item = emeralds}, ticket 30): for each recipe it
+-- would still make (`held` under its `upto`), what the good sells for over its cost at the
+-- book scales the book's unit costs; the best recipe's sets each category's cap, and a
+-- member's is that times its units. A category no such recipe takes is capped at 0: at
+-- its stops it buys nothing over its budget's floors, however rich.
+function M.caps(self, held)
+	local per_unit = {}
+	for category in pairs(INPUT_CATEGORIES) do per_unit[category] = 0 end
+	local sold_at = self._villages_sold_at or {}
+	for _, recipe in ipairs(recipes.alchemist) do
+		if not recipe.upto or (held[recipe.makes] or 0) < recipe.upto then
+			local sale = sold_at[recipe.makes] or prices.price(self._villages_prices, recipe.makes)
+				or ledger.price(recipe.makes)
+			local cost = M.cost(self, recipe)
+			if sale and cost > 0 then
+				local scale = sale / cost
+				local used = {}
+				for _, input in ipairs(recipe.from) do
+					local category = input_category(input)
+					if category then used[category] = true end
+				end
+				if recipe.fuel then used.fuel = true end
+				for category in pairs(used) do
+					per_unit[category] = math.max(per_unit[category] or 0, M.unit_cost(self, category) * scale)
+				end
 			end
 		end
 	end
-	-- Its takings (28b): a share of what the good made from an input last sold for.
-	for _, recipe in ipairs(recipes.alchemist) do
-		local sold = sold_at and sold_at[recipe.makes]
-		if sold and sold > 0 then
-			for _, input in ipairs(recipe.from) do
-				for item in pairs(members(input)) do lift(item, SALE_SHARE * sold * recipe.count / input[2]) end
+	local caps = {}
+	for category, per in pairs(per_unit) do
+		for item, units in pairs(goods.CATEGORIES[category]) do caps[item] = math.max(caps[item] or 0, per * units) end
+	end
+	return caps
+end
+
+-- Its least value for each input ({item = emeralds}, ticket 28a): `wanted` its categories
+-- (M.targets), `emeralds` what it holds, `scale` its dinner scale (dinner.scale). Its
+-- budget, shared by base price over the day's wants. Above its caps too (ticket 30): it
+-- turns its savings into a day's stock of inputs, which its targets bound, and what it
+-- pays goes into its book, so its goods' asks cover it.
+function M.floors(wanted, emeralds, scale)
+	local floors = {}
+	local budget = math.max((emeralds or 0) - RESERVE_DINNERS * ledger.DINNER * (scale or 1), 0) / SPEND_DAYS
+	local total = 0
+	for category, amount in pairs(wanted or {}) do
+		if BASE[category] then total = total + amount * base_unit(category) end
+	end
+	if budget <= 0 or total <= 0 then return floors end
+	for category, amount in pairs(wanted) do
+		if BASE[category] and amount > 0 then
+			local per = budget * base_unit(category) / total
+			for item, units in pairs(goods.CATEGORIES[category]) do
+				if per * units > (floors[item] or 0) then floors[item] = per * units end
 			end
 		end
 	end

@@ -3302,6 +3302,54 @@ makes to sell is priced as before.
   prices of the pick, cauldron and clock; the cleric wants gold;
   the tool smith wants ingots); `tests/need_bubble.lua`, `tests/production.lua`.
 
+### 30. The alchemist breaks even
+
+- **Problem.** On ticket 28 (ColonyFood, days 820-826) the alchemist paid 0.18 for cobble,
+  1.0 for charcoal and up to 1.75 for logs, so a nugget cost it 1.22 and it sold one for
+  1.0; flint, about 6.5's worth, sold for 2.25. It asked 0.95 for a nugget while it
+  believed one worth 0.24: a seller never asked under its own value, and the money factor
+  of its 2,600 emeralds raised that fourfold; its bids for inputs were raised alike (stone
+  at 1.33). Its takings floor (28b) never acted: its only sale was at its stash, and a
+  stash sale reached neither its ask nor its record. It made 9 nuggets and 13 flint in 7
+  days, short of fuel, buying sticks at 4.4 a lump's worth.
+- **Its book.** It keeps the average it paid for a unit of stone, log and fuel (a burn
+  second) over what it holds (`_villages_input_cost`, `alchemist.bought`, from
+  exchange.settle, a stash purchase and the trade window); a recipe's cost is its inputs
+  and fuel at those (`alchemist.cost`), and its stock of each good is at the average cost
+  it was made at (`_villages_made_cost`, `alchemist.made`, from production.make). Stock
+  from before the book is entered at its reference price once, then kept: a seed that
+  followed the reference would rise with every sale at the margin.
+- **30a. Asks at cost.** An alchemist asks for its goods no less than their stock cost
+  times MARGIN (1.05), an ingot nine nuggets', and no longer its own value (asks.ask), so
+  its wealth is in none of its prices.
+- **30b. Bids at what its goods pay.** For each recipe it would still make (under its
+  `upto`), its good's sale price (`_villages_sold_at`, else its reference price) over its
+  cost at the book scales the book's unit costs; the best recipe's is each category's
+  cap (`alchemist.caps`), applied after the money factor and `least` (ledger.assess's new
+  `ceiling`). At its caps a craft costs what its good sells for. A stick is capped at a
+  lump's burn second (5 of 80), so a dear stick is passed over. At its stops every cap
+  is 0. 28b's half-share floor is gone: the cap is the whole share.
+- **Its budget (28a) buys stock ahead.** The budget's floors stand above the caps (the
+  ceiling is the greater): it turns its savings into a day's stock of inputs, which its
+  targets bound, and what it pays goes into its book, so its asks cover it. Its hoard
+  drains into stock that sells at cost, never into losses.
+- **30c. Stops and output.** Nuggets stop at NUGGET_KEEP (192), and the gold reserve falls
+  from 108 to 24, so a gold ingot's 162 still fits under the stop. A day makes twice what
+  it did: 72 glass, 12 flint or 36 nuggets (`share` halved); a day's wants double to 144
+  stone, 16 lumps' worth of fuel and up to 48 logs.
+- **Stash sales count.** A purchase from a stash whose owner is loaded is counted as its
+  sale (asks.sold, for the product and its sources): its ask and reference learn it, and
+  an alchemist keeps the price.
+- **Tests:** `tests/alchemist_trade.lua` (pace and a day's wants at twice; nugget stop and
+  room for gold; asks at cost and margin, entered once, not raised by a dearer reference
+  or its wealth; the budget's floors; the book's averages, a nugget's cost and stock
+  cost, an ingot at nine, none for a plain villager, a settled trade booked; caps break
+  even, logs only as fuel at flint's stop, sticks at a lump's burn second, 0 at its stops
+  so a rich one bids only its budget floor and a broke one nothing; the bid between its
+  floor and caps); `tests/trade_trips.lua` (a stash sale reaches its loaded owner's asks
+  and record, per ingot and per nugget); `tests/trade_window.lua` (an ingot at its cost and
+  margin; gold past 24).
+
 ## Open questions
 
 - Price discovery (ticket 21):
