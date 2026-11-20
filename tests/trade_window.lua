@@ -377,8 +377,9 @@ do
 	handlers.fields(player, window.FORMNAME, {tab = "2"})
 	assert(shown[#shown].spec:find("needs a friend (30)", 1, true))
 	handlers.fields(player, window.FORMNAME, {quit = "true"})
-	-- A farmer has no Special tab.
-	def.on_rightclick(villager, player)
+	-- A fisherman has no Special tab (yet).
+	local fisher = {_id = "fish-1", _profession = "fisherman", _villages_belongings = {}, object = villager.object}
+	def.on_rightclick(fisher, player)
 	assert(not shown[#shown].spec:find("tabheader[", 1, true))
 	handlers.fields(player, window.FORMNAME, {quit = "true"})
 	rep = 0
@@ -458,6 +459,39 @@ do
 	pouch[BOTTLE] = 9
 	local friend = premium.rows("cleric", 5, 35, pouch, 18, function() return 0 end, 0)
 	assert(find(friend, "ender_pearl").stock == 2 and find(friend, "experience_bottle").locked)
+	handlers.fields(player, window.FORMNAME, {quit = "true"})
+	minetest.get_day_count = nil
+	rep = 0
+end
+-- The farmer (ticket 37c): golden carrots from 6 wheat or 8 potatoes, sharing a cap a day.
+do
+	local WHEAT, POTATO = "mcl_farming:wheat_item", "mcl_farming:potato_item"
+	local day = 20
+	minetest.get_day_count = function() return day end
+	local barn = {[EMERALD] = 0, [WHEAT] = 12, [POTATO] = 40}
+	local grower = {_id = "farm-2", _profession = "farmer", _max_trade_tier = 4, _villages_belongings = barn,
+		object = villager.object}
+	view = {surplus = {}, needs = {}, value = function(item) return values[item] end}
+	player_inv.contents[EMERALD] = 5000
+	rep = 40
+	def.on_rightclick(grower, player)
+	handlers.fields(player, window.FORMNAME, {tab = "2"})
+	assert(shown[#shown].spec:find("Golden carrot (6 wheat)", 1, true))
+	local rows_now = premium.rows("farmer", 4, 40, barn, 18, function(item) return prices.price(nil, item) end,
+		window.rep_share(40))
+	local wheat_at, potato_at
+	for i, entry in ipairs(rows_now) do
+		if entry.offer.base == WHEAT then wheat_at = i else potato_at = i end
+	end
+	assert(rows_now[wheat_at].stock == 2 and rows_now[potato_at].stock == 4, "12 wheat make 2; a friend's cap of 4")
+	handlers.fields(player, window.FORMNAME, {["premium_all_" .. wheat_at] = true})
+	assert(player_inv.contents.golden_carrot_wheat_item == 2 and barn[WHEAT] == 0)
+	assert(barn[EMERALD] == 2 * rows_now[wheat_at].price)
+	-- Two left of the shared cap, from potatoes.
+	handlers.fields(player, window.FORMNAME, {["premium_all_" .. potato_at] = true})
+	assert(player_inv.contents.golden_carrot_potato_item == 2 and barn[POTATO] == 40 - 16)
+	handlers.fields(player, window.FORMNAME, {["premium_buy_" .. potato_at] = true})
+	assert(player_inv.contents.golden_carrot_potato_item == 2 and chats[#chats]:find("all it will today", 1, true))
 	handlers.fields(player, window.FORMNAME, {quit = "true"})
 	minetest.get_day_count = nil
 	rep = 0

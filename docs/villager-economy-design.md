@@ -3566,9 +3566,18 @@ The lines, by sub-ticket (one PR each, against `main`):
     `tests/exchange.lua` (the cost floor: averaged, an emerald over at the least, past a fallen
     flesh ask and a friend's standing, no sale to a buyer below it); `tests/economy_report.lua`
     and `tests/builder_bench_menu.lua` (the money flows).
-- **37c. The farmer.** Golden carrots, 3 dinners each, each from 6 wheat or 8 potatoes (keeps
-  24): 4 a day per player at level 4, 16 at level 5. At a dinner of 18 one is about 7 loaves,
-  vanilla's ratio.
+- **37c. The farmer (done).** Golden carrots, 3 dinners each plus the base: two offers, one
+  from 6 wheat and one from 8 potatoes (about two loaves' worth of food either way), sharing
+  one cap a day per player, 4 at level 4 and 16 at level 5 (`bases` and `cap` in
+  `premium.lua`). At a dinner of 18 one is about 73 emeralds, about seven loaves: vanilla's
+  ratio is six. From journeyman up it keeps 24 wheat and 24 potatoes (`keeps`) in its
+  belongings, where premium sales take them from: at its chest wheat goes there past its
+  8 for sale and potatoes past their 16 (`farmer.lua`'s `kept`), the keeper's reserve of
+  meals still left in the chest. A kept good is a target, so it is never spare, and below it
+  the farmer will buy some, as the librarian buys books.
+  - **Tests:** `tests/premium.lua` (two offers, the shared cap, prices from each base, the
+    keeps); `tests/trade_window.lua` (carrots from wheat, then potatoes up to the shared cap);
+    `tests/farmer.lua` (24 wheat and 24 potatoes more in its belongings at journeyman).
 - **37d. Smiths and the armorer.** They buy diamonds from players, keeping up to 8. The tool
   smith sells an iron pick with Efficiency III and Unbreaking I (level 3), a diamond axe or
   shovel with Efficiency IV and Unbreaking II (4), a diamond pick with Efficiency V and

@@ -453,6 +453,19 @@ step()
 assert(farmer._villages_belongings and farmer._villages_belongings["mcl_farming:wheat_item"] == 8)
 assert(pouch("mcl_farming:wheat_item") == 3)
 assert(world.meta({x = 2, y = 2, z = 0}).inv:get_stack("main", 1):to_string() == "mcl_farming:wheat_item 19")
+-- A journeyman keeps 24 wheat more there for its golden carrots (ticket 37c).
+setup({_max_trade_tier = 3, _villages_farm_pouch = {["mcl_bone_meal:bone_meal"] = 4, ["mcl_farming:bread"] = 12,
+	["mcl_farming:wheat_item"] = 40}})
+support.chest(world, {x = 2, y = 2, z = 0})
+step()
+assert(farmer._villages_belongings["mcl_farming:wheat_item"] == 8 + 24, farmer._villages_belongings["mcl_farming:wheat_item"])
+assert(pouch("mcl_farming:wheat_item") == 3)
+-- And 24 potatoes past the 16 it takes from its chest to sell, the keeper's reserve left.
+setup({_max_trade_tier = 3, _villages_farm_pouch = {["mcl_farming:wheat_item"] = 30}})
+local tater_chest = support.chest(world, {x = 2, y = 2, z = 0}, nil, {"mcl_farming:potato_item 64"})
+step()
+assert(farmer._villages_belongings["mcl_farming:potato_item"] == 16 + 24, farmer._villages_belongings["mcl_farming:potato_item"])
+assert(tater_chest:get_stack("main", 1):get_count() == 64 - 40)
 -- Bone meal over its keep of four too, up to eight, to sell as white dye (19h).
 setup({_villages_farm_pouch = {["mcl_bone_meal:bone_meal"] = 14}})
 local meal_chest = support.chest(world, {x = 2, y = 2, z = 0})

@@ -24,6 +24,8 @@
 -- * Consumables (`goods`, ticket 37b: the cleric's ender pearls and bottles o' enchanting)
 --   are one offer from their level up, at a fixed P, with a cap a day per player per
 --   villager by the level unlocked (`caps`): more at a higher level is how they scale.
+--   A good with several bases (`bases`, ticket 37c: the farmer's golden carrot from wheat
+--   or potatoes) is an offer for each, named for it, sharing one cap (`cap`).
 --
 -- Premium goods never enter villager trade, market news or asks: they exist only once a
 -- player buys one.
@@ -32,6 +34,7 @@ local M = {}
 local BOOK = "mcl_books:book"
 local ENCHANTED_BOOK = "mcl_enchanting:book_enchanted"
 local BOTTLE = "mcl_potions:glass_bottle"
+local WHEAT, POTATO = "mcl_farming:wheat_item", "mcl_farming:potato_item"
 
 M.MIN_LEVEL, M.MAX_LEVEL = 3, 5
 M.SCALE = 1
@@ -59,7 +62,9 @@ M.ENCHANTS = {
 
 -- Each profession's premium line: its base good (`item`, how many it keeps, how many a
 -- sale takes) and what it makes. `books` are enchantment lines sold as enchanted books;
--- `goods` are consumables {id, makes, level, dinners, caps = {[level] = a day}}.
+-- `goods` are consumables {id, makes, level, dinners, caps = {[level] = a day}}, a good's
+-- own `bases` ({item, count, label}) in place of the line's base. `keeps` ({item = count})
+-- stands for the line's base where it keeps more than one.
 M.LINES = {
 	librarian = {
 		base = {item = BOOK, keep = 4, count = 1},
@@ -73,6 +78,16 @@ M.LINES = {
 				caps = {[4] = 2, [5] = 8}},
 			{id = "experience_bottle", makes = "mcl_experience:bottle", label = "Bottle o' enchanting", level = 5,
 				dinners = 2, caps = {[5] = 16}},
+		},
+	},
+	-- Ticket 37c: from 6 wheat or 8 potatoes, about two loaves' worth of food each, so one
+	-- comes to about seven loaves at their prices (vanilla's six). It keeps 24 of each.
+	farmer = {
+		keeps = {[WHEAT] = 24, [POTATO] = 24},
+		goods = {
+			{id = "golden_carrot", makes = "mcl_farming:carrot_item_gold", label = "Golden carrot", level = 4,
+				dinners = 3, caps = {[4] = 4, [5] = 16},
+				bases = {{item = WHEAT, count = 6, label = "6 wheat"}, {item = POTATO, count = 8, label = "8 potatoes"}}},
 		},
 	},
 }
@@ -121,8 +136,14 @@ function M.offers(profession)
 	if not line then return {} end
 	local list = {}
 	for _, good in ipairs(line.goods or {}) do
-		list[#list + 1] = {id = good.id, makes = good.makes, from = good.makes, level = good.level,
-			dinners = good.dinners, label = good.label, caps = good.caps, base = line.base.item, count = line.base.count}
+		local bases = good.bases or {{item = line.base.item, count = line.base.count}}
+		for _, base in ipairs(bases) do
+			local several = #bases > 1
+			list[#list + 1] = {id = several and (good.id .. "_" .. base.item:gsub("^.*:", "")) or good.id,
+				cap = good.id, makes = good.makes, from = good.makes, level = good.level, dinners = good.dinners,
+				label = several and string.format("%s (%s)", good.label, base.label) or good.label, caps = good.caps,
+				base = base.item, count = base.count}
+		end
 	end
 	for level = M.MAX_LEVEL, M.MIN_LEVEL, -1 do
 		for _, enchant in ipairs(line.books or {}) do
@@ -172,6 +193,11 @@ end
 function M.keeps(villager)
 	local line = M.line(villager)
 	if not line or (villager._max_trade_tier or 1) < M.MIN_LEVEL then return nil end
+	if line.keeps then
+		local keeps = {}
+		for item, count in pairs(line.keeps) do keeps[item] = count end
+		return keeps
+	end
 	return {[line.base.item] = line.base.keep}
 end
 
@@ -204,7 +230,7 @@ function M.rows(profession, tier, rep, held, dinner, value, share, sold)
 	local level = M.level(tier, rep)
 	for _, offer in ipairs(M.offers(profession)) do
 		local stock = math.floor((held[offer.base] or 0) / offer.count)
-		local left = M.left(offer, level, sold and sold[offer.id])
+		local left = M.left(offer, level, sold and sold[offer.cap or offer.id])
 		rows[#rows + 1] = {offer = offer, price = M.price(offer, dinner, value(offer.base), share),
 			stock = left and math.min(stock, left) or stock, left = left, locked = M.locked(offer.level, tier, rep)}
 	end

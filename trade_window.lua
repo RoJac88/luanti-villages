@@ -692,7 +692,7 @@ function M.install(def, deps)
 		possessions.add(villager, EMERALD, pay)
 		inv:add_item("main", stack)
 		local day = core.get_day_count and core.get_day_count() or 0
-		premium.note_sold(villager, name, offer.id, count, day)
+		premium.note_sold(villager, name, offer.cap or offer.id, count, day)
 		tally.note(villager, nil, {[offer.base] = need}, day)
 		tally.money(villager, "premium_in", pay, day)
 		if gossip then gossip.add(villager, name, "trading") end
