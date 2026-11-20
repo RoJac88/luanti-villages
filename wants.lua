@@ -57,6 +57,19 @@ M.GOODS = {
 			{item = "mcl_tools:axe_iron", uses = 64, rate = 2},
 			{item = "mcl_tools:axe_stone", uses = 32, rate = 1.5},
 		}},
+	-- The leatherworker's axe (ticket 31): a better one takes more leather from each cow it
+	-- slaughters (herd.lua), the yield times its rate, scaled as the pick is. A slaughter is
+	-- one use, fewer a day than fellings, so it lasts fewer: an iron one still pays twice its
+	-- price in leather.
+	-- Its own key: a leatherworker labouring as a woodcutter on an idle day holds both.
+	{key = "cleaver", item = "mcl_tools:axe_iron", starter = "mcl_tools:axe_stone", professions = {leatherworker = true},
+		use = "slaughter", uses = 32, rate = 4, yields = {["mcl_mobitems:leather"] = 2}, effect = "yield",
+		tiers = {
+			{item = "mcl_tools:axe_diamond", uses = 128, rate = 5},
+			{item = "mcl_tools:axe_gold", uses = 12, rate = 5},
+			{item = "mcl_tools:axe_iron", uses = 32, rate = 4},
+			{item = "mcl_tools:axe_stone", uses = 16, rate = 3},
+		}},
 	-- Mining by hand is slow (labour.lua's MINE_SECONDS), so a pick pays (ticket 19d): a
 	-- stone one about keeps up with a generator. The pick hastens the generator too
 	-- (labour.lua refills a mined cell REGEN_SECONDS over its rate), so a better one both
@@ -154,7 +167,8 @@ function M.targets(self, now)
 		local uses = current and (M.tier(good, current.item) or good).uses or good.uses
 		if not current or current.left <= uses * M.NEARLY_WORN then targets[good.item] = 1 end
 		if good.starter and not current then targets[good.starter] = 1 end
-		for _, tier in ipairs(M.tiers(good)) do worth[tier.item] = M.worth(good, tier) end
+		-- Two goods may share an item (the woodcutter's axe and the leatherworker's): the better worth.
+		for _, tier in ipairs(M.tiers(good)) do worth[tier.item] = math.max(worth[tier.item] or 0, M.worth(good, tier)) end
 	end
 	if reads(self) then
 		local book = self._villages_wants and self._villages_wants.book

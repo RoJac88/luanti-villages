@@ -64,7 +64,7 @@ local PLAN_SHARE = 0.5
 local OWNER, OWNER_BED = "villages_owner", "villages_owner_bed"
 local EMERALD = "mcl_core:emerald"
 -- herd.lua's HERD_WHEAT, held by a leatherworker for breeding (ticket 11e).
-local HERD_WHEAT_ITEM, HERD_WHEAT = "mcl_farming:wheat_item", 4
+local HERD_WHEAT_ITEM, HERD_WHEAT = "mcl_farming:wheat_item", 8
 -- coop.lua's COOP_SEEDS, held by a butcher for breeding its chickens (ticket 24).
 local COOP_SEEDS_ITEM, COOP_SEEDS = "mcl_farming:wheat_seeds", 4
 -- market_stall.lua's banner and BANNER_DAYS (ticket 12): a stall keeper wants a banner.
