@@ -811,7 +811,7 @@ questions).
 | A villager's dinner (`meal.lua`), the keeper's dinner credit | 1 | 18 (`ledger.DINNER`, set after 11h) |
 | A player's tavern meal (`living_villages_player_meal_price`) | 1 | 18 |
 | Purses: the keeper's, the Builder's, a porter's | 8 | 512 |
-| The keeper's tab cap; a porter's fee | 8; 1 | 512; 64 |
+| The keeper's tab cap (ticket 27: a fraction, unscaled); a porter's fee | 1; 1 | 1; 64 |
 | The Builder's sales to players (`builder_materials.SALES`) | 1 to 16 | 64 to 1024 |
 | Player trades (below) | vanilla | emeralds times 64 |
 
@@ -3155,6 +3155,39 @@ makes to sell is priced as before.
   carried; a full chest; a peddler keeps its stock; 3 slots left free);
   `tests/trade_trips.lua` (a full delivery chest: handed over in person, the change too,
   kept with the client away).
+
+### 27. The tavern pays its way
+
+- **Problem.** The keeper's tab was meant for fractions: what a purse cannot pay in whole
+  emeralds. It took the food whatever it could pay, and owed the rest up to a cap that
+  grew with the tavern (22c). By ColonyFood day 809 (2026-11-20) it owed the two farm
+  chests 987 and 959, about 1,950 of the village's 8,200, and the debt rose about 15 a
+  day. It fetched about 28 meals a day at a food cost of about 1.2 each and took in 17 to
+  20 from dinners: dinner posted 1 (1.2 × factor 0.97, rounded), a third of the food fed
+  diners who pay nothing (the keeper's household, two clerics, seconds), and one of
+  those clerics held 2,700 emeralds. Meanwhile bread traded at 8.5 and potatoes at 1.7 in
+  the street, and the farm chests held 483 potatoes: food was plentiful, money short,
+  and the tab hid the gap from the price.
+- **Rule: only what it pays for** (`keeper_supply.fetch`). It takes, item by item, only
+  as much food as its purse pays for at the food cost; the fraction left it owes, up to
+  TAB_CAP (1). A tab over that, from before, is written off when it next fetches there
+  (`write_off`, logged): money the farms never held.
+- **Its float as working capital** (`take_purse`). Short in the pantry, its purse tops up
+  from its own emeralds (the float, refilled from the pantry on shift), so a pantry that
+  has run out of money still buys the food the next dinners pay for.
+- **The price follows the food** (`dinner.dear`). When dinner money did not pay for the
+  food (it went without some the pantry lacked, or paid from its float) the dinner factor
+  goes up MARKUP the next day, as when it runs out, and the log says so ("food dearer than
+  dinners pay"). At about 1.2 a meal the price should move between 1 and 2.
+- **A rich cleric pays** (`meal.lua`). The cleric eats free only with no more than 8
+  dinners' savings at its own price for one (alms.lua's SAVINGS); over that it pays and
+  always dines, never weighing the price, since a cleric that weighed it starved (ticket
+  24). The keeper's household still eats free.
+- **Tests:** `tests/keeper_supply.lua` (a fraction owed and paid first; a purse of 40
+  takes the 20 potatoes it pays for and raises the next day's dinner; with no dinner money
+  its float pays, and that raises it too; an old tab of 987.39 written off and nothing
+  taken from the purse for it; the cap stays 1); `tests/meal.lua` (a cleric with 3,000
+  pays into the pantry).
 
 ## Open questions
 
