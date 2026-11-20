@@ -320,6 +320,21 @@ do
 	k._villages_dish_wants = nil
 	assert(not possessions.assess(k).needs[CHICKEN])
 end
+-- A librarian's books for its premium trades (ticket 37): kept from journeyman up, so
+-- they are a need below 4 and never spare up to that.
+do
+	local BOOK = "mcl_books:book"
+	local lib = {_id = "lib", _profession = "librarian", _max_trade_tier = 3, _villages_food = 8,
+		_villages_belongings = {[BOOK] = 1}}
+	local v = possessions.assess(lib)
+	assert((v.needs[BOOK] or 0) >= 3, tostring(v.needs[BOOK]))
+	lib._villages_belongings[BOOK] = 4
+	assert(not (possessions.assess(lib).surplus or {})[BOOK], "its four books are not for sale")
+	-- Four more than an apprentice wants (it wants books for its bookshelves too).
+	local journeyman = possessions.assess(lib).targets[BOOK]
+	lib._max_trade_tier = 2
+	assert(possessions.assess(lib).targets[BOOK] == journeyman - 4)
+end
 kim._villages_food = 1
 stage = "home"
 -- Its stash, only within reach.

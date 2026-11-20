@@ -78,6 +78,7 @@ local SMELT_SECONDS = 10
 local COAL, CHARCOAL = ledger.COAL, "mcl_core:charcoal_lump"
 local goods = dofile(core.get_modpath("living_villages") .. "/goods.lua")
 local alchemist = dofile(core.get_modpath("living_villages") .. "/alchemist.lua")
+local premium = dofile(core.get_modpath("living_villages") .. "/premium.lua")
 -- Most crafts in one step, should a long gap have banked many.
 local MAX_PER_STEP = 4
 local DEFAULT_TIER_SUPPLY_DAYS = 3
@@ -226,6 +227,14 @@ function M.choose(self, held, view, asks, list)
 	end
 	-- A good it wants for itself counts at its own value (ticket 26d).
 	local price_of = possessions.lifted(possessions.prices_of(self), view.own_use)
+	-- The base good of its premium trades (premium.keeps, ticket 37) is no craft's input:
+	-- a librarian's bookshelves leave its four books for the enchanted ones.
+	local usable = held
+	local keeps = premium.keeps(self)
+	if keeps then
+		usable = setmetatable({}, {__index = held})
+		for item, count in pairs(keeps) do usable[item] = math.max((held[item] or 0) - count, 0) end
+	end
 	-- A ranked list (the alchemist's) stops at each recipe's `upto` and breaks ties by rank.
 	local ranked = list[1] and list[1].rank
 	local best, best_rate
@@ -240,7 +249,7 @@ function M.choose(self, held, view, asks, list)
 			local wanted = target > 0 or (asks[recipe.makes] or 0) > 0 or (view.needs[recipe.makes] or 0) > 0
 			stocked = stock_held >= (wanted and target + STOCK or UNASKED_STOCK)
 		end
-		if not stocked and M.can_make(self, recipe, held) then
+		if not stocked and M.can_make(self, recipe, usable) then
 			local gain = M.gain(recipe, price_of, asks)
 			-- A craft seeded at its inputs' cost pays 0, give or take rounding. A ranked list's
 			-- (the alchemist's) is made at a loss too, by rank after any that pays: it works
