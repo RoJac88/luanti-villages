@@ -10,6 +10,7 @@ local wants = dofile("wants.lua")
 local ledger = dofile("ledger.lua")
 
 local HOE, AXE, PICK = "mcl_farming:hoe_stone", "mcl_tools:axe_stone", "mcl_tools:pick_stone"
+local IRON_PICK = "mcl_tools:pick_iron"
 
 local function villager(extra)
 	local v = {_id = "abcdef123", _profession = "unemployed"}
@@ -45,8 +46,22 @@ do
 	assert(worth[HOE] == 64 * 2 * ledger.price("mcl_farming:wheat_item") * 0.5, worth[HOE])
 	targets = wants.targets(villager({_villages_labour = {day = 3, activity = "woodcutter"}}))
 	assert(targets[AXE] == 1 and not targets[HOE])
-	targets = wants.targets(villager({_villages_labour = {day = 3, activity = "quarrier"}}))
-	assert(targets[PICK] == 1)
+	-- A quarrier asks for an iron pick, and a stone one while it has none (ticket 29).
+	local quarrier = villager({_villages_labour = {day = 3, activity = "quarrier"}})
+	targets, worth = wants.targets(quarrier)
+	assert(targets[IRON_PICK] == 1 and targets[PICK] == 1)
+	assert(worth[IRON_PICK] == 128 * ledger.price("mcl_core:cobble") * 3, worth[IRON_PICK])
+	assert(worth[IRON_PICK] > ledger.price(IRON_PICK), "an iron pick pays at base prices")
+	local held = {[PICK] = 1}
+	assert(wants.use(quarrier, "mine", take_from(held), 0) == 3, "takes up the stone one")
+	targets = wants.targets(quarrier)
+	assert(not targets[IRON_PICK] and not targets[PICK], "a fresh stone pick: no need")
+	quarrier._villages_wants.pickaxe.left = 8
+	targets = wants.targets(quarrier)
+	assert(targets[IRON_PICK] == 1 and not targets[PICK], "nearly worn: the iron one only")
+	held[IRON_PICK], held[PICK] = 1, 1
+	quarrier._villages_wants = nil
+	assert(wants.use(quarrier, "mine", take_from(held), 1) == 4 and held[IRON_PICK] == 0, "the best it holds")
 	-- An alchemist (ticket 20) wants nothing that wears out, not even a book.
 	targets = wants.targets(villager({_profession = "cleric", _villages_alchemist = true}))
 	assert(next(targets) == nil)

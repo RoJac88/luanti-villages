@@ -46,6 +46,8 @@ return {
 		-- Its own sticks, from a woodcutter's logs (ticket 11d): no villager sells sticks.
 		{makes = STICK, count = 4, tier = 1, from = {{"mcl_core:wood", 2}}},
 		{makes = "mcl_core:wood", count = 4, tier = 1, from = {{"mcl_core:tree", 1}}},
+		-- What a quarrier asks for (wants.lua, ticket 29), from the alchemist's ingots.
+		{makes = "mcl_tools:pick_iron", count = 1, tier = 1, from = {{IRON, 3}, {STICK, 2}}, fuel = 3},
 	},
 	weapon_smith = {
 		{makes = "mcl_tools:axe_iron", count = 1, tier = 1, from = {{IRON, 3}, {STICK, 2}}, fuel = 3},
@@ -55,6 +57,8 @@ return {
 		{makes = "mcl_armor:chestplate_iron", count = 1, tier = 1, from = {{IRON, 8}}, fuel = 8},
 		{makes = "mcl_armor:leggings_iron", count = 1, tier = 1, from = {{IRON, 7}}, fuel = 7},
 		{makes = "mcl_armor:boots_iron", count = 1, tier = 1, from = {{IRON, 4}}, fuel = 4},
+		-- A comfort (comforts.lua, ticket 29): its armour found no buyer.
+		{makes = "mcl_cauldrons:cauldron", count = 1, tier = 1, from = {{IRON, 7}}, fuel = 7},
 	},
 	butcher = {
 		{makes = "mcl_mobitems:cooked_porkchop", count = 1, tier = 2, from = {{"mcl_mobitems:porkchop", 1}}, fuel = 1},

@@ -64,7 +64,13 @@ for profession, list in pairs(recipes) do
 		end
 	end
 end
-assert(checked == 7, "the four iron pieces, the iron axe, arrows and the labourers' lantern: " .. checked)
+assert(checked == 9, "the four iron pieces, the iron axe and pick, the cauldron, arrows and the labourers' lantern: "
+	.. checked)
+-- Priced by their floor alone, as no trade table prices them (ticket 29).
+assert(near(ledger.price("mcl_tools:pick_iron"), ledger.COST_FLOOR * (3 * ledger.price("mcl_core:iron_ingot")
+	+ 2 * ledger.price("mcl_core:stick") + 3 / 8 * ledger.price("mcl_core:coal_lump"))))
+assert(near(ledger.price("mcl_cauldrons:cauldron"), ledger.COST_FLOOR * (7 * ledger.price("mcl_core:iron_ingot")
+	+ 7 / 8 * ledger.price("mcl_core:coal_lump"))))
 -- 724 and 439 before the alchemist's fuel (ticket 28c) went into an ingot's cost.
 assert(math.floor(ledger.price("mcl_armor:helmet_iron") + 0.5) == 856)
 assert(math.floor(ledger.price("mcl_tools:axe_iron") + 0.5) == 518)
@@ -76,8 +82,9 @@ local smith = ledger.inputs("tool_smith")
 assert(smith["mcl_core:coal_lump"] == 15 and smith["mcl_core:diamond"] == 1)
 assert(ledger.inputs("tool_smith", 1)["mcl_core:diamond"] == nil, "only up to its tier")
 -- A trade's want for iron, gold or flint counts only where the profession's recipes take it
--- (ticket 20): the tool smith's iron and flint, the cleric's gold and the leatherworker's flint go.
-assert(smith["mcl_core:iron_ingot"] == nil and smith["mcl_core:flint"] == nil)
+-- (ticket 20): the tool smith's flint, the cleric's gold and the leatherworker's flint go. The
+-- tool smith's iron stays, for its iron pick (ticket 29).
+assert(smith["mcl_core:iron_ingot"] and smith["mcl_core:flint"] == nil)
 assert(ledger.inputs("cleric")["mcl_core:gold_ingot"] == nil and ledger.inputs("cleric")["mcl_mobitems:rotten_flesh"])
 assert(ledger.inputs("leatherworker")["mcl_core:flint"] == nil)
 assert(ledger.inputs("weapon_smith")["mcl_core:iron_ingot"] and not ledger.inputs("weapon_smith")["mcl_core:flint"])
@@ -140,8 +147,11 @@ local plain = ledger.assess({id = "bo", profession = "mason", max_tier = 1, held
 assert(builder.needs["mcl_core:cobble"] == 40 + (plain.needs["mcl_core:cobble"] or 0))
 -- top: the largest worth first.
 local top = ledger.top(smithy.needs, smithy.value, 1)
--- Logs for its own sticks (ticket 11d) are the tool smith's dearest need, of any species.
-assert(#top == 1 and smithy.group[top[1].item] == "log", top[1].item)
+-- Ingots for its iron pick (ticket 29) are the tool smith's dearest need; then logs for its
+-- own sticks (ticket 11d), of any species.
+assert(#top == 1 and top[1].item == "mcl_core:iron_ingot", top[1].item)
+top = ledger.top(smithy.needs, smithy.value, 2)
+assert(smithy.group[top[2].item] == "log", top[2].item)
 assert(smithy.needs["mcl_core:tree"] == 4 and smithy.needs["mcl_core:birchtree"] == 4 and smithy.needs["mcl_core:wood"] == 12, "four wooden picks' planks")
 -- Birch logs fill a need for logs; logs it needs are no fuel to it.
 local birch = ledger.assess({id = "sam", profession = "tool_smith", max_tier = 1,

@@ -3235,6 +3235,45 @@ makes to sell is priced as before.
   alchemist's per-unit stone bid for cobble; bread is not bid-priced); `tests/ledger.lua`
   (fuel in the alchemist's goods, an ingot still nine nuggets, iron goods' new floors).
 
+### 29. A use for iron
+
+- **Problem.** The alchemist makes nuggets without end (28), but iron barely sold. In
+  ColonyFood (days 772-816) about 68 nuggets changed hands for 73 emeralds, 20 of them
+  the alchemist's; it held 217, asked about 0.2 each. Two reasons:
+  - **Ingot trips failed.** 20 trips set off for the alchemist's ingots (mostly the
+    armorer's, for 31-32), and all 20 failed. The news told an ingot at nine nuggets' ask
+    (16.37), but to its face trade_trips priced the ingot without the conversion, at an
+    ingot's own price ("asks 149.42 each, over our 138.79"), and its stash, holding only
+    nuggets, had "0" ingots.
+  - **Nobody needs iron goods.** No villager wants iron armour or tools; the lanterns
+    (8 nuggets) were the only outlet. The armorer had nothing to sell and 12 emeralds.
+- **29a. Ingots by conversion on trips.** A product told from a conversion carries its
+  sources (`from`, `ratio`, `takes`, `reserve`) in the news entry and the trip. To its
+  face the seller asks the lowest of its own stock's ask and each conversion's it has
+  the sources for (trade_trips' `in_person_ask`), as exchange.offer sells. A stash
+  holding none of the product sells whole batches of its sources, at the told price.
+- **29b. Quarriers want iron picks.** The pickaxe good asks for an iron pick (128 uses,
+  rate 4; worth 983 at base prices, against its 518) and, while it has no pick in use at
+  all, a stone one too (`starter`), so it never waits by hand for iron. It takes up the
+  best it holds, so a stone pick in use means the iron one is asked for again only when
+  it is nearly worn. The tool smith makes it from 3 ingots and 2 sticks (3 smelts of
+  fuel), so a village's quarrying money goes back to iron through the tool smith.
+- **29c. A cauldron comfort.** The armorer makes a cauldron from 7 ingots (7 smelts), a
+  comfort lasting 12 days. Adding a comfort reshuffles every villager's tastes (they are
+  picked from the list by `_id`), as ticket 24 did.
+- **Pricing.** Neither the iron pick nor the cauldron has a trade table price, so the cost
+  floor now prices a recipe output from iron, gold or flint that nothing else prices:
+  the pick at 518 (1.25 × 3 ingots, 2 sticks and fuel), the cauldron at 1,198.
+- **Not done.** An iron axe for woodcutters (the weapon smith already makes one) would
+  be the same change for wood.
+- **Tests:** `tests/trade_trips.lua` (three ingots from 30 nuggets in a stash, 3 left; none
+  without the sources told; a plan carries them; an alchemist holding only nuggets sells
+  ingots to its face at nine nuggets' ask); `tests/alchemist_trade.lua` (a told ingot
+  carries its sources); `tests/wants.lua` (a quarrier asks for both picks, none with a fresh
+  stone one, only the iron one when nearly worn, takes up the iron one first; an iron
+  pick pays at base prices); `tests/ledger.lua` (the floor prices of the pick and cauldron;
+  the tool smith wants ingots); `tests/need_bubble.lua`, `tests/production.lua`.
+
 ## Open questions
 
 - Price discovery (ticket 21):
@@ -3250,9 +3289,10 @@ makes to sell is priced as before.
 - Whether the Builder becomes the next place money piles up, once the census has
   nothing left to build. If so, the Builder could spend its surplus on upkeep, or rent
   could fall with its savings.
-- Iron: the alchemist (ticket 20) is its village supply, but nobody in the village buys
-  iron goods. Until warriors exist (Warriors), the fletcher, the weapon smith and the
-  armorer sell only to players, against Principle 6.
+- Iron: the alchemist (ticket 20) is its village supply. Since ticket 29 quarriers buy iron
+  picks from the tool smith and villagers buy the armorer's cauldrons, but iron armour and
+  the weapon smith's axe still sell only to players until warriors exist (Warriors),
+  against Principle 6.
 - The alchemist: whether the `stone` category should also take andesite, diorite,
   granite and cobbled deepslate; and whether to keep the cost floor once probe runs show
   what players will pay for iron gear at about twice vanilla's price.

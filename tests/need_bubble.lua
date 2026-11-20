@@ -20,6 +20,7 @@ minetest = {
 	log = function() end,
 	registered_items = {
 		["mcl_core:coal_lump"] = {inventory_image = "coal.png"},
+		["mcl_core:iron_ingot"] = {inventory_image = "iron.png"},
 		["mcl_core:cobble"] = {inventory_image = "", tiles = {"cobble.png"}},
 		["mcl_core:stone"] = {tiles = {{name = "top.png"}, "bottom.png", "side.png"}},
 		["no:picture"] = {},
@@ -85,7 +86,8 @@ assert(shown.playername == "pat" and shown.pos.x == 4 and shown.pos.y > 2 and sh
 local need = bubble.need(smith, now)
 assert(need and shown.texture == bubble.texture(need), tostring(need))
 -- The need is cached for a few seconds.
-smith._villages_belongings = {["mcl_core:cobble"] = 500, ["mcl_core:stick"] = 500, ["mcl_core:coal_lump"] = 500}
+smith._villages_belongings = {["mcl_core:cobble"] = 500, ["mcl_core:stick"] = 500, ["mcl_core:coal_lump"] = 500,
+	["mcl_core:iron_ingot"] = 500}
 assert(bubble.need(smith, now + 1) == need)
 assert(bubble.need(smith, now + 10) ~= need)
 

@@ -284,15 +284,15 @@ local function derive()
 	for _ = 1, 2 do
 		for _, entry in ipairs(all) do
 			local recipe = entry.recipe
-			if result[recipe.makes] then
-				local uses = false
+			local uses = false
+			for _, input in ipairs(recipe.from) do uses = uses or FLOORED_INPUTS[input[1]] == true end
+			-- One made from iron, gold or flint that nothing else prices is priced by its
+			-- floor alone (ticket 29: the tool smith's iron pick, the armorer's cauldron).
+			if result[recipe.makes] or uses then
 				local cost = (recipe.fuel or 0) / SMELTS_PER_LUMP * (result[COAL] or 0)
-				for _, input in ipairs(recipe.from) do
-					uses = uses or FLOORED_INPUTS[input[1]] == true
-					cost = cost + (result[input[1]] or 0) * input[2]
-				end
+				for _, input in ipairs(recipe.from) do cost = cost + (result[input[1]] or 0) * input[2] end
 				local floor = (uses and COST_FLOOR or 1) * cost / recipe.count
-				if floor > result[recipe.makes] then result[recipe.makes] = floor end
+				if floor > (result[recipe.makes] or 0) then result[recipe.makes] = floor end
 			end
 		end
 	end

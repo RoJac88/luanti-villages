@@ -61,7 +61,7 @@ for profession, list in pairs(recipes) do
 	for _, recipe in ipairs(list) do
 		-- Food sells to any hungry villager (goods.lua's food category, ticket 15).
 		assert(sold[recipe.makes] or used[recipe.makes] or bought[recipe.makes] or keeper_buys[recipe.makes] or foods[recipe.makes]
-			or worn[recipe.makes],
+			or worn[recipe.makes] or dofile("comforts.lua").by_item[recipe.makes],
 			profession .. " neither sells nor uses " .. recipe.makes)
 		assert(recipe.count >= 1 and #recipe.from >= 1 and recipe.tier >= 1)
 	end

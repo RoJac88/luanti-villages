@@ -243,6 +243,8 @@ teller._villages_market_news = {{kind = "needs", item = INGOT, count = 2, who = 
 local told = {}
 for _, entry in ipairs(news.own(teller, possessions.assess(teller), now)) do told[entry.kind .. " " .. entry.item] = entry end
 assert(told["has " .. INGOT] and told["has " .. INGOT].count == 4, "four ingots from 40 nuggets")
+-- Told with its sources, so a trip buys the nuggets for it (ticket 29).
+assert(told["has " .. INGOT].from == NUGGET and told["has " .. INGOT].takes == 9 and near(told["has " .. INGOT].ratio, 1 / 9))
 assert(told["needs " .. COBBLE] or told["needs " .. STONE], "stone")
 local logs_told = false
 for key, entry in pairs(told) do logs_told = logs_told or (entry.kind == "needs" and entry.group == "log") end

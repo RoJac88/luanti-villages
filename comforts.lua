@@ -42,7 +42,8 @@ local M = {}
 -- three, at sale; any colour, ticket 24), the cartographer's banners and item frames, the
 -- librarian's bookshelves, what labourers make from stone and wood (ticket 23a), and
 -- (ticket 24) the leatherworker's clothes and the fletcher's bows and arrows: both sat on
--- their goods with no money (ColonyFood, day 416), and the fletcher could not buy flint.
+-- their goods with no money (ColonyFood, day 416), and the fletcher could not buy flint;
+-- (ticket 29) the armorer's cauldron, so iron has a use beyond the smiths' wares.
 -- VoxeLibre 0.92 has no bundle or harness.
 M.FLOWER = "flower"
 M.CARPET = "carpet"
@@ -59,6 +60,8 @@ M.COMFORTS = {
 	{item = "mcl_books:bookshelf", days = 8},
 	{item = "mcl_itemframes:frame", days = 8},
 	{item = "mcl_lanterns:lantern_floor", days = 10},
+	-- The armorer's, from seven of the alchemist's ingots (ticket 29).
+	{item = "mcl_cauldrons:cauldron", days = 12},
 	{item = "mcl_armor:helmet_leather", days = 10},
 	{item = "mcl_armor:boots_leather", days = 10},
 	{item = "mcl_armor:chestplate_leather", days = 12},

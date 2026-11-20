@@ -18,6 +18,8 @@
 -- (ticket 18): one in use is the best tier it holds when it takes one up, and wears and
 -- works by its own uses and rate. The ledger still asks for `item`, the tier the village
 -- makes, and values every tier at its own worth, so a better one is bought when offered.
+-- A good with a `starter` (ticket 29) asks for that cheaper tier too while it has none in
+-- use at all, so it is never left working by hand waiting on the one it asks for.
 -- A hoe's rate is no speed but the harvest's yield (farmer.lua), and how much its
 -- tending speeds growth: the farmer waits on the crop, not the crop on the farmer.
 --
@@ -45,9 +47,11 @@ M.GOODS = {
 		uses = 32, rate = 1.5, yields = {["mcl_core:tree"] = 5}},
 	-- Mining by hand is slow (labour.lua's MINE_SECONDS), so a pick pays (ticket 19d): a
 	-- stone one about keeps up with a generator, and a better one wears slower. Past what
-	-- a generator makes, a faster pick only waits, so no tier goes above 4.
-	{key = "pickaxe", item = "mcl_tools:pick_stone", activities = {quarrier = true}, use = "mine",
-		uses = 64, rate = 3, yields = {["mcl_core:cobble"] = 1},
+	-- a generator makes, a faster pick only waits, so no tier goes above 4. It asks for an
+	-- iron one, the tool smith's from the alchemist's ingots, and a stone one only while it
+	-- has none (ticket 29): nobody bought iron goods, so iron had no use.
+	{key = "pickaxe", item = "mcl_tools:pick_iron", starter = "mcl_tools:pick_stone", activities = {quarrier = true},
+		use = "mine", uses = 128, rate = 4, yields = {["mcl_core:cobble"] = 1},
 		tiers = {
 			{item = "mcl_tools:pick_diamond", uses = 512, rate = 4},
 			{item = "mcl_tools:pick_iron", uses = 128, rate = 4},
@@ -138,6 +142,7 @@ function M.targets(self, now)
 		local current = M.in_use(self, good)
 		local uses = current and (M.tier(good, current.item) or good).uses or good.uses
 		if not current or current.left <= uses * M.NEARLY_WORN then targets[good.item] = 1 end
+		if good.starter and not current then targets[good.starter] = 1 end
 		for _, tier in ipairs(M.tiers(good)) do worth[tier.item] = M.worth(good, tier) end
 	end
 	if reads(self) then
