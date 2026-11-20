@@ -163,8 +163,36 @@ end
 -- compares before it ever calls set_properties, so checking every tick
 -- costs a few field reads in the common case, not a property set; do that
 -- instead of waiting out a timer.
+--
+-- get_properties builds the whole property table, though, and on every step of every
+-- villager it was the largest part of this wrapper (profile.lua, 2026-11-19). Every one of
+-- vanilla's set_textures calls comes with a change to what is compared below: employ and
+-- remove_job change _profession and _jobsite, a trade tier _max_trade_tier, and a spawn is
+-- a new entity. So while those stay as they were it skips the read, and still makes it
+-- every VISUAL_RECHECK_SECONDS in case anything else repaints. A growing child's size
+-- changes all the time: it is always checked.
+local VISUAL_RECHECK_SECONDS = 2
+local visual_seen = setmetatable({}, {__mode = "k"})
+
 local function tick_visual(self)
+	local seen = visual_seen[self]
+	local now = core.get_gametime()
+	if seen and not self.child and now < seen.until_time and seen.profession == self._profession
+		and seen.jobsite == self._jobsite and seen.tier == self._max_trade_tier
+		and seen.keeper == self._villages_keeper and seen.alchemist == self._villages_alchemist then
+		self.base_mesh = MODEL
+		self.base_texture = {seen.texture}
+		self.base_size = {x = 1, y = 1}
+		return
+	end
 	refresh_visual(self)
+	if self.child then
+		visual_seen[self] = nil
+		return
+	end
+	visual_seen[self] = {until_time = now + VISUAL_RECHECK_SECONDS, profession = self._profession,
+		jobsite = self._jobsite, tier = self._max_trade_tier, keeper = self._villages_keeper,
+		alchemist = self._villages_alchemist, texture = self.base_texture and self.base_texture[1]}
 end
 
 local function normal_box(self, original_box)
@@ -626,9 +654,10 @@ core.register_on_mods_loaded(function()
 
 		tick_visual(self)
 
+		-- The order and the hour first: the bed's checks read its node and meta.
+		if self.order ~= "sleep" or not is_sleep_time(self) then return result end
 		local bed, node = claimed_bed(self)
-		if self.order == "sleep" and is_sleep_time(self) and bed
-			and vector.distance(self.object:get_pos(), bed) < 2
+		if bed and vector.distance(self.object:get_pos(), bed) < 2
 			and not occupied_by_other(self, bed) then
 			begin_sleep(self, bed, node)
 			return false

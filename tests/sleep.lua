@@ -1,4 +1,5 @@
 -- Run with: lua tests/sleep.lua
+local gametime = 0
 table.copy = table.copy or function(value)
 	local result = {}
 	for key, item in pairs(value) do result[key] = item end
@@ -81,7 +82,7 @@ minetest = {
 	get_modpath = function() return "." end,
 	get_day_count = function() return 0 end,
 	find_nodes_in_area = function() return {} end,
-	get_gametime = function() return 0 end,
+	get_gametime = function() return gametime end,
 	get_timeofday = function() return time end,
 	get_node_or_nil = function(pos) return nodes[key(pos)] end,
 	get_item_group = function(name, group)
@@ -202,6 +203,9 @@ assert(alice_props.visual_size and alice_props.visual_size.x == 1 and alice_prop
 -- corrects mesh/texture drift.
 alice_props.visual_size = {x = 0.0001, y = 0.0001} -- simulate the decayed upstream value
 alice.base_size = {x = 0.0001, y = 0.0001}
+-- Nothing it compares changed (init.lua's tick_visual), so the property read comes at the
+-- next recheck. Growing up, where this happens in play, is checked at once.
+gametime = gametime + 2
 entity_def.do_custom(alice, 0.6)
 assert(alice_props.visual_size.x == 1 and alice_props.visual_size.y == 1,
 	"a corrupted visual_size must be corrected back to full scale")

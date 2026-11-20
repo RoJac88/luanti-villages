@@ -568,13 +568,13 @@ function M.restock_held(self)
 	return "nothing to craft with"
 end
 
--- Puts back trades a vanilla do_custom call unlocked, if the restock is held. `before`
--- is {order, trades} from just before the call.
-function M.guard_restock(self, before)
-	if before.order == "work" or self.order ~= "work" or self._trades == before.trades then return false end
+-- Puts back trades a vanilla do_custom call unlocked, if the restock is held.
+-- order_before and trades_before are the villager's from just before the call.
+function M.guard_restock(self, order_before, trades_before)
+	if order_before == "work" or self.order ~= "work" or self._trades == trades_before then return false end
 	local reason = M.restock_held(self)
 	if not reason then return false end
-	self._trades = before.trades
+	self._trades = trades_before
 	core.log("action", string.format("[living_villages] production: villager %s (%s) did not restock: %s",
 		short_id(self), trade_name(self), reason))
 	return true
@@ -584,9 +584,9 @@ function M.install(def)
 	if not clock.enabled() then return end
 	local original = def.do_custom
 	def.do_custom = function(self, dtime)
-		local before = {order = self.order, trades = self._trades}
+		local order, trades = self.order, self._trades
 		local result = original(self, dtime)
-		M.guard_restock(self, before)
+		M.guard_restock(self, order, trades)
 		if result ~= false then M.step(self, core.get_gametime()) end
 		return result
 	end

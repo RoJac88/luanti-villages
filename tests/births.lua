@@ -1,5 +1,6 @@
 -- Run with: lua tests/births.lua
 local day, time = 10, 0.4
+local gametime = 1000
 local nodes, data, objects = {}, {}, {}
 local births, fail_spawn = 0, false
 
@@ -45,6 +46,7 @@ minetest = {
 		return default
 	end},
 	get_day_count = function() return day end,
+	get_gametime = function() return gametime end,
 	get_timeofday = function() return time end,
 	get_node_or_nil = function(pos) return nodes[key(pos)] end,
 	get_item_group = function(name, group)
@@ -162,6 +164,10 @@ assert(births == before, "a parent owning no food has none")
 assert(alice._villages_birth_check_day ~= 40, "and may yet buy some this morning")
 alice._villages_belongings = {["mcl_farming:bread"] = 2}
 bob._villages_belongings = {["mcl_farming:bread"] = 1}
+def.do_custom(alice, 1)
+assert(not alice._villages_birth_check_day or alice._villages_birth_check_day ~= 40,
+	"fed now, it does not ask again before PARENT_CHECK_SECONDS")
+gametime = gametime + 30
 def.do_custom(alice, 1)
 assert(births == before, "a mate owning too little is no mate")
 day = 41

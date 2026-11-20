@@ -165,4 +165,24 @@ assert(close(common.work_seconds(50, keeper), 50), "a keeper's staffing counts")
 assert(close(common.work_seconds(50, cleric), 50))
 assert(common.work_seconds(1e9) > 0, "a long absence is counted, as far back as it goes")
 
+-- In play the weather, the moon and the holiday override are read once a server step
+-- (the uptime moves on each step) and shared by every villager asking within it.
+do
+	local uptime, reads = 5, 0
+	minetest.get_server_uptime = function() return uptime end
+	mcl_weather.get_weather = function() reads = reads + 1 return weather end
+	weather, time = "clear", at(10000)
+	assert(common.schedule_stage() == "work")
+	for _ = 1, 10 do common.schedule_stage() end
+	assert(reads == 1, "one weather read a step, not one a villager")
+	weather = "thunder"
+	assert(common.schedule_stage() == "work", "the same step keeps what it read")
+	uptime = uptime + 0.05
+	assert(common.schedule_stage() == "sleep", "the next step reads the storm")
+	weather = "clear"
+	uptime = uptime + 0.05
+	minetest.get_server_uptime = nil
+	mcl_weather.get_weather = function() return weather end
+end
+
 print("schedule.lua: ok")
