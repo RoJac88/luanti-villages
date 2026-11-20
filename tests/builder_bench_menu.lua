@@ -442,7 +442,7 @@ do
 		gluts = {},
 		gaps = {{profession = "mason", score = 3, items = {"mcl_core:cobble"}}},
 		idle = {{id = "nit123456", profession = "nitwit", activity = "forager"}, {id = "une", profession = "unemployed"}},
-		today = {made = {{item = "mcl_core:cobble", count = 4}}, used = {}},
+		today = {made = {{item = "mcl_core:cobble", count = 4}}, used = {}, money = {premium_in = 736, flesh_out = 36}},
 		yesterday = {made = {}, used = {}},
 	}
 	send({tabs = "3"})
@@ -455,6 +455,8 @@ do
 	assert(has(form, "Builder 1\\, Farmer 2\\, Weapon smith 1"))
 	assert(has(form, "Nitwit nit123: forager\\, Unemployed une: nothing to do"))
 	assert(has(form, "Made: 4 Cobblestone") and has(form, "Used: nothing"))
+	assert(has(form, "Players: paid 736 for premium goods\\, got 36 for flesh (net 700)"), form)
+	assert(has(form, "Players: paid 0 for premium goods"), "none yesterday")
 	assert(not has(form, "order;") and options_calls == calls, "only looks")
 	-- Refresh reads it again.
 	economy_report.gluts = {{item = "mcl_core:cobble", count = 40, villagers = 1, worth = 5}}

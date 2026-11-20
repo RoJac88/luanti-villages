@@ -172,6 +172,14 @@ local MAKES = {
 }
 for name in pairs({white = 1, brown = 1, black = 1, grey = 1}) do MAKES.shepherd["mcl_wool:" .. name] = true end
 
+-- Vanilla trade wants a profession does not buy from villagers (ticket 37b): the cleric's
+-- rotten flesh, which only players sell it, at its window (trade_window.lua), and which it
+-- holds as the source of its leather, never a target; its glass bottles, which it makes from
+-- glass and keeps as its premium base (premium.lua).
+local NOT_BOUGHT = {
+	cleric = {["mcl_mobitems:rotten_flesh"] = true, ["mcl_potions:glass_bottle"] = true},
+}
+
 -- Roles this mod adds, which have no vanilla table of their own.
 local ROLES = {
 	keeper = {
@@ -316,6 +324,7 @@ function M.inputs(profession, max_tier)
 	local entry = tables.professions[profession]
 	if not entry then return found end
 	local makes = MAKES[profession] or {}
+	local not_bought = NOT_BOUGHT[profession] or {}
 	-- A vanilla trade's want for iron, gold or flint counts only where its own recipes take
 	-- it: at the alchemist's prices (ticket 20) a cleric's three gold ingots or a tool smith's
 	-- thirty flint would hold hundreds of emeralds in goods it never uses.
@@ -327,7 +336,7 @@ function M.inputs(profession, max_tier)
 		local offered = trade.offered[1]
 		if trade.tier <= (max_tier or 5) and offered.item == EMERALD and #trade.wanted == 1 then
 			local item = trade.wanted[1].item
-			if not makes[item] and (not FLOORED_INPUTS[item] or uses[item]) then found[item] = math.min(math.max(found[item] or 0, trade.wanted[1].min), INPUT_CAP) end
+			if not makes[item] and not not_bought[item] and (not FLOORED_INPUTS[item] or uses[item]) then found[item] = math.min(math.max(found[item] or 0, trade.wanted[1].min), INPUT_CAP) end
 		end
 	end
 	for _, recipe in ipairs(recipes[profession] or {}) do

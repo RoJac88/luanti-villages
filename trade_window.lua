@@ -48,6 +48,18 @@
 -- player may still give anyone emeralds by throwing them to it (possessions.pick_up) or
 -- leaving them in its stash, for no gossip at all.
 --
+-- Rotten flesh and leather (ticket 37b). The cleric buys rotten flesh from players, from
+-- anyone it will trade with, while it holds fewer than FLESH_KEEP, at a third of its
+-- reference price for leather (`flesh_unit`), down to half that as its stock fills. It pays
+-- from its flesh budget (alms.lua: the fund past its alms and the cleric's own emeralds past
+-- its savings), not from its purse alone. It sells leather made three flesh to one, as the
+-- alchemist sells ingots, to players here and to villagers in the market (goods.lua's
+-- conversions), and never at a loss or break even: at least asks.PROFIT times what the
+-- flesh cost it, and an emerald over (`_villages_flesh_cost`, its average paid per flesh,
+-- asks.cost_floor). No villager sells it flesh: a cleric does not want it as an input
+-- (ledger.lua). What it pays a player is money out of the village, the tally's
+-- `flesh_out`; what a player pays for premium goods comes back in, `premium_in`.
+--
 -- The tavern keeper (ticket 33) sells the dishes in its pantry (tavern_pantry.lua: a
 -- keeper.dishes item), each one dinner at its posted dinner price (dinner.lua), paid into
 -- the pantry, its till, as a player's meal is (player_meals.lua). It keeps the last
@@ -86,6 +98,11 @@ local DONATION_MIN = ledger.DINNER
 local NUGGET, INGOT = "mcl_core:iron_nugget", "mcl_core:iron_ingot"
 local GOLD_NUGGET, GOLD = "mcl_core:gold_nugget", "mcl_core:gold_ingot"
 local FLINT, GLASS, PANE = "mcl_core:flint", "mcl_core:glass", "xpanes:pane_natural_flat"
+local FLESH, LEATHER = "mcl_mobitems:rotten_flesh", "mcl_mobitems:leather"
+-- The most rotten flesh the cleric holds: 32 leather's worth.
+local FLESH_KEEP = 96
+-- The cleric's average cost per flesh (goods.lua's cleric conversion, asks.cost_floor).
+local FLESH_COST = "_villages_flesh_cost"
 -- What it buys from a player: iron and gold at any time, flint and glass up to a stock.
 local ALCHEMY_BUYS = {NUGGET, INGOT, GOLD_NUGGET, GOLD, FLINT, GLASS, PANE}
 local ROWS = 6
@@ -98,8 +115,15 @@ local UNITS = {food = "points", fuel = "seconds", log = "logs", planks = "planks
 local M = {
 	FORMNAME = FORMNAME, REP_STEP = REP_STEP,
 	REP_MAX = REP_MAX, REFUSE = REFUSE, URGENT = URGENT, ROWS = ROWS, DONATION_MIN = DONATION_MIN,
-	PREMIUM_ROWS = PREMIUM_ROWS,
+	PREMIUM_ROWS = PREMIUM_ROWS, FLESH_KEEP = FLESH_KEEP,
 }
+
+-- What the cleric pays for one rotten flesh: a third of its reference price for leather
+-- (`leather`), less as its stock (`held`) nears FLESH_KEEP, down to half that.
+function M.flesh_unit(leather, held)
+	local room = math.max(FLESH_KEEP - (held or 0), 0) / FLESH_KEEP
+	return (leather or 0) / 3 * (0.5 + 0.5 * room)
+end
 
 -- Whether a donation of `amount` emeralds on `day` is good gossip: DONATION_MIN or more,
 -- its dinners at `scale` (the cleric's dinner.scale, ticket 21e; 1 unset), and none yet
@@ -197,6 +221,36 @@ function M.alchemy_rows(view, held, emeralds, share, player_has, ask, converted)
 	return sells, buys
 end
 
+-- The cleric's rows for flesh and leather (see the header): sells, buys. `cleric` is
+-- {budget = emeralds it can pay for flesh, unit = what it pays for one (M.flesh_unit),
+-- floor = the least a leather made from its flesh sells for (asks.cost_floor), nil for none},
+-- which holds after the reputation share too.
+function M.cleric_rows(view, held, share, player_has, ask, converted, cleric)
+	local sells, buys = {}, {}
+	local conversion = goods.CONVERSIONS.cleric[1]
+	local made = goods.yield(conversion, held[FLESH] or 0)
+	local own = held[LEATHER] or 0
+	local price = asking(view, ask, LEATHER)
+	if made > 0 and converted then price = converted(conversion) or price end
+	if price and own + made > 0 then
+		local unit = price * (1 - share)
+		if made > 0 and cleric.floor then unit = math.max(unit, cleric.floor) end
+		local lot, lot_price = M.lot(unit, true)
+		if lot and own + made >= lot then
+			sells[#sells + 1] = {item = LEATHER, lot = lot, price = lot_price, lots = math.floor((own + made) / lot),
+				held = own, conversion = made > 0 and conversion or nil}
+		end
+	end
+	local room = FLESH_KEEP - (held[FLESH] or 0)
+	local lot, lot_price = M.lot((cleric.unit or 0) * (1 + share), false)
+	if lot and room >= lot and (not player_has or (player_has[FLESH] or 0) > 0) then
+		local lots = math.min(math.floor(room / lot), math.floor((cleric.budget or 0) / lot_price))
+		if player_has then lots = math.min(lots, math.floor((player_has[FLESH] or 0) / lot)) end
+		buys[#buys + 1] = {item = FLESH, lot = lot, price = lot_price, lots = lots, urgency = 1, fund = true}
+	end
+	return sells, buys
+end
+
 -- The keeper's sell rows from its pantry (see the header): `tavern` is {dishes = {item =
 -- count}, meals = meals it holds, reserve = meals it keeps, price = a dinner's}. Each
 -- row sells as many of its dish as the pantry holds past the reserve, all told.
@@ -215,16 +269,19 @@ function M.keeper_rows(tavern, share)
 end
 
 -- `tavern` (may be nil) is a keeper's pantry, as M.keeper_rows takes it: its dishes are
--- what it sells, in place of its surplus.
-function M.rows(view, held, emeralds, reputation, player_has, is_alchemist, ask, converted, tavern)
+-- what it sells, in place of its surplus. `cleric` (may be nil) is the cleric's flesh
+-- budget and price, as M.cleric_rows takes it.
+function M.rows(view, held, emeralds, reputation, player_has, is_alchemist, ask, converted, tavern, cleric)
 	local share = M.rep_share(reputation)
 	local sells, buys = {}, {}
 	if is_alchemist then sells, buys = M.alchemy_rows(view, held, emeralds, share, player_has, ask, converted) end
 	if tavern then sells = M.keeper_rows(tavern, share) end
+	if cleric then sells, buys = M.cleric_rows(view, held, share, player_has, ask, converted, cleric) end
 	for item, spare in pairs(not tavern and view.surplus or {}) do
 		local have = math.min(spare, held[item] or 0)
 		local unit = asking(view, ask, item)
-		if item ~= EMERALD and have > 0 and unit and not (is_alchemist and alchemist.GOODS[item]) then
+		local own_row = (is_alchemist and alchemist.GOODS[item]) or (cleric and (item == FLESH or item == LEATHER))
+		if item ~= EMERALD and have > 0 and unit and not own_row then
 			local lot, price = M.lot(unit * (1 - share), true)
 			if lot and have >= lot then
 				sells[#sells + 1] = {item = item, lot = lot, price = price, lots = math.floor(have / lot)}
@@ -235,7 +292,8 @@ function M.rows(view, held, emeralds, reputation, player_has, is_alchemist, ask,
 	for item, need in pairs(view.needs or {}) do
 		local value = view.value(item)
 		local shown = not group[item] or not player_has or (player_has[item] or 0) > 0
-		if item ~= EMERALD and value and shown and not (is_alchemist and alchemist.GOODS[item]) then
+		if item ~= EMERALD and value and shown and not (is_alchemist and alchemist.GOODS[item])
+			and not (cleric and item == FLESH) then
 			local lot, price = M.lot(value * (1 + share), false)
 			if lot and need >= lot then
 				local lots = math.min(math.floor(need / lot), math.floor((emeralds or 0) / price))
@@ -330,11 +388,12 @@ function M.install(def, deps)
 		return alms_module
 	end
 	local sessions = {}
-	-- Makes a premium good (premium.offers' entry) as an item stack: its source item with
-	-- its enchantments.
-	local make = deps.make or function(offer)
+	-- Makes `count` (1 unset) of a premium good (premium.offers' entry) as an item stack:
+	-- its source item with its enchantments. Only consumables come more than one at a time.
+	local make = deps.make or function(offer, count)
 		local stack = ItemStack(offer.from)
 		for enchant, level in pairs(offer.enchants or {}) do mcl_enchanting.enchant(stack, enchant, level) end
+		stack:set_count(count or 1)
 		return stack
 	end
 
@@ -347,8 +406,9 @@ function M.install(def, deps)
 		if not premium.line(villager) then return nil end
 		local r = reputation(villager, name)
 		local function value(item) return prices.price(villager._villages_prices, item) or 0 end
+		local day = core.get_day_count and core.get_day_count() or 0
 		return premium.rows(villager._profession, villager._max_trade_tier or 1, r, possessions.held(villager),
-			dinner.reference(villager), value, M.rep_share(r))
+			dinner.reference(villager), value, M.rep_share(r), premium.sold_today(villager, name, day))
 	end
 
 	-- What the player carries: {item = count}.
@@ -369,9 +429,16 @@ function M.install(def, deps)
 		local view = possessions.assess(villager)
 		local function ask(item) return asks.ask(villager, item, view) end
 		local function converted(conversion) return asks.converted(villager, conversion, view) end
-		return M.rows(view, possessions.held(villager), possessions.emeralds(villager), reputation(villager, name),
+		local held = possessions.held(villager)
+		local cleric
+		if M.takes_donations(villager) then
+			cleric = {budget = alms().flesh_budget(villager),
+				unit = M.flesh_unit(prices.price(villager._villages_prices, LEATHER), held[FLESH]),
+				floor = asks.cost_floor(villager, goods.CONVERSIONS.cleric[1])}
+		end
+		return M.rows(view, held, possessions.emeralds(villager), reputation(villager, name),
 			player_has(name), villager._villages_alchemist == true, ask, converted,
-			villager._villages_keeper and tavern.stock(villager) or nil), view
+			villager._villages_keeper and tavern.stock(villager) or nil, cleric), view
 	end
 
 	local function form(villager, name)
@@ -400,14 +467,17 @@ function M.install(def, deps)
 				local entry = special[i]
 				local x, y = i <= PREMIUM_ROWS / 2 and 0.5 or 6.8, 1.6 + ((i - 1) % (PREMIUM_ROWS / 2)) * 0.95
 				local status = entry.locked or (entry.stock > 0 and string.format("can make %d", entry.stock))
-					or "out of stock"
+					or (entry.left == 0 and "sold out to you today") or "out of stock"
 				parts[#parts + 1] = string.format("item_image[%g,%g;0.8,0.8;%s]", x, y, entry.offer.makes)
 				parts[#parts + 1] = string.format("label[%g,%g;%s]", x + 0.9, y + 0.2,
 					esc(string.format("%s: %d em", entry.offer.label, entry.price)))
 				parts[#parts + 1] = string.format("label[%g,%g;%s]", x + 0.9, y + 0.6,
 					esc((entry.locked and "Locked, " or "") .. status))
 				if not entry.locked and entry.stock > 0 then
-					parts[#parts + 1] = string.format("button[%g,%g;1.2,0.7;premium_buy_%d;Buy]", x + 4.8, y + 0.05, i)
+					parts[#parts + 1] = string.format("button[%g,%g;0.9,0.7;premium_buy_%d;1]", x + 4.2, y + 0.05, i)
+					if entry.left and entry.stock > 1 then
+						parts[#parts + 1] = string.format("button[%g,%g;0.9,0.7;premium_all_%d;All]", x + 5.1, y + 0.05, i)
+					end
 				end
 			end
 			parts[#parts + 1] = "label[0.5,1.3;Made to order]"
@@ -549,14 +619,26 @@ function M.install(def, deps)
 		lots = math.min(lots, entry.lots)
 		local count, pay = entry.lot * lots, entry.price * lots
 		if lots < 1 then return end
-		if possessions.emeralds(villager) < pay then return end
+		if entry.fund then
+			if alms().flesh_budget(villager) < pay then return end
+		elseif possessions.emeralds(villager) < pay then
+			return
+		end
 		local stack = inv:remove_item("main", entry.item .. " " .. count)
 		if stack:get_count() < count then
 			inv:add_item("main", stack)
 			core.chat_send_player(name, "You have too few of those.")
 			return
 		end
-		possessions.take(villager, EMERALD, pay)
+		if entry.fund then
+			-- The cleric's flesh (ticket 37b): from its flesh budget, money out of the village,
+			-- and into its average cost, below which its leather never sells.
+			asks.note_cost(villager, FLESH_COST, possessions.count(villager, FLESH), count, pay)
+			alms().pay_flesh(villager, pay)
+			tally.money(villager, "flesh_out", pay)
+		else
+			possessions.take(villager, EMERALD, pay)
+		end
 		possessions.add(villager, entry.item, count)
 		-- A purchase like any (ticket 21c): its reference price learns the price, and an
 		-- alchemist's book (ticket 30).
@@ -574,36 +656,48 @@ function M.install(def, deps)
 
 	-- The player buys a premium good (the Special tab's `entry`, premium.rows): its base good
 	-- is taken from the villager and the good made at the sale.
-	local function player_buys_premium(player, villager, entry)
+	-- `all`: as many as its stock, today's cap and the player's emeralds allow (consumables).
+	local function player_buys_premium(player, villager, entry, all)
 		local inv = player:get_inventory()
 		local name = player:get_player_name()
 		local offer = entry.offer
 		if entry.locked then return end
 		if entry.stock < 1 then
-			core.chat_send_player(name, "It has nothing to make that from.")
+			core.chat_send_player(name, entry.left == 0 and "It has made you all it will today."
+				or "It has nothing to make that from.")
 			return
 		end
-		if not inv:contains_item("main", EMERALD .. " " .. entry.price) then
+		local count = 1
+		if all and entry.left then
+			count = entry.stock
+			while count > 1 and not inv:contains_item("main", EMERALD .. " " .. entry.price * count) do count = count - 1 end
+		end
+		local pay = entry.price * count
+		if not inv:contains_item("main", EMERALD .. " " .. pay) then
 			core.chat_send_player(name, "You have too few emeralds for that.")
 			return
 		end
-		local stack = make(offer)
+		local stack = make(offer, count)
 		if not inv:room_for_item("main", stack) then
 			core.chat_send_player(name, "You have no room for that.")
 			return
 		end
-		local used = possessions.take_held(villager, offer.base, offer.count)
-		if used < offer.count then
+		local need = offer.count * count
+		local used = possessions.take_held(villager, offer.base, need)
+		if used < need then
 			if used > 0 then possessions.add(villager, offer.base, used) end
 			return
 		end
-		inv:remove_item("main", EMERALD .. " " .. entry.price)
-		possessions.add(villager, EMERALD, entry.price)
+		inv:remove_item("main", EMERALD .. " " .. pay)
+		possessions.add(villager, EMERALD, pay)
 		inv:add_item("main", stack)
-		tally.note(villager, nil, {[offer.base] = offer.count})
+		local day = core.get_day_count and core.get_day_count() or 0
+		premium.note_sold(villager, name, offer.id, count, day)
+		tally.note(villager, nil, {[offer.base] = need}, day)
+		tally.money(villager, "premium_in", pay, day)
 		if gossip then gossip.add(villager, name, "trading") end
-		log("%s bought premium %s (%s) from villager %s for %d emerald(s) (from %d %s)", name, offer.id, offer.label,
-			tostring(villager._id):sub(1, 6), entry.price, offer.count, offer.base)
+		log("%s bought premium %d %s (%s) from villager %s for %d emerald(s) (from %d %s)", name, count, offer.id,
+			offer.label, tostring(villager._id):sub(1, 6), pay, need, offer.base)
 	end
 
 	-- The player donates `amount` emeralds to the cleric's alms fund.
@@ -683,13 +777,15 @@ function M.install(def, deps)
 			return true
 		end
 		for field in pairs(fields) do
-			local index = field:match("^premium_buy_(%d+)$")
-			if index then
+			local how, index = field:match("^premium_(%a+)_(%d+)$")
+			if index and (how == "buy" or how == "all") then
 				-- The rows as they stand now, so a stale window cannot trade at old prices.
 				local rows = premium_rows(villager, name)
 				local shown = session.premium and session.premium[tonumber(index)]
 				local entry = rows and rows[tonumber(index)]
-				if entry and shown and entry.offer.id == shown.offer.id then player_buys_premium(player, villager, entry) end
+				if entry and shown and entry.offer.id == shown.offer.id then
+					player_buys_premium(player, villager, entry, how == "all")
+				end
 				show(name)
 				return true
 			end

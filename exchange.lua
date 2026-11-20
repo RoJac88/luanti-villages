@@ -75,12 +75,16 @@ end
 -- With `conversion` (goods.lua), the product's ask capped by its sources' (asks.converted).
 -- With `bid`, the buyer's own value for one, a comfort's ask is no less than its share of
 -- it (asks.with_bid, ticket 23d).
+-- A product made from sources it paid for never goes below their cost floor, standing or
+-- not (asks.cost_floor, ticket 37b: the cleric's leather).
 function M.asking(seller, buyer, item, seller_view, conversion, bid)
 	local ask
 	if conversion then ask = asks.converted(seller, conversion, seller_view)
 	else ask = asks.with_bid(item, asks.ask(seller, item, seller_view), bid) end
 	if not ask then return nil end
-	return ask * (1 - STANDING_SHIFT * standing(seller, buyer))
+	ask = ask * (1 - STANDING_SHIFT * standing(seller, buyer))
+	local floor = conversion and asks.cost_floor(seller, conversion)
+	return floor and math.max(ask, floor) or ask
 end
 
 -- How many of the item the villager can hand over now: spare, and carried.
@@ -135,7 +139,7 @@ function M.offer(seller, seller_view, buyer, buyer_view, only)
 			end
 			for _, source in ipairs(sources) do
 				local trade = M.quote(seller, seller_view, buyer, buyer_view, item, wanted, source.from, source.ratio,
-					source.takes, source.reserve)
+					source.takes, source.reserve, source.cost)
 				if trade and (not best or trade.gain > best.gain or (trade.gain == best.gain and item < best.item)) then
 					best = trade
 				end
@@ -147,9 +151,10 @@ end
 
 -- One candidate sale of `item` made from `from` (itself when ratio is 1), or nil. A
 -- conversion hands over `takes` sources at a time (goods.lua), 1 if nil, and spends none
--- of the `reserve` it keeps (the alchemist's gold, ticket 20).
-function M.quote(seller, seller_view, buyer, buyer_view, item, wanted, from, ratio, takes, reserve)
-	local conversion = {ratio = ratio, takes = takes, reserve = reserve}
+-- of the `reserve` it keeps (the alchemist's gold, ticket 20), and none below the cost of
+-- its sources where it paid for them (`cost`, goods.lua's field; asks.cost_floor).
+function M.quote(seller, seller_view, buyer, buyer_view, item, wanted, from, ratio, takes, reserve, cost)
+	local conversion = {ratio = ratio, takes = takes, reserve = reserve, cost = cost}
 	local stock = spare(seller, seller_view, from)
 	if reserve then stock = math.min(stock, possessions.count(seller, from) - reserve) end
 	local to_buyer = buyer_view.value(item)
@@ -157,7 +162,7 @@ function M.quote(seller, seller_view, buyer, buyer_view, item, wanted, from, rat
 	local to_seller = source_value and source_value / ratio
 	if stock <= 0 or not to_buyer then return nil end
 	local unit = M.asking(seller, buyer, item, seller_view,
-		from ~= item and {from = from, to = item, ratio = ratio} or nil,
+		from ~= item and {from = from, to = item, ratio = ratio, cost = cost} or nil,
 		math.min(to_buyer, possessions.emeralds(buyer)))
 	local asked = unit ~= nil
 	-- Its value with no money in it: a buyer too poor to value the item at the ask in

@@ -166,14 +166,17 @@ end
 
 -- What the villagers made and used on `day`: {made = rows, used = rows}, each row
 -- {item, count}, most first.
+-- `money` is the emeralds that crossed between players and the village (ticket 37b):
+-- {premium_in, flesh_out}.
 function M.goods(villagers, day)
-	local made, used = {}, {}
+	local made, used, money = {}, {}, {premium_in = 0, flesh_out = 0}
 	for _, villager in ipairs(villagers) do
-		local m, u = tally.on(villager, day)
+		local m, u, flows = tally.on(villager, day)
 		add_into(made, m)
 		add_into(used, u)
+		add_into(money, flows)
 	end
-	return {made = as_rows(made), used = as_rows(used)}
+	return {made = as_rows(made), used = as_rows(used), money = money}
 end
 
 -- Nitwits and the unemployed: {id, profession, activity}; activity is today's labour, or

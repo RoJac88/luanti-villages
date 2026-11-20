@@ -39,6 +39,18 @@
 -- own dinner scale: with dinner at 1 that was 8 emeralds, and a fund of 1,702 gave 15
 -- (ColonyFood, 2026-11-15).
 --
+-- The rich give more (ticket 37b): donations are progressive, a tenth of savings from 8 to
+-- 24 dinners, a fifth from 24 to 64 and three tenths past 64 (BANDS), at least 1, in place
+-- of a tenth of all past 8. A librarian paid for a Mending book gives back a good share of
+-- it, to go round as alms.
+--
+-- Rotten flesh (ticket 37b). The fund's target adds FLESH_RESERVE (12 dinners) to its
+-- holidays of alms, so the cleric can buy the flesh players sell it (trade_window.lua). The
+-- alms part is noted at each service (`_villages_alms_need`); the flesh budget is the fund
+-- past it and the cleric's own emeralds past SAVINGS (`flesh_budget`), paid fund first
+-- (`pay_flesh`). Until its first service it pays only from its own. Leather it sells comes
+-- back to its own emeralds, which alms draw on past SAVINGS too.
+--
 -- News. Each villager there also swaps market news with the cleric once a holiday
 -- (`_villages_church_news`), as diners do with the keeper (meal.lua): the service is no
 -- time for conversations, and the social stage after it lasts seconds, so the cleric
@@ -72,21 +84,33 @@ local VILLAGER = "mobs_mc:villager"
 local CRAFT_BATCH = 4
 local STAKE_CAP = 3 * DINNER
 local FUND_HOLIDAYS = 4
+-- Progressive donations: the share of savings from each band's start, in dinners.
+local BANDS = {{from = 8, share = 0.1}, {from = 24, share = 0.2}, {from = 64, share = 0.3}}
+local FLESH_RESERVE = 12 * DINNER
 local COAL = "mcl_core:coal_lump"
 local recipes = dofile(core.get_modpath("living_villages") .. "/recipes.lua")
 
 local M = {SAVINGS = SAVINGS, MAJOR = MAJOR, ALMS_TO = ALMS_TO, KEEP_SHARE = KEEP_SHARE, REACH = REACH,
+	FLESH_RESERVE = FLESH_RESERVE, BANDS = BANDS,
 	CRAFT_BATCH = CRAFT_BATCH, STAKE_CAP = STAKE_CAP, FUND_HOLIDAYS = FUND_HOLIDAYS}
 
 local function short_id(id)
 	return tostring(id):sub(1, 6)
 end
 
--- What a villager with `emeralds` gives, its dinners at `scale` (dinner.scale, 1 unset).
+-- What a villager with `emeralds` gives, its dinners at `scale` (dinner.scale, 1 unset):
+-- each band's share of what it holds in that band (BANDS), at least 1 past SAVINGS.
 function M.donation(emeralds, scale)
-	local savings = SAVINGS * (scale or 1)
+	scale = scale or 1
+	local savings = SAVINGS * scale
 	if emeralds <= savings then return 0 end
-	return math.max(math.floor((emeralds - savings) / 10), 1)
+	local gift = 0
+	for i, band in ipairs(BANDS) do
+		local from = band.from * DINNER * scale
+		local to = BANDS[i + 1] and BANDS[i + 1].from * DINNER * scale or math.huge
+		if emeralds > from then gift = gift + (math.min(emeralds, to) - from) * band.share end
+	end
+	return math.max(math.floor(gift), 1)
 end
 
 -- Puts `gift` emeralds a player donated (trade_window.lua, ticket 36) with the cleric:
@@ -164,9 +188,46 @@ function M.fund_target(priest, list)
 	return FUND_HOLIDAYS * total
 end
 
+-- The cleric's own emeralds over SAVINGS.
+local function own_spare(priest)
+	return math.max(math.floor(possessions.emeralds(priest) - SAVINGS * dinner.scale(priest)), 0)
+end
+
+-- The fund's whole target among `list`: its alms (M.fund_target) and the flesh reserve.
+function M.target(priest, list)
+	return M.fund_target(priest, list) + M.flesh_reserve(priest)
+end
+
 -- What the cleric can give: its fund, then its own emeralds over SAVINGS.
 local function can_give(priest)
-	return (priest._villages_alms or 0) + math.max(math.floor(possessions.emeralds(priest) - SAVINGS * dinner.scale(priest)), 0)
+	return (priest._villages_alms or 0) + own_spare(priest)
+end
+
+-- The flesh reserve, at the cleric's dinner scale.
+function M.flesh_reserve(priest)
+	return math.ceil(FLESH_RESERVE * dinner.scale(priest))
+end
+
+-- What the cleric can pay for rotten flesh: the fund past its alms part (none before its
+-- first service) and its own emeralds over SAVINGS.
+function M.flesh_budget(priest)
+	local need = priest._villages_alms_need
+	local fund = need and math.max(math.floor((priest._villages_alms or 0) - need), 0) or 0
+	return fund + own_spare(priest)
+end
+
+-- Pays `amount` for flesh: from the fund past its alms part first, then its own emeralds.
+-- Returns whether the budget covered it.
+function M.pay_flesh(priest, amount)
+	if M.flesh_budget(priest) < amount then return false end
+	local need = priest._villages_alms_need
+	local from_fund = need and math.min(amount, math.max(math.floor((priest._villages_alms or 0) - need), 0)) or 0
+	if from_fund > 0 then
+		priest._villages_alms = priest._villages_alms - from_fund
+		if priest._villages_alms <= 0 then priest._villages_alms = nil end
+	end
+	if amount > from_fund then possessions.take(priest, EMERALD, amount - from_fund) end
+	return true
 end
 
 local function pay_out(priest, amount)
@@ -222,7 +283,9 @@ function M.hold(priest, list, day, gossip)
 		if not villager._villages_alchemist then members[#members + 1] = villager end
 	end
 	list = members
-	local target = M.fund_target(priest, list)
+	local need = M.fund_target(priest, list)
+	priest._villages_alms_need = need
+	local target = need + M.flesh_reserve(priest)
 	for _, villager in ipairs(list) do
 		if villager ~= priest then
 			M.collect(priest, villager, list, day, gossip, target - (priest._villages_alms or 0))

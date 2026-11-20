@@ -76,6 +76,10 @@ local conversions = {
 	shepherd = {},
 	woodcutter = {},
 	mason = {{from = "mcl_core:stone", to = "mcl_core:stonebrickcarved", ratio = 1}},
+	-- The cleric's leather from rotten flesh players sell it (ticket 37b), three to one, never
+	-- below what the flesh cost it (`cost`, its average paid per flesh; asks.cost_floor).
+	cleric = {{from = "mcl_mobitems:rotten_flesh", to = "mcl_mobitems:leather", ratio = 1 / 3, takes = 3,
+		cost = "_villages_flesh_cost"}},
 	-- The alchemist's (ticket 20): an ingot from nine nuggets, a gold nugget from eighteen
 	-- (two ingots) and a gold ingot from 162 (nine gold nuggets), gold only from the nuggets
 	-- past `reserve`; a pane from a glass, so both come from two stone.

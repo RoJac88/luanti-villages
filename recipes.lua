@@ -121,6 +121,8 @@ return {
 	-- stays as it is, so the village has a use for gold. An alchemist has its own list.
 	cleric = {
 		{makes = "mcl_clock:clock", count = 1, tier = 1, from = {{"mcl_core:gold_ingot", 1}, {IRON, 1}}},
+		-- The base of its premium goods (ticket 37b, premium.lua), from journeyman up.
+		{makes = "mcl_potions:glass_bottle", count = 3, tier = 3, from = {{"mcl_core:glass", 3}}},
 	},
 	-- The alchemist (ticket 20): a role over a cleric, at its stand (alchemist.lua). Its
 	-- recipes are no vanilla craft, so none is checked against a trade table. Each takes

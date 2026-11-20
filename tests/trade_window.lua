@@ -117,12 +117,23 @@ local tavern = {
 	end,
 }
 local fund = {}
-local alms = {receive = function(priest, gift) fund[#fund + 1] = {priest = priest, gift = gift} end}
+-- The cleric's flesh budget (ticket 37b), stubbed: `_budget` emeralds, paid from first.
+local flesh_paid = {}
+local alms = {
+	receive = function(priest, gift) fund[#fund + 1] = {priest = priest, gift = gift} end,
+	flesh_budget = function(priest) return priest._budget or 0 end,
+	pay_flesh = function(priest, amount)
+		if (priest._budget or 0) < amount then return false end
+		priest._budget = priest._budget - amount
+		flesh_paid[#flesh_paid + 1] = amount
+		return true
+	end,
+}
 -- Premium goods (ticket 37) made as a stub stack: the offer's id.
 local made = {}
-local function make(offer)
+local function make(offer, count)
 	made[#made + 1] = offer
-	return {item = offer.id, get_count = function() return 1 end}
+	return {item = offer.id, get_count = function() return count or 1 end}
 end
 window.install(def, {possessions = possessions, gossip = gossip, tavern = tavern, alms = alms, make = make,
 	clock = {enabled = function() return enabled end}})
@@ -355,7 +366,7 @@ do
 	assert(shelf[BOOK] == 1 and shelf[EMERALD] == price and player_inv.contents[EMERALD] == 1000 - price)
 	assert(player_inv.contents.efficiency_4 == 1 and gossiped[#gossiped] == "trading")
 	assert(librarian._villages_tally.used[BOOK] == 1, "the book used is tallied")
-	assert(logs[#logs]:find("premium efficiency_4", 1, true))
+	assert(logs[#logs]:find("premium 1 efficiency_4", 1, true))
 	-- No book left, nothing made.
 	shelf[BOOK] = 0
 	handlers.fields(player, window.FORMNAME, {["premium_buy_" .. index] = true})
@@ -370,6 +381,85 @@ do
 	def.on_rightclick(villager, player)
 	assert(not shown[#shown].spec:find("tabheader[", 1, true))
 	handlers.fields(player, window.FORMNAME, {quit = "true"})
+	rep = 0
+end
+-- The cleric (ticket 37b): rotten flesh bought from its flesh budget up to FLESH_KEEP, at a
+-- third of leather; leather sold three flesh to one; pearls and bottles o' enchanting from
+-- glass bottles, capped a day.
+do
+	local FLESH, LEATHER, BOTTLE = "mcl_mobitems:rotten_flesh", "mcl_mobitems:leather", "mcl_potions:glass_bottle"
+	-- Pure: the price falls as its stock fills, to half.
+	assert(near(window.flesh_unit(6, 0), 2) and near(window.flesh_unit(6, window.FLESH_KEEP), 1))
+	assert(near(window.flesh_unit(6, window.FLESH_KEEP / 2), 1.5))
+	local r = window.rows({surplus = {[FLESH] = 9}, needs = {}, value = function() return 5 end}, {[FLESH] = 9}, 0, 0,
+		{[FLESH] = 200}, false, nil, function() return 15 end, nil, {budget = 30, unit = 3})
+	local sells, buys = r.sells, r.buys
+	assert(#sells == 1 and sells[1].item == LEATHER and sells[1].lots == 3 and sells[1].conversion, "three from nine")
+	assert(sells[1].price == 15, "never dearer than its flesh")
+	assert(#buys == 1 and buys[1].item == FLESH and buys[1].fund and buys[1].price == 3)
+	assert(buys[1].lots == 10, "its budget pays for 10")
+	-- Never at a loss: the floor from what its flesh cost holds past a hero's discount.
+	local floored = window.rows({surplus = {}, needs = {}, value = function() return 5 end}, {[FLESH] = 9}, 0, 100,
+		nil, false, nil, function() return 4 end, nil, {budget = 0, unit = 3, floor = 9})
+	assert(floored.sells[1].item == LEATHER and floored.sells[1].price == 9, floored.sells[1].price)
+	local full = window.rows({surplus = {}, needs = {}, value = function() return 5 end}, {[FLESH] = window.FLESH_KEEP},
+		0, 0, {[FLESH] = 200}, false, nil, nil, nil, {budget = 300, unit = 3})
+	assert(#full.buys == 0, "no room past its keep")
+
+	-- The window.
+	local day = 9
+	minetest.get_day_count = function() return day end
+	local pouch = {[EMERALD] = 5, [FLESH] = 0, [BOTTLE] = 10}
+	local cleric = {_id = "cler-2", _profession = "cleric", _max_trade_tier = 5, _villages_belongings = pouch,
+		_budget = 40, object = villager.object}
+	view = {surplus = {}, needs = {}, value = function(item) return values[item] end}
+	player_inv.contents[FLESH] = 60
+	player_inv.contents[EMERALD] = 1000
+	rep = 0
+	def.on_rightclick(cleric, player)
+	local unit = window.flesh_unit(prices.price(nil, LEATHER), 0)
+	local lot, price = window.lot(unit, false)
+	local rows_now = window.rows(view, pouch, 5, 0, nil, false, nil, nil, nil, {budget = 40, unit = unit})
+	local _, index = row(rows_now.buys, FLESH)
+	handlers.fields(player, window.FORMNAME, {["buy_all_" .. index] = true})
+	local lots = math.floor(40 / price)
+	assert(pouch[FLESH] == lots * lot and player_inv.contents[FLESH] == 60 - lots * lot, pouch[FLESH])
+	assert(cleric._budget == 40 - lots * price and pouch[EMERALD] == 5, "paid from its budget, not its purse")
+	assert(cleric._villages_tally.money.flesh_out == lots * price)
+	assert(near(cleric._villages_flesh_cost, price / lot), "its average cost per flesh")
+	-- Its leather now sells for more than three flesh cost it, whatever its asks say.
+	local leather_row = row(window.rows(view, pouch, 5, 0, nil, false, nil, function() return 0.5 end, nil,
+		{budget = 0, unit = unit, floor = asks.cost_floor(cleric, dofile("goods.lua").CONVERSIONS.cleric[1])}).sells, LEATHER)
+	assert(leather_row and leather_row.price > 3 * price / lot, leather_row and leather_row.price)
+	-- Honoured at a master cleric: pearls (8 a day at level 5) and bottles o' enchanting.
+	rep = 60
+	local function find(rows, id)
+		for i, entry in ipairs(rows) do
+			if entry.offer.id == id then return entry, i end
+		end
+	end
+	handlers.fields(player, window.FORMNAME, {tab = "2"})
+	local special = premium.rows("cleric", 5, 60, pouch, 18, function(item) return prices.price(nil, item) end,
+		window.rep_share(60))
+	local pearl, at = find(special, "ender_pearl")
+	assert(special[1].offer.id == "experience_bottle" and pearl.stock == 8, "level 5 first; its cap at level 5")
+	assert(shown[#shown].spec:find("Ender pearl", 1, true) and shown[#shown].spec:find("premium_all_" .. at, 1, true))
+	handlers.fields(player, window.FORMNAME, {["premium_all_" .. at] = true})
+	assert(made[#made].id == "ender_pearl" and player_inv.contents.ender_pearl == 8 and pouch[BOTTLE] == 2)
+	assert(pouch[EMERALD] == 5 + 8 * pearl.price and cleric._villages_tally.money.premium_in == 8 * pearl.price)
+	handlers.fields(player, window.FORMNAME, {["premium_buy_" .. at] = true})
+	assert(player_inv.contents.ender_pearl == 8 and chats[#chats]:find("all it will today", 1, true))
+	-- The next day the cap is fresh, but two bottles make two.
+	day = 10
+	handlers.fields(player, window.FORMNAME, {["premium_all_" .. at] = true})
+	assert(player_inv.contents.ender_pearl == 10 and pouch[BOTTLE] == 0)
+	assert(shown[#shown].spec:find("out of stock", 1, true))
+	-- A friend gets 2 a day at level 4 and no bottles o' enchanting.
+	pouch[BOTTLE] = 9
+	local friend = premium.rows("cleric", 5, 35, pouch, 18, function() return 0 end, 0)
+	assert(find(friend, "ender_pearl").stock == 2 and find(friend, "experience_bottle").locked)
+	handlers.fields(player, window.FORMNAME, {quit = "true"})
+	minetest.get_day_count = nil
 	rep = 0
 end
 print("trade_window.lua: ok")

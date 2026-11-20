@@ -88,7 +88,11 @@ assert(ledger.inputs("tool_smith", 1)["mcl_core:diamond"] == nil, "only up to it
 -- (ticket 20): the tool smith's flint and the leatherworker's flint go. The tool smith's iron
 -- stays, for its iron pick, and the cleric's gold, for its clock (ticket 29).
 assert(smith["mcl_core:iron_ingot"] and smith["mcl_core:flint"] == nil)
-assert(ledger.inputs("cleric")["mcl_core:gold_ingot"] and ledger.inputs("cleric")["mcl_mobitems:rotten_flesh"])
+assert(ledger.inputs("cleric")["mcl_core:gold_ingot"])
+-- Ticket 37b: only players sell the cleric rotten flesh, at its window, and it makes its
+-- bottles from glass.
+assert(not ledger.inputs("cleric")["mcl_mobitems:rotten_flesh"] and not ledger.inputs("cleric")["mcl_potions:glass_bottle"])
+assert(ledger.inputs("cleric")["mcl_core:glass"] == 12)
 assert(ledger.inputs("leatherworker")["mcl_core:flint"] == nil)
 assert(ledger.inputs("weapon_smith")["mcl_core:iron_ingot"] and not ledger.inputs("weapon_smith")["mcl_core:flint"])
 assert(ledger.inputs("armorer")["mcl_core:iron_ingot"] == 32 and ledger.inputs("fletcher")["mcl_core:flint"] == 26)

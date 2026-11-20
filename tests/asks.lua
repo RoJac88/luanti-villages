@@ -93,4 +93,29 @@ local florist = {_id = "f", _villages_market_news = {
 	{kind = "needs", item = "mcl_flowers:poppy", group = "flower", who = "rich", price = 90, heard = 0, hops = 1}}}
 assert(asks.best_bid(florist, "mcl_flowers:poppy", 0) == 0)
 
+-- The cleric's leather (ticket 37b): never at a loss or break even, from what its flesh cost
+-- it on average: PROFIT over three flesh, and at least an emerald over.
+do
+	local goods = dofile("goods.lua")
+	local LEATHER = "mcl_mobitems:leather"
+	local conversion = goods.CONVERSIONS.cleric[1]
+	local c = {_id = "cl", _profession = "cleric"}
+	assert(asks.cost_floor(c, conversion) == nil, "nothing paid, no floor")
+	asks.note_cost(c, conversion.cost, 0, 10, 10)
+	assert(c._villages_flesh_cost == 1)
+	asks.note_cost(c, conversion.cost, 10, 10, 30)
+	assert(c._villages_flesh_cost == 2, "the average over what it held")
+	assert(asks.cost_floor(c, conversion) == 6 * asks.PROFIT)
+	c._villages_flesh_cost = 0.2
+	assert(asks.cost_floor(c, conversion) == 0.6 + 1, "at least an emerald over")
+	c._villages_flesh_cost = 2
+	-- A flesh ask fallen to a quarter cannot drag leather below the floor.
+	c._villages_asks = {["mcl_mobitems:rotten_flesh"] = asks.MIN}
+	assert(asks.converted(c, conversion) >= 6 * asks.PROFIT)
+	assert(asks.converted(c, conversion) >= asks.cost_floor(c, conversion))
+	-- Without the cost field (the alchemist's), as before.
+	local plain = {ratio = 1 / 3, from = "mcl_mobitems:rotten_flesh", to = LEATHER, takes = 3}
+	assert(asks.converted(c, plain) < 6)
+end
+
 print("asks.lua: ok")
