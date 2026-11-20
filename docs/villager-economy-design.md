@@ -3103,12 +3103,18 @@ case with no craft. Saved state keeps its names (the activity is still `porter`)
   while one is out (`_villages_commissioned`). The undelivered price counts neither in the
   worker's money factor nor toward its comforts (`commission.reserve`). The commissioned
   craft is made at the price (`production.choose` asks no less for its output).
+- **The client's goods** (`possessions.owed`, `possessions.take_own`). What a worker
+  carries for another, a commission's output and a porter's purchase on the way to its
+  client, is never taken up as its own comfort, nor put in its stash. In ColonyFood
+  (2026-11-20, day 776) a porter that wanted a barrel itself enjoyed the one it had just
+  made for its client, a second later, and delivered nothing.
 - **Tests:** `tests/trade_trips.lua` (a client with no seller for a lantern commissions a
   porter at the price; the plan, the inputs as needs, the output held back, the reserve; no
   second for the same good; made and delivered with the price kept; run out, the price
   returned and the inputs kept; none over what the client holds); `tests/labour.lua` (a
   heard need for a lantern opens portering, one for sticks does not; a commission keeps it
-  portering).
+  portering); `tests/possessions.lua` (`take_own` leaves a porter's and a commission's
+  goods).
 
 #### 26d. Making for itself
 

@@ -346,6 +346,19 @@ possessions.add(kim, "mcl_core:cobble", 2)
 assert(possessions.take_held(kim, "mcl_core:cobble", 4) == 4)
 assert(possessions.count(kim, "mcl_core:cobble") == 0 and larder["mcl_core:cobble"] == 3)
 assert(possessions.take_held(kim, "mcl_core:cobble", 9) == 3, "all there is")
+-- take_own (comforts.lua's take): never what it carries for another. In ColonyFood
+-- (2026-11-20) a porter enjoyed the barrel it had made for its client.
+local BARREL = "mcl_barrels:barrel_closed"
+possessions.add(kim, BARREL, 2)
+kim._villages_trade_trip = {item = BARREL, bought = 1, client = {id = "cli"}}
+assert(possessions.owed(kim)[BARREL] == 1)
+assert(possessions.take_own(kim, BARREL, 2) == 1 and possessions.count(kim, BARREL) == 1, "the client's stays")
+assert(possessions.take_own(kim, BARREL, 1) == 0, "none of its own left")
+kim._villages_trade_trip = nil
+kim._villages_commission = {index = 1, item = BARREL, count = 1, client = "cli", price = 60, day = 0}
+assert(possessions.take_own(kim, BARREL, 1) == 0, "a commission's output is the client's")
+kim._villages_commission = nil
+assert(possessions.take_own(kim, BARREL, 1) == 1 and possessions.count(kim, BARREL) == 0)
 -- Spare goods go into its stash once it is there, so a buyer who finds it out can buy
 -- (the alchemist's nuggets, ColonyFood 2026-11-19): of each surplus it keeps half, at
 -- most 8, on itself; food and emeralds stay carried.

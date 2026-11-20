@@ -160,6 +160,26 @@ function M.take(self, name, count)
 	return taken
 end
 
+-- {item = count} of its belongings that are another's: a commission's output (ticket
+-- 26b), and what a porter carries to its client.
+function M.owed(self)
+	local owed = {}
+	local c = commission.of(self)
+	if c then owed[c.item] = (owed[c.item] or 0) + c.count end
+	local trip = self._villages_trade_trip
+	if trip and trip.client and trip.item and (trip.bought or 0) > 0 then
+		owed[trip.item] = (owed[trip.item] or 0) + trip.bought
+	end
+	return owed
+end
+
+-- M.take, of what is its own: never what it owes (M.owed). In ColonyFood (2026-11-20)
+-- a porter enjoyed the barrel it had just made for its client, and delivered nothing.
+function M.take_own(self, name, count)
+	local own = M.count(self, name) - (M.owed(self)[name] or 0)
+	return M.take(self, name, math.min(count or 1, math.max(own, 0)))
+end
+
 function M.emeralds(self)
 	return M.count(self, EMERALD)
 end
@@ -442,6 +462,7 @@ function M.stash_spare(self, reach, view)
 	local day = core.get_day_count and core.get_day_count() or 0
 	if labour and labour.day == day and labour.activity == "peddler" then return 0 end
 	view = view or M.assess(self)
+	local owed = M.owed(self)
 	local put = 0
 	local items = {}
 	for item in pairs(view.surplus or {}) do items[#items + 1] = item end
@@ -449,7 +470,7 @@ function M.stash_spare(self, reach, view)
 	for _, item in ipairs(items) do
 		local spare = math.floor(view.surplus[item])
 		local carried = M.count(self, item)
-		local move = math.min(carried, spare) - math.min(CARRY, math.ceil(spare / 2))
+		local move = math.min(carried - (owed[item] or 0), spare) - math.min(CARRY, math.ceil(spare / 2))
 		if move > 0 then move = math.min(move, stash_room(stash, item)) end
 		if item ~= EMERALD and not food.POINTS[item] and move > 0 then
 			local left = move
@@ -580,7 +601,7 @@ function M.step(self, now)
 	M.collect_stash_emeralds(self)
 	M.stash_spare(self)
 	-- It takes up comforts it holds, and puts down those used up (comforts.lua).
-	comforts.update(self, M.in_dinners(self, M.emeralds(self)), M.take, now)
+	comforts.update(self, M.in_dinners(self, M.emeralds(self)), M.take_own, now)
 	-- Its asks for what it did not sell yesterday come down (asks.lua).
 	local day = today()
 	if self._villages_asks_day ~= day then asks.daily(self, M.assess(self).surplus, day, M.in_dinners(self, M.money(self))) end
