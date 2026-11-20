@@ -106,10 +106,8 @@ end
 -- The nearest bell within reach of origin, one this villager has not given up
 -- and that is not full.
 local function nearest_bell(self, origin)
-	local sites = core.find_nodes_in_area(
-		{x = origin.x - SEARCH_RADIUS, y = origin.y - SEARCH_HEIGHT, z = origin.z - SEARCH_RADIUS},
-		{x = origin.x + SEARCH_RADIUS, y = origin.y + SEARCH_HEIGHT, z = origin.z + SEARCH_RADIUS},
-		{BELL})
+	-- Shared with the others setting off from near here (common.find_sites).
+	local sites = common.find_sites({BELL}, origin, SEARCH_RADIUS, SEARCH_HEIGHT)
 	local best, best_distance
 	for _, site in ipairs(sites) do
 		local distance = vector.distance(origin, site)

@@ -194,7 +194,7 @@ local function controller_fixture()
 end
 
 do
-	local controller, site, _, seller, bell, _, _, _, props = controller_fixture()
+	local controller, site, _, seller, bell, _, _, _, props, set_real = controller_fixture()
 	assert(controller.tick(seller, bell, 0) == "holding", "seller holds while bounded search is pending")
 	assert(controller.tick(seller, bell, 0) == "walking", "seller begins normal goto after reservation")
 	assert(site.searches == 1 and site.owner == tostring(seller._id), "search is created once for the string prop owner")
@@ -215,16 +215,20 @@ do
 		"an opened seller stays selling without revalidating or restocking")
 	assert(props.renewal_deadline == 1600, "seller renewals extend the prop deadline on real time")
 	local selling_route = seller._villages_goto_route
+	assert(controller.renew_only(seller, bell) and props.renewals == 1,
+		"a lease renewed this second is not renewed again (renew_stall)")
+	set_real(1001)
 	assert(controller.renew_only(seller, bell) and props.renewals == 2,
 		"maintenance-only renewal also keeps an arrived seller's prop lease alive")
 	assert(seller._villages_goto_route == selling_route,
 		"maintenance-only renewal does not change a seller's route while the role holds")
 	seller._trading_players = {player = true}
+	set_real(1002)
 	assert(controller.tick(seller, bell, 20, true) == "holding" and props.renewals == 3,
 		"a long player trade continues renewing an active stall lease")
 	seller._trading_players = nil
 	controller.leave(seller, "test")
-	assert(site.releases == 1 and site.renewals == 6, "leave releases the reservation after renewing it while selling")
+	assert(site.releases == 1 and site.renewals == 7, "leave releases the reservation after renewing it while selling")
 	assert(seller.order == nil, "leaving a market hold restores the previous order")
 end
 

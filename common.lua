@@ -318,8 +318,62 @@ local function end_seat_walk(self, approach)
 	end
 end
 
+-- Where the nodes `names` (names, not groups) are within radius (and height) of origin, as
+-- find_nodes_in_area's box would say. Every villager of a gathering searches as its stage
+-- begins, all in one step, and each search spans the village (profile.lua, 2026-11-19).
+-- So villagers asking from the same SITE_CELL-node cell within SITE_SECONDS share one
+-- search over a box wide enough for any origin in the cell; each keeps the part inside its
+-- own box whose node is still there. With none left it searches again, so a site taken
+-- down is replaced at once; one newly put up may wait out SITE_SECONDS. Without a game
+-- clock (tests) every call searches.
+local SITE_CELL, SITE_SECONDS = 16, 10
+local site_searches = {}
+
+local function find_sites(names, origin, radius, height)
+	local now = core.get_gametime and core.get_gametime()
+	if not now then
+		return core.find_nodes_in_area(
+			{x = origin.x - radius, y = origin.y - height, z = origin.z - radius},
+			{x = origin.x + radius, y = origin.y + height, z = origin.z + radius}, names) or {}
+	end
+	local wanted = {}
+	for _, name in ipairs(names) do wanted[name] = true end
+	local cx, cy, cz = math.floor(origin.x / SITE_CELL), math.floor(origin.y / SITE_CELL),
+		math.floor(origin.z / SITE_CELL)
+	local key = table.concat(names, ",") .. "|" .. radius .. "|" .. height .. "|" .. cx .. "," .. cy .. "," .. cz
+	local function search()
+		for other, old in pairs(site_searches) do
+			if now >= old.until_time then site_searches[other] = nil end
+		end
+		local fresh = {until_time = now + SITE_SECONDS, sites = core.find_nodes_in_area(
+			{x = cx * SITE_CELL - radius, y = cy * SITE_CELL - height, z = cz * SITE_CELL - radius},
+			{x = (cx + 1) * SITE_CELL - 1 + radius, y = (cy + 1) * SITE_CELL - 1 + height,
+				z = (cz + 1) * SITE_CELL - 1 + radius}, names) or {}}
+		site_searches[key] = fresh
+		return fresh
+	end
+	local function within(sites)
+		local found = {}
+		for _, site in ipairs(sites) do
+			if math.abs(site.x - origin.x) <= radius and math.abs(site.y - origin.y) <= height
+				and math.abs(site.z - origin.z) <= radius then
+				local node = core.get_node_or_nil(site)
+				if node and wanted[node.name] then found[#found + 1] = {x = site.x, y = site.y, z = site.z} end
+			end
+		end
+		return found
+	end
+	local cached = site_searches[key]
+	if cached and now < cached.until_time then
+		local found = within(cached.sites)
+		if #found > 0 then return found end
+	end
+	return within(search().sites)
+end
+
 local M
 M = {
+	find_sites = find_sites,
 	fishing_pond_search_cap = FISHING_POND_SEARCH_CAP,
 	stop_walk = stop_walk,
 	end_seat_walk = end_seat_walk,
