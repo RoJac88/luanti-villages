@@ -136,6 +136,24 @@ entity_at("__builtin:item", {x = 3, y = 1, z = 1}, {itemstring = coop.EGG})
 tick(butcher)
 assert(possessions.count(butcher, coop.EGG) == eggs, "asleep, no eggs picked up")
 
+-- Feathers in its stash count toward FEATHER_KEEP (ticket 32): leaving feathers there made
+-- room for more, and a butcher piled up 339.
+do
+	local stash = {x = 5, y = 1, z = 5}
+	nodes[key(stash)] = "mcl_chests:chest"
+	local stack = {is_empty = function() return false end, get_name = function() return coop.FEATHER end,
+		get_count = function() return coop.FEATHER_KEEP end}
+	minetest.get_meta = function()
+		return {get_string = function() return butcher._id end,
+			get_inventory = function() return {get_list = function() return {stack} end} end}
+	end
+	butcher._villages_stash = stash
+	logs = {}
+	coop.tend(butcher, jobsite, coop.scan(butcher, jobsite))
+	assert(not logged("collected"), "a full stash: no feathers collected")
+	butcher._villages_stash = nil
+end
+
 -- Feathers and chicken are its own make: it sells them, never buys them.
 assert(ledger.outputs("butcher")[coop.FEATHER] and ledger.outputs("butcher")[coop.RAW_CHICKEN])
 assert(not coop.keeps({_id = "k", _profession = "butcher", _villages_keeper = true, _jobsite = jobsite}))

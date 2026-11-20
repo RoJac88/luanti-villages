@@ -110,6 +110,11 @@ return {
 		{makes = "mcl_core:wood", count = 4, tier = 1, from = {{"mcl_core:tree", 1}}},
 		{makes = "mcl_books:bookshelf", count = 1, tier = 1, from = {{"mcl_core:wood", 6}, {"mcl_books:book", 3}}},
 		{makes = "mcl_core:glass", count = 1, tier = 3, from = {{"mcl_core:sand", 1}}, fuel = 1},
+		-- A book and quill (ticket 32), a comfort: a use for the butcher's feathers beyond the
+		-- fletcher's arrows. VoxeLibre's takes black dye too, from an ink sac or a wither rose,
+		-- neither of which a village has, so here a book and a feather make one, as the
+		-- shepherd dyes grey wool. Its trade table buys them (tier 4).
+		{makes = "mcl_books:writable_book", count = 1, tier = 4, from = {{"mcl_books:book", 1}, {"mcl_mobitems:feather", 1}}},
 	},
 	-- A clock, a comfort (comforts.lua, ticket 29), from one of the alchemist's gold ingots
 	-- and one iron ingot: cheaper than a player's craft (four gold and a redstone), which
