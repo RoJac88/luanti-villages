@@ -60,6 +60,12 @@
 -- (ledger.lua). What it pays a player is money out of the village, the tally's
 -- `flesh_out`; what a player pays for premium goods comes back in, `premium_in`.
 --
+-- Diamonds (ticket 37d). A villager that buys diamonds from a player receives DIAMOND_BONUS
+-- (2) for each one sold, the second out of nowhere, so a smith's diamond gear can sell at a
+-- profit and still leave the player better off than mining and crafting. Its reference
+-- price learns the price paid per diamond the player sold, so the bonus does not lower
+-- what it pays next time.
+--
 -- The tavern keeper (ticket 33) sells the dishes in its pantry (tavern_pantry.lua: a
 -- keeper.dishes item), each one dinner at its posted dinner price (dinner.lua), paid into
 -- the pantry, its till, as a player's meal is (player_meals.lua). It keeps the last
@@ -100,6 +106,9 @@ local NUGGET, INGOT = "mcl_core:iron_nugget", "mcl_core:iron_ingot"
 local GOLD_NUGGET, GOLD = "mcl_core:gold_nugget", "mcl_core:gold_ingot"
 local FLINT, GLASS, PANE = "mcl_core:flint", "mcl_core:glass", "xpanes:pane_natural_flat"
 local FLESH, LEATHER = "mcl_mobitems:rotten_flesh", "mcl_mobitems:leather"
+local DIAMOND = "mcl_core:diamond"
+-- Diamonds a villager receives for each one a player sells it.
+local DIAMOND_BONUS = 2
 -- The most rotten flesh the cleric holds: 32 leather's worth.
 local FLESH_KEEP = 96
 -- The cleric's average cost per flesh (goods.lua's cleric conversion, asks.cost_floor).
@@ -116,7 +125,7 @@ local UNITS = {food = "points", fuel = "seconds", log = "logs", planks = "planks
 local M = {
 	FORMNAME = FORMNAME, REP_STEP = REP_STEP,
 	REP_MAX = REP_MAX, REFUSE = REFUSE, URGENT = URGENT, ROWS = ROWS, DONATION_MIN = DONATION_MIN,
-	PREMIUM_ROWS = PREMIUM_ROWS, FLESH_KEEP = FLESH_KEEP,
+	PREMIUM_ROWS = PREMIUM_ROWS, FLESH_KEEP = FLESH_KEEP, DIAMOND_BONUS = DIAMOND_BONUS,
 }
 
 -- What the cleric pays for one rotten flesh: a third of its reference price for leather
@@ -640,7 +649,8 @@ function M.install(def, deps)
 		else
 			possessions.take(villager, EMERALD, pay)
 		end
-		possessions.add(villager, entry.item, count)
+		local received = entry.item == DIAMOND and count * DIAMOND_BONUS or count
+		possessions.add(villager, entry.item, received)
 		-- A purchase like any (ticket 21c): its reference price learns the price, and an
 		-- alchemist's book (ticket 30).
 		prices.learn(villager, entry.item, pay / count)
@@ -651,8 +661,9 @@ function M.install(def, deps)
 			gossip.add(villager, name, "trading")
 			if entry.urgency >= URGENT then gossip.add(villager, name, "minor_positive") end
 		end
-		log("%s sold %d %s to villager %s for %d emerald(s)%s", name, count, entry.item,
-			tostring(villager._id):sub(1, 6), pay, entry.urgency >= URGENT and ", an urgent need" or "")
+		log("%s sold %d %s to villager %s for %d emerald(s)%s%s", name, count, entry.item,
+			tostring(villager._id):sub(1, 6), pay, entry.urgency >= URGENT and ", an urgent need" or "",
+			received > count and string.format(", received %d", received) or "")
 	end
 
 	-- The player buys a premium good (the Special tab's `entry`, premium.rows): its base good

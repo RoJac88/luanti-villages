@@ -524,4 +524,25 @@ do
 	handlers.fields(player, window.FORMNAME, {quit = "true"})
 	rep = 0
 end
+-- Diamonds (ticket 37d): the villager receives two for each a player sells it, and learns
+-- the price paid per diamond sold.
+do
+	local DIAMOND = "mcl_core:diamond"
+	values[DIAMOND] = 70
+	local purse = {[EMERALD] = 1000}
+	local armorer = {_id = "arm-3", _profession = "armorer", _villages_belongings = purse, object = villager.object}
+	view = {surplus = {}, needs = {[DIAMOND] = 8}, value = function(item) return values[item] end,
+		urgency = function() return 1 end}
+	player_inv.contents[DIAMOND] = 3
+	player_inv.contents[EMERALD] = 0
+	def.on_rightclick(armorer, player)
+	local _, index = row(window.rows(view, purse, 1000, 0).buys, DIAMOND)
+	handlers.fields(player, window.FORMNAME, {["buy_one_" .. index] = true})
+	assert(player_inv.contents[DIAMOND] == 2 and player_inv.contents[EMERALD] == 70)
+	assert(purse[DIAMOND] == window.DIAMOND_BONUS and purse[EMERALD] == 930, purse[DIAMOND])
+	assert(near(prices.factor(armorer._villages_prices, DIAMOND), (70 / ledger.price(DIAMOND)) ^ prices.LEARN_TRADE))
+	assert(logs[#logs]:find("received 2", 1, true))
+	handlers.fields(player, window.FORMNAME, {quit = "true"})
+	values[DIAMOND] = nil
+end
 print("trade_window.lua: ok")

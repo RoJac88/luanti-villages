@@ -3591,12 +3591,17 @@ The lines, by sub-ticket (one PR each, against `main`):
   | Weapon smith | iron sword, Sharpness III (8) | diamond axe, Sharpness IV, Unbreaking II (28) | diamond sword, Sharpness V, Unbreaking III (56) |
   | Armorer | each iron piece, Protection II (7) | diamond leggings or boots, Protection III (14) | diamond helmet or chestplate, Protection IV, Unbreaking III (52) |
 
+  A villager that buys diamonds from a player receives two for each one sold (the trade
+  window's `DIAMOND_BONUS`), so a smith's gear can sell at a profit and still leave the
+  player better off. Its reference price learns the price paid per diamond sold, so the
+  bonus doesn't lower what it pays next time.
   The weapon smith makes iron swords from journeyman up (2 iron and a stick), priced at its
   iron like its axe. At a dinner of 18 a diamond pick is 1,204 emeralds: 1,008 for its
   enchantments, 196 for three diamonds and two sticks.
   - **Tests:** `tests/premium.lua` (the three lines, labels, levels, prices with every input,
     stock by the scarcest input, keeps); `tests/trade_window.lua` (a diamond pick refused with
-    one stick and nothing taken, then made from three diamonds and two sticks, tallied).
+    one stick and nothing taken, then made from three diamonds and two sticks, tallied; a
+    diamond sold, two received, the price learnt per diamond sold).
     Checked on the real engine: all fifteen come out enchanted as registered items.
 - **37e. Fletcher, fisherman, leatherworker.** The fletcher's bow: Power III; Power IV and
   Unbreaking II; Power V and Infinity. The fisherman's rod (keeps 1): Lure I and Luck I; Lure
