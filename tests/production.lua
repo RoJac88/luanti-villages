@@ -108,6 +108,20 @@ assert(logs[#logs]:find("made 1 mcl_tools:shovel_stone", 1, true))
 assert(production.work(tobias, 1000) == 2)
 assert(count(tobias, "mcl_core:stick") == 0 and tobias._villages_craft == nil, "nothing left: nothing banked")
 
+-- A librarian's four books for its premium trades (ticket 37) go into no bookshelf: from
+-- journeyman up it crafts only with books past them.
+do
+	local BOOK = "mcl_books:book"
+	local lib = smith({_id = "libby", _profession = "librarian"})
+	possessions.add(lib, "mcl_core:wood", 6)
+	possessions.add(lib, BOOK, 4)
+	assert(production.choose(lib).makes == "mcl_books:bookshelf", "an apprentice keeps none")
+	lib._max_trade_tier = 3
+	assert(production.choose(lib) == nil, "its four books are kept")
+	possessions.add(lib, BOOK, 3)
+	assert(production.choose(lib).makes == "mcl_books:bookshelf", "three past them make one")
+end
+
 -- The shepherd dyes grey wool white with white dye (19h): nobody bought grey.
 do
 	local shep = smith({_id = "sheila", _profession = "shepherd"})

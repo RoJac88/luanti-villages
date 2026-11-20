@@ -55,8 +55,16 @@
 -- dinner. It buys its inputs (ledger.lua's keeper role) as anyone, from its float. With
 -- no pantry it sells what it holds, as anyone.
 --
--- Vanilla's tables, tiers and rare goods (enchanted books, diamond gear) are left out of
--- player trade, to be brought back once the economy works. `_trades` is left alone:
+-- Premium trades (ticket 37, premium.lua): a villager with a premium line (the librarian's
+-- enchanted books) has a Special tab listing every premium good of its profession, each at
+-- its price (P dinners at its reference price for a dinner, plus the base good, less the
+-- reputation share), unlocked by its tier and the player's reputation band, or greyed with
+-- why it is locked. Buying one takes its base good from the villager (out of stock without
+-- it) and makes the good at the sale: the other conversion in player trade. The emeralds go
+-- to the villager, the base used is noted in its tally (economy_tally.lua), and it is
+-- "trading" gossip. Premium goods never go through asks or prices: no villager trades them.
+--
+-- Vanilla's tables and their random rare goods are left out of player trade. `_trades` is left alone:
 -- vanilla and this mod read it as the mark of a villager that keeps its job. The Builder
 -- (its status window) and children keep their own right-click; with the economy off every
 -- villager keeps vanilla's (the keeper its menu, keeper.lua).
@@ -65,6 +73,8 @@ local ledger = dofile(core.get_modpath("living_villages") .. "/ledger.lua")
 local goods = dofile(core.get_modpath("living_villages") .. "/goods.lua")
 local dinner = dofile(core.get_modpath("living_villages") .. "/dinner.lua")
 local alchemist = dofile(core.get_modpath("living_villages") .. "/alchemist.lua")
+local premium = dofile(core.get_modpath("living_villages") .. "/premium.lua")
+local tally = dofile(core.get_modpath("living_villages") .. "/economy_tally.lua")
 
 local EMERALD = "mcl_core:emerald"
 local FORMNAME = "living_villages:trade"
@@ -79,6 +89,8 @@ local FLINT, GLASS, PANE = "mcl_core:flint", "mcl_core:glass", "xpanes:pane_natu
 -- What it buys from a player: iron and gold at any time, flint and glass up to a stock.
 local ALCHEMY_BUYS = {NUGGET, INGOT, GOLD_NUGGET, GOLD, FLINT, GLASS, PANE}
 local ROWS = 6
+-- Premium rows on the Special tab, in two columns.
+local PREMIUM_ROWS = 14
 local REACH = 6
 -- What a category's amount counts (goods.lua).
 local UNITS = {food = "points", fuel = "seconds", log = "logs", planks = "planks"}
@@ -86,6 +98,7 @@ local UNITS = {food = "points", fuel = "seconds", log = "logs", planks = "planks
 local M = {
 	FORMNAME = FORMNAME, REP_STEP = REP_STEP,
 	REP_MAX = REP_MAX, REFUSE = REFUSE, URGENT = URGENT, ROWS = ROWS, DONATION_MIN = DONATION_MIN,
+	PREMIUM_ROWS = PREMIUM_ROWS,
 }
 
 -- Whether a donation of `amount` emeralds on `day` is good gossip: DONATION_MIN or more,
@@ -317,9 +330,25 @@ function M.install(def, deps)
 		return alms_module
 	end
 	local sessions = {}
+	-- Makes a premium good (premium.offers' entry) as an item stack: its source item with
+	-- its enchantments.
+	local make = deps.make or function(offer)
+		local stack = ItemStack(offer.from)
+		for enchant, level in pairs(offer.enchants or {}) do mcl_enchanting.enchant(stack, enchant, level) end
+		return stack
+	end
 
 	local function reputation(villager, name)
 		return gossip and gossip.reputation(villager, name) or 0
+	end
+
+	-- Its premium rows for the player (premium.rows), or nil with no premium line.
+	local function premium_rows(villager, name)
+		if not premium.line(villager) then return nil end
+		local r = reputation(villager, name)
+		local function value(item) return prices.price(villager._villages_prices, item) or 0 end
+		return premium.rows(villager._profession, villager._max_trade_tier or 1, r, possessions.held(villager),
+			dinner.reference(villager), value, M.rep_share(r))
 	end
 
 	-- What the player carries: {item = count}.
@@ -346,8 +375,12 @@ function M.install(def, deps)
 	end
 
 	local function form(villager, name)
+		local session = sessions[name]
 		local rows = current_rows(villager, name)
-		sessions[name].rows = rows
+		session.rows = rows
+		local special = premium_rows(villager, name)
+		session.premium = special
+		if not special then session.tab = nil end
 		local r = reputation(villager, name)
 		local parts = {
 			"formspec_version[4]", "size[13,14.6]",
@@ -356,8 +389,34 @@ function M.install(def, deps)
 				villager._villages_alchemist and "alchemist" or villager._villages_keeper and "tavern keeper"
 					or tostring(villager._profession or "villager"),
 				possessions.emeralds(villager), reputation_word(r), r))),
-			"label[0.5,1.3;It sells]", "label[6.8,1.3;It buys]",
 		}
+		if special then
+			parts[#parts + 1] = string.format("tabheader[0,0;tab;Wares,Special;%d;false;true]",
+				session.tab == "special" and 2 or 1)
+		end
+		if session.tab == "special" then
+			-- Two columns of premium rows: what it makes, its price, and its stock or the lock.
+			for i = 1, math.min(PREMIUM_ROWS, #special) do
+				local entry = special[i]
+				local x, y = i <= PREMIUM_ROWS / 2 and 0.5 or 6.8, 1.6 + ((i - 1) % (PREMIUM_ROWS / 2)) * 0.95
+				local status = entry.locked or (entry.stock > 0 and string.format("can make %d", entry.stock))
+					or "out of stock"
+				parts[#parts + 1] = string.format("item_image[%g,%g;0.8,0.8;%s]", x, y, entry.offer.makes)
+				parts[#parts + 1] = string.format("label[%g,%g;%s]", x + 0.9, y + 0.2,
+					esc(string.format("%s: %d em", entry.offer.label, entry.price)))
+				parts[#parts + 1] = string.format("label[%g,%g;%s]", x + 0.9, y + 0.6,
+					esc((entry.locked and "Locked, " or "") .. status))
+				if not entry.locked and entry.stock > 0 then
+					parts[#parts + 1] = string.format("button[%g,%g;1.2,0.7;premium_buy_%d;Buy]", x + 4.8, y + 0.05, i)
+				end
+			end
+			parts[#parts + 1] = "label[0.5,1.3;Made to order]"
+			if #special == 0 then parts[#parts + 1] = "label[0.5,2;Nothing special.]" end
+			parts[#parts + 1] = string.format("list[current_player;main;0.5,%g;9,4;]", 1.6 + ROWS * 0.95 + 0.6)
+			return table.concat(parts)
+		end
+		parts[#parts + 1] = "label[0.5,1.3;It sells]"
+		parts[#parts + 1] = "label[6.8,1.3;It buys]"
 		local function row(x, y, entry, kind, index)
 			local count = entry.lot > 1 and (" x" .. entry.lot) or ""
 			parts[#parts + 1] = string.format("item_image[%g,%g;0.8,0.8;%s]", x, y, entry.item)
@@ -513,6 +572,40 @@ function M.install(def, deps)
 			tostring(villager._id):sub(1, 6), pay, entry.urgency >= URGENT and ", an urgent need" or "")
 	end
 
+	-- The player buys a premium good (the Special tab's `entry`, premium.rows): its base good
+	-- is taken from the villager and the good made at the sale.
+	local function player_buys_premium(player, villager, entry)
+		local inv = player:get_inventory()
+		local name = player:get_player_name()
+		local offer = entry.offer
+		if entry.locked then return end
+		if entry.stock < 1 then
+			core.chat_send_player(name, "It has nothing to make that from.")
+			return
+		end
+		if not inv:contains_item("main", EMERALD .. " " .. entry.price) then
+			core.chat_send_player(name, "You have too few emeralds for that.")
+			return
+		end
+		local stack = make(offer)
+		if not inv:room_for_item("main", stack) then
+			core.chat_send_player(name, "You have no room for that.")
+			return
+		end
+		local used = possessions.take_held(villager, offer.base, offer.count)
+		if used < offer.count then
+			if used > 0 then possessions.add(villager, offer.base, used) end
+			return
+		end
+		inv:remove_item("main", EMERALD .. " " .. entry.price)
+		possessions.add(villager, EMERALD, entry.price)
+		inv:add_item("main", stack)
+		tally.note(villager, nil, {[offer.base] = offer.count})
+		if gossip then gossip.add(villager, name, "trading") end
+		log("%s bought premium %s (%s) from villager %s for %d emerald(s) (from %d %s)", name, offer.id, offer.label,
+			tostring(villager._id):sub(1, 6), entry.price, offer.count, offer.base)
+	end
+
 	-- The player donates `amount` emeralds to the cleric's alms fund.
 	local function player_donates(player, villager, amount)
 		local inv = player:get_inventory()
@@ -583,6 +676,23 @@ function M.install(def, deps)
 			close(name)
 			core.close_formspec(name, FORMNAME)
 			return true
+		end
+		if fields.tab then
+			session.tab = fields.tab == "2" and "special" or nil
+			show(name)
+			return true
+		end
+		for field in pairs(fields) do
+			local index = field:match("^premium_buy_(%d+)$")
+			if index then
+				-- The rows as they stand now, so a stale window cannot trade at old prices.
+				local rows = premium_rows(villager, name)
+				local shown = session.premium and session.premium[tonumber(index)]
+				local entry = rows and rows[tonumber(index)]
+				if entry and shown and entry.offer.id == shown.offer.id then player_buys_premium(player, villager, entry) end
+				show(name)
+				return true
+			end
 		end
 		if (fields.give or fields.key_enter_field == "give_amount") and M.takes_donations(villager) then
 			player_donates(player, villager, M.gift_amount(fields.give_amount))

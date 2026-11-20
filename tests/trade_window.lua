@@ -17,6 +17,7 @@ minetest = {
 	registered_items = {},
 }
 local window = dofile("trade_window.lua")
+local premium = dofile("premium.lua")
 local EMERALD, BREAD, FISH, IRON = "mcl_core:emerald", "mcl_farming:bread", "mcl_fishing:salmon_raw", "mcl_core:iron_ingot"
 local function near(a, b) return math.abs(a - b) < 1e-9 end
 
@@ -117,7 +118,13 @@ local tavern = {
 }
 local fund = {}
 local alms = {receive = function(priest, gift) fund[#fund + 1] = {priest = priest, gift = gift} end}
-window.install(def, {possessions = possessions, gossip = gossip, tavern = tavern, alms = alms,
+-- Premium goods (ticket 37) made as a stub stack: the offer's id.
+local made = {}
+local function make(offer)
+	made[#made + 1] = offer
+	return {item = offer.id, get_count = function() return 1 end}
+end
+window.install(def, {possessions = possessions, gossip = gossip, tavern = tavern, alms = alms, make = make,
 	clock = {enabled = function() return enabled end}})
 
 local function inventory(contents)
@@ -315,5 +322,54 @@ do
 	assert(pouch[EMERALD] == 5000 - 32 * math.floor(ledger.price(FLINT)))
 	assert(not row(window.rows(empty, pouch, pouch[EMERALD], 0, nil, true).buys, FLINT))
 	handlers.fields(player, window.FORMNAME, {quit = "true"})
+end
+-- Premium trades (ticket 37): the librarian's Special tab lists its books, locked by its
+-- tier and the player's band; buying one takes a book and makes the enchanted one.
+do
+	local BOOK = "mcl_books:book"
+	local shelf = {[BOOK] = 2, [EMERALD] = 0}
+	local librarian = {_id = "libr-1", _profession = "librarian", _max_trade_tier = 4, _villages_belongings = shelf,
+		object = villager.object}
+	view = {surplus = {}, needs = {}, value = function(item) return values[item] end}
+	player_inv.contents[EMERALD] = 1000
+	rep = 40
+	def.on_rightclick(librarian, player)
+	assert(shown[#shown].spec:find("tabheader[", 1, true), "a Special tab")
+	assert(not shown[#shown].spec:find("premium_buy", 1, true), "wares first")
+	handlers.fields(player, window.FORMNAME, {tab = "2"})
+	local spec = shown[#shown].spec
+	assert(spec:find("Book: Mending", 1, true) and spec:find("needs a master", 1, true), "listed, locked")
+	assert(spec:find("Book: Efficiency IV", 1, true) and spec:find("can make 2", 1, true))
+	-- The rows: Mending, five more at level 5 (locked), then Efficiency IV, the first open one.
+	local index
+	for i, entry in ipairs(premium.rows("librarian", 4, 40, shelf, 18, function() return 0 end, 0)) do
+		if entry.offer.id == "efficiency_4" then index = i end
+	end
+	assert(index == 7)
+	handlers.fields(player, window.FORMNAME, {["premium_buy_1"] = true})
+	assert(#made == 0 and shelf[BOOK] == 2, "Mending is locked at an expert")
+	-- Efficiency IV: 16 dinners at 18 and a book at its base price, a tenth off at 40.
+	local price = math.ceil((16 * 18 + ledger.price(BOOK)) * (1 - window.rep_share(40)) - 1e-9)
+	handlers.fields(player, window.FORMNAME, {["premium_buy_" .. index] = true})
+	assert(#made == 1 and made[1].id == "efficiency_4" and made[1].enchants.efficiency == 4)
+	assert(shelf[BOOK] == 1 and shelf[EMERALD] == price and player_inv.contents[EMERALD] == 1000 - price)
+	assert(player_inv.contents.efficiency_4 == 1 and gossiped[#gossiped] == "trading")
+	assert(librarian._villages_tally.used[BOOK] == 1, "the book used is tallied")
+	assert(logs[#logs]:find("premium efficiency_4", 1, true))
+	-- No book left, nothing made.
+	shelf[BOOK] = 0
+	handlers.fields(player, window.FORMNAME, {["premium_buy_" .. index] = true})
+	assert(#made == 1 and chats[#chats]:find("nothing to make", 1, true) and player_inv.contents.efficiency_4 == 1)
+	assert(shown[#shown].spec:find("out of stock", 1, true))
+	-- Below a friend the level 4 books lock too.
+	rep = 20
+	handlers.fields(player, window.FORMNAME, {tab = "2"})
+	assert(shown[#shown].spec:find("needs a friend (30)", 1, true))
+	handlers.fields(player, window.FORMNAME, {quit = "true"})
+	-- A farmer has no Special tab.
+	def.on_rightclick(villager, player)
+	assert(not shown[#shown].spec:find("tabheader[", 1, true))
+	handlers.fields(player, window.FORMNAME, {quit = "true"})
+	rep = 0
 end
 print("trade_window.lua: ok")

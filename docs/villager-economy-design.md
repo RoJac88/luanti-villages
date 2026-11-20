@@ -3473,6 +3473,101 @@ needs and errands.
   (capped at 10, shared as 7); `tests/possessions.lua` (an adult picks up emeralds, a child
   doesn't, the block and food are left alone).
 
+### 37. Premium trades
+
+The mod took vanilla's tiers and random rare goods out of player trade (ticket 14). Now the
+top-tier goods come back, changed to fit the economy. Each is made at the sale from a base
+good the profession keeps: the one exception, with the alchemist's, to "player trades convert
+nothing". They are bought by players with a good name, and they are how a player's hoard of
+emeralds returns to the village's money supply. The cleric's rotten flesh (37b) is the way out
+again.
+
+- **Unlocking.** A premium good has a level from 3 to 5. The villager's tier
+  (`_max_trade_tier`, which rises on supply days) and the player's reputation with that
+  villager (gossip.lua, decentralised) each set a level, and the lower one counts:
+  Known (15) level 3, Friend (30) level 4, Honoured (50) level 5. Fifty can be earned without
+  curing anyone: trading caps at 25, a sale to an urgent need at 25, and donation gossip
+  passes on 7. It fades by about 4 a game day, so it is kept by trading. A Hero (100) unlocks
+  nothing more, but the reputation share the window already applies (up to a quarter off at
+  100, an eighth at 50) takes more off premium prices too. Every good at or below the level is
+  offered, not a random pick, so one master librarian sells every top book.
+- **The base good.** From journeyman up a profession keeps its base good: a target the ledger
+  never sells below, which its trips restock, and which its own crafts leave alone. Each sale
+  takes the base; with none the good is out of stock.
+- **Prices.** P dinners at the seller's own reference price for a dinner (so premium prices
+  follow the village's food), plus the base's reference value, less the reputation share.
+  P comes from one table of enchantments: a headline enchantment's top level is 32 dinners and
+  each level below costs half; utility ones top out at 24 to 28; treasure ones exist only at
+  their one level. Enchanted gear costs the sum of its enchantments, so it is never cheaper
+  than the books. `premium.SCALE` tunes them all.
+
+  | Enchantment | Dinners by level |
+  |---|---|
+  | Mending | 40 |
+  | Silk Touch, Infinity | 24 |
+  | Efficiency, Sharpness, Power | III 8, IV 16, V 32 |
+  | Fortune | I 8, II 16, III 32 |
+  | Unbreaking | I 6, II 12, III 24 |
+  | Protection | II 7, III 14, IV 28 |
+  | Feather Falling | II 4, III 8, IV 16 |
+  | Lure, Luck of the Sea | I 3/4, II 6/8, III 12/16 |
+
+  An enchantment line sells its maximum level at premium level 5, one below at 4, two below at
+  3, where that level exists.
+- **Not traded among villagers.** Premium goods never enter asks, reference prices, market
+  news or villager trade. They exist only once a player buys one.
+- **The window.** A villager with premium goods has a Special tab: every good of its
+  profession with its price, and how many its base allows, "out of stock", or why it is
+  locked ("needs a master", "needs a friend (30)").
+
+The lines, by sub-ticket (one PR each, against `main`):
+
+- **37a. Framework and the librarian (done).** `premium.lua`, the Special tab, the base kept
+  and left out of crafts, the base used in the tally. The librarian keeps 4 books and sells
+  Mending (40), Efficiency V (32), Fortune III (32), Protection IV (28), Silk Touch (24),
+  Unbreaking III (24) at level 5; Efficiency IV, Fortune II, Protection III, Unbreaking II at 4;
+  Efficiency III, Fortune I, Protection II, Unbreaking I at 3. At a dinner of 18 a Mending book
+  is 736 emeralds; the master set is about 180 dinners.
+- **37b. The cleric.** It keeps 9 glass bottles, which it makes from glass (3 glass, 3 bottles).
+  It sells ender pearls (4 dinners) at level 4, 2 a day per player, and at level 5, 8 a day;
+  bottles o' enchanting (2 dinners) at level 5, 16 a day. Each takes a bottle. Open to anyone
+  it trades with: it buys rotten flesh up to 96 held, at its value (leather's reference price
+  over 3, times urgency), and sells leather made 3 flesh to 1, to villagers and players, as the
+  alchemist sells ingots. That loop ends in books: flesh, leather, the librarian's books.
+  Alms change so it can pay for flesh: donations become progressive (a tenth of savings from 8
+  to 24 dinners, a fifth from 24 to 64, three tenths above 64, in place of a tenth over 8), and
+  the fund's target adds a flesh reserve of 12 dinners to its 4 holidays of alms. Flesh is
+  paid only from the fund past its alms part and the cleric's own money past its savings;
+  leather sold pays the fund back. The tally gains money counters, premium in and flesh out,
+  and the Economy tab the player's net flow a day.
+- **37c. The farmer.** Golden carrots, 3 dinners each, each from 6 wheat or 8 potatoes (keeps
+  24): 4 a day per player at level 4, 16 at level 5. At a dinner of 18 one is about 7 loaves,
+  vanilla's ratio.
+- **37d. Smiths and the armorer.** They buy diamonds from players, keeping up to 8. The tool
+  smith sells an iron pick with Efficiency III and Unbreaking I (level 3), a diamond axe or
+  shovel with Efficiency IV and Unbreaking II (4), a diamond pick with Efficiency V and
+  Unbreaking III (5). The weapon smith (with a new iron sword recipe): an iron sword with
+  Sharpness III, a diamond axe with Sharpness IV and Unbreaking II, a diamond sword with
+  Sharpness V and Unbreaking III. The armorer: an iron piece with Protection II, diamond
+  leggings or boots with Protection III, a diamond helmet or chestplate with Protection IV and
+  Unbreaking III. Each price adds its base: the crafted piece, or the real recipe's diamonds
+  and sticks.
+- **37e. Fletcher, fisherman, leatherworker.** The fletcher's bow: Power III; Power IV and
+  Unbreaking II; Power V and Infinity. The fisherman's rod (keeps 1): Lure I and Luck I; Lure
+  II and Luck II; Lure III and Luck III. The leatherworker: a saddle from 4 leather (8 dinners)
+  at level 4; at 5 also leather boots with Feather Falling IV.
+- **None.** The shepherd, mason, butcher and keeper have no rare goods in vanilla; the
+  Builder, alchemist and nitwit keep their own roles.
+- **Later: the cartographer.** Explorer maps (VoxeLibre has none) from 8 paper: a map of the
+  biome a structure stands in, found by `core.get_biome_data` on land not yet generated and
+  drawn by `mcl_maps.create_map`, which generates it. Out of scope until the engine cost of
+  generating that land is measured.
+- **Tests (37a):** `tests/premium.lua` (bands and levels, enchantment levels, the librarian's 14
+  books, prices, the base kept, rows); `tests/trade_window.lua` (the Special tab, a locked book
+  not sold, a book taken and the enchanted one made, paid and tallied, out of stock, a farmer
+  with no tab); `tests/possessions.lua` (books a need and not spare); `tests/production.lua` (no
+  bookshelf from the kept books).
+
 ## Open questions
 
 - Price discovery (ticket 21):

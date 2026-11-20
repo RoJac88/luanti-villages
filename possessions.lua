@@ -55,6 +55,7 @@ local prices = dofile(core.get_modpath("living_villages") .. "/prices.lua")
 local recipes = dofile(core.get_modpath("living_villages") .. "/recipes.lua")
 local commission = dofile(core.get_modpath("living_villages") .. "/commission.lua")
 local variety = dofile(core.get_modpath("living_villages") .. "/variety.lua")
+local premium = dofile(core.get_modpath("living_villages") .. "/premium.lua")
 
 local DEFAULT_STASH_RADIUS = 8
 local STASH_HEIGHT = 3
@@ -816,6 +817,9 @@ function M.assess(self)
 			worth[item] = math.min(worth[item] or math.huge, cap)
 		end
 	end
+	-- The base good of its premium trades (premium.keeps, ticket 37), from journeyman up:
+	-- a target, so it is never spare below it and its trips restock it.
+	for item, count in pairs(premium.keeps(self) or {}) do extra[item] = (extra[item] or 0) + count end
 	-- A leatherworker breeds its herd on wheat (herd.lua's HERD_WHEAT).
 	if self._profession == "leatherworker" and not self.child then
 		extra[HERD_WHEAT_ITEM] = (extra[HERD_WHEAT_ITEM] or 0) + HERD_WHEAT
