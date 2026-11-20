@@ -811,6 +811,21 @@ assert(cleo._villages_meal and cleo._villages_food == 4 and pantry_items["mcl_co
 now = now + 20
 meal.tick(cleo, 0.1, jukebox)
 pantry_items["mcl_core:emerald"] = nil
+-- Over its savings the cleric pays, and dines without weighing the price (ticket 27).
+day = day + 1
+local rich = {_id = "rich-cleric", _profession = "cleric", _villages_seat = {table = tabletop},
+	_bed = {x = 40, y = 0, z = 40}, _villages_belongings = {["mcl_core:emerald"] = 3000}}
+rich.object = {get_pos = function() return {x = 2, y = 0, z = 0} end}
+pantry_items["mcl_farming:bread"] = 1
+now = now + 10
+meal.tick(rich, 0.1, jukebox)
+now = now + 5
+meal.tick(rich, 0.1, jukebox)
+local paid = 3000 - (rich._villages_belongings and rich._villages_belongings["mcl_core:emerald"] or 0)
+assert(rich._villages_meal and paid > 0 and (pantry_items["mcl_core:emerald"] or 0) == paid, "the rich cleric pays " .. paid)
+now = now + 20
+meal.tick(rich, 0.1, jukebox)
+pantry_items["mcl_core:emerald"] = nil
 
 -- A player pays the tavern's posted dinner price (dinner.lua) into the pantry for the meal.
 day = day + 1

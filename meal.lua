@@ -23,8 +23,9 @@
 -- A villager guest pays too (ticket 8, once crafting gives every profession something
 -- to sell): the keeper's posted dinner price (dinner.lua, ticket 21e; ledger.DINNER where
 -- none was ever posted) from its belongings (possessions.lua) into the pantry, unless it
--- is the keeper or of the keeper's household (possessions.same_house), or the cleric
--- (ticket 24), who eat free. It
+-- is the keeper or of the keeper's household (possessions.same_house), who eat free, or
+-- the cleric (ticket 24) with no more than CLERIC_SAVINGS. A cleric over that pays, and
+-- always dines (ticket 27). It
 -- dines only when the price is no more than a meal is worth to it (dinner.wants);
 -- otherwise it eats its own food, or buys some. A guest who would not pay while dishes
 -- were left, and one who would have paid but found none, move the keeper's price for the
@@ -71,6 +72,9 @@ local HOLD_SECONDS = 5
 -- emerald at all gets nothing (and takes no seat, tavern.lua).
 local RAW_PLATES, RAW_PORTION = {"mcl_farming:carrot_item", "mcl_farming:beetroot_item"}, 4
 local BROKE_PRICE = 1
+-- Up to this, in dinners at its own price for one (dinner.scale), the cleric eats free:
+-- alms.lua's SAVINGS.
+local CLERIC_SAVINGS = 8 * ledger.DINNER
 -- Dishes a villager guest may have in one evening: enough to take it from starving (0)
 -- to above EAT_AT (4 + 4 + 4 points).
 local MAX_DISHES = 3
@@ -165,15 +169,19 @@ local function terms(self, jukebox)
 	if keeper and (keeper == self or possessions.same_house(keeper._bed, self._bed)) then return 0 end
 	-- The cleric eats free (ticket 24): it lives on alms and sells nothing a village wants,
 	-- and starved at 15 emeralds while dinner cost 1 (ColonyFood, 2026-11-16). Not the
-	-- alchemist, a cleric underneath, which never eats.
-	if self._profession == "cleric" and not self._villages_alchemist then return 0 end
+	-- alchemist, a cleric underneath, which never eats. Over its savings it pays, and
+	-- always dines, never weighing the price as it starved doing (ticket 27): one with
+	-- 2,700 emeralds ate free while the keeper owed the farms 1,950 (ColonyFood, 2026-11-20).
+	local cleric = self._profession == "cleric" and not self._villages_alchemist
+	if cleric and possessions.emeralds(self) <= CLERIC_SAVINGS * dinner.scale(self) then return 0 end
 	local price = dinner.posted(jukebox, keeper, core.get_day_count()) or VILLAGER_PRICE
 	return price,
 		function() return possessions.emeralds(self) >= price end,
 		function()
 			possessions.take(self, possessions.EMERALD, price)
 			dinner.paid(self, price)
-		end
+		end,
+		cleric
 end
 
 -- A villager at a pantry orders only when it has room for a meal.
@@ -193,12 +201,13 @@ end
 -- and how it pays (nil for free); or nil and why not. `choose` picks the dish at random,
 -- as serving does; without it the first will do, to ask whether there is one.
 local function order(self, jukebox, chests, choose)
-	local price, can_pay, pay = terms(self, jukebox)
+	local price, can_pay, pay, always = terms(self, jukebox)
 	local dishes = pantry.available(chests, menu())
 	local villager = is_villager(self)
 	local day = core.get_day_count()
 	-- A villager pays only what a meal is worth to it (dinner.lua, ticket 21e).
-	local willing = price == 0 or (can_pay() and (not villager or dinner.wants(self, price, day, possessions.assess)))
+	local willing = price == 0
+		or (can_pay() and (not villager or always or dinner.wants(self, price, day, possessions.assess)))
 	local keeper = villager and price > 0 and keeper_state(jukebox) or nil
 	if #dishes == 0 and willing then dinner.ran_out(keeper, day, self._id) end
 	if #dishes == 0 and not (villager and raw_plate(chests)) then return nil, "the pantry is empty" end

@@ -19,18 +19,23 @@
 --   Only the farmer bakes bread, and only the butcher cooks meat and fish (recipes.lua):
 --   the keeper buys those ready made.
 -- * It buys what it takes (ticket 4): setting out, it takes up to PURSE emeralds from
---   the pantry, and leaves in the work chest what the food is worth, for its farmer or
+--   the pantry (and, short there, from its own float, below), and leaves in the work
+--   chest what the food is worth, for its farmer or
 --   fisherman to collect: a meal's food cost (dinner.food_cost, its reference price for a
 --   loaf, ticket 21e; DINNER until then) for each meal the food makes (MEALS: a loaf or a
 --   potato is one). The tavern
 --   keeps no margin, so dinner money, a player's too, passes through the pantry to the
 --   food producers (ticket 11b; at vanilla's prices, rounded, 8 wheat paid nothing while
---   its dinners took 1 emerald each, and money piled up in the pantry). What it cannot
---   pay in whole emeralds, a fraction or an empty purse, it owes in the chest's
---   `villages_keeper_tab` and pays first next time, up to TAB_CAP; past that it is
---   forgiven (the keeper's household eats free, so more goes out than comes in). It takes
---   the food anyway, so the tavern keeps feeding the village. What it did not spend goes
---   back in the pantry.
+--   its dinners took 1 emerald each, and money piled up in the pantry). It takes only
+--   the food its purse pays for (ticket 27): what is left of a whole emerald, a fraction,
+--   it owes in the chest's `villages_keeper_tab` and pays first next time, up to TAB_CAP
+--   (1). It used to take the food anyway and owe the rest, up to a cap that grew with
+--   the tavern; in ColonyFood (2026-11-20) it owed the two farms 1,950, a quarter of the
+--   village's money, as dinner sold at 1 for food it paid 1.2 for. A larger tab, from
+--   then, is written off when it next fetches there. Food dearer than dinners pay for (it
+--   could not pay for all it wanted, or paid from its float) moves the dinner price up
+--   the next day, as running out does (dinner.dear). What it did not spend goes back in
+--   the pantry.
 -- * Over its shift at the jukebox it cooks the pantry's raw food into its menu, one dish
 --   every COOK_SECONDS: a potato baked.
 -- * Dishes it bought in conversation or on a trade trip (ticket 11e: cooked beef and
@@ -71,7 +76,8 @@ local COOK_SECONDS = 10
 -- In emeralds at ledger.SCALE (ticket 11h).
 local PURSE = 8 * SCALE
 local DINNER = ledger.DINNER
-local TAB_CAP = 8 * SCALE
+-- What it may owe a chest: a fraction of an emerald (ticket 27).
+local TAB_CAP = 1
 -- What it keeps on it from the pantry, for the dishes it buys: the whole purse, so a
 -- dish dear in a short week is still within its reach (run of 2026-11-13: eight dinners'
 -- 144 could not buy one cooked salmon while the pantry held 530).
@@ -180,9 +186,9 @@ function M.carry(self)
 	return math.min(math.max(CARRY, M.target(self)), CARRY_MAX)
 end
 
--- What it may owe a chest: TAB_CAP at TARGET_MEALS, more for a busier tavern.
-function M.tab_cap(self)
-	return TAB_CAP * M.target(self) / TARGET_MEALS
+-- What it may owe a chest: a fraction (ticket 27; it grew with the tavern before).
+function M.tab_cap()
+	return TAB_CAP
 end
 
 -- What the keeper pays for goods, in emeralds, fractions kept: a meal's food cost at its
@@ -199,12 +205,36 @@ function M.tab(pos)
 	return tonumber(core.get_meta(pos):get_string(TAB)) or 0
 end
 
+-- What of its purse came from its own float, and the meals the pantry lacked when it
+-- set out, per keeper (not saved).
+local from_float = setmetatable({}, {__mode = "k"})
+local lacking = setmetatable({}, {__mode = "k"})
+
+-- Its purse: up to PURSE from the pantry, and, short there, from its own emeralds (the
+-- float, refilled from the pantry on shift), so a pantry with no money left still buys
+-- the food the next dinners pay for.
 local function take_purse(self, chests)
 	for _, chest in ipairs(chests) do
 		local want = PURSE - stock.count(self, EMERALD)
 		if want <= 0 then break end
 		stock.take_from_chest(self, chest, EMERALD, want)
 	end
+	local short = math.min(PURSE - stock.count(self, EMERALD), possessions.emeralds(self))
+	from_float[self] = nil
+	if short > 0 then
+		possessions.take(self, EMERALD, short)
+		stock.add(self, EMERALD, short)
+		from_float[self] = short
+	end
+end
+
+-- Writes off a tab over TAB_CAP, from when it took food it could not pay for.
+local function write_off(self, chest)
+	local tab = M.tab(chest)
+	if tab <= TAB_CAP then return end
+	core.get_meta(chest):set_string(TAB, "")
+	core.log("action", string.format("[living_villages] keeper %s wrote off %.2f emerald(s) it owed at %s",
+		tostring(self._id), tab, core.pos_to_string(chest)))
 end
 
 -- Pays for what it took from the chest, and what it owed there, from its purse.
@@ -213,7 +243,7 @@ function M.pay(self, chest, taken)
 	local due = M.tab(chest) + M.worth(taken, self)
 	local paid = stock.put_in_chest(self, chest, EMERALD, math.min(math.floor(due + EPSILON), stock.count(self, EMERALD)))
 	local owed = due - paid
-	local cap = M.tab_cap(self)
+	local cap = M.tab_cap()
 	if owed > cap then
 		core.log("action", string.format("[living_villages] keeper %s forgave %.2f emerald(s) owed at %s",
 			tostring(self._id), owed - cap, core.pos_to_string(chest)))
@@ -225,17 +255,34 @@ function M.pay(self, chest, taken)
 end
 
 local function fetch(self, chest)
+	write_off(self, chest)
 	local room = M.carry(self) - carried(self)
-	local taken = {}
+	local cost = dinner.food_cost(self)
+	local purse = stock.count(self, EMERALD)
+	local budget = purse - M.tab(chest)
+	local taken, short, got = {}, 0, 0
 	for _, item in ipairs(SUPPLIES) do
 		if room <= 0 then break end
-		local moved = stock.take_from_chest(self, chest, item, room)
+		local unit = MEALS[item] * cost
+		local want = math.min(room, stock.chest_count(chest, item))
+		local afford = unit > 0 and math.max(math.floor((budget + EPSILON) / unit), 0) or want
+		local moved = stock.take_from_chest(self, chest, item, math.min(want, afford))
 		if moved > 0 then taken[item] = moved end
-		room = room - moved
+		short = short + want - moved
+		got = got + moved * MEALS[item]
+		budget, room = budget - moved * unit, room - moved
 	end
 	local paid, owed = M.pay(self, chest, taken)
 	core.log("action", string.format("[living_villages] keeper %s fetched %d food for the pantry, paying %d emerald(s), owing %.2f",
 		tostring(self._id), carried(self), paid, owed))
+	-- Dinners did not pay for the food: it went without some the pantry lacked, or paid
+	-- from its float.
+	local float = from_float[self] or 0
+	if (short > 0 and got < (lacking[self] or 0)) or paid > purse - float + EPSILON then
+		dinner.dear(self, core.get_day_count())
+		core.log("action", string.format("[living_villages] keeper %s: food dearer than dinners pay (left %d it could not pay for, %d from its float)",
+			tostring(self._id), short, math.max(math.min(paid - (purse - float), float), 0)))
+	end
 end
 
 local function deliver(self, jukebox)
@@ -344,6 +391,7 @@ local function supply(self, jukebox, now)
 		return
 	end
 	take_purse(self, chests)
+	lacking[self] = M.target(self) - M.meals(chests)
 	go(self, source, now, function(entity) fetch(entity, source) end)
 end
 

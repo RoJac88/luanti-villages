@@ -8,7 +8,8 @@
 --   potato is a quarter of a loaf, and the dinner would have fallen from 18 to 2 at once.
 -- * Its dinner price is the food cost times its dinner factor, in whole emeralds, at
 --   least 1. The factor (`_villages_dinner.factor`, 1 unset) moves once a day, from the
---   evening before: ×MARKUP if a guest who would have paid found no dish, else ×MARKDOWN
+--   evening before: ×MARKUP if a guest who would have paid found no dish, or the keeper
+--   could not pay for its food from dinner money (`dear`, ticket 27), else ×MARKDOWN
 --   if a hungry guest would not pay while dishes were left, within asks.MIN and asks.MAX.
 -- * The price is posted in the jukebox's meta (POSTED), where a guest and a player read it
 --   and where the keeper puts it each day and whenever its prices move.
@@ -59,7 +60,7 @@ function M.settle(keeper, jukebox, day)
 	local record = keeper._villages_dinner or {}
 	if record.day ~= day then
 		local factor = record.factor or 1
-		if record.out then
+		if record.out or record.dear then
 			factor = factor * MARKUP
 		elseif record.turned and next(record.turned) and M.price(keeper) > 1 then
 			-- At the 1-emerald floor a markdown changes nothing a guest sees, and would only
@@ -69,7 +70,8 @@ function M.settle(keeper, jukebox, day)
 		factor = math.min(math.max(factor, asks.MIN), asks.MAX)
 		if record.day and factor ~= (record.factor or 1) then
 			core.log("action", string.format("[living_villages] keeper %s moved its dinner factor to %.2f (%s)",
-				short_id(keeper._id), factor, record.out and "ran out" or "guests turned away"))
+				short_id(keeper._id), factor, record.out and "ran out" or record.dear and "food dearer than dinners pay"
+				or "guests turned away"))
 		end
 		record = {day = day, factor = factor, demand = record.day and M.evening(record) or nil}
 		keeper._villages_dinner = record
@@ -111,6 +113,14 @@ function M.ran_out(keeper, day, id)
 		record.short = record.short or {}
 		record.short[id] = true
 	end
+end
+
+-- The keeper could not pay for the food it wanted from dinner money (keeper_supply.lua,
+-- ticket 27): up MARKUP the next day, as when it runs out.
+function M.dear(keeper, day)
+	if not keeper then return end
+	M.settle(keeper, nil, day)
+	keeper._villages_dinner.dear = true
 end
 
 -- A meal served at the keeper's tavern.
