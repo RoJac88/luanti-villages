@@ -736,6 +736,25 @@ meal.tick(vera, 0.1, jukebox)
 -- Back to a dinner factor of 1 for what follows.
 day = day + 1
 kate._villages_dinner = nil
+-- Variety (ticket 34): she is served the dish she ate least of lately, not bread again;
+-- the keeper notes each dish its guests ate.
+pantry_items["mcl_core:emerald"] = nil
+pantry_items["mcl_farming:bread"] = 3
+pantry_items["mcl_farming:potato_item_baked"] = 3
+vera._villages_meals = {[day] = {["mcl_farming:bread"] = 6}}
+vera._villages_belongings["mcl_core:emerald"] = 5000
+vera._villages_food = 4
+kate._villages_served_dishes = nil
+now = now + 10
+meal.tick(vera, 0.1, jukebox)
+assert(vera._villages_meal and vera._villages_meal.item == "mcl_farming:potato_item_baked", "a change from bread")
+assert(vera._villages_meals[day]["mcl_farming:potato_item_baked"] == 2, "both dishes baked potato")
+assert(kate._villages_served_dishes[day]["mcl_farming:potato_item_baked"] == 2, "the keeper noted them")
+now = now + 20
+meal.tick(vera, 0.1, jukebox)
+pantry_items["mcl_farming:bread"], pantry_items["mcl_farming:potato_item_baked"] = nil, nil
+day = day + 1
+kate._villages_dinner = nil
 -- Broke (2026-11-13): short of a dinner's price, a raw plate of carrots or beetroot for
 -- one emerald, dish or no dish in the pantry; with no emerald, nothing, and no seat.
 day = day + 1

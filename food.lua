@@ -12,8 +12,12 @@
 -- of its economic clock (economy_clock.lua), worked out when they are next read, so
 -- a villager no player is near neither eats nor goes hungry. They never fall below
 -- 0, and hunger never harms: it lowers what a villager does (state).
+--
+-- Each adult meal is noted in `_villages_meals` (variety.lua, ticket 34): a food eaten a
+-- lot lately is worth less to it, though it feeds as much.
 local core = minetest
 local clock = dofile(core.get_modpath("living_villages") .. "/economy_clock.lua")
+local variety = dofile(core.get_modpath("living_villages") .. "/variety.lua")
 
 local POINTS = {
 	["mcl_farming:bread"] = 4,
@@ -135,6 +139,8 @@ function M.receive(self, item)
 		self._villages_fed_day = core.get_day_count()
 	else
 		self._villages_food = M.points(self) + points
+		-- What it ate, for variety (ticket 34): every meal comes through here.
+		if core.get_day_count then self._villages_meals = variety.note(self._villages_meals, item, core.get_day_count()) end
 	end
 	local max = self.initial_properties and self.initial_properties.hp_max
 	if max and self.health and self.health < max then

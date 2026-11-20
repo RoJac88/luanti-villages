@@ -276,6 +276,36 @@ stage = "work"
 kim._villages_food = 0
 possessions.eat(kim)
 assert(kim._villages_food == 6 and possessions.count(kim, "mcl_fishing:fish_raw") == 0, "starving, it eats its catch")
+-- Variety (ticket 34): of foods as filling, the one it ate less of lately; the meal is noted.
+do
+	local BREAD, BAKED = "mcl_farming:bread", "mcl_farming:potato_item_baked"
+	local saved_stage = stage
+	stage = "home"
+	local liv = {_id = "liv", _villages_food = 8, _villages_belongings = {[BREAD] = 2, [BAKED] = 2},
+		_villages_meals = {[day] = {[BREAD] = 3}}}
+	local ate = possessions.eat(liv)
+	assert(#ate == 1 and ate[1] == BAKED, tostring(ate[1]))
+	assert(liv._villages_meals[day][BAKED] == 1, "noted for variety")
+	-- More points still win over a little tiredness: a pie (6) over a fresh loaf (4).
+	local pia = {_id = "pia", _villages_food = 8, _villages_belongings = {[BREAD] = 1, ["mcl_farming:pumpkin_pie"] = 1},
+		_villages_meals = {[day] = {["mcl_farming:pumpkin_pie"] = 1}}}
+	assert(possessions.eat(pia)[1] == "mcl_farming:pumpkin_pie")
+	-- Its values follow: bread is worth less to it than to one that ate none.
+	local fresh = {_id = "fre", _villages_food = 8, _villages_belongings = {}}
+	local tired = {_id = "tir", _villages_food = 8, _villages_belongings = {}, _villages_meals = {[day] = {[BREAD] = 3}}}
+	assert(possessions.assess(tired).value(BREAD) < possessions.assess(fresh).value(BREAD))
+	assert(possessions.assess(tired).value(BAKED) == possessions.assess(fresh).value(BAKED))
+	-- Starving, it is tired of nothing.
+	tired._villages_food = 0
+	assert(possessions.variety_of(tired)(BREAD) == 1)
+	-- A keeper by its guests' dishes, a potato as the baked potato it makes.
+	local keeper = {_id = "kee", _villages_keeper = true, _villages_food = 8, _villages_belongings = {},
+		_villages_meals = {[day] = {[BREAD] = 9}},
+		_villages_served_dishes = {[day] = {[BAKED] = 10}}}
+	local f = possessions.variety_of(keeper)
+	assert(f(BREAD) == 1 and f("mcl_farming:potato_item") < 1 and f(BAKED) == f("mcl_farming:potato_item"))
+	stage = saved_stage
+end
 kim._villages_food = 1
 stage = "home"
 -- Its stash, only within reach.

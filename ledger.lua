@@ -404,7 +404,8 @@ end
 -- recipes that do not pay taking them, M.unpaid, ticket 21d), money = emeralds (what it has to
 -- spend, for the money factor, M.lambda; none, as for the keeper, leaves values as
 -- they are), dinner = emeralds (its reference price for a dinner, dinner.lua, ticket
--- 21e: STOCK_MONEY and the cushion are counted in dinners at it; DINNER unset)}. `worth` and `least` are in emeralds and bound the value after the money
+-- 21e: STOCK_MONEY and the cushion are counted in dinners at it; DINNER unset), variety =
+-- function(item) (a food's factor for what it ate lately, variety.lua, ticket 34; 1 unset)}. `worth` and `least` are in emeralds and bound the value after the money
 -- factor.
 -- Returns {targets, needs, surplus, value = function(item), urgency = function(item)}:
 -- urgency is the need's own (M.urgency), before `worth` caps the value, so a good that
@@ -516,6 +517,10 @@ function M.assess(input)
 		if starving and lambda > 1 and goods.category_of(item) == "food" then return 1 end
 		return lambda
 	end
+	-- Variety (ticket 34): a food it ate a lot of lately is worth less to it, before the caps.
+	local function variety(item)
+		return input.variety and goods.category_of(item) == "food" and input.variety(item) or 1
+	end
 	local function value(item)
 		local price = M.price(item)
 		if not price then return nil end
@@ -524,7 +529,7 @@ function M.assess(input)
 		local beliefs = input.prices
 		local category = beliefs and goods.category_of(item)
 		local factor = beliefs and (category and beliefs["group:" .. category] or beliefs[item]) or 1
-		local value = price * factor * urgency(item) / divisor(item)
+		local value = price * factor * urgency(item) / divisor(item) * variety(item)
 		local most = input.worth and input.worth[item]
 		if most then value = math.min(value, most) end
 		local least = input.least and input.least[item]
@@ -535,7 +540,7 @@ function M.assess(input)
 		return ceiling and math.min(value, ceiling) or value
 	end
 	return {targets = targets, needs = needs, surplus = surplus, value = value, urgency = urgency,
-		categories = categories, group = group, lambda = lambda,
+		categories = categories, group = group, lambda = lambda, variety = variety,
 		-- Its value with no money in it, for goods against goods (exchange.lua's barter):
 		-- two broke villagers swap at what the goods are worth to them, not what an emerald is.
 		real = function(item)
