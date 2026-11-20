@@ -398,6 +398,10 @@ do
 	assert(sells[1].price == 15, "never dearer than its flesh")
 	assert(#buys == 1 and buys[1].item == FLESH and buys[1].fund and buys[1].price == 3)
 	assert(buys[1].lots == 10, "its budget pays for 10")
+	-- Never at a loss: the floor from what its flesh cost holds past a hero's discount.
+	local floored = window.rows({surplus = {}, needs = {}, value = function() return 5 end}, {[FLESH] = 9}, 0, 100,
+		nil, false, nil, function() return 4 end, nil, {budget = 0, unit = 3, floor = 9})
+	assert(floored.sells[1].item == LEATHER and floored.sells[1].price == 9, floored.sells[1].price)
 	local full = window.rows({surplus = {}, needs = {}, value = function() return 5 end}, {[FLESH] = window.FLESH_KEEP},
 		0, 0, {[FLESH] = 200}, false, nil, nil, nil, {budget = 300, unit = 3})
 	assert(#full.buys == 0, "no room past its keep")
@@ -422,6 +426,11 @@ do
 	assert(pouch[FLESH] == lots * lot and player_inv.contents[FLESH] == 60 - lots * lot, pouch[FLESH])
 	assert(cleric._budget == 40 - lots * price and pouch[EMERALD] == 5, "paid from its budget, not its purse")
 	assert(cleric._villages_tally.money.flesh_out == lots * price)
+	assert(near(cleric._villages_flesh_cost, price / lot), "its average cost per flesh")
+	-- Its leather now sells for more than three flesh cost it, whatever its asks say.
+	local leather_row = row(window.rows(view, pouch, 5, 0, nil, false, nil, function() return 0.5 end, nil,
+		{budget = 0, unit = unit, floor = asks.cost_floor(cleric, dofile("goods.lua").CONVERSIONS.cleric[1])}).sells, LEATHER)
+	assert(leather_row and leather_row.price > 3 * price / lot, leather_row and leather_row.price)
 	-- Honoured at a master cleric: pearls (8 a day at level 5) and bottles o' enchanting.
 	rep = 60
 	local function find(rows, id)

@@ -54,7 +54,9 @@
 -- from its flesh budget (alms.lua: the fund past its alms and the cleric's own emeralds past
 -- its savings), not from its purse alone. It sells leather made three flesh to one, as the
 -- alchemist sells ingots, to players here and to villagers in the market (goods.lua's
--- conversions). No villager sells it flesh: a cleric does not want it as an input
+-- conversions), and never at a loss or break even: at least asks.PROFIT times what the
+-- flesh cost it, and an emerald over (`_villages_flesh_cost`, its average paid per flesh,
+-- asks.cost_floor). No villager sells it flesh: a cleric does not want it as an input
 -- (ledger.lua). What it pays a player is money out of the village, the tally's
 -- `flesh_out`; what a player pays for premium goods comes back in, `premium_in`.
 --
@@ -99,6 +101,8 @@ local FLINT, GLASS, PANE = "mcl_core:flint", "mcl_core:glass", "xpanes:pane_natu
 local FLESH, LEATHER = "mcl_mobitems:rotten_flesh", "mcl_mobitems:leather"
 -- The most rotten flesh the cleric holds: 32 leather's worth.
 local FLESH_KEEP = 96
+-- The cleric's average cost per flesh (goods.lua's cleric conversion, asks.cost_floor).
+local FLESH_COST = "_villages_flesh_cost"
 -- What it buys from a player: iron and gold at any time, flint and glass up to a stock.
 local ALCHEMY_BUYS = {NUGGET, INGOT, GOLD_NUGGET, GOLD, FLINT, GLASS, PANE}
 local ROWS = 6
@@ -218,7 +222,9 @@ function M.alchemy_rows(view, held, emeralds, share, player_has, ask, converted)
 end
 
 -- The cleric's rows for flesh and leather (see the header): sells, buys. `cleric` is
--- {budget = emeralds it can pay for flesh, unit = what it pays for one (M.flesh_unit)}.
+-- {budget = emeralds it can pay for flesh, unit = what it pays for one (M.flesh_unit),
+-- floor = the least a leather made from its flesh sells for (asks.cost_floor), nil for none},
+-- which holds after the reputation share too.
 function M.cleric_rows(view, held, share, player_has, ask, converted, cleric)
 	local sells, buys = {}, {}
 	local conversion = goods.CONVERSIONS.cleric[1]
@@ -227,7 +233,9 @@ function M.cleric_rows(view, held, share, player_has, ask, converted, cleric)
 	local price = asking(view, ask, LEATHER)
 	if made > 0 and converted then price = converted(conversion) or price end
 	if price and own + made > 0 then
-		local lot, lot_price = M.lot(price * (1 - share), true)
+		local unit = price * (1 - share)
+		if made > 0 and cleric.floor then unit = math.max(unit, cleric.floor) end
+		local lot, lot_price = M.lot(unit, true)
 		if lot and own + made >= lot then
 			sells[#sells + 1] = {item = LEATHER, lot = lot, price = lot_price, lots = math.floor((own + made) / lot),
 				held = own, conversion = made > 0 and conversion or nil}
@@ -425,7 +433,8 @@ function M.install(def, deps)
 		local cleric
 		if M.takes_donations(villager) then
 			cleric = {budget = alms().flesh_budget(villager),
-				unit = M.flesh_unit(prices.price(villager._villages_prices, LEATHER), held[FLESH])}
+				unit = M.flesh_unit(prices.price(villager._villages_prices, LEATHER), held[FLESH]),
+				floor = asks.cost_floor(villager, goods.CONVERSIONS.cleric[1])}
 		end
 		return M.rows(view, held, possessions.emeralds(villager), reputation(villager, name),
 			player_has(name), villager._villages_alchemist == true, ask, converted,
@@ -622,7 +631,9 @@ function M.install(def, deps)
 			return
 		end
 		if entry.fund then
-			-- The cleric's flesh (ticket 37b): from its flesh budget, money out of the village.
+			-- The cleric's flesh (ticket 37b): from its flesh budget, money out of the village,
+			-- and into its average cost, below which its leather never sells.
+			asks.note_cost(villager, FLESH_COST, possessions.count(villager, FLESH), count, pay)
 			alms().pay_flesh(villager, pay)
 			tally.money(villager, "flesh_out", pay)
 		else

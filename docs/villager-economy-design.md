@@ -3539,6 +3539,12 @@ The lines, by sub-ticket (one PR each, against `main`):
     flesh and bottles are no longer cleric inputs (`ledger.lua`'s `NOT_BOUGHT`). It sells
     leather made 3 flesh to 1 (`goods.lua`'s cleric conversion), to players in its window and
     to villagers in the market, as the alchemist sells ingots, never dearer than its flesh.
+    Nor ever at a loss or break even: it keeps its average cost per flesh
+    (`_villages_flesh_cost`, `asks.note_cost` at each purchase), and a leather made from it
+    sells for at least a quarter over three flesh's cost and at least an emerald over it
+    (`asks.cost_floor`, through the conversion's `cost` field). The floor holds in its window
+    past the reputation share, in the market past a buyer's standing (`exchange.asking`), and
+    in the news it tells. A buyer who will not pay that gets no leather.
   - **Paying for it.** Donations are progressive: a tenth of savings from 8 to 24 dinners, a
     fifth from 24 to 64, three tenths past 64, in place of a tenth of all past 8. The fund's
     target (`alms.target`) adds a flesh reserve of 12 dinners to its 4 holidays of alms, and
@@ -3556,7 +3562,9 @@ The lines, by sub-ticket (one PR each, against `main`):
     smaller cap and no bottles o' enchanting); `tests/alms.lua` (progressive bands at the
     donor's scale, the flesh reserve in the target, the budget fund first and never the alms
     part); `tests/ledger.lua` (no flesh or bottles bought, glass for its bottles);
-    `tests/goods.lua` (three flesh to a leather, not the alchemist's); `tests/economy_report.lua`
+    `tests/goods.lua` (three flesh to a leather, not the alchemist's); `tests/asks.lua` and
+    `tests/exchange.lua` (the cost floor: averaged, an emerald over at the least, past a fallen
+    flesh ask and a friend's standing, no sale to a buyer below it); `tests/economy_report.lua`
     and `tests/builder_bench_menu.lua` (the money flows).
 - **37c. The farmer.** Golden carrots, 3 dinners each, each from 6 wheat or 8 potatoes (keeps
   24): 4 a day per player at level 4, 16 at level 5. At a dinner of 18 one is about 7 loaves,

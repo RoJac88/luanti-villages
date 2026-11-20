@@ -218,4 +218,22 @@ do
 	assert(q and q.pay and q.pay >= 150 and q.pay <= 151, q and tostring(q.pay))
 end
 
+-- The cleric's leather (ticket 37b) sells to a villager only past what its flesh cost it,
+-- a buyer it thinks well of included, and not to one who will not pay that.
+do
+	local FLESH, LEATHER = "mcl_mobitems:rotten_flesh", "mcl_mobitems:leather"
+	local cleric = villager("cl", {[FLESH] = 9}, {_profession = "cleric", _villages_flesh_cost = 3,
+		_villages_asks = {[FLESH] = 0.25}})
+	local seller_view = view({}, {[FLESH] = 9}, {[FLESH] = 0.1})
+	local floor = 9 * dofile("asks.lua").PROFIT
+	local cheap = villager("cheap", {["mcl_core:emerald"] = 500}, {_profession = "librarian"})
+	assert(not exchange.offer(cleric, seller_view, cheap, view({[LEATHER] = 3}, {}, {[LEATHER] = floor - 1})),
+		"no sale below its cost floor")
+	local buyer = villager("buy", {["mcl_core:emerald"] = 500}, {_profession = "librarian"})
+	local offer = exchange.offer(cleric, seller_view, buyer, view({[LEATHER] = 3}, {}, {[LEATHER] = 40}))
+	assert(offer and offer.item == LEATHER and offer.from == FLESH and offer.from_count == 9 and offer.count == 3)
+	assert(offer.pay >= 3 * floor, offer.pay)
+	assert(exchange.asking(cleric, buyer, LEATHER, seller_view, dofile("goods.lua").CONVERSIONS.cleric[1]) >= floor)
+end
+
 print("exchange.lua: ok")

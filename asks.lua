@@ -58,7 +58,10 @@ local BID_DAYS = 2
 local BID_CATEGORIES = {stone = true, log = true, planks = true, fuel = true}
 local DEFAULT_TIME_SPEED = 72
 
-local M = {MIN = MIN, MAX = MAX, MARKUP = MARKUP, MARKDOWN = MARKDOWN, SLOW_SHARE = SLOW_SHARE,
+-- A product made from sources the seller paid for sells for at least this much over their
+-- cost, and at least an emerald over it (M.cost_floor, ticket 37b).
+local PROFIT = 1.25
+local M = {PROFIT = PROFIT, MIN = MIN, MAX = MAX, MARKUP = MARKUP, MARKDOWN = MARKDOWN, SLOW_SHARE = SLOW_SHARE,
 	BID_SHARE = BID_SHARE, BID_DAYS = BID_DAYS}
 
 local function clamp(factor)
@@ -152,12 +155,35 @@ end
 -- The product's own ask stands only when it is lower. A product the seller never holds
 -- keeps its seed price (nothing marks it down), while the source it does hold falls until
 -- it sells: since 21b an alchemist asked 115 for an ingot while it valued a nugget at 0.8.
+-- A product whose sources it paid for (`conversion.cost`, the seller's field holding what
+-- one source cost it on average: the cleric's rotten flesh, ticket 37b) never sells at a
+-- loss or break even: at least M.cost_floor.
 function M.converted(seller, conversion, view)
 	local own = M.ask(seller, conversion.to, view)
 	local source = M.ask(seller, conversion.from, view)
-	if not source then return own end
+	local floor = M.cost_floor(seller, conversion)
+	if not source then return floor and math.max(own or floor, floor) or own end
 	local via = source / conversion.ratio
-	return own and math.min(own, via) or via
+	local ask = own and math.min(own, via) or via
+	return floor and math.max(ask, floor) or ask
+end
+
+-- The least one of a conversion's product sells for, from the average cost of its sources
+-- (`seller[conversion.cost]`): PROFIT times what they cost, and at least an emerald over
+-- it. Nil for a conversion with no cost, or sources that cost nothing.
+function M.cost_floor(seller, conversion)
+	local cost = conversion.cost and seller[conversion.cost]
+	if not cost or cost <= 0 then return nil end
+	local per = cost / conversion.ratio
+	return math.max(per * PROFIT, per + 1)
+end
+
+-- Notes `count` sources bought for `paid` emeralds into the seller's average cost
+-- (`seller[field]`), over the `held` it had before.
+function M.note_cost(seller, field, held, count, paid)
+	local before = seller[field] or 0
+	held = math.max(held or 0, 0)
+	seller[field] = (before * held + paid) / (held + count)
 end
 
 -- `_villages_ask_sold` is {[item] = {day, count}}: the last day it sold the item, and how
