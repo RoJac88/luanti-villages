@@ -113,6 +113,8 @@ local PACK_DELAY = 1
 -- Seconds a seller waits for gopath to take its stall walk: VoxeLibre waits 30 after a
 -- failed path before it paths again.
 local START_WAIT = 45
+-- Seconds between renewals of an open stall's lease (renew_stall).
+local RENEW_SECONDS = 1
 
 -- Entity serialization saves ordinary fields automatically. Integration must
 -- retain this daily guard and discard the live session machinery on reload.
@@ -170,6 +172,19 @@ function M.new(options)
 	end
 	local standing_position = options.standing_position or cells.standing_position
 	local api = {}
+
+	-- The stall's lease runs 10 s (market_props.lua). Renewing it checks the whole stall
+	-- and the seller again, and every step it was most of a market's cost
+	-- (profile.lua, 2026-11-19): once a RENEW_SECONDS is plenty.
+	local function renew_stall(self, session)
+		local clock = real_now()
+		if session.renewed_at and clock >= session.renewed_at and clock - session.renewed_at < RENEW_SECONDS then
+			return true
+		end
+		if not props.renew(session.stall.token, self.object, session, clock + 600) then return false end
+		session.renewed_at = clock
+		return true
+	end
 
 	local function cleanup_stall(self, session)
 		if not session.stall then return end
@@ -294,7 +309,7 @@ function M.new(options)
 				api.leave(self, "seller displaced")
 				return false
 			end
-			if not props.renew(session.stall.token, self.object, session, real_now() + 600) then
+			if not renew_stall(self, session) then
 				api.leave(self, "stall lease expired")
 				return false
 			end
@@ -411,7 +426,7 @@ function M.new(options)
 				api.leave(self, "seller displaced")
 				return "browse"
 			end
-			if not props.renew(session.stall.token, self.object, session, real_now() + 600) then
+			if not renew_stall(self, session) then
 				api.leave(self, "stall lease expired")
 				return "browse"
 			end

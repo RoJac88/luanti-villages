@@ -225,10 +225,8 @@ local function skipped(self, pulpit)
 end
 
 local function nearest_within(self, origin, radius)
-	local sites = core.find_nodes_in_area(
-		{x = origin.x - radius, y = origin.y - SEARCH_HEIGHT, z = origin.z - radius},
-		{x = origin.x + radius, y = origin.y + SEARCH_HEIGHT, z = origin.z + radius},
-		{PULPIT})
+	-- Shared with the rest of the congregation setting off from near here (common.find_sites).
+	local sites = common.find_sites({PULPIT}, origin, radius, SEARCH_HEIGHT)
 	local best, best_distance
 	for _, site in ipairs(sites) do
 		local distance = vector.distance(origin, site)

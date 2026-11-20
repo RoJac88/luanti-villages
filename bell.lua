@@ -76,10 +76,8 @@ local function skip(self, bell, why)
 end
 
 local function nearest_bell(self, origin)
-	local sites = core.find_nodes_in_area(
-		{x = origin.x - SEARCH_RADIUS, y = origin.y - SEARCH_HEIGHT, z = origin.z - SEARCH_RADIUS},
-		{x = origin.x + SEARCH_RADIUS, y = origin.y + SEARCH_HEIGHT, z = origin.z + SEARCH_RADIUS},
-		{BELL})
+	-- Shared with the others gathering from near here (common.find_sites).
+	local sites = common.find_sites({BELL}, origin, SEARCH_RADIUS, SEARCH_HEIGHT)
 	local best, best_distance
 	for _, site in ipairs(sites) do
 		local distance = vector.distance(origin, site)
