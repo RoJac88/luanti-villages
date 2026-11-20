@@ -44,6 +44,7 @@ minetest = {
 	registered_items = {
 		["mcl_farming:bread"] = {inventory_image = "bread.png"},
 		["mcl_farming:potato_item_baked"] = {inventory_image = "potato.png", wield_scale = {x = 1, y = 1}},
+		["mcl_mobitems:cooked_chicken"] = {inventory_image = "chicken.png"},
 	},
 	registered_nodes = {
 		air = {walkable = false},
@@ -753,6 +754,18 @@ assert(kate._villages_served_dishes[day]["mcl_farming:potato_item_baked"] == 2, 
 now = now + 20
 meal.tick(vera, 0.1, jukebox)
 pantry_items["mcl_farming:bread"], pantry_items["mcl_farming:potato_item_baked"] = nil, nil
+day = day + 1
+kate._villages_dinner = nil
+-- A dish off the old menu (ticket 35): a cooked chicken the keeper bought is served too.
+pantry_items["mcl_core:emerald"] = nil
+pantry_items["mcl_mobitems:cooked_chicken"] = 1
+vera._villages_food = 7
+now = now + 10
+meal.tick(vera, 0.1, jukebox)
+assert(vera._villages_meal and vera._villages_meal.item == "mcl_mobitems:cooked_chicken", meal.explain(vera, jukebox))
+assert(pantry_items["mcl_mobitems:cooked_chicken"] == nil)
+now = now + 20
+meal.tick(vera, 0.1, jukebox)
 day = day + 1
 kate._villages_dinner = nil
 -- Broke (2026-11-13): short of a dinner's price, a raw plate of carrots or beetroot for

@@ -443,4 +443,26 @@ do
 	assert(#supply.feed_keeper(cook, chests) == 0, "fed")
 end
 
+-- A few of every dish it heard offered (ticket 35): up to MIN_DISHES in the pantry, 0 when
+-- it has enough; none for its fixed inputs, the baked potato it bakes, or a dish forgotten.
+do
+	local keeper = dofile("keeper.lua")
+	local CHICKEN, SALMON, PIE = "mcl_mobitems:cooked_chicken", "mcl_fishing:salmon_cooked", "mcl_farming:pumpkin_pie"
+	local knower = {_id = "kn", _villages_keeper = true, _villages_known_dishes = {
+		[CHICKEN] = day, [SALMON] = day, [PIE] = day - keeper.KNOWN_DAYS,
+		["mcl_mobitems:cooked_beef"] = day, ["mcl_farming:potato_item_baked"] = day}}
+	pantry.put(chests, SALMON, 5)
+	local wants = supply.dish_wants(knower, chests, day)
+	assert(wants[CHICKEN] == keeper.MIN_DISHES and wants[SALMON] == 0, tostring(wants[SALMON]))
+	assert(wants[PIE] == nil and knower._villages_known_dishes[PIE] == nil, "forgotten after a week")
+	assert(wants["mcl_mobitems:cooked_beef"] == nil and wants["mcl_farming:potato_item_baked"] == nil)
+	-- A dish off the old menu counts as a meal, is shelved, and the keeper may eat it.
+	local meals = supply.meals(chests)
+	pantry.put(chests, CHICKEN, 2)
+	assert(supply.meals(chests) == meals + 2)
+	local buyer = {_id = "kn2", _villages_keeper = true, _villages_belongings = {[CHICKEN] = 1}}
+	assert(supply.shelve(buyer, chests) == 1 and pantry.count(chests, CHICKEN) == 3)
+	assert(supply.dish_wants(knower, chests, day)[CHICKEN] == 0)
+end
+
 print("keeper_supply.lua: ok")

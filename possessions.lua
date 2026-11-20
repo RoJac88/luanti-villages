@@ -774,6 +774,17 @@ function M.assess(self)
 	for item, count in pairs(self._villages_builder and self._villages_builder_wants or {}) do
 		extra[item] = (extra[item] or 0) + count
 	end
+	-- A keeper's few of each dish (keeper_supply.dish_wants, ticket 35): no fewer than it
+	-- holds, so one it carries to the pantry is never spare, and worth no more to it than
+	-- the dinner it makes.
+	if self._villages_keeper and not self.child and self._villages_dish_wants then
+		local held, cap = nil, dinner.price(self)
+		for item, count in pairs(self._villages_dish_wants) do
+			held = held or M.held(self)
+			extra[item] = (extra[item] or 0) + math.max(count, held[item] or 0)
+			worth[item] = math.min(worth[item] or math.huge, cap)
+		end
+	end
 	-- A leatherworker breeds its herd on wheat (herd.lua's HERD_WHEAT).
 	if self._profession == "leatherworker" and not self.child then
 		extra[HERD_WHEAT_ITEM] = (extra[HERD_WHEAT_ITEM] or 0) + HERD_WHEAT
