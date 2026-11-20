@@ -543,4 +543,13 @@ do
 	assert(type(v._villages_gossip_decayed) == "number", "the decay clock is saved too")
 end
 
+-- A donation (ticket 36): small, capped at 10, and passed on less its cost.
+do
+	local v, w = villager(), villager()
+	for _ = 1, 5 do gossip.add(v, "dora", "donation") end
+	expect(gossip.reputation(v, "dora"), 10, "capped at 10")
+	gossip.share(v, w)
+	expect(gossip.reputation(w, "dora"), 7, "passed on less 3")
+end
+
 print("gossip tests passed")

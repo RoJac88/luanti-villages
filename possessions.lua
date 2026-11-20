@@ -626,8 +626,39 @@ function M.step(self, now)
 	if self._villages_asks_day ~= day then asks.daily(self, M.assess(self).surplus, day, M.in_dinners(self, M.money(self))) end
 end
 
+-- Emeralds thrown to it (ticket 36): vanilla's pickup (mcl_mobs check_item_pickup, only
+-- with no player within 2 nodes) hands `stack` to it, and an adult takes them into its
+-- belongings, for no gossip: only a donation to the cleric is good for a player's name
+-- (trade_window.lua). Returns what is left of the stack, or nil for one it leaves to
+-- vanilla (food: breeding, as before). "mcl_core:emerald" in pick_up is a pattern, so the
+-- emerald block reaches here too, and is left lying.
+function M.pick_up(self, stack)
+	local name = stack:get_name()
+	if name ~= EMERALD then
+		if name:find(EMERALD, 1, true) then return stack end
+		return nil
+	end
+	if self.child or not self._id then return stack end
+	local count = stack:get_count()
+	M.add(self, EMERALD, count)
+	core.log("action", string.format("[living_villages] villager %s picked up %d emerald(s)",
+		tostring(self._id):sub(1, 6), count))
+	stack:take_item(count)
+	return stack
+end
+
 function M.install(def)
 	if not clock.enabled() then return end
+	local pick_up = {EMERALD}
+	for _, item in ipairs(def.pick_up or {}) do pick_up[#pick_up + 1] = item end
+	def.pick_up = pick_up
+	local original_pick_up = def.on_pick_up
+	def.on_pick_up = function(self, itementity)
+		local left = M.pick_up(self, ItemStack(itementity.itemstring))
+		if left then return left end
+		if original_pick_up then return original_pick_up(self, itementity) end
+		return ItemStack(itementity.itemstring)
+	end
 	local original_custom = def.do_custom
 	def.do_custom = function(self, dtime)
 		M.step(self, core.get_gametime())

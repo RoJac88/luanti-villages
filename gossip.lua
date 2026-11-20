@@ -12,6 +12,10 @@
 -- moves the base count first, from the trader's own needs and hunger, and reputation
 -- then moves what it gives. With gossip off only the demand term applies.
 --
+-- A player's donation to the cleric (trade_window.lua, ticket 36) is "donation", not
+-- Java's: at most once a day, it caps at 10, a tenth of what maxes a discount, and passes
+-- on 7, so money alone buys little standing.
+--
 -- Villagers are subjects too (ticket 11c, alms.lua): a donation is good gossip about the
 -- donor, under villager_subject(id), passed in its own share of a conversation, and
 -- exchange.lua reads it as standing.
@@ -37,10 +41,11 @@ local TYPES = {
 	trading = {gain = 4, decay = 2, cost = 20, max = 25, multiplier = 1},
 	major_positive = {gain = 20, decay = 0, cost = 100, max = 20, multiplier = 5},
 	minor_positive = {gain = 25, decay = 1, cost = 5, max = 25, multiplier = 1},
+	donation = {gain = 5, decay = 1, cost = 3, max = 10, multiplier = 1},
 	minor_negative = {gain = 25, decay = 20, cost = 20, max = 200, multiplier = -1},
 	major_negative = {gain = 25, decay = 10, cost = 10, max = 100, multiplier = -5},
 }
-local TYPE_ORDER = {"major_positive", "minor_positive", "trading", "minor_negative", "major_negative"}
+local TYPE_ORDER = {"major_positive", "minor_positive", "donation", "trading", "minor_negative", "major_negative"}
 -- Seconds of game time per decay step.
 local DECAY_SECONDS = 1200
 -- At most this many entries pass from one villager to another in one conversation,

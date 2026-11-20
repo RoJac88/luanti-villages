@@ -521,4 +521,24 @@ do
 	assert(view.needs["mcl_flowers:poppy"] == 1 and not view.needs[pot], "the pot's slot is full")
 end
 
+-- Emeralds thrown to it (ticket 36): an adult takes them, a child doesn't, the emerald
+-- block stays lying, and food is left to vanilla.
+do
+	local function stack(name, count)
+		local st = {name = name, count = count}
+		function st:get_name() return self.name end
+		function st:get_count() return self.count end
+		function st:take_item(n) self.count = self.count - n end
+		return st
+	end
+	local ida = {_id = "ida", _villages_belongings = {}}
+	local left = possessions.pick_up(ida, stack("mcl_core:emerald", 12))
+	assert(left:get_count() == 0 and possessions.emeralds(ida) == 12, "taken into its belongings")
+	assert(not ida._villages_gossip, "no gossip")
+	local kid = {_id = "kid", child = true, _villages_belongings = {}}
+	assert(possessions.pick_up(kid, stack("mcl_core:emerald", 3)):get_count() == 3 and possessions.emeralds(kid) == 0)
+	assert(possessions.pick_up(ida, stack("mcl_core:emeraldblock", 1)):get_count() == 1, "the block stays")
+	assert(possessions.pick_up(ida, stack("mcl_farming:bread", 1)) == nil, "food is vanilla's")
+end
+
 print("possessions.lua: ok")

@@ -38,11 +38,15 @@
 -- its value for one more, from its emeralds, kept as they are. Its other needs (stone,
 -- logs) are bought as anyone's.
 --
--- Gifts (ticket 21a). Below the rows, the player may give the villager emeralds outright,
--- to put money back into a village whose money has piled up with a few: a gift of
--- GIFT_MINOR or more (a dinner) is "minor_positive" gossip, one of GIFT_MAJOR or more
--- (eight dinners) "major_positive" besides, so it thinks better of the giver and gives it
--- better prices.
+-- Donations (ticket 36; a Give field for every villager from ticket 21a until then). Only
+-- the cleric's window has one, below the rows: what the player gives goes to the alms fund
+-- as a villager's donation does (alms.lua's receive: the cleric keeps a tenth), and from
+-- there to the village's poor. A donation of DONATION_MIN or more (a dinner at the
+-- cleric's scale) is "donation" gossip (gossip.lua), at most once a day per player
+-- (`_villages_donors`): it caps low and passes on little, so money alone buys a player a
+-- few percent off at most, and a good name has to be earned by trade and errands. A
+-- player may still give anyone emeralds by throwing them to it (possessions.pick_up) or
+-- leaving them in its stash, for no gossip at all.
 --
 -- The tavern keeper (ticket 33) sells the dishes in its pantry (tavern_pantry.lua: a
 -- keeper.dishes item), each one dinner at its posted dinner price (dinner.lua), paid into
@@ -68,7 +72,7 @@ local REP_STEP = 1 / 400
 local REP_MAX = 0.25
 local REFUSE = -40
 local URGENT = 2
-local GIFT_MINOR, GIFT_MAJOR = ledger.DINNER, 8 * ledger.DINNER
+local DONATION_MIN = ledger.DINNER
 local NUGGET, INGOT = "mcl_core:iron_nugget", "mcl_core:iron_ingot"
 local GOLD_NUGGET, GOLD = "mcl_core:gold_nugget", "mcl_core:gold_ingot"
 local FLINT, GLASS, PANE = "mcl_core:flint", "mcl_core:glass", "xpanes:pane_natural_flat"
@@ -81,20 +85,22 @@ local UNITS = {food = "points", fuel = "seconds", log = "logs", planks = "planks
 
 local M = {
 	FORMNAME = FORMNAME, REP_STEP = REP_STEP,
-	REP_MAX = REP_MAX, REFUSE = REFUSE, URGENT = URGENT, ROWS = ROWS, GIFT_MINOR = GIFT_MINOR, GIFT_MAJOR = GIFT_MAJOR,
+	REP_MAX = REP_MAX, REFUSE = REFUSE, URGENT = URGENT, ROWS = ROWS, DONATION_MIN = DONATION_MIN,
 }
 
--- The gossip a gift of `amount` emeralds makes, in the order to add it, its dinners at
--- `scale` (the villager's dinner.scale, ticket 21e; 1 unset).
-function M.gift_gossip(amount, scale)
-	local kinds = {}
-	scale = scale or 1
-	if amount >= GIFT_MAJOR * scale then kinds[#kinds + 1] = "major_positive" end
-	if amount >= GIFT_MINOR * scale then kinds[#kinds + 1] = "minor_positive" end
-	return kinds
+-- Whether a donation of `amount` emeralds on `day` is good gossip: DONATION_MIN or more,
+-- its dinners at `scale` (the cleric's dinner.scale, ticket 21e; 1 unset), and none yet
+-- that day from the player (`last`, the day of its last one that counted).
+function M.donation_counts(amount, scale, last, day)
+	return amount >= DONATION_MIN * (scale or 1) and last ~= day
 end
 
--- The emeralds a Give field asks for: a whole number over 0, or nil.
+-- Whether the villager takes donations in its window: the cleric.
+function M.takes_donations(villager)
+	return villager._profession == "cleric" and not villager._villages_keeper and not villager._villages_alchemist
+end
+
+-- The emeralds a Donate field asks for: a whole number over 0, or nil.
 function M.gift_amount(text)
 	local amount = tonumber(text)
 	if not amount or amount ~= amount or amount < 1 or amount == math.huge then return nil end
@@ -304,6 +310,12 @@ function M.install(def, deps)
 	local asks = deps.asks or dofile(core.get_modpath("living_villages") .. "/asks.lua")
 	local prices = deps.prices or dofile(core.get_modpath("living_villages") .. "/prices.lua")
 	local tavern = deps.tavern or M.pantry_till()
+	-- Loaded when first used: alms.lua brings in the cleric and market news.
+	local alms_module = deps.alms
+	local function alms()
+		alms_module = alms_module or dofile(core.get_modpath("living_villages") .. "/alms.lua")
+		return alms_module
+	end
 	local sessions = {}
 
 	local function reputation(villager, name)
@@ -374,8 +386,10 @@ function M.install(def, deps)
 				esc("Short of: " .. table.concat(list, ", ") .. " (any kind)"))
 		end
 		parts[#parts + 1] = string.format("list[current_player;main;0.5,%g;9,4;]", y + 0.4)
-		parts[#parts + 1] = string.format("field[0.5,%g;2,0.7;give_amount;;]", y + 5.6)
-		parts[#parts + 1] = string.format("button[2.6,%g;3,0.7;give;Give emeralds]", y + 5.6)
+		if M.takes_donations(villager) then
+			parts[#parts + 1] = string.format("field[0.5,%g;2,0.7;give_amount;;]", y + 5.6)
+			parts[#parts + 1] = string.format("button[2.6,%g;4,0.7;give;Donate to the alms fund]", y + 5.6)
+		end
 		return table.concat(parts)
 	end
 
@@ -499,12 +513,12 @@ function M.install(def, deps)
 			tostring(villager._id):sub(1, 6), pay, entry.urgency >= URGENT and ", an urgent need" or "")
 	end
 
-	-- The player gives the villager `amount` emeralds.
-	local function player_gives(player, villager, amount)
+	-- The player donates `amount` emeralds to the cleric's alms fund.
+	local function player_donates(player, villager, amount)
 		local inv = player:get_inventory()
 		local name = player:get_player_name()
 		if not amount then
-			core.chat_send_player(name, "Give how many emeralds?")
+			core.chat_send_player(name, "Donate how many emeralds?")
 			return
 		end
 		local taken = inv:remove_item("main", EMERALD .. " " .. amount)
@@ -513,11 +527,21 @@ function M.install(def, deps)
 			core.chat_send_player(name, "You have too few emeralds for that.")
 			return
 		end
-		possessions.add(villager, EMERALD, amount)
-		if gossip then
-			for _, kind in ipairs(M.gift_gossip(amount, dinner.scale(villager))) do gossip.add(villager, name, kind) end
+		alms().receive(villager, amount)
+		local day = core.get_day_count and core.get_day_count() or 0
+		local donors = villager._villages_donors or {}
+		for donor, last in pairs(donors) do
+			if last ~= day then donors[donor] = nil end
 		end
-		log("%s gave villager %s %d emerald(s)", name, tostring(villager._id):sub(1, 6), amount)
+		local counts = M.donation_counts(amount, dinner.scale(villager), donors[name], day)
+		if counts then
+			donors[name] = day
+			if gossip then gossip.add(villager, name, "donation") end
+		end
+		villager._villages_donors = next(donors) and donors or nil
+		core.chat_send_player(name, "The cleric thanks you for your gift to the poor.")
+		log("%s donated %d emerald(s) to cleric %s%s", name, amount, tostring(villager._id):sub(1, 6),
+			counts and "" or ", no gossip")
 	end
 
 	local original_rightclick = def.on_rightclick
@@ -560,8 +584,8 @@ function M.install(def, deps)
 			core.close_formspec(name, FORMNAME)
 			return true
 		end
-		if fields.give or fields.key_enter_field == "give_amount" then
-			player_gives(player, villager, M.gift_amount(fields.give_amount))
+		if (fields.give or fields.key_enter_field == "give_amount") and M.takes_donations(villager) then
+			player_donates(player, villager, M.gift_amount(fields.give_amount))
 			show(name)
 			return true
 		end
