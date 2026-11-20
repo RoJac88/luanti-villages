@@ -54,7 +54,7 @@ assert(premium.keeps({_profession = "librarian", _max_trade_tier = 2}) == nil)
 assert(premium.keeps({_profession = "librarian", _max_trade_tier = 3})[BOOK] == 4)
 assert(premium.keeps({_profession = "librarian", _max_trade_tier = 5, child = true}) == nil)
 assert(premium.keeps({_profession = "cleric", _max_trade_tier = 5, _villages_alchemist = true}) == nil)
-assert(premium.keeps({_profession = "farmer", _max_trade_tier = 5}) == nil)
+assert(premium.keeps({_profession = "fisherman", _max_trade_tier = 5}) == nil)
 
 -- Rows: every offer, its price, the sales its books allow, and why it is locked.
 local rows = premium.rows("librarian", 4, 50, {[BOOK] = 3}, 18, function() return 16 end, 0.125)
@@ -90,6 +90,34 @@ do
 	local r = premium.rows("cleric", 5, 60, {[BOTTLE] = 20}, 18, function() return 7 end, 0, {ender_pearl = 6})
 	assert(r[2].stock == 2 and r[2].left == 2 and r[1].stock == 16)
 	assert(r[2].price == 4 * 18 + 7)
+end
+
+-- The farmer (ticket 37c): a golden carrot from 6 wheat or 8 potatoes, two offers sharing
+-- one cap a day, 4 at level 4 and 16 at level 5; it keeps 24 of each.
+do
+	local WHEAT, POTATO = "mcl_farming:wheat_item", "mcl_farming:potato_item"
+	local keeps = premium.keeps({_profession = "farmer", _max_trade_tier = 3})
+	assert(keeps[WHEAT] == 24 and keeps[POTATO] == 24)
+	assert(premium.keeps({_profession = "farmer", _max_trade_tier = 2}) == nil)
+	local list = premium.offers("farmer")
+	assert(#list == 2)
+	local by = {}
+	for _, offer in ipairs(list) do by[offer.base] = offer end
+	assert(by[WHEAT].id == "golden_carrot_wheat_item" and by[WHEAT].count == 6 and by[WHEAT].cap == "golden_carrot")
+	assert(by[POTATO].count == 8 and by[POTATO].label == "Golden carrot (8 potatoes)")
+	assert(by[WHEAT].makes == "mcl_farming:carrot_item_gold" and by[WHEAT].level == 4 and by[WHEAT].dinners == 3)
+	local value = function(item) return item == WHEAT and 3.2 or 2.5 end
+	local r = premium.rows("farmer", 5, 60, {[WHEAT] = 30, [POTATO] = 16}, 18, value, 0, {golden_carrot = 10})
+	local rw, rp
+	for _, row in ipairs(r) do
+		if row.offer.base == WHEAT then rw = row else rp = row end
+	end
+	assert(rw.price == math.ceil(3 * 18 + 6 * 3.2) and rp.price == 3 * 18 + 8 * 2.5)
+	assert(rw.stock == 5 and rp.stock == 2, "its base, and the 6 the shared cap leaves")
+	assert(rw.left == 6 and rp.left == 6)
+	local friend = premium.rows("farmer", 5, 35, {[WHEAT] = 60}, 18, value, 0, {golden_carrot = 1})
+	assert(friend[1].stock == 3 or friend[2].stock == 3, "4 a day at level 4")
+	assert(premium.rows("farmer", 3, 60, {[WHEAT] = 60}, 18, value, 0)[1].locked == "needs an expert")
 end
 
 print("premium ok")

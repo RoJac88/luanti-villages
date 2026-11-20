@@ -24,6 +24,7 @@ local compost = dofile(core.get_modpath("living_villages") .. "/farm_compost.lua
 local food = dofile(core.get_modpath("living_villages") .. "/food.lua")
 local clock = dofile(core.get_modpath("living_villages") .. "/economy_clock.lua")
 local possessions = dofile(core.get_modpath("living_villages") .. "/possessions.lua")
+local premium = dofile(core.get_modpath("living_villages") .. "/premium.lua")
 local wants = dofile(core.get_modpath("living_villages") .. "/wants.lua")
 local news = dofile(core.get_modpath("living_villages") .. "/market_news.lua")
 local ledger = dofile(core.get_modpath("living_villages") .. "/ledger.lua")
@@ -107,6 +108,13 @@ local SALE_BONE_MEAL = 8
 -- spare, while one farm chest held 27 loaves and 299 potatoes, which only the keeper took.
 local SALE_BREAD = 16
 local SALE_POTATO = 16
+-- From journeyman up it keeps wheat and potatoes for its golden carrots besides
+-- (premium.lua's farmer line, ticket 37c), so those go to its belongings too, past the
+-- amounts for sale: they are a target there, never spare.
+local function kept(self, item)
+	local keeps = premium.keeps(self)
+	return keeps and keeps[item] or 0
+end
 local KEEPER_RESERVE = stock.KEEPER_RESERVE
 -- A trip to a chest waits for this much over the keep, unless the pouch is full.
 local DEPOSIT_TRIGGER = 8
@@ -343,7 +351,7 @@ local function stock_for_sale(self, pos)
 	local inv = core.get_meta(pos):get_inventory()
 	local spare = stock.chest_count(pos, BREAD) + stock.chest_count(pos, POTATO) - KEEPER_RESERVE
 	local taken = 0
-	for _, entry in ipairs({{BREAD, SALE_BREAD}, {POTATO, SALE_POTATO}}) do
+	for _, entry in ipairs({{BREAD, SALE_BREAD}, {POTATO, SALE_POTATO + kept(self, POTATO)}}) do
 		local item, cap = entry[1], entry[2]
 		local want = math.min(cap - possessions.count(self, item), spare - taken)
 		if want > 0 then
@@ -368,7 +376,8 @@ local function deposit(self, pos, session, now)
 	end
 	local item, extra = excess_item(self)
 	if not item then return end
-	local own = clock.enabled() and ({[WHEAT] = SALE_WHEAT, [BREAD] = OWN_BREAD, [BONE_MEAL] = SALE_BONE_MEAL})[item]
+	local own = clock.enabled() and ({[WHEAT] = SALE_WHEAT + kept(self, WHEAT), [BREAD] = OWN_BREAD,
+		[BONE_MEAL] = SALE_BONE_MEAL})[item]
 	if own then
 		local room = own - possessions.count(self, item)
 		local moved = room > 0 and stock.take(self, item, math.min(room, extra)) or 0
