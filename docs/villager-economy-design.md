@@ -3528,18 +3528,36 @@ The lines, by sub-ticket (one PR each, against `main`):
   Unbreaking III (24) at level 5; Efficiency IV, Fortune II, Protection III, Unbreaking II at 4;
   Efficiency III, Fortune I, Protection II, Unbreaking I at 3. At a dinner of 18 a Mending book
   is 736 emeralds; the master set is about 180 dinners.
-- **37b. The cleric.** It keeps 9 glass bottles, which it makes from glass (3 glass, 3 bottles).
-  It sells ender pearls (4 dinners) at level 4, 2 a day per player, and at level 5, 8 a day;
-  bottles o' enchanting (2 dinners) at level 5, 16 a day. Each takes a bottle. Open to anyone
-  it trades with: it buys rotten flesh up to 96 held, at its value (leather's reference price
-  over 3, times urgency), and sells leather made 3 flesh to 1, to villagers and players, as the
-  alchemist sells ingots. That loop ends in books: flesh, leather, the librarian's books.
-  Alms change so it can pay for flesh: donations become progressive (a tenth of savings from 8
-  to 24 dinners, a fifth from 24 to 64, three tenths above 64, in place of a tenth over 8), and
-  the fund's target adds a flesh reserve of 12 dinners to its 4 holidays of alms. Flesh is
-  paid only from the fund past its alms part and the cleric's own money past its savings;
-  leather sold pays the fund back. The tally gains money counters, premium in and flesh out,
-  and the Economy tab the player's net flow a day.
+- **37b. The cleric (done).** It keeps 9 glass bottles from journeyman up, which it makes
+  from glass (a new recipe: 3 glass, 3 bottles). It sells ender pearls (4 dinners) from level
+  4, 2 a day per player there and 8 at level 5, and bottles o' enchanting (2 dinners) at level
+  5, 16 a day. Each takes a bottle. The window offers "All" for these: as many as its
+  bottles, the day's cap and the player's emeralds allow.
+  - **Rotten flesh.** It buys rotten flesh from anyone it will trade with, while it holds
+    fewer than 96: at a third of its reference price for leather, falling to half that as its
+    stock fills (at base prices about 1.8, so whole emeralds pay 1). No villager sells it flesh:
+    flesh and bottles are no longer cleric inputs (`ledger.lua`'s `NOT_BOUGHT`). It sells
+    leather made 3 flesh to 1 (`goods.lua`'s cleric conversion), to players in its window and
+    to villagers in the market, as the alchemist sells ingots, never dearer than its flesh.
+  - **Paying for it.** Donations are progressive: a tenth of savings from 8 to 24 dinners, a
+    fifth from 24 to 64, three tenths past 64, in place of a tenth of all past 8. The fund's
+    target (`alms.target`) adds a flesh reserve of 12 dinners to its 4 holidays of alms, and
+    each service notes the alms part (`_villages_alms_need`). Flesh is paid from the fund past
+    that part, then the cleric's own emeralds past its savings (`flesh_budget`, `pay_flesh`).
+    Until its first service it pays from its own only. Leather it sells pays its own
+    emeralds, which alms draw on past its savings too, so they go back round.
+  - **Money flows.** The tally keeps `premium_in` (what players paid for premium goods) and
+    `flesh_out` (what the cleric paid for flesh) for today and yesterday
+    (`economy_tally.money`). The bench's Economy tab shows both and the village's net under
+    Today and Yesterday.
+  - **Tests:** `tests/premium.lua` (the cleric's offers, caps by level, sales noted a day,
+    rows); `tests/trade_window.lua` (flesh paid from the budget up to its keep, its price
+    falling, leather from flesh, pearls capped then fresh the next day, out of stock, a friend's
+    smaller cap and no bottles o' enchanting); `tests/alms.lua` (progressive bands at the
+    donor's scale, the flesh reserve in the target, the budget fund first and never the alms
+    part); `tests/ledger.lua` (no flesh or bottles bought, glass for its bottles);
+    `tests/goods.lua` (three flesh to a leather, not the alchemist's); `tests/economy_report.lua`
+    and `tests/builder_bench_menu.lua` (the money flows).
 - **37c. The farmer.** Golden carrots, 3 dinners each, each from 6 wheat or 8 potatoes (keeps
   24): 4 a day per player at level 4, 16 at level 5. At a dinner of 18 one is about 7 loaves,
   vanilla's ratio.

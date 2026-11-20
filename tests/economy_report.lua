@@ -29,6 +29,16 @@ do
 	assert(tally.status(v, 10) == "made nothing; used 1 bread", tally.status(v, 10))
 	tally.note(v, {["mcl_core:stick"] = 1}, nil, 13)
 	assert(tally.on(v, 12) == nil and tally.on(v, 13)["mcl_core:stick"] == 1, "a gap of days keeps nothing old")
+	-- Money between players and the village (ticket 37b), kept a day as goods are.
+	tally.money(v, "premium_in", 700, 13)
+	tally.money(v, "premium_in", 36, 13)
+	tally.money(v, "flesh_out", 20, 14)
+	assert(select(3, tally.on(v, 13)).premium_in == 736 and select(3, tally.on(v, 14)).flesh_out == 20)
+	local w = {}
+	tally.money(w, "flesh_out", 5, 14)
+	local sums = report.goods({v, w}, 14).money
+	assert(sums.flesh_out == 25 and sums.premium_in == 0)
+	assert(report.goods({v, w}, 13).money.premium_in == 736)
 end
 
 -- Shortages and gluts sum the Builder's news by item, worthiest first.

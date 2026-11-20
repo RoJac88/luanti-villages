@@ -21,6 +21,9 @@
 -- * Levels. An enchantment line sells its maximum level at premium level 5, one below at 4,
 --   two below at 3, where that level exists and has a price. That gives the librarian
 --   Efficiency IV, Fortune II, Protection III and Unbreaking II at level 4.
+-- * Consumables (`goods`, ticket 37b: the cleric's ender pearls and bottles o' enchanting)
+--   are one offer from their level up, at a fixed P, with a cap a day per player per
+--   villager by the level unlocked (`caps`): more at a higher level is how they scale.
 --
 -- Premium goods never enter villager trade, market news or asks: they exist only once a
 -- player buys one.
@@ -28,6 +31,7 @@ local M = {}
 
 local BOOK = "mcl_books:book"
 local ENCHANTED_BOOK = "mcl_enchanting:book_enchanted"
+local BOTTLE = "mcl_potions:glass_bottle"
 
 M.MIN_LEVEL, M.MAX_LEVEL = 3, 5
 M.SCALE = 1
@@ -54,11 +58,22 @@ M.ENCHANTS = {
 }
 
 -- Each profession's premium line: its base good (`item`, how many it keeps, how many a
--- sale takes) and what it makes. `books` are enchantment lines sold as enchanted books.
+-- sale takes) and what it makes. `books` are enchantment lines sold as enchanted books;
+-- `goods` are consumables {id, makes, level, dinners, caps = {[level] = a day}}.
 M.LINES = {
 	librarian = {
 		base = {item = BOOK, keep = 4, count = 1},
 		books = {"mending", "efficiency", "fortune", "protection", "silk_touch", "unbreaking"},
+	},
+	-- Ticket 37b: each from a glass bottle, which it makes from glass.
+	cleric = {
+		base = {item = BOTTLE, keep = 9, count = 1},
+		goods = {
+			{id = "ender_pearl", makes = "mcl_throwing:ender_pearl", label = "Ender pearl", level = 4, dinners = 4,
+				caps = {[4] = 2, [5] = 8}},
+			{id = "experience_bottle", makes = "mcl_experience:bottle", label = "Bottle o' enchanting", level = 5,
+				dinners = 2, caps = {[5] = 16}},
+		},
 	},
 }
 
@@ -105,6 +120,10 @@ function M.offers(profession)
 	local line = M.LINES[profession]
 	if not line then return {} end
 	local list = {}
+	for _, good in ipairs(line.goods or {}) do
+		list[#list + 1] = {id = good.id, makes = good.makes, from = good.makes, level = good.level,
+			dinners = good.dinners, label = good.label, caps = good.caps, base = line.base.item, count = line.base.count}
+	end
 	for level = M.MAX_LEVEL, M.MIN_LEVEL, -1 do
 		for _, enchant in ipairs(line.books or {}) do
 			local at = M.enchant_level(enchant, level)
@@ -164,17 +183,51 @@ function M.price(offer, dinner, base_value, share)
 	return math.max(math.ceil(total * (1 - (share or 0)) - 1e-9), 1)
 end
 
--- The window's rows for a villager (`line` its M.line): every offer of its profession,
--- each {offer, price, stock (sales its base held allows), locked (nil or why)}. `held`
--- is what it holds, `dinner` its reference price for a dinner, `value(item)` a base's
--- reference value, `share` reputation's share.
-function M.rows(profession, tier, rep, held, dinner, value, share)
+-- How many more of a capped offer the player may buy today at unlocked `level`, having
+-- bought `sold`; nil for an offer with no cap.
+function M.left(offer, level, sold)
+	if not offer.caps then return nil end
+	local cap = 0
+	for at, count in pairs(offer.caps) do
+		if at <= level and count > cap then cap = count end
+	end
+	return math.max(cap - (sold or 0), 0)
+end
+
+-- The window's rows for a villager: every offer of its profession, each {offer, price,
+-- stock (sales its base held allows, and today's cap), locked (nil or why), left (nil, or
+-- what today's cap leaves)}. `held` is what it holds, `dinner` its reference price for a
+-- dinner, `value(item)` a base's reference value, `share` reputation's share, `sold` what
+-- the player bought of each offer today ({id = count}, nil for none).
+function M.rows(profession, tier, rep, held, dinner, value, share, sold)
 	local rows = {}
+	local level = M.level(tier, rep)
 	for _, offer in ipairs(M.offers(profession)) do
+		local stock = math.floor((held[offer.base] or 0) / offer.count)
+		local left = M.left(offer, level, sold and sold[offer.id])
 		rows[#rows + 1] = {offer = offer, price = M.price(offer, dinner, value(offer.base), share),
-			stock = math.floor((held[offer.base] or 0) / offer.count), locked = M.locked(offer.level, tier, rep)}
+			stock = left and math.min(stock, left) or stock, left = left, locked = M.locked(offer.level, tier, rep)}
 	end
 	return rows
+end
+
+-- What a player bought today of each offer from this villager ({id = count}, nil for
+-- none), from `_villages_premium_sold` ({day, players = {name = {id = count}}}).
+function M.sold_today(villager, name, day)
+	local record = villager._villages_premium_sold
+	return record and record.day == day and record.players[name] or nil
+end
+
+-- Notes `count` of an offer sold to a player today; yesterday's are dropped.
+function M.note_sold(villager, name, id, count, day)
+	local record = villager._villages_premium_sold
+	if not record or record.day ~= day then
+		record = {day = day, players = {}}
+		villager._villages_premium_sold = record
+	end
+	local own = record.players[name] or {}
+	record.players[name] = own
+	own[id] = (own[id] or 0) + count
 end
 
 return M

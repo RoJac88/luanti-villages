@@ -68,4 +68,28 @@ assert(open == 8, "levels 4 and 3 at an expert")
 local none = premium.rows("librarian", 5, 60, {}, 18, function() return 16 end, 0)
 assert(none[1].stock == 0 and not none[1].locked, "out of stock, not locked")
 
+-- The cleric (ticket 37b): pearls from level 4, bottles o' enchanting at 5, each from a
+-- glass bottle, capped a day by the level unlocked.
+do
+	local BOTTLE = "mcl_potions:glass_bottle"
+	local list = premium.offers("cleric")
+	assert(#list == 2 and list[1].id == "experience_bottle" and list[2].id == "ender_pearl")
+	assert(list[2].level == 4 and list[2].dinners == 4 and list[2].base == BOTTLE and list[2].makes == "mcl_throwing:ender_pearl")
+	assert(list[1].dinners == 2 and list[1].makes == "mcl_experience:bottle")
+	assert(premium.left(list[2], 4, 0) == 2 and premium.left(list[2], 5, 3) == 5 and premium.left(list[2], 5, 9) == 0)
+	assert(premium.left(ids.mending_1, 5, 3) == nil, "books have no cap")
+	assert(premium.keeps({_profession = "cleric", _max_trade_tier = 3})[BOTTLE] == 9)
+	local v = {}
+	premium.note_sold(v, "rskj", "ender_pearl", 3, 4)
+	premium.note_sold(v, "rskj", "ender_pearl", 2, 4)
+	assert(premium.sold_today(v, "rskj", 4).ender_pearl == 5 and premium.sold_today(v, "other", 4) == nil)
+	assert(premium.sold_today(v, "rskj", 5) == nil, "a new day")
+	premium.note_sold(v, "rskj", "ender_pearl", 1, 5)
+	assert(premium.sold_today(v, "rskj", 5).ender_pearl == 1 and v._villages_premium_sold.day == 5)
+	-- Rows: stock is the lesser of its bottles and what today's cap leaves.
+	local r = premium.rows("cleric", 5, 60, {[BOTTLE] = 20}, 18, function() return 7 end, 0, {ender_pearl = 6})
+	assert(r[2].stock == 2 and r[2].left == 2 and r[1].stock == 16)
+	assert(r[2].price == 4 * 18 + 7)
+end
+
 print("premium ok")

@@ -67,6 +67,13 @@ assert(strings == 16 and carpets == 16)
 local woodcutter = goods.conversions({_profession = "nitwit", _villages_labour = {activity = "woodcutter"}})
 assert(#woodcutter == 14 and woodcutter[1].ratio == 4 and anyone(woodcutter))
 assert(#goods.conversions({_profession = "mason"}) == 7)
+-- The cleric's leather from rotten flesh (ticket 37b), three to one; not the alchemist's.
+local cleric_list = goods.conversions({_profession = "cleric"})
+assert(cleric_list[1].from == "mcl_mobitems:rotten_flesh" and cleric_list[1].to == "mcl_mobitems:leather")
+assert(goods.yield(cleric_list[1], 10) == 3 and goods.sources_for(cleric_list[1], 2) == 6)
+for _, c in ipairs(goods.conversions({_profession = "cleric", _villages_alchemist = true})) do
+	assert(c.from ~= "mcl_mobitems:rotten_flesh")
+end
 local farmer = goods.conversions({_profession = "farmer"})
 assert(#farmer == 6 and anyone(farmer) and anyone(farmer, BONE_MEAL), "a farmer sells its bone meal as dye")
 assert(#goods.CONVERSIONS.shepherd == 32, "the job's own list is untouched")

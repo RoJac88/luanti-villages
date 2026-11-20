@@ -56,16 +56,24 @@ assert(alms.SAVINGS == 8 * ledger.DINNER)
 assert(alms.donation(alms.SAVINGS) == 0)
 assert(alms.donation(alms.SAVINGS + 1) == 1)
 assert(alms.donation(alms.SAVINGS + 150) == 15)
+-- Progressive (ticket 37b): a tenth from 8 to 24 dinners, a fifth to 64, three tenths past.
+local D = ledger.DINNER
+assert(alms.donation(24 * D) == math.floor(16 * D * 0.1))
+assert(alms.donation(64 * D) == math.floor(16 * D * 0.1 + 40 * D * 0.2))
+assert(alms.donation(100 * D) == math.floor(16 * D * 0.1 + 40 * D * 0.2 + 36 * D * 0.3))
+assert(alms.donation(32 * D, 0.5) == math.floor(16 * D * 0.5 * 0.1 + 40 * D * 0.5 * 0.2), "bands at its dinner scale")
+-- 688 gives 80: 28.8 from the first band and 51.2 from the second.
+local RICH = 688
 
 -- The service: a rich farmer donates, the cleric keeps a tenth and funds the rest, a broke
 -- villager is topped up to two dinners from it, and those there note the donor.
 local priest = villager("cleric1", 0, {_profession = "cleric"})
-local rich = villager("farmer1", alms.SAVINGS + 800, {_profession = "farmer"})
+local rich = villager("farmer1", RICH, {_profession = "farmer"})
 local broke = villager("broke1", 3)
 local middling = villager("mid1", 100)
 alms.hold(priest, {broke, priest, rich, middling}, day, gossip)
-local gift = alms.donation(alms.SAVINGS + 800)
-assert(gift == 80 and emeralds(rich) == alms.SAVINGS + 800 - gift)
+local gift = alms.donation(RICH)
+assert(gift == 80 and emeralds(rich) == RICH - gift)
 assert(emeralds(priest) == 8, "keeps a tenth")
 assert(emeralds(broke) == alms.ALMS_TO, "topped up to two dinners")
 assert(priest._villages_alms == 72 - (alms.ALMS_TO - 3))
@@ -90,10 +98,10 @@ rich._villages_church_news = day
 
 -- Once a holiday: a second look the same day changes nothing.
 alms.hold(priest, {broke, priest, rich, middling}, day, gossip)
-assert(emeralds(rich) == alms.SAVINGS + 800 - gift and emeralds(priest) == 8)
+assert(emeralds(rich) == RICH - gift and emeralds(priest) == 8)
 -- The next holiday it gives again.
 alms.hold(priest, {priest, rich}, day + 4, gossip)
-assert(emeralds(rich) == alms.SAVINGS + 800 - gift - alms.donation(alms.SAVINGS + 800 - gift))
+assert(emeralds(rich) == RICH - gift - alms.donation(RICH - gift))
 
 -- An empty fund gives nothing, and the villager can still get alms later that day.
 local poor_priest = villager("cleric2", 0, {_profession = "cleric"})
@@ -199,14 +207,14 @@ do
 	local full = villager("cleric10", 0, {_profession = "cleric"})
 	local donor = villager("donor", alms.SAVINGS + 2000)
 	local enough = villager("enough2", alms.SAVINGS)
-	local target = alms.fund_target(full, {full, donor, enough})
+	local target = alms.target(full, {full, donor, enough})
 	full._villages_alms = target - 10
 	alms.hold(full, {full, donor, enough}, day, nil)
 	assert(emeralds(donor) == alms.SAVINGS + 2000 - 10, "gives only what the fund lacks")
 	-- At the target: nothing taken, and its money stays its own.
 	local at = villager("cleric11", 0, {_profession = "cleric"})
 	local donor2 = villager("donor2", alms.SAVINGS + 2000)
-	at._villages_alms = alms.fund_target(at, {at, donor2, enough})
+	at._villages_alms = alms.target(at, {at, donor2, enough})
 	alms.hold(at, {at, donor2, enough}, day, nil)
 	assert(emeralds(donor2) == alms.SAVINGS + 2000 and donor2._villages_donated == day)
 
@@ -214,7 +222,7 @@ do
 	local hoard = villager("cleric12", 0, {_profession = "cleric"})
 	local zero, some, saver = villager("zero", 0), villager("some", 50), villager("saver", alms.SAVINGS)
 	local list = {hoard, saver, some, zero}
-	local t = alms.fund_target(hoard, list)
+	local t = alms.target(hoard, list)
 	hoard._villages_alms = t + 200
 	alms.hold(hoard, list, day, nil)
 	-- zero: ALMS_TO, then up to SAVINGS; some: what is left of the 200.
@@ -230,9 +238,35 @@ do
 	local dinner_item = ledger.DINNER_ITEM
 	local thin = villager("thin", 0, {_villages_prices = {[dinner_item] = 1 / 18}})
 	local cheap_list = {cheap_priest, thin}
-	cheap_priest._villages_alms = alms.fund_target(cheap_priest, cheap_list) + 500
+	cheap_priest._villages_alms = alms.target(cheap_priest, cheap_list) + 500
 	alms.hold(cheap_priest, cheap_list, day, nil)
 	assert(emeralds(thin) == alms.SAVINGS, emeralds(thin))
+end
+
+-- Rotten flesh (ticket 37b): the target holds a flesh reserve past the alms; the cleric pays
+-- for flesh from the fund past its alms part, then its own emeralds past SAVINGS.
+do
+	local p = villager("cleric20", 0, {_profession = "cleric"})
+	local poor = villager("poor20", 0)
+	local list = {p, poor}
+	assert(alms.flesh_reserve(p) == 12 * ledger.DINNER)
+	assert(alms.target(p, list) == alms.fund_target(p, list) + alms.flesh_reserve(p))
+	-- Before its first service its fund is all for alms.
+	p._villages_alms = 1000
+	assert(alms.flesh_budget(p) == 0 and not alms.pay_flesh(p, 1))
+	alms.hold(p, list, day + 50, nil)
+	local need = alms.fund_target(p, list)
+	assert(p._villages_alms_need == need)
+	local fund = p._villages_alms
+	assert(alms.flesh_budget(p) == fund - need, alms.flesh_budget(p))
+	-- Its own past SAVINGS counts too, and is spent after the fund.
+	p._villages_belongings[EMERALD] = alms.SAVINGS + 30
+	local budget = alms.flesh_budget(p)
+	assert(budget == fund - need + 30)
+	assert(alms.pay_flesh(p, fund - need + 10))
+	assert(p._villages_alms == need and emeralds(p) == alms.SAVINGS + 20, "the fund first, then its own")
+	assert(not alms.pay_flesh(p, 21) and alms.pay_flesh(p, 20) and emeralds(p) == alms.SAVINGS)
+	assert(alms.flesh_budget(p) == 0, "the alms part and its savings are never spent on flesh")
 end
 
 print("alms.lua: ok")

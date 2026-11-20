@@ -183,6 +183,15 @@ local function goods_text(rows)
 	return #parts > 0 and table.concat(parts, ", ") or S("nothing")
 end
 
+-- Emeralds players paid for premium goods and got for rotten flesh (ticket 37b), with the
+-- village's net; a tolerant default for a report without them.
+local function money_text(money)
+	money = money or {}
+	local paid, got = money.premium_in or 0, money.flesh_out or 0
+	return S("Players: paid @1 for premium goods, got @2 for flesh (net @3)", tostring(paid), tostring(got),
+		tostring(paid - got))
+end
+
 local function list_text(list, shown, describe)
 	local parts = {}
 	for i = 1, math.min(shown, #list) do parts[i] = describe(list[i]) end
@@ -261,10 +270,12 @@ local function economy_parts(report)
 		core.colorize(HEADER_COLOR, S("Today")),
 		S("Made: @1", goods_text(report.today.made)),
 		S("Used: @1", goods_text(report.today.used)),
+		money_text(report.today.money),
 		"",
 		core.colorize(HEADER_COLOR, S("Yesterday")),
 		S("Made: @1", goods_text(report.yesterday.made)),
 		S("Used: @1", goods_text(report.yesterday.used)),
+		money_text(report.yesterday.money),
 	}
 	wrapped(x, y + 0.3, WIDTH - x - 0.4, HEIGHT - y - 0.6, table.concat(lines, "\n"))
 	return table.concat(parts)
