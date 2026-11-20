@@ -64,7 +64,7 @@ for profession, list in pairs(recipes) do
 		end
 	end
 end
-assert(checked == 11, "the four iron pieces, the iron axe, pick and hoe, the cauldron, the clock, arrows and the labourers' lantern: "
+assert(checked == 12, "the four iron pieces, the iron axe, pick, hoe and sword (ticket 37d), the cauldron, the clock, arrows and the labourers' lantern: "
 	.. checked)
 -- Priced by their floor alone, as no trade table prices them (ticket 29).
 assert(near(ledger.price("mcl_tools:pick_iron"), ledger.COST_FLOOR * (3 * ledger.price("mcl_core:iron_ingot")

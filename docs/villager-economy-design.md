@@ -3578,15 +3578,31 @@ The lines, by sub-ticket (one PR each, against `main`):
   - **Tests:** `tests/premium.lua` (two offers, the shared cap, prices from each base, the
     keeps); `tests/trade_window.lua` (carrots from wheat, then potatoes up to the shared cap);
     `tests/farmer.lua` (24 wheat and 24 potatoes more in its belongings at journeyman).
-- **37d. Smiths and the armorer.** They buy diamonds from players, keeping up to 8. The tool
-  smith sells an iron pick with Efficiency III and Unbreaking I (level 3), a diamond axe or
-  shovel with Efficiency IV and Unbreaking II (4), a diamond pick with Efficiency V and
-  Unbreaking III (5). The weapon smith (with a new iron sword recipe): an iron sword with
-  Sharpness III, a diamond axe with Sharpness IV and Unbreaking II, a diamond sword with
-  Sharpness V and Unbreaking III. The armorer: an iron piece with Protection II, diamond
-  leggings or boots with Protection III, a diamond helmet or chestplate with Protection IV and
-  Unbreaking III. Each price adds its base: the crafted piece, or the real recipe's diamonds
-  and sticks.
+- **37d. Smiths and the armorer (done).** Enchanted gear (`goods` with their own `enchants`
+  and `inputs` in `premium.lua`), each priced as the sum of its enchantments plus its inputs'
+  reference values. Iron gear takes a piece it made and holds (out of stock without one);
+  diamond gear takes the real recipe's diamonds and sticks. From journeyman up each keeps
+  8 diamonds (the smiths 4 sticks too), a target, so its window buys diamonds from players
+  at its value, and its crafts leave them alone.
+
+  | | Level 3 | Level 4 | Level 5 |
+  |---|---|---|---|
+  | Tool smith | iron pick, Efficiency III, Unbreaking I (14) | diamond axe or shovel, Efficiency IV, Unbreaking II (28) | diamond pick, Efficiency V, Unbreaking III (56) |
+  | Weapon smith | iron sword, Sharpness III (8) | diamond axe, Sharpness IV, Unbreaking II (28) | diamond sword, Sharpness V, Unbreaking III (56) |
+  | Armorer | each iron piece, Protection II (7) | diamond leggings or boots, Protection III (14) | diamond helmet or chestplate, Protection IV, Unbreaking III (52) |
+
+  A villager that buys diamonds from a player receives two for each one sold (the trade
+  window's `DIAMOND_BONUS`), so a smith's gear can sell at a profit and still leave the
+  player better off. Its reference price learns the price paid per diamond sold, so the
+  bonus doesn't lower what it pays next time.
+  The weapon smith makes iron swords from journeyman up (2 iron and a stick), priced at its
+  iron like its axe. At a dinner of 18 a diamond pick is 1,204 emeralds: 1,008 for its
+  enchantments, 196 for three diamonds and two sticks.
+  - **Tests:** `tests/premium.lua` (the three lines, labels, levels, prices with every input,
+    stock by the scarcest input, keeps); `tests/trade_window.lua` (a diamond pick refused with
+    one stick and nothing taken, then made from three diamonds and two sticks, tallied; a
+    diamond sold, two received, the price learnt per diamond sold).
+    Checked on the real engine: all fifteen come out enchanted as registered items.
 - **37e. Fletcher, fisherman, leatherworker.** The fletcher's bow: Power III; Power IV and
   Unbreaking II; Power V and Infinity. The fisherman's rod (keeps 1): Lure I and Luck I; Lure
   II and Luck II; Lure III and Luck III. The leatherworker: a saddle from 4 leather (8 dinners)

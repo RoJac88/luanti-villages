@@ -60,6 +60,12 @@
 -- (ledger.lua). What it pays a player is money out of the village, the tally's
 -- `flesh_out`; what a player pays for premium goods comes back in, `premium_in`.
 --
+-- Diamonds (ticket 37d). A villager that buys diamonds from a player receives DIAMOND_BONUS
+-- (2) for each one sold, the second out of nowhere, so a smith's diamond gear can sell at a
+-- profit and still leave the player better off than mining and crafting. Its reference
+-- price learns the price paid per diamond the player sold, so the bonus does not lower
+-- what it pays next time.
+--
 -- The tavern keeper (ticket 33) sells the dishes in its pantry (tavern_pantry.lua: a
 -- keeper.dishes item), each one dinner at its posted dinner price (dinner.lua), paid into
 -- the pantry, its till, as a player's meal is (player_meals.lua). It keeps the last
@@ -68,11 +74,12 @@
 -- no pantry it sells what it holds, as anyone.
 --
 -- Premium trades (ticket 37, premium.lua): a villager with a premium line (the librarian's
--- enchanted books) has a Special tab listing every premium good of its profession, each at
+-- enchanted books, the cleric's pearls, the farmer's golden carrots, the smiths' and the
+-- armorer's enchanted gear) has a Special tab listing every premium good of its profession, each at
 -- its price (P dinners at its reference price for a dinner, plus the base good, less the
 -- reputation share), unlocked by its tier and the player's reputation band, or greyed with
--- why it is locked. Buying one takes its base good from the villager (out of stock without
--- it) and makes the good at the sale: the other conversion in player trade. The emeralds go
+-- why it is locked. Buying one takes its inputs from the villager (out of stock without
+-- them) and makes the good at the sale: the other conversion in player trade. The emeralds go
 -- to the villager, the base used is noted in its tally (economy_tally.lua), and it is
 -- "trading" gossip. Premium goods never go through asks or prices: no villager trades them.
 --
@@ -99,6 +106,9 @@ local NUGGET, INGOT = "mcl_core:iron_nugget", "mcl_core:iron_ingot"
 local GOLD_NUGGET, GOLD = "mcl_core:gold_nugget", "mcl_core:gold_ingot"
 local FLINT, GLASS, PANE = "mcl_core:flint", "mcl_core:glass", "xpanes:pane_natural_flat"
 local FLESH, LEATHER = "mcl_mobitems:rotten_flesh", "mcl_mobitems:leather"
+local DIAMOND = "mcl_core:diamond"
+-- Diamonds a villager receives for each one a player sells it.
+local DIAMOND_BONUS = 2
 -- The most rotten flesh the cleric holds: 32 leather's worth.
 local FLESH_KEEP = 96
 -- The cleric's average cost per flesh (goods.lua's cleric conversion, asks.cost_floor).
@@ -115,7 +125,7 @@ local UNITS = {food = "points", fuel = "seconds", log = "logs", planks = "planks
 local M = {
 	FORMNAME = FORMNAME, REP_STEP = REP_STEP,
 	REP_MAX = REP_MAX, REFUSE = REFUSE, URGENT = URGENT, ROWS = ROWS, DONATION_MIN = DONATION_MIN,
-	PREMIUM_ROWS = PREMIUM_ROWS, FLESH_KEEP = FLESH_KEEP,
+	PREMIUM_ROWS = PREMIUM_ROWS, FLESH_KEEP = FLESH_KEEP, DIAMOND_BONUS = DIAMOND_BONUS,
 }
 
 -- What the cleric pays for one rotten flesh: a third of its reference price for leather
@@ -639,7 +649,8 @@ function M.install(def, deps)
 		else
 			possessions.take(villager, EMERALD, pay)
 		end
-		possessions.add(villager, entry.item, count)
+		local received = entry.item == DIAMOND and count * DIAMOND_BONUS or count
+		possessions.add(villager, entry.item, received)
 		-- A purchase like any (ticket 21c): its reference price learns the price, and an
 		-- alchemist's book (ticket 30).
 		prices.learn(villager, entry.item, pay / count)
@@ -650,8 +661,9 @@ function M.install(def, deps)
 			gossip.add(villager, name, "trading")
 			if entry.urgency >= URGENT then gossip.add(villager, name, "minor_positive") end
 		end
-		log("%s sold %d %s to villager %s for %d emerald(s)%s", name, count, entry.item,
-			tostring(villager._id):sub(1, 6), pay, entry.urgency >= URGENT and ", an urgent need" or "")
+		log("%s sold %d %s to villager %s for %d emerald(s)%s%s", name, count, entry.item,
+			tostring(villager._id):sub(1, 6), pay, entry.urgency >= URGENT and ", an urgent need" or "",
+			received > count and string.format(", received %d", received) or "")
 	end
 
 	-- The player buys a premium good (the Special tab's `entry`, premium.rows): its base good
@@ -682,22 +694,29 @@ function M.install(def, deps)
 			core.chat_send_player(name, "You have no room for that.")
 			return
 		end
-		local need = offer.count * count
-		local used = possessions.take_held(villager, offer.base, need)
-		if used < need then
-			if used > 0 then possessions.add(villager, offer.base, used) end
-			return
+		-- Every input (ticket 37d: a diamond pick's diamonds and sticks), or none of them.
+		local used = {}
+		for _, input in ipairs(offer.inputs) do
+			local need = input.count * count
+			local got = possessions.take_held(villager, input.item, need)
+			if got > 0 then used[input.item] = (used[input.item] or 0) + got end
+			if got < need then
+				for item, n in pairs(used) do possessions.add(villager, item, n) end
+				return
+			end
 		end
 		inv:remove_item("main", EMERALD .. " " .. pay)
 		possessions.add(villager, EMERALD, pay)
 		inv:add_item("main", stack)
 		local day = core.get_day_count and core.get_day_count() or 0
 		premium.note_sold(villager, name, offer.cap or offer.id, count, day)
-		tally.note(villager, nil, {[offer.base] = need}, day)
+		tally.note(villager, nil, used, day)
 		tally.money(villager, "premium_in", pay, day)
 		if gossip then gossip.add(villager, name, "trading") end
-		log("%s bought premium %d %s (%s) from villager %s for %d emerald(s) (from %d %s)", name, count, offer.id,
-			offer.label, tostring(villager._id):sub(1, 6), pay, need, offer.base)
+		local from = {}
+		for _, input in ipairs(offer.inputs) do from[#from + 1] = (input.count * count) .. " " .. input.item end
+		log("%s bought premium %d %s (%s) from villager %s for %d emerald(s) (from %s)", name, count, offer.id,
+			offer.label, tostring(villager._id):sub(1, 6), pay, table.concat(from, ", "))
 	end
 
 	-- The player donates `amount` emeralds to the cleric's alms fund.

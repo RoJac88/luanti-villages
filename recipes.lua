@@ -54,6 +54,8 @@ return {
 	},
 	weapon_smith = {
 		{makes = "mcl_tools:axe_iron", count = 1, tier = 1, from = {{IRON, 3}, {STICK, 2}}, fuel = 3},
+		-- The base of its premium sword (ticket 37d, premium.lua), from journeyman up.
+		{makes = "mcl_tools:sword_iron", count = 1, tier = 3, from = {{IRON, 2}, {STICK, 1}}, fuel = 2},
 	},
 	armorer = {
 		{makes = "mcl_armor:helmet_iron", count = 1, tier = 1, from = {{IRON, 5}}, fuel = 5},

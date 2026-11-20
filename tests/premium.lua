@@ -120,4 +120,41 @@ do
 	assert(premium.rows("farmer", 3, 60, {[WHEAT] = 60}, 18, value, 0)[1].locked == "needs an expert")
 end
 
+-- The smiths and the armorer (ticket 37d): enchanted gear from a piece it made, or from
+-- diamonds and sticks; priced as the sum of its enchantments plus its inputs.
+do
+	local DIAMOND, STICK = "mcl_core:diamond", "mcl_core:stick"
+	local function find(list, id)
+		for _, offer in ipairs(list) do
+			if offer.id == id then return offer end
+		end
+	end
+	local tools = premium.offers("tool_smith")
+	assert(#tools == 4 and tools[1].id == "diamond_pick" and tools[1].level == 5 and tools[1].dinners == 56)
+	assert(tools[1].label == "Diamond pickaxe: Efficiency V, Unbreaking III" and tools[1].from == "mcl_tools:pick_diamond")
+	assert(#tools[1].inputs == 2 and tools[1].base == DIAMOND and tools[1].count == 3)
+	assert(find(tools, "iron_pick").dinners == 14 and find(tools, "iron_pick").level == 3)
+	assert(find(tools, "diamond_axe").dinners == 28 and find(tools, "diamond_shovel").inputs[1].count == 1)
+	local weapons = premium.offers("weapon_smith")
+	assert(#weapons == 3 and find(weapons, "diamond_sword").dinners == 56 and find(weapons, "iron_sword").dinners == 8)
+	assert(find(weapons, "diamond_axe").enchants.sharpness == 4)
+	local armour = premium.offers("armorer")
+	assert(#armour == 8)
+	assert(find(armour, "iron_chestplate").dinners == 7 and find(armour, "iron_chestplate").level == 3)
+	assert(find(armour, "diamond_boots").dinners == 14 and find(armour, "diamond_boots").inputs[1].count == 4)
+	assert(find(armour, "diamond_chestplate").dinners == 52 and find(armour, "diamond_chestplate").inputs[1].count == 8)
+	assert(find(armour, "diamond_helmet").level == 5 and find(armour, "diamond_leggings").level == 4)
+	-- Keeps: diamonds, and sticks for the smiths' handles.
+	local k = premium.keeps({_profession = "tool_smith", _max_trade_tier = 3})
+	assert(k[DIAMOND] == 8 and k[STICK] == 4)
+	assert(premium.keeps({_profession = "armorer", _max_trade_tier = 3})[DIAMOND] == 8)
+	-- Price: 56 dinners, three diamonds and two sticks.
+	local value = function(item) return ({[DIAMOND] = 64, [STICK] = 2})[item] end
+	assert(premium.price(tools[1], 18, value, 0) == 56 * 18 + 3 * 64 + 2 * 2)
+	-- Stock: the input it runs out of first.
+	assert(premium.stock(tools[1], {[DIAMOND] = 7, [STICK] = 2}) == 1)
+	assert(premium.stock(tools[1], {[DIAMOND] = 7, [STICK] = 9}) == 2)
+	assert(premium.stock(tools[1], {[STICK] = 9}) == 0)
+end
+
 print("premium ok")
