@@ -17,8 +17,10 @@
 -- set back beside it.
 --
 -- In the work stage, every BREED_SECONDS (`_villages_herd_next`, game time):
--- * with more than HERD_SIZE adults it slaughters one, as a kill would drop it
---   (mobs_mc/cow+mooshroom.lua): 1 to 3 beef and 0 to 2 leather, into its belongings;
+-- * with more than HERD_SIZE adults it slaughters one: 1 to 3 beef, as a kill would drop
+--   (mobs_mc/cow+mooshroom.lua), and 1 to 3 leather (ticket 31: a kill drops 0 to 2), times
+--   the rate of the axe it slaughters with (wants.lua's "slaughter": stone 3, iron 4, gold
+--   and diamond 5), into its belongings;
 -- * otherwise, with two adults, room for a calf and BREED_WHEAT wheat (a cow's `follow`,
 --   one for each parent), it breeds them: the wheat is used and a calf spawned
 --   (mcl_mobs.spawn_child), marked as the herd's. So the herd grows to HERD_SIZE adults
@@ -30,18 +32,23 @@ local core = minetest
 local common = dofile(core.get_modpath("living_villages") .. "/common.lua")
 local clock = dofile(core.get_modpath("living_villages") .. "/economy_clock.lua")
 local possessions = dofile(core.get_modpath("living_villages") .. "/possessions.lua")
+local wants = dofile(core.get_modpath("living_villages") .. "/wants.lua")
 
 local COW = "mobs_mc:cow"
 local PROFESSION = "leatherworker"
 local WHEAT = "mcl_farming:wheat_item"
 local BEEF = "mcl_mobitems:beef"
 local LEATHER = "mcl_mobitems:leather"
+-- Leather from a slaughter by hand, before an axe's rate: a kill drops 0 to 2 (ticket 31).
+local LEATHER_MIN, LEATHER_MAX = 1, 3
 local HERD_SIZE = 4
 local SEED_COWS = 2
 local BREED_WHEAT = 2
-local HERD_WHEAT = 4
+local HERD_WHEAT = 8
 local STEP_SECONDS = 10
-local BREED_SECONDS = 300
+-- Calves grow up in about a minute (mcl_mobs CHILD_GROW_TIME), so this is the herd's pace:
+-- a slaughter every second turn (ticket 31: 300 s gave too little leather).
+local BREED_SECONDS = 120
 local SCAN_RADIUS = 32
 local ADOPT_RADIUS = 16
 local BOUND = 10
@@ -50,7 +57,7 @@ local LEASH, UNSEEN = 20, 24
 local SPOT_MIN, SPOT_MAX = 2, 6
 
 local M = {HERD_SIZE = HERD_SIZE, SEED_COWS = SEED_COWS, BOUND = BOUND, LEASH = LEASH, ADOPT_RADIUS = ADOPT_RADIUS, BREED_WHEAT = BREED_WHEAT, HERD_WHEAT = HERD_WHEAT,
-	BREED_SECONDS = BREED_SECONDS, PROFESSION = PROFESSION, WHEAT = WHEAT}
+	BREED_SECONDS = BREED_SECONDS, PROFESSION = PROFESSION, WHEAT = WHEAT, LEATHER_MIN = LEATHER_MIN, LEATHER_MAX = LEATHER_MAX}
 
 local function short_id(id)
 	return tostring(id):sub(1, 6)
@@ -179,16 +186,18 @@ function M.keep_near(jobsite, herd)
 	return turned
 end
 
--- Slaughters one adult: beef and leather as its drops would give, into its belongings.
+-- Slaughters one adult: beef as its drops would give and leather by its axe (LEATHER_MIN
+-- to LEATHER_MAX times the axe's rate, wearing it), into its belongings.
 function M.slaughter(self, cow, random)
 	random = random or math.random
-	local beef, leather = random(1, 3), random(0, 2)
+	local rate = wants.tool_use(self, "slaughter", possessions.take_held, core.get_gametime())
+	local beef, leather = random(1, 3), math.floor(random(LEATHER_MIN, LEATHER_MAX) * rate + 0.5)
 	possessions.add(self, BEEF, beef)
 	if leather > 0 then possessions.add(self, LEATHER, leather) end
 	cow._villages_herder = nil
 	cow.object:remove()
-	core.log("action", string.format("[living_villages] herd: leatherworker %s slaughtered a cow for %d beef and %d leather",
-		short_id(self._id), beef, leather))
+	core.log("action", string.format("[living_villages] herd: leatherworker %s slaughtered a cow for %d beef and %d leather (axe rate %g)",
+		short_id(self._id), beef, leather, rate))
 	return beef, leather
 end
 

@@ -128,11 +128,31 @@ assert(#herd.scan(worker, jobsite) == herd.HERD_SIZE and logged("slaughtered a c
 -- The drops' ranges.
 local lo = cow_at({x = 2, y = 1, z = 2}, {_villages_herder = "leather1"})
 local beef, leather = herd.slaughter(worker, lo, function(a) return a end)
-assert(beef == 1 and leather == 0 and lo.removed)
+assert(beef == 1 and leather == herd.LEATHER_MIN and lo.removed, "by hand: the least leather")
+local hi = cow_at({x = 2, y = 1, z = 2}, {_villages_herder = "leather1"})
+beef, leather = herd.slaughter(worker, hi, function(_, b) return b end)
+assert(beef == 3 and leather == herd.LEATHER_MAX)
+
+-- An axe multiplies the leather (ticket 31): it takes up the best one held and wears it.
+local IRON_AXE, STONE_AXE = "mcl_tools:axe_iron", "mcl_tools:axe_stone"
+local axeman = {_id = "leather3", _profession = "leatherworker", _jobsite = jobsite, _villages_food = 12,
+	_villages_belongings = {[STONE_AXE] = 1, [IRON_AXE] = 1}}
+local cow = cow_at({x = 2, y = 1, z = 2}, {_villages_herder = "leather3"})
+beef, leather = herd.slaughter(axeman, cow, function(a) return a end)
+assert(leather == herd.LEATHER_MIN * 4 and axeman._villages_wants.cleaver.item == IRON_AXE, "iron: four times")
+assert(possessions.count(axeman, STONE_AXE) == 1 and possessions.count(axeman, IRON_AXE) == 0)
+assert(logged("axe rate 4"))
+-- Worn out after its uses, the stone one is taken up next.
+axeman._villages_wants.cleaver.left = 1
+herd.slaughter(axeman, cow_at({x = 2, y = 1, z = 2}), function(a) return a end)
+beef, leather = herd.slaughter(axeman, cow_at({x = 2, y = 1, z = 2}), function(a) return a end)
+assert(leather == herd.LEATHER_MIN * 3 and axeman._villages_wants.cleaver.item == STONE_AXE, "then stone: three times")
 
 -- A leatherworker wants wheat for its herd.
 local view = possessions.assess({_id = "leather2", _profession = "leatherworker", _villages_food = 12})
 assert((view.targets[WHEAT] or 0) >= herd.HERD_WHEAT)
+-- And an axe: the iron one, and the stone one while it has none in use.
+assert(view.targets[IRON_AXE] == 1 and view.targets[STONE_AXE] == 1)
 
 assert(herd.status(worker):find("cows", 1, true) and herd.status({_profession = "farmer"}) == "not a leatherworker")
 
