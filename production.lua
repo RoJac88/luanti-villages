@@ -77,6 +77,7 @@ local SMELTS_PER_LUMP = 8
 local SMELT_SECONDS = 10
 local COAL, CHARCOAL = ledger.COAL, "mcl_core:charcoal_lump"
 local goods = dofile(core.get_modpath("living_villages") .. "/goods.lua")
+local alchemist = dofile(core.get_modpath("living_villages") .. "/alchemist.lua")
 -- Most crafts in one step, should a long gap have banked many.
 local MAX_PER_STEP = 4
 local DEFAULT_TIER_SUPPLY_DAYS = 3
@@ -371,6 +372,8 @@ function M.make(self, recipe, labour)
 	-- Planks from a log are of its species.
 	local makes = recipe.makes
 	if log_used and goods.CATEGORIES.planks[makes] then makes = goods.SPECIES[log_used] end
+	-- An alchemist's stock is at what it cost to make (ticket 30).
+	alchemist.made(self, makes, recipe.count, possessions.count(self, makes))
 	possessions.add(self, makes, recipe.count)
 	tally.note(self, {[makes] = recipe.count}, used)
 	core.log("action", string.format("[living_villages] production: villager %s (%s) made %d %s",

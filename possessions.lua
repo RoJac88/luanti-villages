@@ -835,15 +835,18 @@ function M.assess(self)
 		unpaid = ledger.unpaid(list, price_of, tier)
 	end
 	-- An alchemist (ticket 20) wants stone, fuel and logs for the flint it is short of,
-	-- whether they pay or not, at no less than its budget and takings bid (ticket 28).
-	local categories
+	-- whether they pay or not, at no less than its budget's bid (ticket 28) and no more
+	-- than what its goods pay (ticket 30, after the money factor).
+	local categories, ceiling
 	if self._villages_alchemist and not self.child then
-		categories = alchemist.targets(M.held(self))
+		local held = M.held(self)
+		categories = alchemist.targets(held)
 		unpaid = nil
-		for item, floor in pairs(alchemist.floors(categories, M.emeralds(self), dinner.scale(self),
-				self._villages_sold_at)) do
+		ceiling = alchemist.caps(self, held)
+		for item, floor in pairs(alchemist.floors(categories, M.emeralds(self), dinner.scale(self))) do
 			least = least or {}
 			least[item] = math.max(least[item] or 0, floor)
+			ceiling[item] = math.max(ceiling[item] or 0, floor)
 		end
 	elseif self._villages_builder and (self._villages_builder_logs or self._villages_builder_wool) then
 		categories = {log = self._villages_builder_logs, wool = self._villages_builder_wool}
@@ -872,6 +875,7 @@ function M.assess(self)
 		extra_categories = categories,
 		worth = worth,
 		least = least,
+		ceiling = ceiling,
 		-- What it believes things are worth (prices.lua).
 		prices = self._villages_prices,
 		unpaid = unpaid,

@@ -399,8 +399,10 @@ function M.install(def, deps)
 		end
 		possessions.take(villager, EMERALD, pay)
 		possessions.add(villager, entry.item, count)
-		-- A purchase like any (ticket 21c): its reference price learns the price.
+		-- A purchase like any (ticket 21c): its reference price learns the price, and an
+		-- alchemist's book (ticket 30).
 		prices.learn(villager, entry.item, pay / count)
+		alchemist.bought(villager, possessions.held(villager), entry.item, count, pay)
 		local left = inv:add_item("main", EMERALD .. " " .. pay)
 		if not left:is_empty() and core.add_item then core.add_item(player:get_pos(), left) end
 		if gossip then

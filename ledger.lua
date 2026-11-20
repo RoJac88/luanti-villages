@@ -528,7 +528,11 @@ function M.assess(input)
 		local most = input.worth and input.worth[item]
 		if most then value = math.min(value, most) end
 		local least = input.least and input.least[item]
-		return least and math.max(value, least) or value
+		if least then value = math.max(value, least) end
+		-- The most it is worth, last, after the money factor and `least` (ticket 30: an
+		-- alchemist's input at what its goods pay).
+		local ceiling = input.ceiling and input.ceiling[item]
+		return ceiling and math.min(value, ceiling) or value
 	end
 	return {targets = targets, needs = needs, surplus = surplus, value = value, urgency = urgency,
 		categories = categories, group = group, lambda = lambda,

@@ -62,6 +62,8 @@ local ledger = dofile(core.get_modpath("living_villages") .. "/ledger.lua")
 local news = dofile(core.get_modpath("living_villages") .. "/market_news.lua")
 local exchange = dofile(core.get_modpath("living_villages") .. "/exchange.lua")
 local prices = dofile(core.get_modpath("living_villages") .. "/prices.lua")
+local asks = dofile(core.get_modpath("living_villages") .. "/asks.lua")
+local alchemist = dofile(core.get_modpath("living_villages") .. "/alchemist.lua")
 local stock = dofile(core.get_modpath("living_villages") .. "/farm_stock.lua")
 local cells = dofile(core.get_modpath("living_villages") .. "/cells.lua")
 local goods_mod = dofile(core.get_modpath("living_villages") .. "/goods.lua")
@@ -325,8 +327,18 @@ function M.buy_from_stash(self, trip, chest)
 	local paid = put(chest, EMERALD, pay)
 	if paid < pay then possessions.add(self, EMERALD, pay - paid) end
 	possessions.add(self, trip.item, count)
-	-- Its reference price learns what it paid (ticket 21b); the seller is away.
+	-- Its reference price learns what it paid (ticket 21b), and an alchemist's book (ticket 30).
 	prices.learn(self, trip.item, paid / count)
+	alchemist.bought(self, possessions.held(self), trip.item, count, paid)
+	-- The seller, away from its stash but loaded, counts the sale as one made to its face
+	-- (ticket 30): its ask and reference price learn it, and an alchemist keeps the price.
+	-- Without it the alchemist's stash sales taught it nothing, and its takings never set its bids.
+	local seller = trip.home and M.locate(trip.home, trip.who)
+	if seller then
+		local day = core.get_day_count and core.get_day_count() or 0
+		asks.sold(seller, trip.item, day, count, paid / count)
+		if item ~= trip.item then asks.sold(seller, item, day, taking, paid / taking) end
+	end
 	trip.bought, trip.spent = (trip.bought or 0) + count, (trip.spent or 0) + paid
 	log("villager %s bought %d %s from %s's stash for %d emerald(s)", short_id(self._id), count, trip.item,
 		short_id(trip.who), paid)

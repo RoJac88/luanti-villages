@@ -35,6 +35,7 @@
 local core = minetest
 local clock = dofile(core.get_modpath("living_villages") .. "/economy_clock.lua")
 local possessions = dofile(core.get_modpath("living_villages") .. "/possessions.lua")
+local alchemist = dofile(core.get_modpath("living_villages") .. "/alchemist.lua")
 local food = dofile(core.get_modpath("living_villages") .. "/food.lua")
 local gossip = dofile(core.get_modpath("living_villages") .. "/gossip.lua")
 local goods_mod = dofile(core.get_modpath("living_villages") .. "/goods.lua")
@@ -241,6 +242,8 @@ function M.settle(trade)
 	-- Sold as its sources too: their ask, which prices the product, stops falling.
 	if trade.from then asks.sold(seller, trade.from, day, from_count, trade.pay and trade.pay / from_count) end
 	if unit then prices.learn(buyer, trade.item, unit) end
+	-- An alchemist's book learns what it paid (ticket 30).
+	if trade.pay then alchemist.bought(buyer, possessions.held(buyer), trade.item, trade.count, trade.pay) end
 	core.log("action", string.format("[living_villages] trade: villager %s sold %d %s%s to %s for %s",
 		short_id(seller), trade.count, trade.item, made, short_id(buyer), price))
 	return true

@@ -178,10 +178,11 @@ local function row(list, item)
 end
 local empty = {surplus = {}, needs = {}, value = function(item) return ledger.price(item) end}
 do
-	local held = {[NUGGET] = 50, [GLASS] = 3}
+	-- Under the gold reserve (24 since ticket 30) plus a gold nugget's 18.
+	local held = {[NUGGET] = 41, [GLASS] = 3}
 	local r = window.rows(empty, held, 1000, 0, nil, true)
 	local ingot = row(r.sells, IRON)
-	assert(ingot and ingot.lots == 5 and ingot.held == 0 and ingot.conversion.from == NUGGET, "five ingots from 50")
+	assert(ingot and ingot.lots == 4 and ingot.held == 0 and ingot.conversion.from == NUGGET, "four ingots from 41")
 	assert(ingot.price == math.ceil(ledger.price(IRON)), ingot.price)
 	local cheap = window.rows(empty, held, 1000, 0, nil, true, function(item) return item == IRON and 50 or nil end)
 	assert(row(cheap.sells, IRON).price == 50, "at its ask")
@@ -189,9 +190,9 @@ do
 	local by_nuggets = window.rows(empty, held, 1000, 0, nil, true, nil,
 		function(conversion) return conversion.from == NUGGET and 9 * 3 or nil end)
 	assert(row(by_nuggets.sells, IRON).price == 27, row(by_nuggets.sells, IRON).price)
-	assert(row(r.sells, NUGGET).lots == 50 and row(r.sells, PANE).lots == 3 and row(r.sells, GLASS).lots == 3)
+	assert(row(r.sells, NUGGET).lots == 41 and row(r.sells, PANE).lots == 3 and row(r.sells, GLASS).lots == 3)
 	assert(not row(r.sells, GOLD_NUGGET), "no gold under the reserve")
-	assert(row(window.rows(empty, {[NUGGET] = 126}, 0, 0, nil, true).sells, GOLD_NUGGET).lots == 1, "past it")
+	assert(row(window.rows(empty, {[NUGGET] = 42}, 0, 0, nil, true).sells, GOLD_NUGGET).lots == 1, "past it")
 	local bid = row(r.buys, IRON)
 	assert(bid and bid.price == math.floor(ledger.price(IRON)) and bid.lots == math.floor(1000 / bid.price))
 	assert(row(r.buys, GOLD) and row(r.buys, GOLD).lots == 0, "a gold ingot is more than it has")
@@ -218,7 +219,9 @@ do
 	local rows_now = window.rows(empty, pouch, 10, 0, nil, true)
 	local _, index = row(rows_now.sells, IRON)
 	handlers.fields(player, window.FORMNAME, {["sell_one_" .. index] = true})
-	local price = math.ceil(ledger.price(IRON))
+	-- Nine nuggets at their cost and the alchemist's margin (ticket 30): with nothing made
+	-- yet, a nugget's cost is its base price.
+	local price = math.ceil(ledger.price(IRON) * 1.05 - 1e-9)
 	assert(pouch[NUGGET] == 11 and player_inv.contents[IRON] == 7 + 1 and pouch[EMERALD] == 10 + price, pouch[NUGGET])
 	assert(logs[#logs]:find("(from 9 mcl_core:iron_nugget)", 1, true))
 	pouch[IRON] = 1
