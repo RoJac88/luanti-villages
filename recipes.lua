@@ -48,6 +48,8 @@ return {
 		{makes = "mcl_core:wood", count = 4, tier = 1, from = {{"mcl_core:tree", 1}}},
 		-- What a quarrier asks for (wants.lua, ticket 29), from the alchemist's ingots.
 		{makes = "mcl_tools:pick_iron", count = 1, tier = 1, from = {{IRON, 3}, {STICK, 2}}, fuel = 3},
+		-- What a farmer asks for (ticket 29); the woodcutter's iron axe is the weapon smith's.
+		{makes = "mcl_farming:hoe_iron", count = 1, tier = 1, from = {{IRON, 2}, {STICK, 2}}, fuel = 2},
 	},
 	weapon_smith = {
 		{makes = "mcl_tools:axe_iron", count = 1, tier = 1, from = {{IRON, 3}, {STICK, 2}}, fuel = 3},

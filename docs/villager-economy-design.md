@@ -3252,26 +3252,41 @@ makes to sell is priced as before.
   face the seller asks the lowest of its own stock's ask and each conversion's it has
   the sources for (trade_trips' `in_person_ask`), as exchange.offer sells. A stash
   holding none of the product sells whole batches of its sources, at the told price.
-- **29b. Quarriers want iron picks.** The pickaxe good asks for an iron pick (128 uses,
-  rate 4; worth 983 at base prices, against its 518) and, while it has no pick in use at
-  all, a stone one too (`starter`), so it never waits by hand for iron. It takes up the
-  best it holds, so a stone pick in use means the iron one is asked for again only when
-  it is nearly worn. The tool smith makes it from 3 ingots and 2 sticks (3 smelts of
-  fuel), so a village's quarrying money goes back to iron through the tool smith.
+- **29b. Iron tools.** Every tool (wants.lua) comes in stone, iron, gold and diamond tiers,
+  the hoe and pick wood too (the tool smith's first ones). Each better tier works faster
+  (a hoe yields more); gold works as well as diamond but wears out fastest of all:
+
+  | Tool | Wood | Stone | Iron | Gold | Diamond |
+  |---|---|---|---|---|---|
+  | Hoe (yield) | 30 × 1.25 | 64 × 1.5 | 128 × 2 | 16 × 2.5 | 512 × 2.5 |
+  | Axe (felling) | | 32 × 1.5 | 64 × 2 | 8 × 2.5 | 256 × 2.5 |
+  | Pick (mining) | 30 × 2 | 64 × 3 | 128 × 4 | 16 × 5 | 512 × 5 |
+
+  (uses × rate). Each asks for the iron tier and, while it has none in use at all, the
+  stone one too (`starter`), so it never waits by hand for iron. It takes up the best it
+  holds, so with a stone one in use the iron one is asked for again only when it is
+  nearly worn. At base prices each iron tool pays: a hoe 819 against 347, an axe 5,120
+  against 518, a pick 983 against 518. The tool smith makes the pick (3 ingots, 2 sticks,
+  3 smelts) and the hoe (2 ingots, 2 sticks, 2 smelts); the weapon smith's iron axe,
+  which no villager bought, is the woodcutter's.
+- **The pick hastens the generator too.** labour.lua refills a mined cell REGEN_SECONDS
+  over the pick's rate (19d), so with the cap of 4 lifted, gold and diamond picks both
+  mine (1.6 s a block) and refill (0.2 s) faster.
 - **29c. A cauldron comfort.** The armorer makes a cauldron from 7 ingots (7 smelts), a
   comfort lasting 12 days. Adding a comfort reshuffles every villager's tastes (they are
   picked from the list by `_id`), as ticket 24 did.
 - **Pricing.** Neither the iron pick nor the cauldron has a trade table price, so the cost
   floor now prices a recipe output from iron, gold or flint that nothing else prices:
   the pick at 518 (1.25 × 3 ingots, 2 sticks and fuel), the cauldron at 1,198.
-- **Not done.** An iron axe for woodcutters (the weapon smith already makes one) would
-  be the same change for wood.
 - **Tests:** `tests/trade_trips.lua` (three ingots from 30 nuggets in a stash, 3 left; none
   without the sources told; a plan carries them; an alchemist holding only nuggets sells
   ingots to its face at nine nuggets' ask); `tests/alchemist_trade.lua` (a told ingot
   carries its sources); `tests/wants.lua` (a quarrier asks for both picks, none with a fresh
-  stone one, only the iron one when nearly worn, takes up the iron one first; an iron
-  pick pays at base prices); `tests/ledger.lua` (the floor prices of the pick and cauldron;
+  stone one, only the iron one when nearly worn, takes up the iron one first; every tool
+  has the four tiers, faster by tier, gold as fast as diamond and wearing out first, the
+  iron one asked for and paying at base prices; an iron axe fells at 2, a gold pick mines
+  at 5); `tests/labour.lua` (a stone, iron and gold pick refill the generator in 1/3, 1/4
+  and 1/5 of REGEN_SECONDS); `tests/ledger.lua` (the floor prices of the pick and cauldron;
   the tool smith wants ingots); `tests/need_bubble.lua`, `tests/production.lua`.
 
 ## Open questions
@@ -3290,9 +3305,9 @@ makes to sell is priced as before.
   nothing left to build. If so, the Builder could spend its surplus on upkeep, or rent
   could fall with its savings.
 - Iron: the alchemist (ticket 20) is its village supply. Since ticket 29 quarriers buy iron
-  picks from the tool smith and villagers buy the armorer's cauldrons, but iron armour and
-  the weapon smith's axe still sell only to players until warriors exist (Warriors),
-  against Principle 6.
+  picks and hoes from the tool smith, woodcutters the weapon smith's axes and villagers
+  the armorer's cauldrons, but iron armour still sells only to players until warriors
+  exist (Warriors), against Principle 6.
 - The alchemist: whether the `stone` category should also take andesite, diorite,
   granite and cobbled deepslate; and whether to keep the cost floor once probe runs show
   what players will pay for iron gear at about twice vanilla's price.

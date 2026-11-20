@@ -11,6 +11,7 @@ local ledger = dofile("ledger.lua")
 
 local HOE, AXE, PICK = "mcl_farming:hoe_stone", "mcl_tools:axe_stone", "mcl_tools:pick_stone"
 local IRON_PICK = "mcl_tools:pick_iron"
+local IRON_HOE, IRON_AXE = "mcl_farming:hoe_iron", "mcl_tools:axe_iron"
 
 local function villager(extra)
 	local v = {_id = "abcdef123", _profession = "unemployed"}
@@ -42,10 +43,11 @@ end
 do
 	local farmer = villager({_profession = "farmer"})
 	local targets, worth = wants.targets(farmer)
-	assert(targets[HOE] == 1 and not targets[AXE])
+	-- Each asks for the iron tier, and the stone one while it has none (ticket 29).
+	assert(targets[IRON_HOE] == 1 and targets[HOE] == 1 and not targets[AXE])
 	assert(worth[HOE] == 64 * 2 * ledger.price("mcl_farming:wheat_item") * 0.5, worth[HOE])
 	targets = wants.targets(villager({_villages_labour = {day = 3, activity = "woodcutter"}}))
-	assert(targets[AXE] == 1 and not targets[HOE])
+	assert(targets[IRON_AXE] == 1 and targets[AXE] == 1 and not targets[HOE])
 	-- A quarrier asks for an iron pick, and a stone one while it has none (ticket 29).
 	local quarrier = villager({_villages_labour = {day = 3, activity = "quarrier"}})
 	targets, worth = wants.targets(quarrier)
@@ -95,9 +97,9 @@ do
 	wants.use(farmer, "harvest", take_from(held), 2)
 	assert(held[HOE] == 1 and farmer._villages_wants.hoe.left == 62)
 	held[HOE] = 0
-	-- Nearly worn: the next is wanted.
+	-- Nearly worn: the next is wanted, an iron one (ticket 29).
 	farmer._villages_wants.hoe.left = 8
-	assert(wants.targets(farmer)[HOE] == 1)
+	assert(wants.targets(farmer)[IRON_HOE] == 1 and not wants.targets(farmer)[HOE])
 	-- Worn out: gone, and by hand again.
 	farmer._villages_wants.hoe.left = 1
 	assert(wants.use(farmer, "harvest", take_from(held), 3) == 1.5)
@@ -160,9 +162,9 @@ do
 	assert(wants.tool_rate(farmer, "harvest") == 2 and farmer._villages_wants.hoe.left == 127, "the rate wears nothing")
 	assert(wants.status(farmer) == "mcl_farming:hoe_iron, 127 of 128 uses left", wants.status(farmer))
 	local targets, worth = wants.targets(farmer)
-	assert(not targets[HOE], "a fresh iron hoe")
+	assert(not targets[HOE] and not targets[IRON_HOE], "a fresh iron hoe")
 	farmer._villages_wants.hoe.left = 16
-	assert(wants.targets(farmer)[HOE] == 1, "nearly worn by its own uses: a stone one wanted")
+	assert(wants.targets(farmer)[IRON_HOE] == 1, "nearly worn by its own uses: the next iron one wanted")
 	local good = wants.GOODS[1]
 	assert(worth["mcl_farming:hoe_gold"] == wants.worth(good, wants.tier(good, "mcl_farming:hoe_gold")))
 	assert(worth["mcl_farming:hoe_iron"] > worth[HOE] and worth[HOE] > worth["mcl_farming:hoe_wood"])
@@ -170,6 +172,34 @@ do
 	farmer._villages_wants.hoe.left = 1
 	assert(wants.tool_use(farmer, "harvest", take_from(held), 2) == 2 and logged("wore out its mcl_farming:hoe_iron"))
 	assert(wants.tool_use(farmer, "harvest", take_from(held), 3) == 1.5, "then the stone one")
+end
+
+-- Every tool has stone, iron, gold and diamond tiers (ticket 29): each better works
+-- faster, gold as well as diamond, and gold wears out fastest of all; the iron tier,
+-- the one asked for, pays at base prices.
+do
+	for _, good in ipairs(wants.GOODS) do
+		if good.key ~= "rod" then
+			local by = {}
+			for _, tier in ipairs(wants.tiers(good)) do by[tier.item:match("_(%a+)$")] = tier end
+			assert(by.stone and by.iron and by.gold and by.diamond, good.key)
+			assert(by.stone.rate < by.iron.rate and by.iron.rate < by.gold.rate and by.gold.rate == by.diamond.rate, good.key)
+			for name, tier in pairs(by) do
+				assert(name == "gold" or tier.uses > by.gold.uses, good.key .. " " .. name)
+			end
+			assert(good.item == by.iron.item and good.uses == by.iron.uses and good.rate == by.iron.rate, good.key)
+			assert(good.starter == by.stone.item, good.key)
+			assert(wants.worth(good, by.iron) > ledger.price(by.iron.item), good.key .. " pays")
+		end
+	end
+	-- A woodcutter fells faster with an iron axe than a stone one.
+	local cutter = villager({_villages_labour = {day = 3, activity = "woodcutter"}})
+	local held = {[AXE] = 1, [IRON_AXE] = 1}
+	assert(wants.tool_use(cutter, "fell", take_from(held), 1) == 2 and held[IRON_AXE] == 0, "iron first")
+	-- A quarrier's gold pick mines (and refills its generator) at 5.
+	local quarrier = villager({_villages_labour = {day = 3, activity = "quarrier"}})
+	assert(wants.tool_use(quarrier, "mine", take_from({["mcl_tools:pick_gold"] = 1}), 1) == 5)
+	assert(wants.tool_rate(quarrier, "mine") == 5)
 end
 
 print("wants.lua: ok")

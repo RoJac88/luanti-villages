@@ -33,9 +33,14 @@ local ledger = dofile(core.get_modpath("living_villages") .. "/ledger.lua")
 local M = {}
 
 M.GOODS = {
-	{key = "hoe", item = "mcl_farming:hoe_stone", professions = {farmer = true}, use = "harvest",
-		uses = 64, rate = 1.5, yields = {["mcl_farming:wheat_item"] = 2}, effect = "yield",
-		-- About half VoxeLibre's durability; gold, worn out fastest, yields most for it.
+	-- Every tool comes in tiers (ticket 29): stone, iron, gold and diamond, the farmer's hoe
+	-- and the quarrier's pick wood too, as the tool smith's first ones before any cobble
+	-- sells. Each better tier works faster (or, a hoe, yields more); gold works as well as
+	-- diamond but wears out fastest of all. Uses are about half VoxeLibre's. Each asks for
+	-- the iron tier, the village's from the alchemist's ingots, and the stone one only while
+	-- it has none in use (`starter`): nobody bought iron goods, so iron had no use.
+	{key = "hoe", item = "mcl_farming:hoe_iron", starter = "mcl_farming:hoe_stone", professions = {farmer = true},
+		use = "harvest", uses = 128, rate = 2, yields = {["mcl_farming:wheat_item"] = 2}, effect = "yield",
 		tiers = {
 			{item = "mcl_farming:hoe_diamond", uses = 512, rate = 2.5},
 			{item = "mcl_farming:hoe_gold", uses = 16, rate = 2.5},
@@ -43,19 +48,25 @@ M.GOODS = {
 			{item = "mcl_farming:hoe_stone", uses = 64, rate = 1.5},
 			{item = "mcl_farming:hoe_wood", uses = 30, rate = 1.25},
 		}},
-	{key = "axe", item = "mcl_tools:axe_stone", activities = {woodcutter = true}, use = "fell",
-		uses = 32, rate = 1.5, yields = {["mcl_core:tree"] = 5}},
+	-- The weapon smith's iron axe.
+	{key = "axe", item = "mcl_tools:axe_iron", starter = "mcl_tools:axe_stone", activities = {woodcutter = true},
+		use = "fell", uses = 64, rate = 2, yields = {["mcl_core:tree"] = 5},
+		tiers = {
+			{item = "mcl_tools:axe_diamond", uses = 256, rate = 2.5},
+			{item = "mcl_tools:axe_gold", uses = 8, rate = 2.5},
+			{item = "mcl_tools:axe_iron", uses = 64, rate = 2},
+			{item = "mcl_tools:axe_stone", uses = 32, rate = 1.5},
+		}},
 	-- Mining by hand is slow (labour.lua's MINE_SECONDS), so a pick pays (ticket 19d): a
-	-- stone one about keeps up with a generator, and a better one wears slower. Past what
-	-- a generator makes, a faster pick only waits, so no tier goes above 4. It asks for an
-	-- iron one, the tool smith's from the alchemist's ingots, and a stone one only while it
-	-- has none (ticket 29): nobody bought iron goods, so iron had no use.
+	-- stone one about keeps up with a generator. The pick hastens the generator too
+	-- (labour.lua refills a mined cell REGEN_SECONDS over its rate), so a better one both
+	-- mines and refills faster: 1.6 s a block and a 0.2 s refill at gold or diamond's 5.
 	{key = "pickaxe", item = "mcl_tools:pick_iron", starter = "mcl_tools:pick_stone", activities = {quarrier = true},
 		use = "mine", uses = 128, rate = 4, yields = {["mcl_core:cobble"] = 1},
 		tiers = {
-			{item = "mcl_tools:pick_diamond", uses = 512, rate = 4},
+			{item = "mcl_tools:pick_diamond", uses = 512, rate = 5},
+			{item = "mcl_tools:pick_gold", uses = 16, rate = 5},
 			{item = "mcl_tools:pick_iron", uses = 128, rate = 4},
-			{item = "mcl_tools:pick_gold", uses = 16, rate = 4},
 			{item = "mcl_tools:pick_stone", uses = 64, rate = 3},
 			{item = "mcl_tools:pick_wood", uses = 30, rate = 2},
 		}},
