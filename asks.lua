@@ -50,6 +50,11 @@ local SLOW_SHARE = 0.25
 local NEAR_ONE = 0.01
 local BID_SHARE = 0.5
 local BID_DAYS = 2
+-- Materials asked at the bids heard for them too (ticket 28): stone, logs, planks and
+-- fuel, so an alchemist that bids more for them raises their price, not only what it
+-- buys. They had no bid in their ask, and fell to 0.02 of their base price in a glut
+-- (ColonyFood, 2026-11-20). Not at a bid made to the seller's face (M.with_bid).
+local BID_CATEGORIES = {stone = true, log = true, planks = true, fuel = true}
 local DEFAULT_TIME_SPEED = 72
 
 local M = {MIN = MIN, MAX = MAX, MARKUP = MARKUP, MARKDOWN = MARKDOWN, SLOW_SHARE = SLOW_SHARE,
@@ -75,9 +80,13 @@ end
 -- Whether the item is asked at the bids for it (ticket 23d): a comfort, but not a flower
 -- (told as its category, and cheap) or a food (an apple: a hungry buyer's bid is for a
 -- meal, and food has its own pricing, ticket 22b).
-local function bid_priced(item)
+local function comfort_bid_priced(item)
 	local comfort = comforts.by_item[item]
 	return comfort ~= nil and not comfort.category and goods.category_of(item) ~= "food"
+end
+-- A comfort, or a material at a bid heard in the news (ticket 28).
+local function bid_priced(item)
+	return BID_CATEGORIES[goods.category_of(item)] == true or comfort_bid_priced(item)
 end
 M.bid_priced = bid_priced
 
@@ -91,9 +100,16 @@ function M.best_bid(seller, item, now)
 	local oldest = (now or (core.get_gametime and core.get_gametime()) or 0) - BID_DAYS * 86400 / speed
 	local best = 0
 	for _, entry in ipairs(seller._villages_market_news or {}) do
-		if entry.kind == "needs" and entry.item == item and not entry.group and entry.who ~= seller._id
-			and (entry.heard or 0) >= oldest and entry.price then
-			best = math.max(best, math.min(entry.price, entry.budget or entry.price))
+		if entry.kind == "needs" and entry.who ~= seller._id and (entry.heard or 0) >= oldest and entry.price then
+			local bid
+			if entry.group then
+				-- A category's need (a material's), priced per unit: this member at its units.
+				local told, units = goods.units(entry.group, entry.item), goods.units(entry.group, item)
+				if told and units then bid = entry.price / told * units end
+			elseif entry.item == item then
+				bid = entry.price
+			end
+			if bid then best = math.max(best, math.min(bid, entry.budget or bid)) end
 		end
 	end
 	return best
@@ -119,8 +135,10 @@ end
 -- only its top needs as news, so a leatherworker's barrel bid of 374 never reached the
 -- weapon smith that sold it one for 18 (ColonyFood, 2026-11-15). Never over the bid, so
 -- the sale still goes ahead. Any other item's ask stands.
+-- A material's ask follows only the bids in the news, the standing demand an alchemist's
+-- budget makes (ticket 28): to its face, an urgent buyer would hand over most of its value.
 function M.with_bid(item, ask, bid)
-	if not ask or not bid or not bid_priced(item) then return ask end
+	if not ask or not bid or not comfort_bid_priced(item) then return ask end
 	return math.max(ask, BID_SHARE * bid)
 end
 
@@ -152,6 +170,11 @@ function M.sold(seller, item, day, count, unit)
 	if unit and unit > 0 then
 		prices.learn(seller, item, unit, prices.LEARN_TRADE)
 		factor = factor ^ (1 - prices.LEARN_TRADE)
+		-- What an alchemist's good last sold for, for its bids (alchemist.floors, ticket 28b).
+		if seller._villages_alchemist then
+			seller._villages_sold_at = seller._villages_sold_at or {}
+			seller._villages_sold_at[item] = unit
+		end
 	end
 	set_factor(seller, item, factor * MARKUP)
 	local sold = seller._villages_ask_sold or {}

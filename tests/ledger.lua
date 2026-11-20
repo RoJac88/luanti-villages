@@ -32,15 +32,17 @@ for _, profession in pairs(tables.professions) do
 end
 assert(#unpriced == 0, "unpriced: " .. table.concat(unpriced, ", "))
 
--- The alchemist's goods at what their inputs cost (ticket 20): stone 3.2, a log 16.
+-- The alchemist's goods at what their inputs cost (ticket 20): stone 3.2, a log 16, and
+-- half a lump of coal a craft (ticket 28c).
 local stone, log = ledger.price("mcl_core:stone"), ledger.price("mcl_core:tree")
+local fuel = ledger.price("mcl_core:coal_lump") / 2
 assert(near(stone, S / 20) and near(log, 16))
-assert(near(ledger.price("mcl_core:iron_nugget"), 4 * stone))
-assert(near(ledger.price("mcl_core:iron_ingot"), 36 * stone), "nine nuggets, not vanilla's 16")
+assert(near(ledger.price("mcl_core:iron_nugget"), 4 * stone + fuel))
+assert(near(ledger.price("mcl_core:iron_ingot"), 9 * ledger.price("mcl_core:iron_nugget")), "nine nuggets, not vanilla's 16")
 assert(near(ledger.price("mcl_core:gold_nugget"), 2 * ledger.price("mcl_core:iron_ingot")))
 assert(near(ledger.price("mcl_core:gold_ingot"), 9 * ledger.price("mcl_core:gold_nugget")))
-assert(near(ledger.price("mcl_core:flint"), 4 * log))
-assert(near(ledger.price("mcl_core:glass"), 2 * stone), "cheaper than vanilla's 16")
+assert(near(ledger.price("mcl_core:flint"), 4 * log + fuel))
+assert(near(ledger.price("mcl_core:glass"), 2 * stone + fuel), "cheaper than vanilla's 16")
 assert(near(ledger.price("xpanes:pane_natural_flat"), ledger.price("mcl_core:glass")))
 -- Goods made from them at no less than COST_FLOOR times their inputs and fuel, so every
 -- recipe that takes iron, gold or flint gains at base prices.
@@ -63,9 +65,10 @@ for profession, list in pairs(recipes) do
 	end
 end
 assert(checked == 7, "the four iron pieces, the iron axe, arrows and the labourers' lantern: " .. checked)
-assert(math.floor(ledger.price("mcl_armor:helmet_iron") + 0.5) == 724)
-assert(math.floor(ledger.price("mcl_tools:axe_iron") + 0.5) == 439)
-assert(near(ledger.price("mcl_armor:helmet_iron"), ledger.COST_FLOOR * (5 * 36 * stone
+-- 724 and 439 before the alchemist's fuel (ticket 28c) went into an ingot's cost.
+assert(math.floor(ledger.price("mcl_armor:helmet_iron") + 0.5) == 856)
+assert(math.floor(ledger.price("mcl_tools:axe_iron") + 0.5) == 518)
+assert(near(ledger.price("mcl_armor:helmet_iron"), ledger.COST_FLOOR * (5 * ledger.price("mcl_core:iron_ingot")
 	+ 5 / 8 * ledger.price("mcl_core:coal_lump"))))
 
 -- The dependency graph.

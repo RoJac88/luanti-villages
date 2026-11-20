@@ -113,10 +113,13 @@ return {
 	-- end. A nugget takes stone or cobble: an input's third field names a category
 	-- (goods.lua) any member of which serves.
 	alchemist = {
-		{makes = "mcl_core:glass", count = 1, tier = 1, from = {{"mcl_core:stone", 2}}, share = 1 / 36, rank = 1, upto = 13},
-		{makes = "mcl_core:flint", count = 1, tier = 1, from = {{"mcl_core:tree", 4}}, share = 1 / 6, rank = 2, upto = 32},
+		-- Each burns half a lump of fuel (ticket 28c): a buyer for the village's charcoal and logs.
+		{makes = "mcl_core:glass", count = 1, tier = 1, from = {{"mcl_core:stone", 2}}, share = 1 / 36, rank = 1, upto = 13,
+			fuel = 4},
+		{makes = "mcl_core:flint", count = 1, tier = 1, from = {{"mcl_core:tree", 4}}, share = 1 / 6, rank = 2, upto = 32,
+			fuel = 4},
 		{makes = "mcl_core:iron_nugget", count = 1, tier = 1, from = {{"mcl_core:cobble", 4, "stone"}}, share = 1 / 18,
-			rank = 3},
+			rank = 3, fuel = 4},
 	},
 	mason = {
 		{makes = "mcl_core:brick", count = 1, tier = 1, from = {{"mcl_core:clay_lump", 1}}, fuel = 1},
