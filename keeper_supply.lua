@@ -38,7 +38,9 @@
 --   the pantry holds (`price_plate`, on its shift and when it stocks the pantry). Paying
 --   from its float no longer raises dinner (ticket 27's `dear`, gone).
 -- * Over its shift at the jukebox it cooks the pantry's raw food into its menu, one dish
---   every COOK_SECONDS: a potato baked.
+--   every COOK_SECONDS: a potato baked. Only as a last resort (39g), and it fetches the
+--   potatoes for that only while it hears no dish offered (ticket 41, potatoes_wanted): it
+--   buys the butcher's.
 -- * Dishes it bought in conversation or on a trade trip (ticket 11e: cooked beef and
 --   cooked fish from the butcher, bread from a farmer, keeper inputs in ledger.lua) go
 --   from its belongings into the pantry on
@@ -69,6 +71,7 @@ local possessions = dofile(core.get_modpath("living_villages") .. "/possessions.
 local food = dofile(core.get_modpath("living_villages") .. "/food.lua")
 local dinner = dofile(core.get_modpath("living_villages") .. "/dinner.lua")
 local prices = dofile(core.get_modpath("living_villages") .. "/prices.lua")
+local news = dofile(core.get_modpath("living_villages") .. "/market_news.lua")
 
 local SUPPLY_RADIUS = 48
 local COMPOSTER_HEIGHT = 8
@@ -340,12 +343,28 @@ function M.pay(self, chest, taken)
 	return paid, owed
 end
 
--- The raw potatoes worth fetching (ticket 39g): what the raw plates' reserve lacks, and
--- RECIPES' 2 for each dish the pantry, with `bread` loaves on the way, falls short of
--- tonight's demand, for cooking as a last resort. Unlimited with no pantry at hand.
-function M.potatoes_wanted(self, chests, bread)
+-- Whether it heard a prepared dish offered (market news, a villager's "has"): the
+-- butcher's cooking, which it buys rather than cook its own (ticket 41).
+function M.dishes_offered(self, now)
+	for _, entry in ipairs(news.heard(self, now or core.get_gametime())) do
+		if entry.kind == "has" and not entry.group and food.is_prepared(entry.item) and (entry.count or 0) > 0 then
+			return true
+		end
+	end
+	return false
+end
+
+-- The raw potatoes worth fetching (ticket 39g): what the raw plates' reserve lacks, and,
+-- only while it hears no dish offered (ticket 41), RECIPES' 2 for each dish the pantry, with
+-- `bread` loaves on the way, falls short of tonight's demand, for cooking as a last resort.
+-- Fetched whenever the pantry was short, they made every plate its own baked potato at a
+-- plate cost of 1, so it bid 2 for a dish (39d) while villagers paid the butcher 3 to 4,
+-- and it bought none of the 53 dishes the butcher cooked in four days (ColonyFood,
+-- 2026-11-21). Unlimited with no pantry at hand.
+function M.potatoes_wanted(self, chests, bread, now)
 	if not chests then return math.huge end
 	local reserve = math.max((RAW_RESERVE[POTATO] or 0) - pantry.count(chests, POTATO), 0)
+	if M.dishes_offered(self, now) then return reserve end
 	local fallback = math.max(M.tonight(self) - M.dishes(chests) - (bread or 0), 0)
 	return reserve + fallback * RECIPES[1].count
 end

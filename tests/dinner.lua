@@ -239,6 +239,10 @@ do
 	assert(kip._villages_dish_cost == nil)
 	dinner.note_cost(kip, "mcl_farming:bread", 2, 3)
 	assert(math.abs(kip._villages_dish_cost["mcl_farming:bread"] - 1.5) < 1e-9)
+	-- Ticket 41: what was noted before that is no food goes at the next note.
+	kip._villages_dish_cost["mcl_wool:white_carpet"] = 40
+	dinner.note_cost(kip, "mcl_farming:bread", 1, 1.5)
+	assert(kip._villages_dish_cost["mcl_wool:white_carpet"] == nil)
 end
 
 print("dinner.lua: ok")
