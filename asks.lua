@@ -35,8 +35,8 @@
 -- price has no ask: exchange.lua falls back to the midpoint for it.
 --
 -- A cook's dish (a `demand` recipe's output, recipes.lua: the butcher's) is asked at no less
--- than PROFIT times what its raw inputs cost it, as bought (`_villages_input_cost`,
--- M.note_input), and its fuel at the cook's reference price for coal (M.dish_floor, ticket
+-- than PROFIT times what its raw inputs cost it, as bought (cost_book.lua, ticket 43a), and
+-- its fuel at the cook's reference price for coal (M.dish_floor, ticket
 -- 42). With no floor at its own value (40a) and 16 dishes unsold for days while the keeper
 -- bought none, the butcher's asks fell to a quarter of its reference price and that price
 -- followed its sales down: it sold 3 cooked salmon for an emerald, and 12 baked potatoes,
@@ -59,10 +59,9 @@ local comforts = dofile(core.get_modpath("living_villages") .. "/comforts.lua")
 local goods = dofile(core.get_modpath("living_villages") .. "/goods.lua")
 local alchemist = dofile(core.get_modpath("living_villages") .. "/alchemist.lua")
 local recipes = dofile(core.get_modpath("living_villages") .. "/recipes.lua")
+local cost_book = dofile(core.get_modpath("living_villages") .. "/cost_book.lua")
 local COAL = "mcl_core:coal_lump"
 local SMELTS_PER_LUMP = 8
--- What a cook's raw inputs cost it is an average over about this many bought (M.note_input).
-local INPUT_KEEP = 8
 
 local MIN, MAX = 0.25, 4
 local MARKUP, MARKDOWN = 1.05, 0.9
@@ -161,26 +160,11 @@ local function dish_recipes(seller, item)
 	return found
 end
 
--- Notes `count` of an item bought for `paid` emeralds into a cook's average input cost
--- (ticket 42), if the item is an input of one of its demand recipes.
-function M.note_input(buyer, item, count, paid)
-	if not buyer or not count or count <= 0 or not paid or paid < 0 then return end
-	local used = false
-	for _, recipe in ipairs(dish_recipes(buyer)) do
-		for _, input in ipairs(recipe.from) do used = used or input[1] == item end
-	end
-	if not used then return end
-	local costs = buyer._villages_input_cost or {}
-	local before = costs[item]
-	costs[item] = before and (before * INPUT_KEEP + paid) / (INPUT_KEEP + count) or paid / count
-	buyer._villages_input_cost = costs
-end
-
 -- The least a cook asks for one of a dish (ticket 42): PROFIT times its inputs at what they
 -- cost it and its fuel at its reference price for coal, by its cheapest recipe for it. Nil
 -- with no input cost known (its coop's chicken, raised not bought).
 function M.dish_floor(seller, item)
-	local costs = seller._villages_input_cost
+	local costs = cost_book.book(seller)
 	if not costs then return nil end
 	local best
 	for _, recipe in ipairs(dish_recipes(seller, item)) do
@@ -234,9 +218,9 @@ end
 -- The product's own ask stands only when it is lower. A product the seller never holds
 -- keeps its seed price (nothing marks it down), while the source it does hold falls until
 -- it sells: since 21b an alchemist asked 115 for an ingot while it valued a nugget at 0.8.
--- A product whose sources it paid for (`conversion.cost`, the seller's field holding what
--- one source cost it on average: the cleric's rotten flesh, ticket 37b) never sells at a
--- loss or break even: at least M.cost_floor.
+-- A product whose sources it paid for (a conversion with `cost`, its sources at what they
+-- cost it in its book, cost_book.lua: the cleric's rotten flesh, ticket 37b) never sells at
+-- a loss or break even: at least M.cost_floor.
 function M.converted(seller, conversion, view)
 	local own = M.ask(seller, conversion.to, view)
 	local source = M.ask(seller, conversion.from, view)
@@ -247,22 +231,14 @@ function M.converted(seller, conversion, view)
 	return floor and math.max(ask, floor) or ask
 end
 
--- The least one of a conversion's product sells for, from the average cost of its sources
--- (`seller[conversion.cost]`): PROFIT times what they cost, and at least an emerald over
--- it. Nil for a conversion with no cost, or sources that cost nothing.
+-- The least one of a conversion's product sells for, from what its sources cost it
+-- (cost_book.cost): PROFIT times that, and at least an emerald over it. Nil for a
+-- conversion with no `cost`, or sources that cost nothing.
 function M.cost_floor(seller, conversion)
-	local cost = conversion.cost and seller[conversion.cost]
+	local cost = conversion.cost and cost_book.cost(seller, conversion.from)
 	if not cost or cost <= 0 then return nil end
 	local per = cost / conversion.ratio
 	return math.max(per * PROFIT, per + 1)
-end
-
--- Notes `count` sources bought for `paid` emeralds into the seller's average cost
--- (`seller[field]`), over the `held` it had before.
-function M.note_cost(seller, field, held, count, paid)
-	local before = seller[field] or 0
-	held = math.max(held or 0, 0)
-	seller[field] = (before * held + paid) / (held + count)
 end
 
 -- `_villages_ask_sold` is {[item] = {day, count}}: the last day it sold the item, and how

@@ -4085,7 +4085,12 @@ tavern dinner needs to be worth more to a guest than the same dish eaten at home
 
 ### 43. One reservation price
 
-Status: design. To be confirmed against the ticket 42 run before building.
+Status: design merged (#156). Confirmed by the ticket 42 run (days 981 to 986): the butcher's
+cooked fish held at 0.33 to 0.5 over fish it paid 0.14 for, but its cooked beef, from its own
+herd, sold at 0.25 while raw beef was asked at 0.34; bread fell to 0.3 and potatoes to 0.06.
+43a built: `cost_book.lua`, one book (`_villages_input_cost`) noted by one call from each
+place a villager buys, the cleric's flesh and the keeper's dishes folded in. Fuel is not
+noted (a recipe's fuel is at the reference price for coal), nor comforts bought for use.
 
 **Problem.** A seller has no sound lowest price. Tickets 39 to 42 each fixed one failure and
 uncovered the next, and they share a cause.

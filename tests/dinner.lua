@@ -236,13 +236,14 @@ assert(alms.donation(alms.SAVINGS, 0.5) > 0 and alms.donation(alms.SAVINGS, 1) =
 do
 	local kip = {_villages_keeper = true}
 	dinner.note_cost(kip, "mcl_armor_stand:armor_stand", 1, 6)
-	assert(kip._villages_dish_cost == nil)
+	assert(kip._villages_input_cost == nil)
 	dinner.note_cost(kip, "mcl_farming:bread", 2, 3)
-	assert(math.abs(kip._villages_dish_cost["mcl_farming:bread"] - 1.5) < 1e-9)
-	-- Ticket 41: what was noted before that is no food goes at the next note.
-	kip._villages_dish_cost["mcl_wool:white_carpet"] = 40
-	dinner.note_cost(kip, "mcl_farming:bread", 1, 1.5)
-	assert(kip._villages_dish_cost["mcl_wool:white_carpet"] == nil)
+	assert(math.abs(kip._villages_input_cost["mcl_farming:bread"] - 1.5) < 1e-9)
+	-- Ticket 43a: an older dish book is folded into the cost book, food only (ticket 41).
+	local old = {_villages_keeper = true,
+		_villages_dish_cost = {["mcl_wool:white_carpet"] = 40, ["mcl_farming:bread"] = 2}}
+	assert(dinner.dish_cost(old, "mcl_farming:bread") == 2)
+	assert(old._villages_dish_cost == nil and old._villages_input_cost["mcl_wool:white_carpet"] == nil)
 end
 
 print("dinner.lua: ok")

@@ -35,13 +35,12 @@
 local core = minetest
 local clock = dofile(core.get_modpath("living_villages") .. "/economy_clock.lua")
 local possessions = dofile(core.get_modpath("living_villages") .. "/possessions.lua")
-local alchemist = dofile(core.get_modpath("living_villages") .. "/alchemist.lua")
+local cost_book = dofile(core.get_modpath("living_villages") .. "/cost_book.lua")
 local food = dofile(core.get_modpath("living_villages") .. "/food.lua")
 local gossip = dofile(core.get_modpath("living_villages") .. "/gossip.lua")
 local goods_mod = dofile(core.get_modpath("living_villages") .. "/goods.lua")
 local asks = dofile(core.get_modpath("living_villages") .. "/asks.lua")
 local prices = dofile(core.get_modpath("living_villages") .. "/prices.lua")
-local dinner = dofile(core.get_modpath("living_villages") .. "/dinner.lua")
 
 local EMERALD = "mcl_core:emerald"
 -- A sale must come to at least this many emeralds before rounding, or it grows: less,
@@ -153,9 +152,10 @@ end
 -- One candidate sale of `item` made from `from` (itself when ratio is 1), or nil. A
 -- conversion hands over `takes` sources at a time (goods.lua), 1 if nil, and spends none
 -- of the `reserve` it keeps (the alchemist's gold, ticket 20), and none below the cost of
--- its sources where it paid for them (`cost`, goods.lua's field; asks.cost_floor).
+-- its sources where it paid for them (`cost`, goods.lua's flag: at its cost book's price for
+-- them, asks.cost_floor).
 function M.quote(seller, seller_view, buyer, buyer_view, item, wanted, from, ratio, takes, reserve, cost)
-	local conversion = {ratio = ratio, takes = takes, reserve = reserve, cost = cost}
+	local conversion = {from = from, to = item, ratio = ratio, takes = takes, reserve = reserve, cost = cost}
 	local stock = spare(seller, seller_view, from)
 	if reserve then stock = math.min(stock, possessions.count(seller, from) - reserve) end
 	local to_buyer = buyer_view.value(item)
@@ -248,12 +248,9 @@ function M.settle(trade)
 	-- Sold as its sources too: their ask, which prices the product, stops falling.
 	if trade.from then asks.sold(seller, trade.from, day, from_count, trade.pay and trade.pay / from_count) end
 	if unit then prices.learn(buyer, trade.item, unit) end
-	-- A keeper's dish costs what it paid (dinner.note_cost, ticket 39b).
-	if unit and buyer._villages_keeper then dinner.note_cost(buyer, trade.item, trade.count, trade.pay) end
-	-- An alchemist's book learns what it paid (ticket 30).
-	if trade.pay then alchemist.bought(buyer, possessions.held(buyer), trade.item, trade.count, trade.pay) end
-	-- A cook's raw input costs what it paid (asks.note_input, ticket 42).
-	if trade.pay then asks.note_input(buyer, trade.item, trade.count, trade.pay) end
+	-- Its cost book learns what it paid (cost_book.lua, ticket 43a): a cook's inputs, the
+	-- alchemist's, a keeper's dishes.
+	if trade.pay then cost_book.note(buyer, trade.item, trade.count, trade.pay, possessions.held(buyer)) end
 	core.log("action", string.format("[living_villages] trade: villager %s sold %d %s%s to %s for %s",
 		short_id(seller), trade.count, trade.item, made, short_id(buyer), price))
 	return true

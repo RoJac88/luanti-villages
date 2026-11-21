@@ -453,7 +453,7 @@ do
 	assert(pouch[FLESH] == lots * lot and player_inv.contents[FLESH] == 60 - lots * lot, pouch[FLESH])
 	assert(cleric._budget == 40 - lots * price and pouch[EMERALD] == 5, "paid from its budget, not its purse")
 	assert(cleric._villages_tally.money.flesh_out == lots * price)
-	assert(near(cleric._villages_flesh_cost, price / lot), "its average cost per flesh")
+	assert(near(cleric._villages_input_cost[FLESH], price / lot), "its cost book's price per flesh")
 	-- Its leather now sells for more than three flesh cost it, whatever its asks say.
 	local leather_row = row(window.rows(view, pouch, 5, 0, nil, false, nil, function() return 0.5 end, nil,
 		{budget = 0, unit = unit, floor = asks.cost_floor(cleric, dofile("goods.lua").CONVERSIONS.cleric[1])}).sells, LEATHER)

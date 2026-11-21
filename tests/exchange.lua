@@ -121,10 +121,10 @@ do
 	local butcher = villager("bu", {[FISH] = 4})
 	local keeper = villager("ke", {["mcl_core:emerald"] = 30}, {_villages_keeper = true})
 	assert(exchange.settle({seller = butcher, buyer = keeper, item = FISH, count = 2, pay = 9}))
-	assert(math.abs(keeper._villages_dish_cost[FISH] - 4.5) < 1e-9)
-	-- Anyone else buying notes nothing.
+	assert(math.abs(keeper._villages_input_cost[FISH] - 4.5) < 1e-9)
+	-- Anyone else buying notes nothing: a dish is no input of its trade (ticket 43a).
 	assert(exchange.settle({seller = butcher, buyer = b, item = FISH, count = 1, pay = 5}))
-	assert(b._villages_dish_cost == nil)
+	assert(b._villages_input_cost == nil or b._villages_input_cost[FISH] == nil)
 end
 
 -- settle checks the goods are still there.
@@ -234,7 +234,7 @@ end
 -- a buyer it thinks well of included, and not to one who will not pay that.
 do
 	local FLESH, LEATHER = "mcl_mobitems:rotten_flesh", "mcl_mobitems:leather"
-	local cleric = villager("cl", {[FLESH] = 9}, {_profession = "cleric", _villages_flesh_cost = 3,
+	local cleric = villager("cl", {[FLESH] = 9}, {_profession = "cleric", _villages_input_cost = {[FLESH] = 3},
 		_villages_asks = {[FLESH] = 0.25}})
 	local seller_view = view({}, {[FLESH] = 9}, {[FLESH] = 0.1})
 	local floor = 9 * dofile("asks.lua").PROFIT

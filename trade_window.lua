@@ -55,7 +55,7 @@
 -- its savings), not from its purse alone. It sells leather made three flesh to one, as the
 -- alchemist sells ingots, to players here and to villagers in the market (goods.lua's
 -- conversions), and never at a loss or break even: at least asks.PROFIT times what the
--- flesh cost it, and an emerald over (`_villages_flesh_cost`, its average paid per flesh,
+-- flesh cost it, and an emerald over (its cost book's price for flesh, cost_book.lua;
 -- asks.cost_floor). No villager sells it flesh: a cleric does not want it as an input
 -- (ledger.lua). What it pays a player is money out of the village, the tally's
 -- `flesh_out`; what a player pays for premium goods comes back in, `premium_in`.
@@ -92,6 +92,7 @@ local ledger = dofile(core.get_modpath("living_villages") .. "/ledger.lua")
 local goods = dofile(core.get_modpath("living_villages") .. "/goods.lua")
 local dinner = dofile(core.get_modpath("living_villages") .. "/dinner.lua")
 local alchemist = dofile(core.get_modpath("living_villages") .. "/alchemist.lua")
+local cost_book = dofile(core.get_modpath("living_villages") .. "/cost_book.lua")
 local premium = dofile(core.get_modpath("living_villages") .. "/premium.lua")
 local tally = dofile(core.get_modpath("living_villages") .. "/economy_tally.lua")
 
@@ -111,8 +112,6 @@ local DIAMOND = "mcl_core:diamond"
 local DIAMOND_BONUS = 2
 -- The most rotten flesh the cleric holds: 32 leather's worth.
 local FLESH_KEEP = 96
--- The cleric's average cost per flesh (goods.lua's cleric conversion, asks.cost_floor).
-local FLESH_COST = "_villages_flesh_cost"
 -- What it buys from a player: iron and gold at any time, flint and glass up to a stock.
 local ALCHEMY_BUYS = {NUGGET, INGOT, GOLD_NUGGET, GOLD, FLINT, GLASS, PANE}
 local ROWS = 6
@@ -650,9 +649,8 @@ function M.install(def, deps)
 			return
 		end
 		if entry.fund then
-			-- The cleric's flesh (ticket 37b): from its flesh budget, money out of the village,
-			-- and into its average cost, below which its leather never sells.
-			asks.note_cost(villager, FLESH_COST, possessions.count(villager, FLESH), count, pay)
+			-- The cleric's flesh (ticket 37b): from its flesh budget, money out of the village.
+			-- Its cost book notes it below, and its leather never sells under that.
 			alms().pay_flesh(villager, pay)
 			tally.money(villager, "flesh_out", pay)
 		else
@@ -660,14 +658,10 @@ function M.install(def, deps)
 		end
 		local received = entry.item == DIAMOND and count * DIAMOND_BONUS or count
 		possessions.add(villager, entry.item, received)
-		-- A purchase like any (ticket 21c): its reference price learns the price, and an
-		-- alchemist's book (ticket 30).
+		-- A purchase like any (ticket 21c): its reference price learns the price, and its cost
+		-- book (cost_book.lua, ticket 43a: a cook's inputs, the alchemist's, the cleric's flesh).
 		prices.learn(villager, entry.item, pay / count)
-		alchemist.bought(villager, possessions.held(villager), entry.item, count, pay)
-		-- A cook's raw input costs what it paid (asks.note_input, ticket 42).
-		asks.note_input(villager, entry.item, received, pay)
-		-- A keeper's dish costs what it paid (dinner.note_cost, ticket 39b).
-		if villager._villages_keeper then dinner.note_cost(villager, entry.item, received, pay) end
+		cost_book.note(villager, entry.item, received, pay, possessions.held(villager))
 		local left = inv:add_item("main", EMERALD .. " " .. pay)
 		if not left:is_empty() and core.add_item then core.add_item(player:get_pos(), left) end
 		if gossip then

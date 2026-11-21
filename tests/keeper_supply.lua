@@ -153,8 +153,8 @@ local sold, paid_for = stock.take_chest_sales(farm_chest, "mcl_farming:potato_it
 assert(sold == 10 and math.abs(paid_for - POT * 10) < 1e-3, sold .. " " .. paid_for)
 assert(stock.take_chest_sales(farm_chest, "mcl_farming:potato_item") == 0, "taken up once")
 assert(stock.take_chest_sales(farm_chest, "mcl_farming:bread") == 4)
-assert(math.abs(kate._villages_dish_cost["mcl_farming:potato_item_baked"] - 2 * POT) < 1e-9)
-assert(math.abs(kate._villages_dish_cost["mcl_farming:bread"] - LOAF) < 1e-9)
+assert(math.abs(kate._villages_input_cost["mcl_farming:potato_item_baked"] - 2 * POT) < 1e-9)
+assert(math.abs(kate._villages_input_cost["mcl_farming:bread"] - LOAF) < 1e-9)
 -- An ask the farmer posted is what it pays.
 stock.post_ask(farm_chest, "mcl_farming:potato_item", 1.5)
 assert(math.abs(supply.worth({["mcl_farming:potato_item"] = 10}, kate, farm_chest) - 15) < 1e-9)
