@@ -3884,6 +3884,10 @@ The butcher does the cooking.
   is its own way to eat. Its urgency, money factor and variety apply as before. A dear
   street loaf no longer makes a dear dinner look fair, and a cheap plate of fish looks
   cheap.
+  - Built (`dinner.street_cost`, `dinner.wants`'s `heard`): the cheapest ask per point
+    among the prepared foods in its market news, times a loaf's 4 points. Where that is
+    under its own loaf price, a loaf's worth to it is scaled down by the ratio. Street food
+    dearer than its loaf price raises nothing.
 - **39d. The keeper buys at the plate cost, not the dinner price.** It values each dish, its
   fixed inputs included, at no more than the plate cost times the top margin (2.0). It
   never pays more for a dish than a plate can earn, and its buying no longer moves its own
