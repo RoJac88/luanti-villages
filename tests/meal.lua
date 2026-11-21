@@ -645,11 +645,11 @@ meal.tick(vera, 0.1, jukebox)
 assert(not vera._villages_meal and meal.explain(vera, jukebox):find("cannot pay"), meal.explain(vera, jukebox))
 assert(pantry_items["mcl_farming:bread"] == 1)
 -- Fed well enough already: she does not order, emerald or not.
--- A dinner costs the keeper's posted price (dinner.lua, ticket 21e): a loaf's base price
--- at its dinner factor of 1, rounded.
+-- A dinner costs the keeper's posted price (dinner.lua, ticket 39b): with no plate cost
+-- known, a loaf's base price at the starting margin, rounded up.
 local ledger = dofile("ledger.lua")
 local dinner = dofile("dinner.lua")
-local P = math.floor(ledger.price("mcl_farming:bread") + 0.5)
+local P = math.ceil(ledger.price("mcl_farming:bread") * dinner.MARGIN_START)
 assert(dinner.price(kate) == P)
 vera._villages_belongings = {["mcl_core:emerald"] = 128}
 vera._villages_food = 10
@@ -831,11 +831,13 @@ end
 do
 	day = day + 1
 	pantry_items["mcl_farming:bread"] = 1
+	-- Able to pay tonight's price, whatever the evenings before made it.
+	local Q = dinner.price(kate)
 	local cheapskate = {_id = "cheap", _villages_seat = {table = tabletop}, _villages_food = 0,
-		_villages_prices = {["group:food"] = 0.05}, _villages_belongings = {["mcl_core:emerald"] = P + 2}}
+		_villages_prices = {["group:food"] = 0.05}, _villages_belongings = {["mcl_core:emerald"] = Q + 2}}
 	cheapskate.object = {get_pos = function() return {x = 2, y = 0, z = 0} end}
 	local hungry = {_id = "hun", _villages_seat = {table = tabletop}, _villages_food = 2, _villages_prices = {["group:food"] = 0.05},
-		_villages_belongings = {["mcl_core:emerald"] = P + 2}}
+		_villages_belongings = {["mcl_core:emerald"] = Q + 2}}
 	hungry.object = cheapskate.object
 	assert(meal.explain(hungry, jukebox):find("not worth"), meal.explain(hungry, jukebox))
 	now = now + 10
@@ -843,7 +845,7 @@ do
 	now = now + 5
 	meal.tick(cheapskate, 0.1, jukebox)
 	assert(cheapskate._villages_meal and cheapskate._villages_meal.item == "mcl_farming:beetroot_item", "the raw plate")
-	assert(cheapskate._villages_belongings["mcl_core:emerald"] == P + 1 and pantry_items["mcl_farming:bread"] == 1)
+	assert(cheapskate._villages_belongings["mcl_core:emerald"] == Q + 1 and pantry_items["mcl_farming:bread"] == 1)
 	now = now + 20
 	meal.tick(cheapskate, 0.1, jukebox)
 end

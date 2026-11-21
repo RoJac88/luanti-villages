@@ -3853,6 +3853,13 @@ The butcher does the cooking.
   - The fisherman's catch already works this way: its asks fell to 1 while it sat unsold.
     The leatherworker's beef doesn't, because its ask floor is its own value over its money
     factor (ColonyFood, 2026-11-20). The PR checks whether that floor should hold for food.
+  - Built (`farmer.price_chest`, `farm_stock.chest_ask`): at each deposit the farmer posts
+    its ask at the chest for the bread, potatoes, carrots and beetroot there, and takes up
+    what the keeper took as sales, which raise its ask. The chest's goods count as its
+    spare in the daily markdown (`_villages_chest_spare`). The keeper pays the posted ask,
+    or its own reference price for that food when none is posted. The ask floor (own value
+    over money factor) is left as it is for now: a farmer's value for potatoes it holds by
+    the hundred is low, so its floor is too.
 - **39b. Dinner is the plate's cost plus a margin.**
   - The keeper keeps an average cost for each dish it holds, from what it paid. A bought
     dish costs its price; a dish it cooks costs its raw input. This works as the cleric's
@@ -3865,6 +3872,11 @@ The butcher does the cooking.
   - The `dear` rule (27) goes. Dinner always covers what its plate cost, so the pantry
     can't lose money on a plate. The float stays as working capital.
   - The keeper's loaf price no longer enters dinner.
+  - Built (`dinner.note_cost`, `dish_cost`, `plate`; `keeper_supply.price_plate`): costs
+    are noted at the farm chest, in trades with villagers and on trips to their stashes,
+    and from players. A potato counts as the baked potato it makes. Each dish's cost is an
+    average over about the last 8 bought. Dinner rounds up, so it always covers the plate.
+    A saved factor above 2 (the old spiral) counts as 2.
 - **39c. Guests weigh dinner against feeding themselves.** A meal's worth to a guest is
   what the same food points cost in the cheapest prepared food it has heard offered. That
   is its own way to eat. Its urgency, money factor and variety apply as before. A dear
@@ -3874,6 +3886,8 @@ The butcher does the cooking.
   fixed inputs included, at no more than the plate cost times the top margin (2.0). It
   never pays more for a dish than a plate can earn, and its buying no longer moves its own
   prices except through the plate cost.
+  - Built (`possessions.assess`'s keeper block). With an empty pantry and no costs known,
+    the plate cost is a loaf's reference price.
 - **39e. Wants only for goods the village has.**
   - A want from a vanilla trade table counts only if something in the village can supply
     that good: a profession `MAKES` it, a recipe or labour makes it, or a villager has

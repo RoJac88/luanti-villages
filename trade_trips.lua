@@ -62,6 +62,7 @@ local ledger = dofile(core.get_modpath("living_villages") .. "/ledger.lua")
 local news = dofile(core.get_modpath("living_villages") .. "/market_news.lua")
 local exchange = dofile(core.get_modpath("living_villages") .. "/exchange.lua")
 local prices = dofile(core.get_modpath("living_villages") .. "/prices.lua")
+local dinner = dofile(core.get_modpath("living_villages") .. "/dinner.lua")
 local asks = dofile(core.get_modpath("living_villages") .. "/asks.lua")
 local alchemist = dofile(core.get_modpath("living_villages") .. "/alchemist.lua")
 local stock = dofile(core.get_modpath("living_villages") .. "/farm_stock.lua")
@@ -330,6 +331,8 @@ function M.buy_from_stash(self, trip, chest)
 	-- Its reference price learns what it paid (ticket 21b), and an alchemist's book (ticket 30).
 	prices.learn(self, trip.item, paid / count)
 	alchemist.bought(self, possessions.held(self), trip.item, count, paid)
+	-- A keeper's dish costs what it paid (dinner.note_cost, ticket 39b).
+	if self._villages_keeper then dinner.note_cost(self, trip.item, count, paid) end
 	-- The seller, away from its stash but loaded, counts the sale as one made to its face
 	-- (ticket 30): its ask and reference price learn it, and an alchemist keeps the price.
 	-- Without it the alchemist's stash sales taught it nothing, and its takings never set its bids.

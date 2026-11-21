@@ -1,6 +1,6 @@
 -- Run with: lua tests/dinner.lua
--- A dinner that floats (ticket 21e): the keeper's price from its food cost and dinner
--- factor, the factor's daily move, who dines by value, and the amounts counted in dinners.
+-- A dinner that floats (ticket 21e): the keeper's price from its plate cost and margin
+-- (ticket 39b), the margin's daily move, who dines by value, and the amounts counted in dinners.
 local metas, logs = {}, {}
 local function key(pos) return pos.x .. "," .. pos.y .. "," .. pos.z end
 
@@ -31,7 +31,6 @@ local dinner = dofile("dinner.lua")
 local possessions = dofile("possessions.lua")
 local comforts = dofile("comforts.lua")
 local alms = dofile("alms.lua")
-local asks = dofile("asks.lua")
 
 local BREAD, EMERALD = "mcl_farming:bread", "mcl_core:emerald"
 local LOAF = ledger.price(BREAD)
@@ -40,40 +39,73 @@ local function near(a, b) return math.abs(a - b) < 1e-6 end
 -- The pseudo-item's base price is the old fixed dinner, only a seed now.
 assert(ledger.price(dinner.ITEM) == ledger.DINNER)
 
--- The keeper's price: a loaf at its reference price, times its factor, whole emeralds.
+-- The keeper's price (ticket 39b): its plate cost times its margin, rounded up to whole
+-- emeralds. Until a plate cost is known, a loaf at its reference price.
 local kate = {_id = "kate", _villages_keeper = true}
 local jukebox = {x = 0, y = 0, z = 0}
-assert(near(dinner.food_cost(kate), LOAF) and dinner.factor(kate) == 1)
-assert(dinner.settle(kate, jukebox, 1) == math.floor(LOAF + 0.5))
+assert(near(dinner.plate(kate), LOAF) and near(dinner.factor(kate), dinner.MARGIN_START))
+assert(dinner.settle(kate, jukebox, 1) == math.ceil(LOAF * dinner.MARGIN_START))
 assert(dinner.posted(jukebox) == dinner.price(kate), "posted at the jukebox")
 assert(near(dinner.reference(kate), dinner.price(kate)), "the keeper reckons a dinner its own price")
+-- A plate cost known: dinner covers it, rounded up.
+kate._villages_plate_cost = 2
+assert(dinner.price(kate) == 3, "2 x 1.1 is 2.2: 3")
+kate._villages_plate_cost = 1
+assert(dinner.price(kate) == 2)
+-- What it pays for a loaf no longer moves dinner once the plate cost is known.
 kate._villages_prices = {["group:food"] = 2}
-assert(dinner.price(kate) == math.floor(2 * LOAF + 0.5), "dearer food, a dearer dinner")
+assert(dinner.price(kate) == 2)
 kate._villages_prices = nil
+kate._villages_plate_cost = 10
+
+-- Dish costs: what it paid, an average over about COST_KEEP of the last bought; its
+-- reference price for one it never bought. The plate cost is the average of what the
+-- pantry holds.
+do
+	local BAKED, FISH = "mcl_farming:potato_item_baked", "mcl_fishing:fish_cooked"
+	local k = {_id = "costs", _villages_keeper = true}
+	assert(near(dinner.dish_cost(k, FISH), ledger.price(FISH)), "its reference price")
+	dinner.note_cost(k, BAKED, 10, 10)
+	assert(near(dinner.dish_cost(k, BAKED), 1))
+	dinner.note_cost(k, BAKED, 8, 24)
+	assert(near(dinner.dish_cost(k, BAKED), (1 * dinner.COST_KEEP + 24) / (dinner.COST_KEEP + 8)), "2, averaged")
+	dinner.note_cost(k, FISH, 2, 14)
+	assert(near(dinner.plate_cost(k, {[BAKED] = 6, [FISH] = 2}), (6 * 2 + 2 * 7) / 8))
+	assert(dinner.plate_cost(k, {}) == nil and dinner.plate_cost(k, {[BAKED] = 0}) == nil)
+	dinner.note_cost(k, FISH, 0, 5)
+	dinner.note_cost(nil, FISH, 1, 5)
+	assert(near(dinner.dish_cost(k, FISH), 7), "nothing bought, nothing noted")
+end
 
 -- Hungry broke guests turned away with dishes left: down MARKDOWN the next day, once
 -- however many.
 dinner.turned(kate, "bo", 1)
 dinner.turned(kate, "cy", 1)
 dinner.turned(kate, "bo", 1)
-assert(dinner.factor(kate) == 1, "not before the day is out")
+assert(near(dinner.factor(kate), dinner.MARGIN_START), "not before the day is out")
 dinner.settle(kate, jukebox, 2)
-assert(near(dinner.factor(kate), dinner.MARKDOWN))
-assert(logs[#logs]:find("keeper kate moved its dinner factor to 0.90 (guests turned away)", 1, true), logs[#logs])
-assert(dinner.posted(jukebox) == math.floor(LOAF * dinner.MARKDOWN + 0.5))
+-- 1.1 x 0.9 is 0.99: no lower than MARGIN_MIN, at cost.
+assert(near(dinner.factor(kate), dinner.MARGIN_MIN))
+assert(logs[#logs]:find("keeper kate moved its dinner margin to 1.00 (guests turned away)", 1, true), logs[#logs])
+assert(dinner.posted(jukebox) == 10)
 -- The pantry ran out: up MARKUP, even with guests turned away earlier.
 dinner.turned(kate, "bo", 2)
 dinner.ran_out(kate, 2)
 dinner.settle(kate, jukebox, 3)
-assert(near(dinner.factor(kate), dinner.MARKDOWN * dinner.MARKUP))
+assert(near(dinner.factor(kate), dinner.MARKUP))
+assert(logs[#logs]:find("(ran out)", 1, true))
 -- A quiet day leaves it be.
 dinner.settle(kate, jukebox, 4)
-assert(near(dinner.factor(kate), dinner.MARKDOWN * dinner.MARKUP))
--- Within the asks' rails, and never under one emerald.
+assert(near(dinner.factor(kate), dinner.MARKUP))
+-- Within MARGIN_MIN and MARGIN_MAX, and never under one emerald.
 for d = 5, 60 do dinner.turned(kate, "bo", d - 1) dinner.settle(kate, jukebox, d) end
-assert(near(dinner.factor(kate), asks.MIN) and dinner.price(kate) >= 1)
+assert(near(dinner.factor(kate), dinner.MARGIN_MIN) and dinner.price(kate) >= 1)
 for d = 61, 120 do dinner.ran_out(kate, d - 1) dinner.settle(kate, jukebox, d) end
-assert(near(dinner.factor(kate), asks.MAX))
+assert(near(dinner.factor(kate), dinner.MARGIN_MAX))
+-- A factor from before ticket 39 (3.5) counts at the top margin.
+assert(near(dinner.factor({_villages_dinner = {factor = 3.5}}), dinner.MARGIN_MAX))
+-- Paying for food no longer moves it: there is no `dear`.
+assert(dinner.dear == nil)
 -- No keeper at hand: the last posted price, or none.
 assert(dinner.posted(jukebox) == dinner.price(kate))
 assert(dinner.posted({x = 9, y = 9, z = 9}) == nil)
@@ -135,18 +167,18 @@ local view = possessions.assess(starving)
 local fv = possessions.assess(fed)
 assert(view.lambda > 1 and near(view.value("mcl_books:book") * view.lambda, fv.value("mcl_books:book") * fv.lambda), "a book keeps its λ")
 
--- At the 1-emerald floor guests turned away leave the factor be (ticket 22b).
-local floor_keeper = {_id = "flo", _villages_keeper = true, _villages_prices = {["group:food"] = 0.05}}
+-- At the 1-emerald floor guests turned away leave the margin be (ticket 22b).
+local floor_keeper = {_id = "flo", _villages_keeper = true, _villages_plate_cost = 0.3}
 dinner.settle(floor_keeper, nil, 1)
 assert(dinner.price(floor_keeper) == 1)
 dinner.turned(floor_keeper, "bo", 1)
 dinner.settle(floor_keeper, nil, 2)
-assert(dinner.factor(floor_keeper) == 1, "held at the floor")
+assert(near(dinner.factor(floor_keeper), dinner.MARGIN_START), "held at the floor")
 -- Above it, the markdown as before.
-floor_keeper._villages_prices = nil
+floor_keeper._villages_plate_cost = 5
 dinner.turned(floor_keeper, "bo", 2)
 dinner.settle(floor_keeper, nil, 3)
-assert(near(dinner.factor(floor_keeper), dinner.MARKDOWN))
+assert(near(dinner.factor(floor_keeper), dinner.MARGIN_MIN), "down to cost")
 
 -- Demand (ticket 22c): meals served and guests it ran out on, each guest once, become
 -- the next day's demand; a day with none, 0.

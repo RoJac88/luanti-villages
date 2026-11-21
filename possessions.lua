@@ -625,9 +625,20 @@ function M.step(self, now)
 	M.stash_spare(self)
 	-- It takes up comforts it holds, and puts down those used up (comforts.lua).
 	comforts.update(self, M.in_dinners(self, M.emeralds(self)), M.take_own, now)
-	-- Its asks for what it did not sell yesterday come down (asks.lua).
+	-- Its asks for what it did not sell yesterday come down (asks.lua): a farmer's chest
+	-- counts as its spare (`_villages_chest_spare`, farmer.lua, ticket 39a), so a full chest
+	-- the keeper takes little of lowers what it pays.
 	local day = today()
-	if self._villages_asks_day ~= day then asks.daily(self, M.assess(self).surplus, day, M.in_dinners(self, M.money(self))) end
+	if self._villages_asks_day ~= day then
+		local surplus = M.assess(self).surplus
+		if self._villages_chest_spare then
+			local merged = {}
+			for item, count in pairs(surplus) do merged[item] = count end
+			for item, count in pairs(self._villages_chest_spare) do merged[item] = (merged[item] or 0) + count end
+			surplus = merged
+		end
+		asks.daily(self, surplus, day, M.in_dinners(self, M.money(self)))
+	end
 end
 
 -- Emeralds thrown to it (ticket 36): vanilla's pickup (mcl_mobs check_item_pickup, only
@@ -836,11 +847,15 @@ function M.assess(self, offered)
 		extra[item] = (extra[item] or 0) + count
 	end
 	-- A keeper's few of each dish (keeper_supply.dish_wants, ticket 35): no fewer than it
-	-- holds, so one it carries to the pantry is never spare, and worth no more to it than
-	-- the dinner it makes.
-	if self._villages_keeper and not self.child and self._villages_dish_wants then
-		local held, cap = nil, dinner.price(self)
-		for item, count in pairs(self._villages_dish_wants) do
+	-- holds, so one it carries to the pantry is never spare. Every dish it buys, its fixed
+	-- inputs too, is worth no more to it than a plate can earn: the plate cost times the
+	-- top margin (ticket 39d). It bought loaves at up to its dinner price, and each one
+	-- raised that price (ColonyFood, 2026-11-21).
+	if self._villages_keeper and not self.child then
+		local cap = dinner.plate(self) * dinner.MARGIN_MAX
+		for item in pairs(ledger.inputs("keeper")) do worth[item] = math.min(worth[item] or math.huge, cap) end
+		local held
+		for item, count in pairs(self._villages_dish_wants or {}) do
 			held = held or M.held(self)
 			extra[item] = (extra[item] or 0) + math.max(count, held[item] or 0)
 			worth[item] = math.min(worth[item] or math.huge, cap)
