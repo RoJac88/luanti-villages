@@ -1,16 +1,20 @@
--- A dinner that floats (ticket 21e, docs/villager-economy-design.md's Price discovery).
--- The keeper prices dinner as a seller prices any good:
+-- A dinner that floats (ticket 21e, docs/villager-economy-design.md's Price discovery),
+-- priced by what its plate cost (ticket 39b).
 --
--- * Its food cost is a meal's food at its own reference price (prices.lua): a loaf's, as a
---   guest values a meal. keeper_supply.lua pays a farm chest that for each meal the food
---   it takes makes (a potato is one, a carrot a quarter), so what the tavern pays its
---   farmers moves with what food trades for. Not the potato's own price: at vanilla's a
---   potato is a quarter of a loaf, and the dinner would have fallen from 18 to 2 at once.
--- * Its dinner price is the food cost times its dinner factor, in whole emeralds, at
---   least 1. The factor (`_villages_dinner.factor`, 1 unset) moves once a day, from the
---   evening before: ×MARKUP if a guest who would have paid found no dish, or the keeper
---   could not pay for its food from dinner money (`dear`, ticket 27), else ×MARKDOWN
---   if a hungry guest would not pay while dishes were left, within asks.MIN and asks.MAX.
+-- * The plate cost (`_villages_plate_cost`, set by keeper_supply.lua) is the average cost
+--   of the dishes the pantry holds, each at what the keeper paid for it: a dish it bought
+--   at its price, a potato it baked at what the farm chest asked for it (`note_cost`,
+--   `_villages_dish_cost`, an average over about COST_KEEP of the last bought). Until one
+--   is known it is a meal's food at the keeper's reference price for a loaf (`food_cost`).
+-- * Its dinner price is the plate cost times its margin, rounded up to whole emeralds, at
+--   least 1, so a plate always covers what it cost. The margin (`_villages_dinner.factor`,
+--   MARGIN_START unset) moves once a day, from the evening before: ×MARKUP if a guest who
+--   would have paid found no dish, ×MARKDOWN if a hungry guest would not pay while dishes
+--   were left, within MARGIN_MIN and MARGIN_MAX. Before ticket 39 the price was the keeper's
+--   loaf price times a factor that also rose whenever the keeper paid for food from its
+--   float (`dear`, ticket 27), and since ticket 35 it bought loaves at up to that price:
+--   the factor fed the loaf price and was applied again, and the cost of a meal went from
+--   0.74 to 4.13 while the farm chests held about 900 potatoes (ColonyFood, 2026-11-21).
 -- * The price is posted in the jukebox's meta (POSTED), where a guest and a player read it
 --   and where the keeper puts it each day and whenever its prices move.
 -- * A villager dines when the price is no more than its value for a meal: a loaf's value
@@ -27,14 +31,18 @@
 local core = minetest
 local ledger = dofile(core.get_modpath("living_villages") .. "/ledger.lua")
 local prices = dofile(core.get_modpath("living_villages") .. "/prices.lua")
-local asks = dofile(core.get_modpath("living_villages") .. "/asks.lua")
 
 local ITEM = ledger.DINNER_ITEM
 local BREAD = "mcl_farming:bread"
 local MARKUP, MARKDOWN = 1.1, 0.9
+local MARGIN_START, MARGIN_MIN, MARGIN_MAX = 1.1, 1, 2
+-- A dish's cost is an average over about this many of the last bought.
+local COST_KEEP = 8
 local POSTED = "villages_dinner_price"
+local EPSILON = 1e-6
 
-local M = {ITEM = ITEM, MARKUP = MARKUP, MARKDOWN = MARKDOWN, POSTED = POSTED}
+local M = {ITEM = ITEM, MARKUP = MARKUP, MARKDOWN = MARKDOWN, POSTED = POSTED, MARGIN_START = MARGIN_START,
+	MARGIN_MIN = MARGIN_MIN, MARGIN_MAX = MARGIN_MAX, COST_KEEP = COST_KEEP}
 
 local function short_id(id)
 	return tostring(id):sub(1, 6)
@@ -45,13 +53,47 @@ function M.food_cost(keeper)
 	return prices.price(keeper and keeper._villages_prices, BREAD) or ledger.DINNER
 end
 
-function M.factor(keeper)
-	return (keeper._villages_dinner or {}).factor or 1
+-- `count` of a dish (or what it becomes: a potato as the baked potato) bought for `paid`.
+function M.note_cost(keeper, item, count, paid)
+	if not keeper or count <= 0 or not paid or paid < 0 then return end
+	local costs = keeper._villages_dish_cost or {}
+	local before = costs[item]
+	costs[item] = before and (before * COST_KEEP + paid) / (COST_KEEP + count) or paid / count
+	keeper._villages_dish_cost = costs
 end
 
--- The keeper's dinner price, in whole emeralds.
+-- What one of a dish cost the keeper: as noted, or its reference price for it.
+function M.dish_cost(keeper, item)
+	local noted = keeper._villages_dish_cost and keeper._villages_dish_cost[item]
+	if noted then return noted end
+	return prices.price(keeper._villages_prices, item)
+end
+
+-- The average cost of `counts` ({dish = count}, what the pantry holds), or nil for none.
+function M.plate_cost(keeper, counts)
+	local total, cost = 0, 0
+	for item, count in pairs(counts) do
+		local each = count > 0 and M.dish_cost(keeper, item)
+		if each then
+			total, cost = total + count, cost + count * each
+		end
+	end
+	return total > 0 and cost / total or nil
+end
+
+-- What a plate costs the keeper now (`_villages_plate_cost`), or `food_cost` until known.
+function M.plate(keeper)
+	return keeper._villages_plate_cost or M.food_cost(keeper)
+end
+
+function M.factor(keeper)
+	return math.min(math.max((keeper._villages_dinner or {}).factor or MARGIN_START, MARGIN_MIN), MARGIN_MAX)
+end
+
+-- The keeper's dinner price, in whole emeralds: the plate cost times its margin, rounded
+-- up, so it always covers the plate.
 function M.price(keeper)
-	return math.max(math.floor(M.food_cost(keeper) * M.factor(keeper) + 0.5), 1)
+	return math.max(math.ceil(M.plate(keeper) * M.factor(keeper) - EPSILON), 1)
 end
 
 -- Moves the factor for the evening before, once a day, and posts the price at `jukebox`
@@ -59,19 +101,19 @@ end
 function M.settle(keeper, jukebox, day)
 	local record = keeper._villages_dinner or {}
 	if record.day ~= day then
-		local factor = record.factor or 1
-		if record.out or record.dear then
+		local before = M.factor(keeper)
+		local factor = before
+		if record.out then
 			factor = factor * MARKUP
 		elseif record.turned and next(record.turned) and M.price(keeper) > 1 then
 			-- At the 1-emerald floor a markdown changes nothing a guest sees, and would only
-			-- leave the factor far to climb back (ticket 22b).
+			-- leave the margin far to climb back (ticket 22b).
 			factor = factor * MARKDOWN
 		end
-		factor = math.min(math.max(factor, asks.MIN), asks.MAX)
-		if record.day and factor ~= (record.factor or 1) then
-			core.log("action", string.format("[living_villages] keeper %s moved its dinner factor to %.2f (%s)",
-				short_id(keeper._id), factor, record.out and "ran out" or record.dear and "food dearer than dinners pay"
-				or "guests turned away"))
+		factor = math.min(math.max(factor, MARGIN_MIN), MARGIN_MAX)
+		if record.day and math.abs(factor - before) > EPSILON then
+			core.log("action", string.format("[living_villages] keeper %s moved its dinner margin to %.2f (%s)",
+				short_id(keeper._id), factor, record.out and "ran out" or "guests turned away"))
 		end
 		record = {day = day, factor = factor, demand = record.day and M.evening(record) or nil}
 		keeper._villages_dinner = record
@@ -113,14 +155,6 @@ function M.ran_out(keeper, day, id)
 		record.short = record.short or {}
 		record.short[id] = true
 	end
-end
-
--- The keeper could not pay for the food it wanted from dinner money (keeper_supply.lua,
--- ticket 27): up MARKUP the next day, as when it runs out.
-function M.dear(keeper, day)
-	if not keeper then return end
-	M.settle(keeper, nil, day)
-	keeper._villages_dinner.dear = true
 end
 
 -- A meal served at the keeper's tavern.

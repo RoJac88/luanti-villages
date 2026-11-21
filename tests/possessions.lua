@@ -213,6 +213,18 @@ assert(ivy._villages_stash == nil, "waits a minute")
 now = now + possessions.CLAIM_SECONDS
 possessions.step(ivy, now)
 assert(ivy._villages_stash)
+-- A farmer's chest counts as its spare in the daily look at its asks (ticket 39a): 400
+-- potatoes the keeper took none of mark its ask down.
+do
+	local asks = dofile("asks.lua")
+	ivy._villages_chest_spare = {["mcl_farming:potato_item"] = 400}
+	ivy._villages_asks_day = day
+	day = day + 1
+	now = now + possessions.CLAIM_SECONDS
+	possessions.step(ivy, now)
+	assert(ivy._villages_asks_day == day and asks.factor(ivy, "mcl_farming:potato_item") < 1)
+	day = day - 1
+end
 
 -- install drops belongings on death; off with the economy.
 local def = {do_custom = function() return "vanilla" end, on_die = function() return "died" end}
@@ -306,17 +318,23 @@ do
 	assert(f(BREAD) == 1 and f("mcl_farming:potato_item") < 1 and f(BAKED) == f("mcl_farming:potato_item"))
 	stage = saved_stage
 end
--- A keeper's few of each dish (ticket 35): a need, worth no more than its dinner, and one it
--- carries is never spare, even with the pantry stocked (a want of 0).
+-- A keeper's few of each dish (ticket 35): a need, and one it carries is never spare, even
+-- with the pantry stocked (a want of 0). Every dish it buys, its fixed inputs too, is worth
+-- no more than a plate can earn: the plate cost times the top margin (ticket 39d).
 do
 	local CHICKEN, SALMON = "mcl_mobitems:cooked_chicken", "mcl_fishing:salmon_cooked"
 	local dinner = dofile("dinner.lua")
-	local k = {_id = "kd", _villages_keeper = true, _villages_food = 8,
+	local k = {_id = "kd", _villages_keeper = true, _villages_food = 8, _villages_plate_cost = 1.5,
 		_villages_belongings = {[SALMON] = 4}, _villages_dish_wants = {[CHICKEN] = 3, [SALMON] = 0}}
+	local cap = 1.5 * dinner.MARGIN_MAX
 	local v = possessions.assess(k)
-	assert(v.needs[CHICKEN] == 3 and v.value(CHICKEN) <= dinner.price(k), tostring(v.value(CHICKEN)))
+	assert(v.needs[CHICKEN] == 3 and v.value(CHICKEN) <= cap + 1e-9, tostring(v.value(CHICKEN)))
 	assert(not v.needs[SALMON] and not (v.surplus or {})[SALMON], "carried to the pantry, not sold")
-	-- Without the wants, a keeper has no such need and no cap.
+	-- Its fixed inputs alike: a loaf it buys at no more than 3, whatever its loaf price.
+	k._villages_prices = {["group:food"] = 4}
+	v = possessions.assess(k)
+	assert(v.value("mcl_farming:bread") <= cap + 1e-9 and v.value("mcl_fishing:fish_cooked") <= cap + 1e-9)
+	-- Without the wants, a keeper has no such need.
 	k._villages_dish_wants = nil
 	assert(not possessions.assess(k).needs[CHICKEN])
 end

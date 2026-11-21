@@ -466,6 +466,26 @@ local tater_chest = support.chest(world, {x = 2, y = 2, z = 0}, nil, {"mcl_farmi
 step()
 assert(farmer._villages_belongings["mcl_farming:potato_item"] == 16 + 24, farmer._villages_belongings["mcl_farming:potato_item"])
 assert(tater_chest:get_stack("main", 1):get_count() == 64 - 40)
+-- Its chest's prices (ticket 39a): it posts its ask for what the chest holds, notes the
+-- chest as its spare, and takes up what the keeper took there as sales.
+do
+	local stock = dofile("farm_stock.lua")
+	local asks = dofile("asks.lua")
+	local POTATO = "mcl_farming:potato_item"
+	local at = {x = 2, y = 2, z = 0}
+	local posted = stock.chest_ask(at, POTATO)
+	assert(posted and posted > 0, "an ask for its potatoes")
+	assert(not stock.chest_ask(at, "mcl_farming:bread"), "none for what the chest lacks")
+	assert(farmer._villages_chest_spare and farmer._villages_chest_spare[POTATO] == 24)
+	-- The keeper took 10 for 30: sales at 3 each, which raise its ask.
+	local before = asks.factor(farmer, POTATO)
+	stock.note_chest_sale(at, POTATO, 10, 30)
+	farmer_module.price_chest(farmer, at)
+	assert(asks.factor(farmer, POTATO) > before, "sold: the ask rises")
+	assert(farmer._villages_ask_sold[POTATO].count == 10)
+	assert(stock.take_chest_sales(at, POTATO) == 0, "taken up")
+	assert(stock.chest_ask(at, POTATO) > posted, "and the posted ask with it")
+end
 -- Bone meal over its keep of four too, up to eight, to sell as white dye (19h).
 setup({_villages_farm_pouch = {["mcl_bone_meal:bone_meal"] = 14}})
 local meal_chest = support.chest(world, {x = 2, y = 2, z = 0})

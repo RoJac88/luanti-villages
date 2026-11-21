@@ -115,6 +115,18 @@ assert(not exchange.offer(odd, view({}, {["no:price"] = 4}, {["no:price"] = 6}),
 -- A sale raises the seller's ask.
 assert(exchange.settle(offer) and asks.factor(odd, "no:price") == asks.MARKUP)
 
+-- A keeper buying a dish notes what it cost (ticket 39b): its plate cost reads it.
+do
+	local FISH = "mcl_fishing:fish_cooked"
+	local butcher = villager("bu", {[FISH] = 4})
+	local keeper = villager("ke", {["mcl_core:emerald"] = 30}, {_villages_keeper = true})
+	assert(exchange.settle({seller = butcher, buyer = keeper, item = FISH, count = 2, pay = 9}))
+	assert(math.abs(keeper._villages_dish_cost[FISH] - 4.5) < 1e-9)
+	-- Anyone else buying notes nothing.
+	assert(exchange.settle({seller = butcher, buyer = b, item = FISH, count = 1, pay = 5}))
+	assert(b._villages_dish_cost == nil)
+end
+
 -- settle checks the goods are still there.
 local gone = {seller = villager("v", {}), buyer = b, item = "mcl_core:paper", count = 1, pay = 1}
 assert(not exchange.settle(gone))

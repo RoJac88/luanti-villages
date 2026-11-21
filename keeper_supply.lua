@@ -20,11 +20,11 @@
 --   the keeper buys those ready made.
 -- * It buys what it takes (ticket 4): setting out, it takes up to PURSE emeralds from
 --   the pantry (and, short there, from its own float, below), and leaves in the work
---   chest what the food is worth, for its farmer or
---   fisherman to collect: a meal's food cost (dinner.food_cost, its reference price for a
---   loaf, ticket 21e; DINNER until then) for each meal the food makes (MEALS: a loaf or a
---   potato is one). The tavern
---   keeps no margin, so dinner money, a player's too, passes through the pantry to the
+--   chest what the food is worth, for its farmer to collect: the farmer's ask posted at
+--   the chest for each (ticket 39a, farm_stock.chest_ask, its own reference price for that
+--   food with none), and notes what it took there for the farmer to take up as sales.
+--   Before 39a it paid its reference price for a loaf for each meal the food made (21e).
+--   Dinner money, a player's too, passes through the pantry to the
 --   food producers (ticket 11b; at vanilla's prices, rounded, 8 wheat paid nothing while
 --   its dinners took 1 emerald each, and money piled up in the pantry). It takes only
 --   the food its purse pays for (ticket 27): what is left of a whole emerald, a fraction,
@@ -32,10 +32,11 @@
 --   (1). It used to take the food anyway and owe the rest, up to a cap that grew with
 --   the tavern; in ColonyFood (2026-11-20) it owed the two farms 1,950, a quarter of the
 --   village's money, as dinner sold at 1 for food it paid 1.2 for. A larger tab, from
---   then, is written off when it next fetches there. Food dearer than dinners pay for (it
---   could not pay for all it wanted, or paid from its float) moves the dinner price up
---   the next day, as running out does (dinner.dear). What it did not spend goes back in
---   the pantry.
+--   then, is written off when it next fetches there. What it did not spend goes back in
+--   the pantry. Ticket 39b: the dish each food makes costs what it paid
+--   (dinner.note_cost), and the plate cost, which prices dinner, is the average over what
+--   the pantry holds (`price_plate`, on its shift and when it stocks the pantry). Paying
+--   from its float no longer raises dinner (ticket 27's `dear`, gone).
 -- * Over its shift at the jukebox it cooks the pantry's raw food into its menu, one dish
 --   every COOK_SECONDS: a potato baked.
 -- * Dishes it bought in conversation or on a trade trip (ticket 11e: cooked beef and
@@ -47,7 +48,8 @@
 -- * A few of every dish (ticket 35): each dish it heard offered in the last week
 --   (keeper.known_dishes), but its fixed inputs and the baked potato, it wants up to
 --   keeper.MIN_DISHES of in the pantry (M.dish_wants, `_villages_dish_wants`, set on its
---   shift), at no more than its dinner price for one (possessions.assess), so the menu has
+--   shift), at no more than a plate's cost times dinner.MARGIN_MAX (possessions.assess,
+--   ticket 39d; its dinner price before), so the menu has
 --   something new for a guest tired of the rest (ticket 34) and never at a loss. Every
 --   prepared food is on the menu (keeper.dishes), and shelving takes from its stash too.
 -- * A newly generated tavern's chest gets STARTING_STOCK on top of its loot, through
@@ -66,6 +68,7 @@ local keeper = dofile(core.get_modpath("living_villages") .. "/keeper.lua")
 local possessions = dofile(core.get_modpath("living_villages") .. "/possessions.lua")
 local food = dofile(core.get_modpath("living_villages") .. "/food.lua")
 local dinner = dofile(core.get_modpath("living_villages") .. "/dinner.lua")
+local prices = dofile(core.get_modpath("living_villages") .. "/prices.lua")
 
 local SUPPLY_RADIUS = 48
 local COMPOSTER_HEIGHT = 8
@@ -224,13 +227,45 @@ function M.tab_cap()
 	return TAB_CAP
 end
 
--- What the keeper pays for goods, in emeralds, fractions kept: a meal's food cost at its
--- reference prices (dinner.food_cost) for each meal they make.
-function M.worth(goods, keeper_self)
+-- What the keeper pays for one of a food at `chest` (ticket 39a): the farmer's ask posted
+-- there (farm_stock.chest_ask), or with none its own reference price for that food, not
+-- for a loaf: a potato is a potato.
+function M.unit(keeper_self, chest, item)
+	local ask = chest and stock.chest_ask(chest, item)
+	if ask then return ask end
+	return prices.price(keeper_self and keeper_self._villages_prices, item) or 0
+end
+
+-- What the keeper pays for goods taken from `chest`, in emeralds, fractions kept.
+function M.worth(goods, keeper_self, chest)
 	local value = 0
-	local cost = dinner.food_cost(keeper_self)
-	for item, count in pairs(goods) do value = value + count * (MEALS[item] or 0) * cost end
+	for item, count in pairs(goods) do value = value + count * M.unit(keeper_self, chest, item) end
 	return value
+end
+
+-- The dish a food the keeper takes becomes (a potato is baked), for its cost.
+local DISH_OF = {[POTATO] = "mcl_farming:potato_item_baked"}
+
+-- The dishes the pantry holds and can cook, as {dish = count}, the raw plates' reserve
+-- left out.
+function M.dish_counts(chests)
+	local counts = {}
+	for _, item in ipairs(menu_items()) do
+		local count = pantry.count(chests, item)
+		if count > 0 then counts[item] = count end
+	end
+	for _, recipe in ipairs(RECIPES) do
+		local made = math.floor(M.cookable(chests, recipe.from) / recipe.count)
+		if made > 0 then counts[recipe.to] = (counts[recipe.to] or 0) + made end
+	end
+	return counts
+end
+
+-- Notes its plate cost (dinner.plate_cost, ticket 39b) from what the pantry holds.
+function M.price_plate(self, chests)
+	local cost = dinner.plate_cost(self, M.dish_counts(chests))
+	if cost then self._villages_plate_cost = cost end
+	return cost
 end
 
 -- What the keeper owes this chest from before.
@@ -238,10 +273,6 @@ function M.tab(pos)
 	return tonumber(core.get_meta(pos):get_string(TAB)) or 0
 end
 
--- What of its purse came from its own float, and the meals the pantry lacked when it
--- set out, per keeper (not saved).
-local from_float = setmetatable({}, {__mode = "k"})
-local lacking = setmetatable({}, {__mode = "k"})
 
 -- Its purse: up to PURSE from the pantry, and, short there, from its own emeralds (the
 -- float, refilled from the pantry on shift), so a pantry with no money left still buys
@@ -253,11 +284,9 @@ local function take_purse(self, chests)
 		stock.take_from_chest(self, chest, EMERALD, want)
 	end
 	local short = math.min(PURSE - stock.count(self, EMERALD), possessions.emeralds(self))
-	from_float[self] = nil
 	if short > 0 then
 		possessions.take(self, EMERALD, short)
 		stock.add(self, EMERALD, short)
-		from_float[self] = short
 	end
 end
 
@@ -273,7 +302,7 @@ end
 -- Pays for what it took from the chest, and what it owed there, from its purse.
 -- Returns what it paid and what it still owes.
 function M.pay(self, chest, taken)
-	local due = M.tab(chest) + M.worth(taken, self)
+	local due = M.tab(chest) + M.worth(taken, self, chest)
 	local paid = stock.put_in_chest(self, chest, EMERALD, math.min(math.floor(due + EPSILON), stock.count(self, EMERALD)))
 	local owed = due - paid
 	local cap = M.tab_cap()
@@ -290,31 +319,31 @@ end
 local function fetch(self, chest)
 	write_off(self, chest)
 	local room = M.carry(self) - carried(self)
-	local cost = dinner.food_cost(self)
 	local purse = stock.count(self, EMERALD)
 	local budget = purse - M.tab(chest)
-	local taken, short, got = {}, 0, 0
+	local taken, short = {}, 0
 	for _, item in ipairs(SUPPLIES) do
 		if room <= 0 then break end
-		local unit = MEALS[item] * cost
+		local unit = M.unit(self, chest, item)
 		local want = math.min(room, stock.chest_count(chest, item))
 		local afford = unit > 0 and math.max(math.floor((budget + EPSILON) / unit), 0) or want
 		local moved = stock.take_from_chest(self, chest, item, math.min(want, afford))
-		if moved > 0 then taken[item] = moved end
+		if moved > 0 then
+			taken[item] = moved
+			-- The farmer takes these up as sales at its next visit (farmer.lua), and the dish
+			-- they make costs what they did (dinner.note_cost).
+			stock.note_chest_sale(chest, item, moved, moved * unit)
+			dinner.note_cost(self, DISH_OF[item] or item, moved, moved * unit)
+		end
 		short = short + want - moved
-		got = got + moved * MEALS[item]
 		budget, room = budget - moved * unit, room - moved
 	end
 	local paid, owed = M.pay(self, chest, taken)
 	core.log("action", string.format("[living_villages] keeper %s fetched %d food for the pantry, paying %d emerald(s), owing %.2f",
 		tostring(self._id), carried(self), paid, owed))
-	-- Dinners did not pay for the food: it went without some the pantry lacked, or paid
-	-- from its float.
-	local float = from_float[self] or 0
-	if (short > 0 and got < (lacking[self] or 0)) or paid > purse - float + EPSILON then
-		dinner.dear(self, core.get_day_count())
-		core.log("action", string.format("[living_villages] keeper %s: food dearer than dinners pay (left %d it could not pay for, %d from its float)",
-			tostring(self._id), short, math.max(math.min(paid - (purse - float), float), 0)))
+	if short > 0 then
+		core.log("action", string.format("[living_villages] keeper %s left %d food its purse could not pay for",
+			tostring(self._id), short))
 	end
 end
 
@@ -334,6 +363,7 @@ local function deliver(self, jukebox)
 	end
 	core.log("action", string.format("[living_villages] keeper %s stocked the pantry with %d food",
 		tostring(self._id), delivered))
+	M.price_plate(self, chests)
 end
 
 -- One dish, if the pantry holds what it takes and there is room for it.
@@ -424,7 +454,6 @@ local function supply(self, jukebox, now)
 		return
 	end
 	take_purse(self, chests)
-	lacking[self] = M.target(self) - M.meals(chests)
 	go(self, source, now, function(entity) fetch(entity, source) end)
 end
 
@@ -490,6 +519,7 @@ local function cook_tick(self, jukebox, now)
 		M.shelve(self, chests)
 		M.cook(chests)
 		M.feed_keeper(self, chests)
+		M.price_plate(self, chests)
 		-- What it buys to keep a few of each dish it knows (possessions.assess).
 		self._villages_dish_wants = M.dish_wants(self, chests, core.get_day_count())
 	end

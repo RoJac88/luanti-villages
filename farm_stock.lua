@@ -190,4 +190,43 @@ function M.chest_count(pos, name)
 	return total
 end
 
+-- A farm chest's prices (ticket 39a). Its farmer posts, at each visit, what it asks for
+-- each food the keeper takes (`villages_ask_<item>`, asks.ask with its view), and the
+-- keeper notes what it took and paid (`villages_sold_<item>`, `villages_paid_<item>`),
+-- which the farmer takes up at its next visit as sales (asks.sold). So a glut in the chest
+-- lowers the price the keeper pays, and the keeper's buying raises it, as any sale does.
+local function ask_key(name) return "villages_ask_" .. name end
+local function sold_key(name) return "villages_sold_" .. name end
+local function paid_key(name) return "villages_paid_" .. name end
+
+-- The ask posted at the chest for one, or nil.
+function M.chest_ask(pos, name)
+	local ask = tonumber(core.get_meta(pos):get_string(ask_key(name)))
+	return ask and ask > 0 and ask or nil
+end
+
+function M.post_ask(pos, name, ask)
+	core.get_meta(pos):set_string(ask_key(name), ask and ask > 0 and string.format("%.4f", ask) or "")
+end
+
+-- Notes `count` taken for `paid` emeralds.
+function M.note_chest_sale(pos, name, count, paid)
+	if count <= 0 then return end
+	local meta = core.get_meta(pos)
+	meta:set_string(sold_key(name), tostring((tonumber(meta:get_string(sold_key(name))) or 0) + count))
+	meta:set_string(paid_key(name), string.format("%.4f", (tonumber(meta:get_string(paid_key(name))) or 0) + paid))
+end
+
+-- What was taken since the last call, and paid for it; clears the record.
+function M.take_chest_sales(pos, name)
+	local meta = core.get_meta(pos)
+	local count = tonumber(meta:get_string(sold_key(name))) or 0
+	local paid = tonumber(meta:get_string(paid_key(name))) or 0
+	if count > 0 then
+		meta:set_string(sold_key(name), "")
+		meta:set_string(paid_key(name), "")
+	end
+	return count, paid
+end
+
 return M

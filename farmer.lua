@@ -29,6 +29,7 @@ local wants = dofile(core.get_modpath("living_villages") .. "/wants.lua")
 local news = dofile(core.get_modpath("living_villages") .. "/market_news.lua")
 local ledger = dofile(core.get_modpath("living_villages") .. "/ledger.lua")
 local cells = dofile(core.get_modpath("living_villages") .. "/cells.lua")
+local asks = dofile(core.get_modpath("living_villages") .. "/asks.lua")
 
 -- Farm output (ticket 18). VoxeLibre's crops take some 2800 s of loaded time to ripen
 -- beside their own kind, so a farmer mostly waits on its field. In the work stage, with
@@ -369,10 +370,40 @@ local function stock_for_sale(self, pos)
 	return taken
 end
 
+-- The foods the keeper takes from a farm chest (keeper_supply.lua's SUPPLIES).
+local CHEST_GOODS = {BREAD, POTATO, "mcl_farming:carrot_item", "mcl_farming:beetroot_item"}
+
+-- Its chest's prices (ticket 39a, farm_stock.lua). What the keeper took since its last
+-- visit are sales, which teach its reference price and raise its ask (asks.sold); then it
+-- posts its ask for each food the chest holds, and notes the chest's stock as its spare
+-- (`_villages_chest_spare`), so possessions.lua's daily look marks the ask down while the
+-- chest fills faster than the keeper takes. Before this the keeper paid its own price
+-- for a loaf for every potato, whatever the chest held (ColonyFood, 2026-11-21: 4.13 a
+-- potato, with 458 in the chest).
+local function price_chest(self, pos)
+	local day = core.get_day_count and core.get_day_count() or 0
+	for _, item in ipairs(CHEST_GOODS) do
+		local count, paid = stock.take_chest_sales(pos, item)
+		if count > 0 then asks.sold(self, item, day, count, paid > 0 and paid / count or nil) end
+	end
+	local view = possessions.assess(self)
+	local spare
+	for _, item in ipairs(CHEST_GOODS) do
+		local held = stock.chest_count(pos, item)
+		stock.post_ask(pos, item, held > 0 and asks.ask(self, item, view) or nil)
+		if held > 0 then
+			spare = spare or {}
+			spare[item] = held
+		end
+	end
+	self._villages_chest_spare = spare
+end
+
 local function deposit(self, pos, session, now)
 	if clock.enabled() then
 		collect_pay(self, pos)
 		stock_for_sale(self, pos)
+		price_chest(self, pos)
 	end
 	local item, extra = excess_item(self)
 	if not item then return end
@@ -736,6 +767,7 @@ local function tick(self, session, now)
 end
 
 local M = {}
+M.price_chest = price_chest
 
 -- common.activity_override: a farmer with work in its field is not called back.
 function M.activity_override(villager, stage)
