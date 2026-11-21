@@ -4091,6 +4091,12 @@ herd, sold at 0.25 while raw beef was asked at 0.34; bread fell to 0.3 and potat
 43a built: `cost_book.lua`, one book (`_villages_input_cost`) noted by one call from each
 place a villager buys, the cleric's flesh and the keeper's dishes folded in. Fuel is not
 noted (a recipe's fuel is at the reference price for coal), nor comforts bought for use.
+43b built (`asks.reservation`, `asks.replacement`, `asks.fuel_cost`). Three choices beyond the
+rule above: the money-free value counts only for an item the seller wants at all (a target for
+it or its category), or an alchemist holding no ingots floored them at its 136 value of one; a
+recipe's fuel is costed at the reference price for coal but no less than GATHER_SHARE of coal's
+base, since that reference sits at 1/64; and the cleric's leather loses 37b's emerald over cost,
+keeping PROFIT. A player's reputation discount in the trade window can still go under it.
 
 **Problem.** A seller has no sound lowest price. Tickets 39 to 42 each fixed one failure and
 uncovered the next, and they share a cause.

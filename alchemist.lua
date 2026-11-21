@@ -47,7 +47,7 @@ local OVERLAY = "(living_villages_villager_profession_cleric.png^[multiply:#4fb3
 --   fuel (a burn second), over what it holds (`bought`); a recipe's cost is its inputs and
 --   fuel at those (`cost`), and what it holds of a good is at the average cost it was made
 --   at (`_villages_made_cost`, `made`): a good made before the book at its reference price.
--- * Its asks (asks.ask): no less than that cost times MARGIN, and no longer its own value,
+-- * Its asks (asks.reservation): no less than that cost times MARGIN, and no longer its own value,
 --   so its wealth is in none of its prices.
 -- * Its bids (`caps`): an input is worth no more to it than what the goods it would still
 --   make (under `upto`) sell for pays: each recipe's sale price (`_villages_sold_at`, else
@@ -183,13 +183,6 @@ function M.stock_cost(self, item)
 		self._villages_made_cost[item] = seed
 	end
 	return seed
-end
-
--- The least it asks for one of its goods (asks.ask): its cost times MARGIN, nil for any
--- other item.
-function M.ask_floor(self, item)
-	if not self[FLAG] or not GOODS[item] then return nil end
-	return M.stock_cost(self, item) * MARGIN
 end
 
 -- The most an input is worth to it ({item = emeralds}, ticket 30): for each recipe it

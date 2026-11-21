@@ -36,6 +36,7 @@ local function trade_of(villager)
 	if villager._villages_keeper then return "keeper" end
 	return villager._profession
 end
+M.trade_of = trade_of
 
 local function takes(input, item)
 	if input[1] == item then return true end

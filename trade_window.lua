@@ -56,7 +56,7 @@
 -- alchemist sells ingots, to players here and to villagers in the market (goods.lua's
 -- conversions), and never at a loss or break even: at least asks.PROFIT times what the
 -- flesh cost it, and an emerald over (its cost book's price for flesh, cost_book.lua;
--- asks.cost_floor). No villager sells it flesh: a cleric does not want it as an input
+-- asks.reservation). No villager sells it flesh: a cleric does not want it as an input
 -- (ledger.lua). What it pays a player is money out of the village, the tally's
 -- `flesh_out`; what a player pays for premium goods comes back in, `premium_in`.
 --
@@ -232,7 +232,7 @@ end
 
 -- The cleric's rows for flesh and leather (see the header): sells, buys. `cleric` is
 -- {budget = emeralds it can pay for flesh, unit = what it pays for one (M.flesh_unit),
--- floor = the least a leather made from its flesh sells for (asks.cost_floor), nil for none},
+-- floor = the least a leather made from its flesh sells for (asks.reservation), nil for none},
 -- which holds after the reputation share too.
 function M.cleric_rows(view, held, share, player_has, ask, converted, cleric)
 	local sells, buys = {}, {}
@@ -452,7 +452,7 @@ function M.install(def, deps)
 		if M.takes_donations(villager) then
 			cleric = {budget = alms().flesh_budget(villager),
 				unit = M.flesh_unit(prices.price(villager._villages_prices, LEATHER), held[FLESH]),
-				floor = asks.cost_floor(villager, goods.CONVERSIONS.cleric[1])}
+				floor = asks.reservation(villager, LEATHER, view)}
 		end
 		return M.rows(view, held, possessions.emeralds(villager), reputation(villager, name),
 			carried, villager._villages_alchemist == true, ask, converted,
