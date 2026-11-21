@@ -108,6 +108,11 @@ local SUPPLIES = {BREAD, POTATO, CARROT, BEETROOT}
 local RECIPES = {
 	{from = POTATO, count = 1, to = "mcl_farming:potato_item_baked"},
 }
+-- Raw potatoes it never bakes, for RESERVE_PLATES raw plates (meal.lua, ticket 39h): a
+-- starving guest always eats. They count toward no meal the pantry holds, so its fetches
+-- bring them on top of its dinners.
+local RESERVE_PLATES = 4
+local RAW_RESERVE = {[POTATO] = RESERVE_PLATES * food.raw_portion(POTATO)}
 local STARTING_STOCK = {{BREAD, 9}, {POTATO, 6}}
 -- Dinners each supply makes.
 local MEALS = {[BREAD] = 1, [POTATO] = 1, [CARROT] = 1 / CARROTS_PER_MEAL, [BEETROOT] = 1 / CARROTS_PER_MEAL}
@@ -119,6 +124,7 @@ local M = {
 	SUPPLY_RADIUS = SUPPLY_RADIUS, CARRY = CARRY, CARRY_MAX = CARRY_MAX, TARGET_MEALS = TARGET_MEALS, STOCK_MARGIN = STOCK_MARGIN,
 	CHECK_SECONDS = CHECK_SECONDS, RETRY_SECONDS = RETRY_SECONDS, SKIP_SECONDS = SKIP_SECONDS, COOK_SECONDS = COOK_SECONDS,
 	STARTING_STOCK = STARTING_STOCK, PURSE = PURSE, DINNER = DINNER, TAB_CAP = TAB_CAP, TAB = TAB, FLOAT = FLOAT,
+	RAW_RESERVE = RAW_RESERVE,
 }
 
 -- Every dish it serves (keeper.dishes, ticket 35: MENU's and any other prepared food).
@@ -143,12 +149,17 @@ function M.dish_wants(self, chests, day)
 	return wants
 end
 
+-- How much of a raw food the pantry holds past its raw plates' reserve (RAW_RESERVE).
+function M.cookable(chests, item)
+	return math.max(pantry.count(chests, item) - (RAW_RESERVE[item] or 0), 0)
+end
+
 -- How many dinners the pantry holds, counting what it can cook.
 function M.meals(chests)
 	local total = 0
 	for _, item in ipairs(menu_items()) do total = total + pantry.count(chests, item) end
 	for _, recipe in ipairs(RECIPES) do
-		total = total + math.floor(pantry.count(chests, recipe.from) / recipe.count)
+		total = total + math.floor(M.cookable(chests, recipe.from) / recipe.count)
 	end
 	return total
 end
@@ -328,7 +339,7 @@ end
 -- One dish, if the pantry holds what it takes and there is room for it.
 function M.cook(chests)
 	for _, recipe in ipairs(RECIPES) do
-		if pantry.count(chests, recipe.from) >= recipe.count and pantry.has_room(chests, recipe.to, 1) then
+		if M.cookable(chests, recipe.from) >= recipe.count and pantry.has_room(chests, recipe.to, 1) then
 			for _ = 1, recipe.count do pantry.take(chests, recipe.from) end
 			pantry.put(chests, recipe.to, 1)
 			return recipe.to

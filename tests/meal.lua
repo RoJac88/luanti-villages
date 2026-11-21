@@ -788,10 +788,44 @@ assert(bo._villages_belongings["mcl_core:emerald"] == 2 and pantry_items["mcl_co
 now = now + 20
 meal.tick(bo, 0.1, jukebox)
 day = day + 1
-bo._villages_food, bo._villages_belongings["mcl_core:emerald"] = 0, 0
+-- Merely hungry with no emerald: no seat. Starving with none (ticket 39h): the raw plate free.
+bo._villages_food, bo._villages_belongings["mcl_core:emerald"] = 2, 0
 pantry_items["mcl_farming:beetroot_item"] = 8
-assert(not meal.would_serve(bo, jukebox), "no emerald: no seat")
+assert(not meal.would_serve(bo, jukebox), "no emerald, not starving: no seat")
 assert(meal.explain(bo, jukebox):find("cannot pay"))
+bo._villages_food = 0
+assert(meal.would_serve(bo, jukebox), "starving: a seat")
+now = now + 10
+meal.tick(bo, 0.1, jukebox)
+now = now + 5
+meal.tick(bo, 0.1, jukebox)
+assert(bo._villages_meal and bo._villages_meal.item == "mcl_farming:beetroot_item", "the raw plate")
+assert(pantry_items["mcl_farming:beetroot_item"] == 4 and bo._villages_food == 4, "fed")
+assert(bo._villages_belongings["mcl_core:emerald"] == 0 and (pantry_items["mcl_core:emerald"] or 0) == 1, "for nothing")
+now = now + 20
+meal.tick(bo, 0.1, jukebox)
+-- Raw potatoes (ticket 39h): with no carrots or beetroot, 4 potatoes make the plate.
+do
+	pantry_items["mcl_farming:beetroot_item"] = nil
+	pantry_items["mcl_farming:bread"] = nil
+	pantry_items["mcl_farming:potato_item"] = 5
+	local po = {_id = "po", _villages_seat = {table = tabletop}, _villages_food = 0,
+		_villages_belongings = {["mcl_core:emerald"] = 3}}
+	po.object = bo.object
+	assert(meal.would_serve(po, jukebox))
+	now = now + 10
+	meal.tick(po, 0.1, jukebox)
+	now = now + 5
+	meal.tick(po, 0.1, jukebox)
+	assert(po._villages_meal and po._villages_meal.item == "mcl_farming:potato_item", "a plate of potatoes")
+	assert(pantry_items["mcl_farming:potato_item"] == 1 and po._villages_food == 4)
+	assert(po._villages_belongings["mcl_core:emerald"] == 2, "one emerald")
+	now = now + 20
+	meal.tick(po, 0.1, jukebox)
+	pantry_items["mcl_farming:potato_item"] = nil
+	pantry_items["mcl_farming:bread"] = 1
+	pantry_items["mcl_farming:beetroot_item"] = 8
+end
 -- Starving and able to pay but unwilling (ticket 22b): the raw plate at one emerald, as
 -- if broke. Merely hungry and unwilling: nothing.
 do

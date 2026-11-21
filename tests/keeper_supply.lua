@@ -185,7 +185,12 @@ arrive_at(jukebox)
 assert(inventories[key(pantry_chest)]["mcl_core:emerald"] == 2 and inventories[key(pantry_chest)]["mcl_farming:bread"] == 5)
 inventories[key(pantry_chest)]["mcl_core:emerald"], inventories[key(pantry_chest)]["mcl_farming:bread"] = nil, 4
 kate._villages_supply_next = nil
--- 4 loaves and 10 potatoes to bake: enough, so no trip.
+-- Raw potatoes kept for raw plates (ticket 39h) count toward no meal: 10 to bake are 4
+-- meals with the loaves.
+local RESERVE = supply.RAW_RESERVE["mcl_farming:potato_item"]
+assert(RESERVE == 16 and supply.meals(chests) == 4)
+-- With the reserve on top, 4 loaves and 10 potatoes to bake: enough, so no trip.
+inventories[key(pantry_chest)]["mcl_farming:potato_item"] = 10 + RESERVE
 assert(supply.meals(chests) == 14)
 now = now + supply.CHECK_SECONDS
 supply.step(kate, now)
@@ -350,20 +355,25 @@ assert(supply.worth({["mcl_farming:carrot_item"] = 4}) == supply.worth({["mcl_fa
 inventories[key(farm_chest)] = {}
 
 -- Its shift: one dish every COOK_SECONDS at the jukebox, a potato baked. Wheat and raw
--- fish it leaves: only the farmer bakes bread, only the butcher cooks fish.
-inventories[key(pantry_chest)] = {["mcl_farming:wheat_item"] = 4, ["mcl_farming:potato_item"] = 2,
+-- fish it leaves: only the farmer bakes bread, only the butcher cooks fish. The reserve
+-- for raw plates (ticket 39h) it never bakes.
+inventories[key(pantry_chest)] = {["mcl_farming:wheat_item"] = 4, ["mcl_farming:potato_item"] = 2 + RESERVE,
 	["mcl_fishing:fish_raw"] = 2}
 time = 15000 / 24000
 kate.order = "work"
 kate._villages_food = 12 -- fed: the keeper's own dinner is tested below
 supply.step(kate, now)
 assert(inventories[key(pantry_chest)]["mcl_farming:potato_item_baked"] == 1)
-assert(inventories[key(pantry_chest)]["mcl_farming:potato_item"] == 1)
+assert(inventories[key(pantry_chest)]["mcl_farming:potato_item"] == 1 + RESERVE)
 supply.step(kate, now + 1)
-assert(inventories[key(pantry_chest)]["mcl_farming:potato_item"] == 1, "one dish per COOK_SECONDS")
+assert(inventories[key(pantry_chest)]["mcl_farming:potato_item"] == 1 + RESERVE, "one dish per COOK_SECONDS")
 now = now + supply.COOK_SECONDS
 supply.step(kate, now)
 assert(inventories[key(pantry_chest)]["mcl_farming:potato_item_baked"] == 2)
+now = now + supply.COOK_SECONDS
+supply.step(kate, now)
+assert(inventories[key(pantry_chest)]["mcl_farming:potato_item_baked"] == 2, "the reserve stays raw")
+assert(inventories[key(pantry_chest)]["mcl_farming:potato_item"] == RESERVE)
 now = now + supply.COOK_SECONDS
 supply.step(kate, now)
 assert(inventories[key(pantry_chest)]["mcl_farming:wheat_item"] == 4 and not inventories[key(pantry_chest)]["mcl_farming:bread"])

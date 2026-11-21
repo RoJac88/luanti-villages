@@ -71,6 +71,9 @@ local HERD_WHEAT_ITEM, HERD_WHEAT = "mcl_farming:wheat_item", 8
 local COOP_SEEDS_ITEM, COOP_SEEDS = "mcl_farming:wheat_seeds", 4
 -- market_stall.lua's banner and BANNER_DAYS (ticket 12): a stall keeper wants a banner.
 local BANNER, BANNER_DAYS = "mcl_banners:banner_item_white", 3
+-- How long a good nothing here makes counts as about once heard offered (ticket 39e):
+-- keeper.lua's KNOWN_DAYS for dishes.
+local OFFERED_DAYS = 7
 -- Work chests, and how near their node they are.
 local PANTRY_RADIUS = 6
 local WORKSHOP_RADIUS = 6
@@ -791,9 +794,35 @@ function M.variety_of(self)
 	return function(item) return variety.factor(meals, item, day) end
 end
 
+-- Goods nothing in the village makes that it heard offered within OFFERED_DAYS
+-- (`_villages_heard_offered`, market_news.lua, ticket 39e), and those in `offered` (a set:
+-- what a player at its trade window carries): a vanilla want for one counts again. Older
+-- ones are forgotten. Nil when there are none.
+function M.available(self, offered)
+	local heard, day = self._villages_heard_offered, core.get_day_count and core.get_day_count()
+	local set
+	for item, when in pairs(heard or {}) do
+		if day and day - when >= OFFERED_DAYS then
+			heard[item] = nil
+		else
+			set = set or {}
+			set[item] = true
+		end
+	end
+	if heard and next(heard) == nil then self._villages_heard_offered = nil end
+	for item, count in pairs(offered or {}) do
+		if count > 0 then
+			set = set or {}
+			set[item] = true
+		end
+	end
+	return set
+end
+
 -- The ledger's view of this villager (ledger.lua): its targets, needs, surplus and values.
 -- A keeper by its role; a Builder or an alchemist has no vanilla trade of its own.
-function M.assess(self)
+-- `offered` (may be nil) is what a player at its window carries (M.available).
+function M.assess(self, offered)
 	local extra, worth = wants.targets(self)
 	-- Comforts for its savings (comforts.lua, ticket 19).
 	-- Not on a commission's price it has yet to earn (ticket 26b).
@@ -949,6 +978,7 @@ function M.assess(self)
 		id = self._id,
 		profession = M.trade_key(self),
 		max_tier = self._max_trade_tier or 1,
+		available = M.available(self, offered),
 		held = M.held(self),
 		food_points = food.points(self),
 		hunger_per_day = (self.child or self._villages_alchemist) and 0 or food.hunger_per_day(),

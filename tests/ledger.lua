@@ -82,8 +82,11 @@ assert(near(ledger.price("mcl_armor:helmet_iron"), ledger.COST_FLOOR * (5 * ledg
 
 -- The dependency graph.
 local smith = ledger.inputs("tool_smith")
-assert(smith["mcl_core:coal_lump"] == 15 and smith["mcl_core:diamond"] == 1)
-assert(ledger.inputs("tool_smith", 1)["mcl_core:diamond"] == nil, "only up to its tier")
+-- Ticket 39e: nothing here mines diamonds, so its trade's want counts only while some is
+-- about (`available`).
+assert(smith["mcl_core:coal_lump"] == 15 and smith["mcl_core:diamond"] == nil)
+assert(ledger.inputs("tool_smith", 5, {["mcl_core:diamond"] = true})["mcl_core:diamond"] == 1)
+assert(ledger.inputs("tool_smith", 1, {["mcl_core:diamond"] = true})["mcl_core:diamond"] == nil, "only up to its tier")
 -- A trade's want for iron, gold or flint counts only where the profession's recipes take it
 -- (ticket 20): the tool smith's flint and the leatherworker's flint go. The tool smith's iron
 -- stays, for its iron pick, and the cleric's gold, for its clock (ticket 29).
@@ -93,11 +96,38 @@ assert(ledger.inputs("cleric")["mcl_core:gold_ingot"])
 -- bottles from glass.
 assert(not ledger.inputs("cleric")["mcl_mobitems:rotten_flesh"] and not ledger.inputs("cleric")["mcl_potions:glass_bottle"])
 assert(ledger.inputs("cleric")["mcl_core:glass"] == 12)
+-- Ticket 39e: a want counts only for a good the village supplies.
+assert(ledger.supplied("mcl_core:cobble") and ledger.supplied("mcl_mobitems:beef"), "gathered, a herd's")
+assert(ledger.supplied("mcl_mobitems:string") and ledger.supplied("mcl_dye:red"), "conversions' products")
+assert(ledger.supplied("mcl_fishing:fish_cooked") and ledger.supplied("mcl_core:iron_ingot"), "recipes', roles'")
+assert(not ledger.supplied("mcl_mobitems:mutton") and not ledger.supplied("mcl_mobitems:rabbit"))
+do
+	local butcher = ledger.inputs("butcher", 5)
+	-- Vanilla's mutton and rabbit, and its own porkchop recipe's input, go: nothing makes them.
+	assert(butcher["mcl_mobitems:mutton"] == nil and butcher["mcl_mobitems:rabbit"] == nil)
+	assert(butcher["mcl_mobitems:porkchop"] == nil)
+	-- What the village has stays: the herd's beef, the catch, berries, and fuel (its kelp
+	-- block is a fuel want, which charcoal fills).
+	assert(butcher["mcl_mobitems:beef"] == 10 and butcher["mcl_fishing:fish_raw"] == 4)
+	assert(butcher["mcl_farming:sweet_berry"] == 10 and butcher["mcl_core:coal_lump"] == 15)
+	-- Heard offered, or carried by a player at its window, mutton and porkchop count again.
+	local about = ledger.inputs("butcher", 5, {["mcl_mobitems:mutton"] = true, ["mcl_mobitems:porkchop"] = true})
+	assert(about["mcl_mobitems:mutton"] == 7 and about["mcl_mobitems:porkchop"] == 7)
+	-- A recipe input nothing prices (the fletcher's gravel) the crafter gathers: it stays.
+	assert(ledger.inputs("fletcher", 5)["mcl_core:gravel"] == 4)
+	-- A want it does not list, the assessed needs leave out too.
+	local view = ledger.assess({profession = "butcher", max_tier = 5, held = {}})
+	assert(not view.needs["mcl_mobitems:mutton"] and view.needs["mcl_mobitems:beef"])
+	view = ledger.assess({profession = "butcher", max_tier = 5, held = {}, available = {["mcl_mobitems:mutton"] = true}})
+	assert(view.needs["mcl_mobitems:mutton"])
+end
 assert(ledger.inputs("leatherworker")["mcl_core:flint"] == nil)
 assert(ledger.inputs("weapon_smith")["mcl_core:iron_ingot"] and not ledger.inputs("weapon_smith")["mcl_core:flint"])
 assert(ledger.inputs("armorer")["mcl_core:iron_ingot"] == 32 and ledger.inputs("fletcher")["mcl_core:flint"] == 26)
 assert(next(ledger.inputs("farmer")) == nil, "a farmer grows what its table buys")
-assert(ledger.inputs("shepherd")["mcl_wool:white"] == nil and ledger.inputs("shepherd")["mcl_dye:black"] == 12)
+-- Ticket 39e: only the dyes the village makes (white from bone meal, red from a poppy).
+assert(ledger.inputs("shepherd")["mcl_wool:white"] == nil and ledger.inputs("shepherd")["mcl_dye:white"] == 12)
+assert(ledger.inputs("shepherd")["mcl_dye:red"] == 12 and ledger.inputs("shepherd")["mcl_dye:black"] == nil)
 assert(ledger.outputs("farmer")["mcl_farming:bread"] and ledger.outputs("farmer")["mcl_farming:wheat_item"])
 -- The keeper buys bread and cooked fish ready made; only farmers bake, only butchers cook.
 assert(ledger.inputs("keeper")["mcl_farming:bread"] and ledger.inputs("keeper")["mcl_fishing:fish_cooked"])

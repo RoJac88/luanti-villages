@@ -443,7 +443,9 @@ function M.install(def, deps)
 	end
 
 	local function current_rows(villager, name)
-		local view = possessions.assess(villager)
+		-- What the player carries counts as about (ticket 39e): its mutton finds the butcher.
+		local carried = player_has(name)
+		local view = possessions.assess(villager, carried)
 		local function ask(item) return asks.ask(villager, item, view) end
 		local function converted(conversion) return asks.converted(villager, conversion, view) end
 		local held = possessions.held(villager)
@@ -454,7 +456,7 @@ function M.install(def, deps)
 				floor = asks.cost_floor(villager, goods.CONVERSIONS.cleric[1])}
 		end
 		return M.rows(view, held, possessions.emeralds(villager), reputation(villager, name),
-			player_has(name), villager._villages_alchemist == true, ask, converted,
+			carried, villager._villages_alchemist == true, ask, converted,
 			villager._villages_keeper and tavern.stock(villager) or nil, cleric), view
 	end
 

@@ -839,4 +839,16 @@ do
 	assert(labour.status(woody):find("woodcutter by trade"))
 end
 
+
+-- Ticket 39e: every good a labourer gathers counts as one the village supplies (ledger.lua
+-- keeps its own list, since it cannot read labour.lua).
+do
+	local ledger = dofile("ledger.lua")
+	for name, activity in pairs(labour.ACTIVITIES) do
+		for item in pairs(activity.goods) do
+			assert(ledger.supplied(item), name .. " gathers " .. item .. ", which ledger.supplied misses")
+		end
+	end
+end
+
 print("labour.lua: ok")

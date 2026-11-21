@@ -3878,11 +3878,28 @@ The butcher does the cooking.
   - A want from a vanilla trade table counts only if something in the village can supply
     that good: a profession `MAKES` it, a recipe or labour makes it, or a villager has
     offered it in the last week (the keeper's `known_dishes` rule).
-  - This drops the butcher's mutton, rabbit, porkchop and dried kelp, and keeps beef,
-    chicken, sweet berries and coal.
-  - The rule applies to every profession. The PR lists each want it drops, so none that
-    matters goes unnoticed.
-  - A dropped want comes back on its own if the good turns up, for example from a player.
+  - A recipe's input counts only by the same rule, unless the profession makes it itself
+    or nothing prices it. Gravel and sand stay, because the crafter gathers them. The
+    butcher's porkchop goes: its cooked-porkchop recipe had no pigs to draw on.
+  - A want for a category (fuel, logs) stands, since any member fills it. The butcher's
+    dried kelp block is a fuel want, and charcoal fills it.
+  - Built (`ledger.supplied`, `ledger.inputs`'s `available`): the wants dropped, per
+    profession, are:
+    - armorer: lava bucket, diamond;
+    - butcher: mutton, rabbit, porkchop;
+    - cartographer: compass;
+    - cleric: rabbit's foot, nether wart;
+    - fisherman: the five boats;
+    - leatherworker: leather piece (VoxeLibre's rabbit hide);
+    - librarian: ink sac;
+    - mason: andesite, diorite, granite, quartz, clay;
+    - shepherd: every dye but white (bone meal, lily of the valley) and red (poppy);
+    - tool smith and weapon smith: diamond.
+  - The smiths' and armorer's 8 diamonds for premium trades (37d) are kept goods, not
+    wants, and stay.
+  - A dropped want comes back while the good is about. A villager notes one it hears
+    offered (`_villages_heard_offered`) for 7 days, and a player at its window who carries
+    some counts too. A player's mutton still finds the butcher.
 - **39f. The butcher cooks for the tavern.**
   - Its targets for raw fish, salmon, beef and chicken follow demand: the cooked dishes the
     keeper and other villagers ask for, plus its usual sale stock. They are no longer one
@@ -3897,10 +3914,16 @@ The butcher does the cooking.
     2 raw items to a dish and twice as slow (`COOK_SECONDS` 20). That keeps buying from
     the butcher the cheaper way.
   - Its farm fetches carry bread, and raw potatoes only for this fallback and for raw plates.
-- **39h. A starving guest always eats.** A raw plate is any raw food in the pantry, at 4
-  carrots, beetroot or potatoes or 2 raw fish, salmon or beef, for `BROKE_PRICE` (1). The
-  keeper keeps one raw plate a guest for the starving (from its farm fetch) and serves it
-  even when it won't cook.
+- **39h. A starving guest always eats.**
+  - A raw plate is about a dish's points of any raw food in the pantry: 4 carrots,
+    beetroot or potatoes, or 4 raw fish or salmon, which feed 1 point each as a last
+    resort. Raw beef is no food here. A plate costs `BROKE_PRICE` (1), and a starving guest
+    with no emerald gets it free.
+  - The keeper never bakes the last 16 raw potatoes, 4 plates (`RAW_RESERVE`), and its
+    meal count leaves them out, so its fetches bring them on top. 4 plates rather than one
+    a guest, since the keeper can't know how many will starve, and about 3 a day did.
+  - The rule from 22b stands: a guest who can't pay dinner, or a starving one who won't,
+    gets the plate. Raw potatoes now make one, so this works again.
 
 **Order.** 39e and 39h are small and fix the worst at once. 39a, 39b and 39d are the price
 redesign and land together, as they replace one rule with another. 39f, 39g and 39c follow.
