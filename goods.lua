@@ -130,7 +130,7 @@ local function sources_for(conversion, count)
 	return batches * takes, batches * gives
 end
 
-local M = {CATEGORIES = categories, yield = yield, sources_for = sources_for, ORDER = ORDER, SPECIES = SPECIES, CONVERSIONS = conversions, BURN = BURN,
+local M = {CATEGORIES = categories, yield = yield, sources_for = sources_for, ORDER = ORDER, SPECIES = SPECIES, CONVERSIONS = conversions, ANYONE = ANYONE, BURN = BURN,
 	COAL = COAL, CHARCOAL = CHARCOAL, STRING = STRING}
 
 -- How many of a category's units one item gives, or nil if it is no member.

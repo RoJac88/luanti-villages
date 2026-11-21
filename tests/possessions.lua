@@ -479,8 +479,23 @@ assert(tot._villages_food == nil)
 do
 	local mason = {_id = "mo", _profession = "mason", _villages_food = 20}
 	local builder = {_id = "bo", _profession = "mason", _villages_builder = true, _villages_food = 20}
-	assert(possessions.assess(mason).needs["mcl_core:clay_lump"], "the mason wants clay")
-	assert(not possessions.assess(builder).needs["mcl_core:clay_lump"], "the Builder does not")
+	assert(possessions.assess(mason).needs["mcl_core:stone"], "the mason wants stone")
+	assert(not possessions.assess(builder).needs["mcl_core:stone"], "the Builder does not")
+end
+
+-- Ticket 39e: a good nothing here makes is wanted while some is about: heard offered within
+-- a week (`_villages_heard_offered`, market_news.lua), or carried by a player at its window.
+do
+	local mutton = "mcl_mobitems:mutton"
+	local butcher = {_id = "bm", _profession = "butcher", _max_trade_tier = 5, _villages_food = 20}
+	assert(not possessions.assess(butcher).needs[mutton], "nothing makes mutton")
+	assert(possessions.assess(butcher, {[mutton] = 3}).needs[mutton], "a player carries some")
+	assert(not possessions.assess(butcher, {[mutton] = 0}).needs[mutton])
+	butcher._villages_heard_offered = {[mutton] = day - 2}
+	assert(possessions.assess(butcher).needs[mutton], "heard offered two days ago")
+	butcher._villages_heard_offered = {[mutton] = day - 7}
+	assert(not possessions.assess(butcher).needs[mutton], "a week ago: forgotten")
+	assert(butcher._villages_heard_offered == nil)
 end
 
 -- An alchemist is a cleric to vanilla, but wants none of the cleric's goods and no food,

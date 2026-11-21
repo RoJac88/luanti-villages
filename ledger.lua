@@ -316,8 +316,51 @@ end
 
 -- The dependency graph.
 
+-- Goods the village supplies (ticket 39e). What labourers gather (labour.lua's ACTIVITIES;
+-- tests/labour.lua checks the two agree): ledger.lua cannot read labour.lua, which reads it.
+local GATHERED = {
+	"mcl_core:cobble", "mcl_core:reeds", "mcl_core:apple", "mcl_farming:sweet_berry",
+	"mcl_flowers:poppy", "mcl_flowers:dandelion", "mcl_flowers:lily_of_the_valley",
+	"mcl_core:tree", "mcl_core:birchtree", "mcl_core:sprucetree", "mcl_core:jungletree", "mcl_core:acaciatree",
+	"mcl_core:sapling", "mcl_core:birchsapling", "mcl_core:sprucesapling", "mcl_core:junglesapling",
+	"mcl_core:acaciasapling",
+	-- A forager picks up a skeleton's bones (goods.lua); the butcher's coop lays eggs.
+	"mcl_mobitems:bone", "mcl_throwing:egg",
+}
+local supplied
+
+-- Whether something in the village makes `item` (ticket 39e): a profession that makes it
+-- for itself (MAKES), a recipe's output (a labourer's too), a role's output (the keeper's
+-- dishes, the alchemist's iron), a conversion's product (wool to string, a poppy to red
+-- dye) or what labourers gather.
+function M.supplied(item)
+	if not supplied then
+		supplied = {}
+		for _, item_of in ipairs(GATHERED) do supplied[item_of] = true end
+		for _, set in pairs(MAKES) do
+			for made in pairs(set) do supplied[made] = true end
+		end
+		for _, list in pairs(recipes) do
+			for _, recipe in ipairs(list) do supplied[recipe.makes] = true end
+		end
+		for _, role in pairs(ROLES) do
+			for made in pairs(role.outputs) do supplied[made] = true end
+		end
+		for _, list in pairs(goods.CONVERSIONS) do
+			for _, conversion in ipairs(list) do supplied[conversion.to] = true end
+		end
+		for _, conversion in ipairs(goods.ANYONE) do supplied[conversion.to] = true end
+	end
+	return supplied[item] == true
+end
+
 -- What a profession buys to work, as item to the batch it wants, up to max_tier.
-function M.inputs(profession, max_tier)
+-- A vanilla trade's want counts only for a good the village supplies (M.supplied) or one
+-- in `available` (a set: goods a villager heard offered lately, or a player carries; ticket
+-- 39e). The butcher's mutton, rabbit and porkchop, which nothing here makes, topped its
+-- needs at 76 to 92 while it held 4 of the fish and beef the village had (ColonyFood,
+-- 2026-11-21). A recipe's inputs always count: they are the mod's own.
+function M.inputs(profession, max_tier, available)
 	local role = ROLES[profession]
 	if role then return role.inputs end
 	local found = {}
@@ -332,11 +375,15 @@ function M.inputs(profession, max_tier)
 	for _, recipe in ipairs(recipes[profession] or {}) do
 		for _, input in ipairs(recipe.from) do uses[input[1]] = true end
 	end
+	-- A category's want (fuel, logs) is filled by any member, so it stands.
+	local function exists(item)
+		return M.supplied(item) or (available and available[item]) or goods.target_category(item) ~= nil
+	end
 	for _, trade in ipairs(entry.trades) do
 		local offered = trade.offered[1]
 		if trade.tier <= (max_tier or 5) and offered.item == EMERALD and #trade.wanted == 1 then
 			local item = trade.wanted[1].item
-			if not makes[item] and not not_bought[item] and (not FLOORED_INPUTS[item] or uses[item]) then found[item] = math.min(math.max(found[item] or 0, trade.wanted[1].min), INPUT_CAP) end
+			if exists(item) and not makes[item] and not not_bought[item] and (not FLOORED_INPUTS[item] or uses[item]) then found[item] = math.min(math.max(found[item] or 0, trade.wanted[1].min), INPUT_CAP) end
 		end
 	end
 	for _, recipe in ipairs(recipes[profession] or {}) do
@@ -344,8 +391,13 @@ function M.inputs(profession, max_tier)
 			-- One it makes itself (MAKES) only for a craft, not a batch: it never buys it, and
 			-- a batch would hold back what it sells, a leatherworker's leather from the
 			-- librarian's books (ticket 24).
-			local batch = makes[input[1]] and 1 or CRAFT_BATCH
-			found[input[1]] = math.max(found[input[1]] or 0, math.min(input[2] * batch, INPUT_CAP))
+			-- None for a priced input nothing here supplies (the butcher's porkchop): it would
+			-- be a need never met. One nothing prices (gravel, sand) the crafter gathers.
+			local item = input[1]
+			if makes[item] or exists(item) or not M.price(item) then
+				local batch = makes[item] and 1 or CRAFT_BATCH
+				found[item] = math.max(found[item] or 0, math.min(input[2] * batch, INPUT_CAP))
+			end
 		end
 		if recipe.fuel then found[COAL] = math.max(found[COAL] or 0, FUEL_BATCH) end
 	end
@@ -438,7 +490,7 @@ function M.assess(input)
 	end
 	local food_need = (input.hunger_per_day or 0) * food_days
 	if food_need > 0 then want_category("food", food_need) end
-	for item, batch in pairs(M.inputs(input.profession, input.max_tier)) do
+	for item, batch in pairs(M.inputs(input.profession, input.max_tier, input.available)) do
 		-- None for recipes that do not pay (ticket 21d, M.unpaid).
 		if not (input.unpaid or {})[item] then
 			local category = goods.target_category(item)

@@ -71,6 +71,16 @@ local LAST_RESORT = {
 
 local M = {FULL = FULL, HUNGRY = HUNGRY, POINTS = POINTS, RAW = RAW, LAST_RESORT = LAST_RESORT}
 
+-- A raw plate (meal.lua, ticket 39h): raw food worth about a dish's points.
+M.RAW_PLATE_POINTS = 4
+-- How many of a raw food make a plate (4 potatoes, 4 raw fish), or nil for one that is not
+-- raw food.
+function M.raw_portion(item)
+	local points = (RAW[item] and POINTS[item]) or LAST_RESORT[item]
+	if not points then return nil end
+	return math.ceil(M.RAW_PLATE_POINTS / points)
+end
+
 -- Whether an item is food fit for dinner: food, and not raw.
 function M.is_prepared(item)
 	return POINTS[item] ~= nil and not RAW[item]

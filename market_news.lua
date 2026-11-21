@@ -27,7 +27,9 @@
 -- next read; past NEWS_ENTRIES the least interesting entries go.
 --
 -- A keeper notes each dish it hears offered (`_villages_known_dishes`, ticket 35), and
--- keeps a few of each in its pantry (keeper_supply.lua).
+-- keeps a few of each in its pantry (keeper_supply.lua). Anyone notes a good it hears
+-- offered that nothing in the village makes (`_villages_heard_offered`, item to the day
+-- last heard, ticket 39e), so a vanilla want for it counts again while some is about.
 --
 -- Hearsay ages by game time, since it describes the world rather than the villager.
 -- With the economy off nothing is told or kept.
@@ -300,6 +302,10 @@ local function receive(listener, entry)
 		and core.get_day_count then
 		listener._villages_known_dishes = listener._villages_known_dishes or {}
 		listener._villages_known_dishes[entry.item] = core.get_day_count()
+	end
+	if entry.kind == "has" and not entry.group and core.get_day_count and not ledger.supplied(entry.item) then
+		listener._villages_heard_offered = listener._villages_heard_offered or {}
+		listener._villages_heard_offered[entry.item] = core.get_day_count()
 	end
 	local list = listener._villages_market_news or {}
 	listener._villages_market_news = list

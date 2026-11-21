@@ -71,11 +71,16 @@ local BITE_SECONDS = 0.4
 -- A plate hold lapses unless renewed, so one left by a guest that unloaded
 -- frees itself.
 local HOLD_SECONDS = 5
--- A raw plate (2026-11-13): raw carrots or beetroot, as many as make about a loaf's
--- points. A villager guest who can pay a dinner gets one at dinner's price when the
--- pantry holds no dish; one who cannot gets only this, for BROKE_PRICE, and one with no
--- emerald at all gets nothing (and takes no seat, tavern.lua).
-local RAW_PLATES, RAW_PORTION = {"mcl_farming:carrot_item", "mcl_farming:beetroot_item"}, 4
+-- A raw plate (2026-11-13): raw food, as much as makes about a dish's points
+-- (food.raw_portion: 4 potatoes, carrots or beetroot, 4 raw fish). A villager guest who can
+-- pay a dinner gets one at dinner's price when the pantry holds no dish; one who cannot, or
+-- a starving one that will not, gets only this, for BROKE_PRICE, and a starving one with no
+-- emerald at all gets it free (ticket 39h). Before 39h only carrots and beetroot made one,
+-- 4 of either, and the pantry held 2 carrots all run, so a starving guest went without
+-- (ColonyFood, 2026-11-21). The keeper keeps raw potatoes for it (keeper_supply.lua's
+-- RAW_RESERVE). Carrots and beetroot first: they make no dish.
+local RAW_PLATES = {"mcl_farming:carrot_item", "mcl_farming:beetroot_item", "mcl_farming:potato_item",
+	"mcl_fishing:fish_raw", "mcl_fishing:salmon_raw"}
 local BROKE_PRICE = 1
 -- Up to this, in dinners at its own price for one (dinner.scale), the cleric eats free:
 -- alms.lua's SAVINGS.
@@ -206,10 +211,11 @@ local function has_room(self)
 	return not is_villager(self) or food.points(self) <= possessions.EAT_AT
 end
 
--- A raw plate the pantry holds, or nil.
+-- A raw plate the pantry holds: the item and how many make it; or nil.
 local function raw_plate(chests)
 	for _, item in ipairs(RAW_PLATES) do
-		if pantry.count(chests, item) >= RAW_PORTION then return item end
+		local portion = food.raw_portion(item)
+		if portion and pantry.count(chests, item) >= portion then return item, portion end
 	end
 	return nil
 end
@@ -230,8 +236,10 @@ local function order(self, jukebox, chests, choose)
 	if #dishes == 0 and not (villager and raw_plate(chests)) then return nil, "the pantry is empty" end
 	if willing then
 		if #dishes > 0 then return choose and pick_dish(self, dishes) or dishes[1], 1, price, pay end
-		local raw = villager and raw_plate(chests)
-		if raw then return raw, RAW_PORTION, price, pay end
+		if villager then
+			local raw, portion = raw_plate(chests)
+			if raw then return raw, portion, price, pay end
+		end
 		return nil, "the pantry is empty"
 	end
 	if #dishes > 0 then dinner.turned(keeper, self._id, day) end
@@ -241,12 +249,15 @@ local function order(self, jukebox, chests, choose)
 	if villager and can_pay() and not starving then
 		return nil, "a dinner is not worth " .. price .. " emerald(s) to the diner"
 	end
-	if not villager or possessions.emeralds(self) < BROKE_PRICE then
+	local broke = villager and possessions.emeralds(self) < BROKE_PRICE
+	if not villager or (broke and not starving) then
 		return nil, "the diner cannot pay " .. price .. " emerald(s)"
 	end
-	local raw = raw_plate(chests)
+	local raw, portion = raw_plate(chests)
 	if not raw then return nil, "the diner cannot pay " .. price .. " emerald(s), and there is no raw plate" end
-	return raw, RAW_PORTION, BROKE_PRICE, function() possessions.take(self, possessions.EMERALD, BROKE_PRICE) end
+	-- A starving guest always eats (ticket 39h): with no emerald, free.
+	if broke then return raw, portion, 0, nil end
+	return raw, portion, BROKE_PRICE, function() possessions.take(self, possessions.EMERALD, BROKE_PRICE) end
 end
 
 -- Whether a guest should take a seat at this tavern: it would be served there tonight
@@ -447,7 +458,7 @@ local function serve(self, jukebox)
 	-- The evening's demand, which the keeper stocks the pantry to (ticket 22c).
 	if chests then
 		dinner.served(keeper_on_duty(jukebox), core.get_day_count())
-		if portion == 1 then note_dish(jukebox, item) end
+		if not food.raw_portion(item) then note_dish(jukebox, item) end
 	end
 	-- Counted from the moment it is served, so a meal cut short by standing
 	-- up, a reload or a player's item still spends the evening's meal.
@@ -458,7 +469,7 @@ local function serve(self, jukebox)
 	if chests and not self._villages_on_bite then
 		for _ = 1, portion do food.receive(self, item) end
 		-- A dish, not a raw plate: more while it is still hungry.
-		if portion == 1 then seconds(self, jukebox, chests) end
+		if not food.raw_portion(item) then seconds(self, jukebox, chests) end
 		-- Its dinner for the day: it eats nothing of its own tonight (possessions.lua).
 		self._villages_dined_day = core.get_day_count()
 	end

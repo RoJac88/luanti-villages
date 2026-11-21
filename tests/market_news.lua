@@ -116,6 +116,24 @@ do
 	minetest.get_day_count = nil
 end
 
+-- Anyone notes a good it hears offered that nothing here makes (ticket 39e); not one the
+-- village makes, not a need.
+do
+	minetest.get_day_count = function() return 20 end
+	local MUTTON, RABBIT = "mcl_mobitems:mutton", "mcl_mobitems:rabbit"
+	local told = {
+		{item = MUTTON, who = "ann", kind = "has", count = 3, heard = now, hops = 0},
+		{item = RABBIT, who = "ann", kind = "needs", count = 3, heard = now, hops = 0},
+		{item = "mcl_mobitems:beef", who = "ann", kind = "has", count = 3, heard = now, hops = 0},
+	}
+	local listener = villager("lis", {})
+	for _ = 1, 5 do news.tell(told, listener, nil, now) end
+	local heard = listener._villages_heard_offered
+	assert(heard and heard[MUTTON] == 20, "heard mutton offered on day 20")
+	assert(not heard[RABBIT] and not heard["mcl_mobitems:beef"])
+	minetest.get_day_count = nil
+end
+
 -- Interest: a listener short of food cares more for an offer of bread; fresh and near
 -- news more than old and far.
 local hungry = villager("eve", {}, {_villages_food = 0})
