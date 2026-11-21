@@ -3622,15 +3622,140 @@ The lines, by sub-ticket (one PR each, against `main`):
     items, enchanted as listed.
 - **None.** The shepherd, mason, butcher and keeper have no rare goods in vanilla; the
   Builder, alchemist and nitwit keep their own roles.
-- **Later: the cartographer.** Explorer maps (VoxeLibre has none) from 8 paper: a map of the
-  biome a structure stands in, found by `core.get_biome_data` on land not yet generated and
-  drawn by `mcl_maps.create_map`, which generates it. Out of scope until the engine cost of
-  generating that land is measured.
+- **The cartographer: ticket 38.** Its explorer maps need land found and generated first, so
+  they are a ticket of their own.
 - **Tests (37a):** `tests/premium.lua` (bands and levels, enchantment levels, the librarian's 14
   books, prices, the base kept, rows); `tests/trade_window.lua` (the Special tab, a locked book
   not sold, a book taken and the enchanted one made, paid and tallied, out of stock, a farmer
   with no tab); `tests/possessions.lua` (books a need and not spare); `tests/production.lua` (no
   bookshelf from the kept books).
+
+### 38. Explorer maps
+
+The cartographer's premium goods, as vanilla's: an ocean explorer map and a woodland
+explorer map. VoxeLibre has neither (its `villager.lua` leaves both trades as `FIXME`, and
+`mcl_maps` has a `TODO` for them), so this ticket draws them. VoxeLibre's stand-ins for the
+structures are `ocean_temple` (prismarine, guardians, an elder guardian) for the ocean
+monument and `woodland_cabin` (a cabin or an outpost in RoofedForest, vindicators and evokers)
+for the woodland mansion, which it lacks.
+
+**Why a search.** Minecraft lays structures on a grid fixed by the seed, so it lists
+candidates without generating anything. VoxeLibre registers each structure as an engine
+decoration with an empty schematic: the engine picks spots while generating, keeps those
+whose real terrain passes (an ocean temple wants sand or gravel with 4 water around it, at
+sea level -4 or deeper), and Lua then rolls a chance seeded by the spot (a cabin's 1 in 800).
+The engine's choice depends on the real ground and isn't exposed to Lua, so a structure is
+known only once its land is generated. The cartographer finds them by generating likely land,
+slowly, in the background, before any player asks. It never places a structure itself: every
+map leads to one the world made.
+
+**Measured (2026-11-21).** A probe generated 500 likely-ocean and every likely-RoofedForest
+chunk within 5,000 nodes of the origin, on the ColonyFood seed and seed 2001:
+
+| | ColonyFood | Seed 2001 |
+|---|---|---|
+| Ocean temples in 500 likely-ocean chunks | 14 | 8 |
+| Woodland cabins in likely-RoofedForest chunks | 11 of 188 | 5 of 88 |
+| Chunks generated, seconds | 688, 190 | 588, 167 |
+
+- About 1 ocean chunk in 45 holds a temple, and about a fifth of chunks are ocean: the
+  nearest is typically some 700 nodes away, about 45 chunks to generate.
+- About 1 RoofedForest chunk in 17 holds a cabin, but the biome is only 0.6 to 1.2% of
+  chunks: the nearest is 1,500 to 3,500 nodes away, about 17 chunks to generate. Cabins
+  cluster in one forest.
+- A Lua copy of the v7 terrain-height formula (`MapgenV7::baseTerrainLevelAtPoint`, through
+  `core.get_perlin` with the world's `mgv7_np_*` noise) matches the generated ground to about
+  a node. Chunks it calls deep ocean were deep ocean 84% of the time; RoofedForest guesses
+  (`core.get_biome_data` at that height) 92%. `core.get_spawn_level` is no help: it is nil on
+  high land as well as at sea.
+- The probe mod and its logs are kept outside the repository; its method is 38a's.
+
+**Minecraft against this mod.**
+
+| | Minecraft | Here |
+|---|---|---|
+| Finding | seed grid, a search when the offer is made | a background search when the cartographer reaches the level |
+| Map | 1:2, blank until explored, land and water outlined | 1:2 (zoom 1), drawn whole at once, as VoxeLibre's maps are |
+| Marker | the structure's icon, players, frames | a structure icon painted into the image; the player's arrow as VoxeLibre draws it |
+| Price | 13 or 14 emeralds and a compass | dinners plus 8 paper, as the other premium goods |
+| Second map | usually the same structure | the nearest site that player hasn't bought |
+
+The sub-tickets (one PR each, against `main`):
+
+- **38a. Charting.** `charting.lua`, pure where it can be, finds sites and keeps them.
+  - **Seen sites.** It wraps `mcl_structures.place_structure` (looked up on the table at each
+    call, as `village_index.lua` wraps `settlements.place_schematics`) and logs every
+    `ocean_temple` and `woodland_cabin` placed: name and position, in mod storage. Exploring
+    players chart for free.
+  - **Charts by village.** A village is its bell (`_villages_bell`). Once a cartographer with
+    that bell reaches tier 3 a chart for ocean temples starts there, and at tier 4 one for
+    woodland cabins. A chart keeps up to 3 sites nearest the bell, each with its map (38b).
+    Logged sites within its radius count first.
+  - **The search.** Chunks (80 nodes, from -32) within the radius, nearest first: 3,000
+    nodes for temples, 6,000 for cabins. Each is classified by noise alone, 16 samples: deep
+    ocean if 12 lie below sea level -6, forest if 8 are RoofedForest on land. Only those are
+    generated (`core.emerge_area`, y -32 to 47), one at a time, with a pause between
+    (a setting, 2 s by default), and the hook catches what is placed. Classifying is cheap
+    (15,000 chunks in under 3 s) but runs in slices so a step never stalls. A chart walks on
+    until it has 3 sites or reaches its radius, and keeps its place across restarts.
+  - **Old land.** A chunk generated before the mod was installed comes back from disk
+    (the emerge callback's action is not `EMERGE_GENERATED`) and never fires the hook. Those
+    are scanned with `core.find_nodes_in_area` for nodes only the structure has, chosen from
+    its schematics (`tools/extract_schematics`), and the cluster's centre is the site.
+  - **When it can't.** No chart if the structure is disabled (`mcl_structures.is_disabled`)
+    or the mapgen is singlenode or flat. The classifier needs v7, VoxeLibre's default: other
+    mapgens chart only from seen sites. A chart that reaches its radius with no site says so,
+    and doesn't search again.
+  - `/living_villages_charts` lists a village's charts, their sites and how far each search
+    has got.
+  - **Tests:** `tests/charting.lua` (chunk maths, nearest-first order, the classifier on stub
+    noise, logged sites counted first, a chart stopping at 3 sites and at its radius, resumed
+    from storage, no chart for a disabled structure or another mapgen, the scan's cluster
+    centre). On the real engine: a chart from the ColonyFood bell finds a temple and a cabin.
+- **38b. The map.** `explorer_map.lua` draws a site's map once, when it is charted.
+  - **Drawing.** Its own copy of `mcl_maps`' renderer (local there): VoxeLibre's
+    `colors.json`, heights shaded, y -32 to 63, 128 pixels over 256 nodes (zoom 1), centred
+    on the site's map cell as `mcl_maps` centres any map. It generates the chunks it needs
+    (4 or 5 a side, two high: 32 to 50, some 10 to 15 s), so the land is drawn whole, as VoxeLibre draws any
+    new map.
+  - **The marker.** An icon painted into the pixels at the site: a teal temple for the ocean,
+    a dark green cabin for the woodland, each 9 by 9, our own drawing (defined in the Lua as a
+    grid, since nothing reads a PNG back). Being in the image, it shows in the hand, the
+    offhand and an item frame.
+  - **An ordinary map.** The PNG goes where `mcl_maps` keeps its own,
+    `<world>/mcl_maps/mcl_maps_map_<id>.png`, with an id of ours
+    (`<cx>_overworld_<cz>_1_lv_<kind><n>`), and the item is a `mcl_maps:filled_map` with that
+    id, its centre, zoom 1, dimension, corners and a description ("Ocean Explorer Map").
+    `mcl_maps` then loads it, draws the player's arrow and the off-map dots, copies it at the
+    crafting grid (meta and all) and shows it in frames, untouched.
+  - **Locked.** `mcl_maps:locked` is set, so the cartography table won't zoom it: zooming
+    calls `mcl_maps.regenerate_map`, which would redraw it without its marker.
+  - **Tests:** `tests/explorer_map.lua` (on a stub world: the marker's pixels at the centre,
+    the id, the meta, locked, the area generated before drawing). On the real engine: a map
+    from 38a's chart in the hand, copied, in a frame, refused by the table.
+- **38c. The cartographer's premium line.**
+
+  | | Level 3 | Level 4 |
+  |---|---|---|
+  | Cartographer | ocean explorer map (6) | woodland explorer map (10) |
+
+  - Each takes 8 paper (the empty map's recipe; the cartographer stands in for the compass
+    no village can make). From journeyman up it keeps 16 paper (`keeps`), so it buys paper
+    from players and makes its own from cane, as now.
+  - **Stock.** A map row's stock is the lower of its paper and the chart's sites that player
+    hasn't bought from this village. A sale hands over that site's map, drawn already, so
+    buying stays at once. The window says why one is missing: "still charting the sea", or
+    "knows of no woodland cabin within 6,000 blocks".
+  - **One map a site a player.** A village remembers which sites each player bought. Another
+    player gets the nearest; the same player the next. A chart refills to 3 behind sales.
+  - The offer has a `chart` field (`ocean_temple`, `woodland_cabin`); `premium.rows` takes
+    the sites as it takes held goods, and `make` builds the map from the site.
+  - **Tests:** `tests/premium.lua` (the two rows, levels, prices, stock by paper and by sites);
+    `tests/trade_window.lua` (a map sold with its site's meta and paper taken; the same
+    player's second map is the next site; another player's first is the nearest; out of stock
+    while charting, with the reason).
+- **Open.** Whether a woodland map at 1,500 to 3,500 nodes is too far for the game's pace,
+  and whether the prices sit right beside the saddle (8) and pearls (4).
 
 ## Open questions
 
