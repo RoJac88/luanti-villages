@@ -3675,7 +3675,7 @@ chunk within 5,000 nodes of the origin, on the ColonyFood seed and seed 2001:
 | | Minecraft | Here |
 |---|---|---|
 | Finding | seed grid, a search when the offer is made | a background search when the cartographer reaches the level |
-| Map | 1:2, blank until explored, land and water outlined | 1:2 (zoom 1), drawn whole at once, as VoxeLibre's maps are |
+| Map | 1:2, blank until explored, land and water outlined | 1:2 (VoxeLibre's level 2), drawn whole at once, as VoxeLibre's maps are |
 | Marker | the structure's icon, players, frames | a structure icon painted into the image; the player's arrow as VoxeLibre draws it |
 | Price | 13 or 14 emeralds and a compass | dinners plus 8 paper, as the other premium goods |
 | Second map | usually the same structure | the nearest site that player hasn't bought |
@@ -3724,26 +3724,37 @@ The sub-tickets (one PR each, against `main`):
     from storage, no chart for a disabled structure or another mapgen, the scan's cluster
     centre). On the real engine: a chart from the ColonyFood bell finds a temple and a cabin.
 - **38b. The map.** `explorer_map.lua` draws a site's map once, when it is charted.
+  - **When.** A chart's sites with no map are drawn before its search goes on, one at a time,
+    the pause after each (`charting.lua`). A site is sold only once drawn (38c). A map whose
+    land can't be generated waits for a restart. Drawing generates land too, so it can find
+    sites: on the ColonyFood seed, drawing the first temple's map placed a nearer one.
   - **Drawing.** Its own copy of `mcl_maps`' renderer (local there): VoxeLibre's
-    `colors.json`, heights shaded, y -32 to 63, 128 pixels over 256 nodes (zoom 1), centred
-    on the site's map cell as `mcl_maps` centres any map. It generates the chunks it needs
-    (4 or 5 a side, two high: 32 to 50, some 10 to 15 s), so the land is drawn whole, as VoxeLibre draws any
-    new map.
-  - **The marker.** An icon painted into the pixels at the site: a teal temple for the ocean,
-    a dark green cabin for the woodland, each 9 by 9, our own drawing (defined in the Lua as a
-    grid, since nothing reads a PNG back). Being in the image, it shows in the hand, the
-    offhand and an item frame.
+    `colors.json`, heights shaded, y -32 to 63, 128 pixels over 256 nodes (VoxeLibre's level
+    2; a new map is level 1, 128 nodes), centred as `mcl_maps` centres any map, so the site
+    is at least 64 nodes from an edge. It generates that land first, twice as `mcl_maps`
+    does (the second pass places structures the first triggered): about 3 s a map here.
+  - **The marker.** An icon painted into the pixels at the site, 9 by 9, our own drawing
+    (a grid in the Lua, since nothing reads a PNG back): a teal stepped temple for the ocean,
+    a red-roofed cabin with pale walls for the woodland (green or brown would vanish into a
+    dark oak forest). Being in the image, it shows in the hand, the offhand and an item frame.
   - **An ordinary map.** The PNG goes where `mcl_maps` keeps its own,
     `<world>/mcl_maps/mcl_maps_map_<id>.png`, with an id of ours
-    (`<cx>_overworld_<cz>_1_lv_<kind><n>`), and the item is a `mcl_maps:filled_map` with that
-    id, its centre, zoom 1, dimension, corners and a description ("Ocean Explorer Map").
-    `mcl_maps` then loads it, draws the player's arrow and the off-map dots, copies it at the
-    crafting grid (meta and all) and shows it in frames, untouched.
+    (`<cx>_overworld_<cz>_2_lv_<kind><n>`), and the item is a `mcl_maps:filled_map` with that
+    id, its centre, level 2, dimension, corners and a description ("Ocean Explorer Map",
+    "Level 2"). `mcl_maps` then loads it, draws the player's arrow and the off-map dots,
+    copies it at the crafting grid (meta and all) and shows it in frames, untouched.
   - **Locked.** `mcl_maps:locked` is set, so the cartography table won't zoom it: zooming
     calls `mcl_maps.regenerate_map`, which would redraw it without its marker.
-  - **Tests:** `tests/explorer_map.lua` (on a stub world: the marker's pixels at the centre,
-    the id, the meta, locked, the area generated before drawing). On the real engine: a map
-    from 38a's chart in the hand, copied, in a frame, refused by the table.
+  - `/living_villages_charts give` hands the player every drawn map of the nearest village.
+  - **Tests:** `tests/explorer_map.lua` (the area and the site's margin, the render on a stub
+    world: param2 colours, water over sand, shading; pixels north up; the icon centred and
+    clipped, every colour in its palette; the id, the item's meta, locked; land generated
+    twice before the PNG is written, none drawn if it can't be); `tests/charting.lua` (maps
+    drawn before the search, one at a time, a failed one not retried, "not drawn yet" in the
+    command, `give`).
+  - **Checked on the real engine (2026-11-21).** Charted from 0,0 on the ColonyFood seed: six
+    maps drawn in 40 s, each icon on its structure; the items load in `mcl_maps`, and its
+    copy recipe keeps the id and the lock.
 - **38c. The cartographer's premium line.**
 
   | | Level 3 | Level 4 |

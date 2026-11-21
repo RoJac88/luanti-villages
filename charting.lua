@@ -212,13 +212,14 @@ function M.progress(chart, size)
 	return chart.cursor, #M.offsets(M.radius_chunks(chart.kind, size))
 end
 
--- A line for the chat command.
-function M.describe(chart, size)
+-- A line for the chat command. `maps`: drawn maps by site key (ticket 38b).
+function M.describe(chart, size, maps)
 	local kind = M.KINDS[chart.kind]
 	local passed, total = M.progress(chart, size)
 	local sites = {}
 	for _, site in ipairs(chart.sites) do
-		sites[#sites + 1] = string.format("%s (%d away)", key(site.pos), flat_distance(site.pos, chart.center))
+		sites[#sites + 1] = string.format("%s (%d away%s)", key(site.pos), flat_distance(site.pos, chart.center),
+			maps and not maps[key(site.pos)] and ", not drawn yet" or "")
 	end
 	local state = chart.done and (#chart.sites == 0 and string.format("none within %d", kind.radius) or "done")
 		or (#chart.sites >= M.MAX_SITES and "full" or string.format("searching, %d/%d chunks", passed, total))
@@ -260,12 +261,13 @@ end
 M.world_env = world_env
 
 -- deps: village_index (read_village, update_village), storage, structures (mcl_structures),
--- engine (core).
+-- engine (core), explorer_map (explorer_map.lua, by default).
 function M.install(deps)
 	local engine = deps.engine or core
 	local structures = deps.structures
 	local storage = deps.storage
 	local villages = deps.village_index
+	local maps_module = deps.explorer_map or dofile(core.get_modpath("living_villages") .. "/explorer_map.lua")
 	if not structures or not structures.place_structure or not storage then return false end
 	local mg = engine.get_mapgen_setting("mg_name")
 	if mg == "singlenode" or mg == "flat" then return false end
@@ -279,6 +281,9 @@ function M.install(deps)
 	local state = engine.deserialize(storage:get_string("charting")) or {}
 	state.seen = state.seen or {}
 	state.charts = state.charts or {}
+	-- Drawn maps by site key (ticket 38b), and the number for the next one's id.
+	state.maps = state.maps or {}
+	state.map_seq = state.map_seq or 0
 	local function save() storage:set_string("charting", engine.serialize(state)) end
 	local env = world_env(engine)
 	local size = env and env.size or M.chunk_geometry(tonumber(engine.get_mapgen_setting("chunksize")))
@@ -359,7 +364,46 @@ function M.install(deps)
 	local PAUSE = tonumber(engine.settings:get("living_villages_charting_pause")) or 2
 	local busy, wait, enlist_wait = false, 0, 0
 	local turn = 0
+	-- A site with no map yet, nearest charts first: {kind, pos}, or nil. One that failed to
+	-- draw waits for a restart.
+	local draw_failed = {}
+	local function undrawn()
+		local ids = {}
+		for id in pairs(state.charts) do ids[#ids + 1] = id end
+		table.sort(ids)
+		for _, id in ipairs(ids) do
+			local chart = state.charts[id]
+			for _, site in ipairs(chart.sites) do
+				local k = key(site.pos)
+				if not state.maps[k] and not draw_failed[k] then return chart.kind, site.pos end
+			end
+		end
+	end
+
+	local function draw()
+		local kind, pos = undrawn()
+		if not kind then return false end
+		busy = true
+		state.map_seq = state.map_seq + 1
+		local k = key(pos)
+		maps_module.draw(engine, kind, pos, state.map_seq, function(info)
+			if info then
+				state.maps[k] = info
+				engine.log("action", string.format("[living_villages] drew the %s map of %s as %s",
+					M.KINDS[kind].label, k, info.id))
+			else
+				draw_failed[k] = true
+				engine.log("warning", "[living_villages] couldn't generate the land to draw the map of " .. k)
+			end
+			save()
+			busy, wait = false, PAUSE
+		end)
+		return true
+	end
+
 	local function work()
+		-- Maps first: a site found is sold only once drawn.
+		if draw() then return end
 		if not env then return end
 		local ids = {}
 		for id, chart in pairs(state.charts) do
@@ -417,9 +461,10 @@ function M.install(deps)
 	end)
 
 	engine.register_chatcommand("living_villages_charts", {
-		params = "[start [<x>,<z>]]",
+		params = "[start [<x>,<z>] | give]",
 		description = "List each village's explorer map charts: sites found and how far each search has got"
-			.. " (\"start\": chart both kinds around you, or x,z, as a tier 4 cartographer would)",
+			.. " (\"start\": chart both kinds around you, or x,z, as a tier 4 cartographer would;"
+			.. " \"give\": every drawn map of the village nearest you)",
 		privs = {debug = true},
 		func = function(name, param)
 			local verb, where = (param or ""):match("^%s*(%S*)%s*(.-)%s*$")
@@ -442,6 +487,30 @@ function M.install(deps)
 				end
 				if #started == 0 then return false, "Neither structure is enabled." end
 				return true, string.format("Charting %s around %s.", table.concat(started, " and "), key(center))
+			elseif verb == "give" then
+				local player = engine.get_player_by_name and engine.get_player_by_name(name)
+				if not player then return false, "Run it in game." end
+				local pos = player:get_pos()
+				local best
+				for _, chart in pairs(state.charts) do
+					local d = flat_distance(chart.center, pos)
+					if not best or d < best then best = d end
+				end
+				if not best then return false, "No charts yet." end
+				local given = 0
+				for _, chart in pairs(state.charts) do
+					if flat_distance(chart.center, pos) == best then
+						for _, site in ipairs(chart.sites) do
+							local info = state.maps[key(site.pos)]
+							if info then
+								local stack = maps_module.item(ItemStack, info, engine.pos_to_string, engine.colorize)
+								local left = player:get_inventory():add_item("main", stack)
+								if left:is_empty() then given = given + 1 end
+							end
+						end
+					end
+				end
+				return true, string.format("Gave %d explorer map(s).", given)
 			elseif verb ~= "" then
 				return false, "Unknown option: " .. verb
 			end
@@ -452,7 +521,7 @@ function M.install(deps)
 			local lines = {}
 			for _, id in ipairs(ids) do
 				local chart = state.charts[id]
-				lines[#lines + 1] = string.format("Village at %s, %s", key(chart.center), M.describe(chart, size))
+				lines[#lines + 1] = string.format("Village at %s, %s", key(chart.center), M.describe(chart, size, state.maps))
 			end
 			lines[#lines + 1] = string.format("%d structure(s) seen in all.", #state.seen)
 			return true, table.concat(lines, "\n")

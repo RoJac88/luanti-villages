@@ -159,7 +159,12 @@ local engine = {
 	register_globalstep = function(f) registered.step = f end,
 	register_chatcommand = function(name, def) registered[name] = def end,
 }
-assert(charting.install({engine = engine, storage = storage, structures = structures, village_index = village_index}))
+-- Maps (ticket 38b) are drawn by explorer_map.lua; here each draw waits for the test.
+local draws = {}
+local maps_stub = {draw = function(_, kind, pos, n, cb) draws[#draws + 1] = {kind = kind, pos = pos, n = n, cb = cb} end}
+local function drawn(i) draws[i].cb({id = "map" .. draws[i].n, kind = draws[i].kind}) end
+assert(charting.install({engine = engine, storage = storage, structures = structures, village_index = village_index,
+	explorer_map = maps_stub}))
 -- A temple placed before any chart is seen, and offered to the chart made later.
 assert(structures.place_structure({x = 600, y = -8, z = 40}, {name = "ocean_temple"}) == true)
 assert(#charting.state.seen == 1)
@@ -177,7 +182,18 @@ for id in pairs(charts) do ids[#ids + 1] = id end
 assert(#ids == 1 and charts[ids[1]].kind == "ocean_temple", "no woodland chart below tier 4")
 local ocean = charts[ids[1]]
 assert(#ocean.sites == 1 and ocean.sites[1].pos.x == 600)
--- It generates the first likely chunk, east of x 200.
+-- Its map is drawn before any search: a site is sold only once drawn.
+assert(#draws == 1 and #emerges == 0 and draws[1].kind == "ocean_temple" and draws[1].pos.x == 600)
+assert(select(2, registered.living_villages_charts.func("admin", "")):find("not drawn yet"))
+registered.step(5)
+assert(#draws == 1 and #emerges == 0, "one thing at a time")
+drawn(1)
+assert(charting.state.maps["600,-8,40"].id == "map1")
+assert(not select(2, registered.living_villages_charts.func("admin", "")):find("not drawn yet"))
+registered.step(1)
+assert(#emerges == 0, "pausing after the draw")
+registered.step(1.5)
+-- Then it generates the first likely chunk, east of x 200.
 assert(#emerges == 1 and emerges[1].minp.x >= 200 and emerges[1].minp.y == -32 and emerges[1].maxp.y == 47)
 -- Nothing else starts while it is in flight.
 registered.step(5)
@@ -193,6 +209,9 @@ assert(ocean.cursor == held + 1, "passed")
 registered.step(1)
 assert(#emerges == 1, "pausing")
 registered.step(2)
+assert(#emerges == 1 and #draws == 2, "the new site's map first")
+drawn(2)
+registered.step(2.5)
 assert(#emerges == 2)
 local old = emerges[2]
 local ox, oz = old.minp.x, old.minp.z
@@ -204,7 +223,11 @@ emerges[3].cb(nil, engine.EMERGE_FROM_DISK, 0)
 assert(#ocean.sites == 3, "the scanned temple")
 assert(not charting.wants(ocean), "full: no more searching")
 registered.step(5)
-assert(#emerges == 3)
+assert(#emerges == 3 and #draws == 3)
+-- A map that can't be drawn isn't tried again until a restart.
+draws[3].cb(nil)
+registered.step(5)
+assert(#draws == 3)
 -- A cancelled emerge isn't passed: tried again.
 ocean.sites[3] = nil
 registered.step(5)
@@ -223,6 +246,24 @@ assert(charts["woodland_cabin@-500,0,700"] and charts["ocean_temple@-500,0,700"]
 charts["woodland_cabin@-500,0,700"], charts["ocean_temple@-500,0,700"] = nil, nil
 assert(not registered.living_villages_charts.func("admin", "start"), "no player, no x,z")
 assert(not registered.living_villages_charts.func("admin", "bogus"))
+-- "give": every drawn map of the village nearest the player.
+local given = {}
+maps_stub.item = function(_, info) return info end
+engine.get_player_by_name = function()
+	return {get_pos = function() return {x = 20, y = 0, z = 0} end,
+		get_inventory = function() return {add_item = function(_, _, stack)
+			given[#given + 1] = stack
+			return {is_empty = function() return true end}
+		end} end}
+end
+ok, text = registered.living_villages_charts.func("admin", "give")
+local with_maps = 0
+for _, site in ipairs(ocean.sites) do
+	if charting.state.maps[charting.key(site.pos)] then with_maps = with_maps + 1 end
+end
+assert(ok and with_maps >= 1 and #given == with_maps and given[1].id:find("^map"), text)
+assert(text == string.format("Gave %d explorer map(s).", with_maps))
+engine.get_player_by_name = nil
 -- At tier 4 the woodland chart starts too.
 cartographer._max_trade_tier = 4
 registered.step(31)
