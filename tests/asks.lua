@@ -190,4 +190,15 @@ do
 	assert(near(prices.price(same._villages_prices, LOG), learnt), "as if sold at the floor")
 end
 
+-- Ticket 43d: its asks over their floors, largest spare first.
+do
+	local PAPER = "mcl_core:paper"
+	local view = {surplus = {[BEEF] = 30, [PAPER] = 5}, targets = {}, real = function() return 0 end}
+	local seller = {_villages_prices = {[BEEF] = 1 / 64}}
+	local line = asks.describe(seller, view)
+	assert(line:find("^30 beef ") and line:find("at floor, gathered") and line:find("5 paper "), line)
+	assert(line:find("floor %d"), "paper over its floor: " .. line)
+	assert(asks.describe(seller, {surplus = {}}) == "none spare")
+end
+
 print("asks.lua: ok")

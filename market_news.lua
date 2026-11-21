@@ -400,6 +400,9 @@ local function price_day(member, now)
 		{budget = possessions.emeralds(member), stock = stock.food_for_sale(member)})
 	core.log("action", string.format("[living_villages] prices: villager %s, day %d: %s",
 		short_id(member._id), day, prices.describe(member._villages_prices, 4)))
+	-- Its asks over their floors (asks.describe, ticket 43d), so a stuck price can be read.
+	core.log("action", string.format("[living_villages] asks: villager %s, day %d: %s",
+		short_id(member._id), day, asks.describe(member, possessions.assess(member), 4)))
 end
 
 -- Everyone in a finished conversation tells everyone else, both ways. What each knows
