@@ -4083,6 +4083,103 @@ the keeper none at all.
 whether villagers still buy their dinners from the butcher and skip the tavern; if so, a
 tavern dinner needs to be worth more to a guest than the same dish eaten at home.
 
+### 43. One reservation price
+
+Status: design. To be confirmed against the ticket 42 run before building.
+
+**Problem.** A seller has no sound lowest price. Tickets 39 to 42 each fixed one failure and
+uncovered the next, and they share a cause.
+
+- The floor that stood was the seller's own value (asks.lua, 21b), and value is divided by
+  the money factor (21a). λ is a buyer's rule, how much an emerald matters to it, but it
+  was applied to a seller's surplus too. The leatherworker, at λ 0.18, valued 290 beef it
+  would never eat at 4.62 each against an ask of 0.42; the butcher valued cooked beef at
+  22.55; a rich farmer priced potatoes at about 6 (#151). A poor seller's floor is near
+  nothing. The floor followed wealth, not cost or scarcity.
+- Taking it away for food (#151's farm chest, 40a) left nothing under the ask. Unsold
+  stock is marked down 10% a day to a factor of 0.25, and the reference price learns from
+  the sales those asks make (LEARN_TRADE 0.3), so the two pull each other down to the
+  reference price's own floor, 1/64 of the base price. The butcher sold 3 cooked salmon
+  for an emerald (ticket 42). The price lines show where this ends: logs, planks, fuel,
+  flint, saplings and reeds sit at ×0.02, at or near that floor, and iron nuggets and
+  stone at ×0.03 (ColonyFood, 2026-11-21).
+- Each case got its own floor: the alchemist's cost × MARGIN (ticket 30), a conversion's
+  `cost_floor` (37b), the farm chest's ask with none (39a, #151), food a seller's trade
+  makes with none (40a, `stock_in_trade`), a cook's dish at its input cost (42,
+  `dish_floor`), a peddler's bid (`least`, labour.lua). Six rules for one question.
+
+**Rule.** A seller never asks less than its reservation price for the item, the larger of:
+
+1. **What it costs to replace.**
+   - Made from goods it bought (a recipe or a conversion): its inputs at what it paid for
+     them, averaged over about 8 bought, and its fuel at its reference price for coal,
+     times PROFIT (1.25). Ticket 42's `note_input` and `_villages_input_cost`, for every
+     recipe and conversion, not only `demand` ones. The alchemist's book (ticket 30) and
+     the cleric's flesh cost (37b) become this.
+   - Bought to sell on (a peddler's lot, a porter's purchase, the keeper's dishes): what it
+     paid.
+   - Grown, gathered, caught or raised (crops, logs, cobble, fish, the herd's beef, the
+     coop's eggs): GATHER_SHARE of its base price (`ledger.price`), fixed, never learned.
+     A starting value of 0.05 puts a potato at 0.12, raw fish at 0.21, beef at 0.32,
+     cobble at 0.13 and a log at 0.8. For food that is at or under what the market pays
+     now (potatoes 0.5 to 1, fish 0.21 to 0.28, beef 0.43); a log at ×0.02 fetches 0.32,
+     so logs would rise.
+2. **What it is worth to itself, for what it needs.** For units within its own targets and
+   their reserve (ledger.assess's `targets` and RESERVE_SHARE), its value with no money in
+   it (the view's `real`). Units past that, its surplus, have no use value to it: a rich
+   leatherworker's 290th beef is worth to it what it cost, nothing more.
+
+A bid to its face (`with_bid`, 23d) and the material bid share (28) stay: they are demand,
+asks raised toward a buyer's offer, not floors. The money factor stays on the buyer's side,
+where it decides who can pay.
+
+**What follows.**
+
+- Markdown stops at the reservation price: the factor falls only while the ask is above it.
+  The reference price learns only from sales at or above it, so the spiral ends there.
+- `asks.ask` takes one floor, `M.reservation(seller, item, view)`, in place of the
+  alchemist's floor, the own-value floor, `stock_in_trade` and `dish_floor`.
+  `asks.converted` uses it for the product, replacing `cost_floor`. The farm chest's ask
+  uses it too (the farmer's crops: rule 1's gathered case).
+- Its inspector line shows the floor next to the ask, so a stuck price can be read.
+
+**Parts.**
+
+- **43a. One input cost book.** Every purchase of a recipe input or conversion source
+  notes its cost (generalising `note_input`), and goods bought to sell on note what was
+  paid. The alchemist's book and 37b's field read from it or are folded into it.
+- **43b. The reservation price.** `asks.reservation`, the rule above, with GATHER_SHARE;
+  `asks.ask` and `asks.converted` floor at it; the own-value floor, `stock_in_trade`,
+  `dish_floor`, `cost_floor` and `alchemist.ask_floor` go.
+- **43c. Markdown and learning respect it.** `asks.daily` stops marking down at the floor;
+  the farm chest ask posts no lower.
+- **43d. Show it.** The inspector and lv_keep's price lines show each seller's floor.
+
+**Success, on ColonyFood.**
+
+- No ask under its seller's reservation price.
+- Food prices steady over 10 days: potatoes, beef and fish neither falling day after day
+  nor jumping back to the old wealth-driven asks.
+- Logs, planks and fuel off ×0.02, at or above GATHER_SHARE of their base price.
+- The rich leatherworker's beef ask near the market's, and the butcher's dishes never under
+  their input cost.
+- Nothing that ticket 39 to 42 fixed comes back: hunger at 0 or 1, the plate cost between 1
+  and 2, the butcher cooking most dishes.
+
+**Open.**
+
+- GATHER_SHARE's value, and whether one share fits every gathered good, or each wants its
+  own (a diamond is not a log).
+- Whether PROFIT belongs in the floor of a made good, or the floor is cost alone and profit
+  is left to the market.
+- Supply that responds to price: the herd, the fishermen and the harvest produce at a fixed
+  rate, so a glut can only lower the price to the floor. A producer pinned at its floor
+  with stock unsold might work less, or labour instead.
+- Whole emeralds: food now trades at 0.3 to 2, and a sale under one emerald is rounded up
+  by selling more (3 salmon for 1). Whether lots or the coin should change.
+- Whether a good bought for its owner's own use (a comfort, a tool) and later sold counts
+  as bought to sell on, at what was paid, or as used, at its value.
+
 ## Open questions
 
 - Price discovery (ticket 21):
