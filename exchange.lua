@@ -252,6 +252,8 @@ function M.settle(trade)
 	if unit and buyer._villages_keeper then dinner.note_cost(buyer, trade.item, trade.count, trade.pay) end
 	-- An alchemist's book learns what it paid (ticket 30).
 	if trade.pay then alchemist.bought(buyer, possessions.held(buyer), trade.item, trade.count, trade.pay) end
+	-- A cook's raw input costs what it paid (asks.note_input, ticket 42).
+	if trade.pay then asks.note_input(buyer, trade.item, trade.count, trade.pay) end
 	core.log("action", string.format("[living_villages] trade: villager %s sold %d %s%s to %s for %s",
 		short_id(seller), trade.count, trade.item, made, short_id(buyer), price))
 	return true

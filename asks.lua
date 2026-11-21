@@ -34,6 +34,15 @@
 -- flint it could not sell at cost to a fletcher with one emerald). An item with no base
 -- price has no ask: exchange.lua falls back to the midpoint for it.
 --
+-- A cook's dish (a `demand` recipe's output, recipes.lua: the butcher's) is asked at no less
+-- than PROFIT times what its raw inputs cost it, as bought (`_villages_input_cost`,
+-- M.note_input), and its fuel at the cook's reference price for coal (M.dish_floor, ticket
+-- 42). With no floor at its own value (40a) and 16 dishes unsold for days while the keeper
+-- bought none, the butcher's asks fell to a quarter of its reference price and that price
+-- followed its sales down: it sold 3 cooked salmon for an emerald, and 12 baked potatoes,
+-- from fish and beef it paid 0.25 to 0.4 each for (ColonyFood, 2026-11-21). Not 37b's
+-- extra emerald over cost, which would more than double a dish's price.
+--
 -- A comfort (comforts.lua) is asked at no less than BID_SHARE of the best bid for it the
 -- seller heard in the last BID_DAYS game days (market news "needs" entries, a bid capped
 -- at its bidder's emeralds): ticket 23d. Its reference price and factor found it slowly,
@@ -49,6 +58,11 @@ local prices = dofile(core.get_modpath("living_villages") .. "/prices.lua")
 local comforts = dofile(core.get_modpath("living_villages") .. "/comforts.lua")
 local goods = dofile(core.get_modpath("living_villages") .. "/goods.lua")
 local alchemist = dofile(core.get_modpath("living_villages") .. "/alchemist.lua")
+local recipes = dofile(core.get_modpath("living_villages") .. "/recipes.lua")
+local COAL = "mcl_core:coal_lump"
+local SMELTS_PER_LUMP = 8
+-- What a cook's raw inputs cost it is an average over about this many bought (M.note_input).
+local INPUT_KEEP = 8
 
 local MIN, MAX = 0.25, 4
 local MARKUP, MARKDOWN = 1.05, 0.9
@@ -136,6 +150,55 @@ function M.stock_in_trade(seller, item)
 	return trade ~= nil and ledger.outputs(trade, seller._max_trade_tier)[item] == true
 end
 
+-- The demand recipes (recipes.lua) a cook makes `item` by, or an empty list: never the
+-- keeper's, which cooks only as a last resort.
+local function dish_recipes(seller, item)
+	local found = {}
+	if seller._villages_keeper or not seller._profession then return found end
+	for _, recipe in ipairs(recipes[seller._profession] or {}) do
+		if recipe.demand and (item == nil or recipe.makes == item) then found[#found + 1] = recipe end
+	end
+	return found
+end
+
+-- Notes `count` of an item bought for `paid` emeralds into a cook's average input cost
+-- (ticket 42), if the item is an input of one of its demand recipes.
+function M.note_input(buyer, item, count, paid)
+	if not buyer or not count or count <= 0 or not paid or paid < 0 then return end
+	local used = false
+	for _, recipe in ipairs(dish_recipes(buyer)) do
+		for _, input in ipairs(recipe.from) do used = used or input[1] == item end
+	end
+	if not used then return end
+	local costs = buyer._villages_input_cost or {}
+	local before = costs[item]
+	costs[item] = before and (before * INPUT_KEEP + paid) / (INPUT_KEEP + count) or paid / count
+	buyer._villages_input_cost = costs
+end
+
+-- The least a cook asks for one of a dish (ticket 42): PROFIT times its inputs at what they
+-- cost it and its fuel at its reference price for coal, by its cheapest recipe for it. Nil
+-- with no input cost known (its coop's chicken, raised not bought).
+function M.dish_floor(seller, item)
+	local costs = seller._villages_input_cost
+	if not costs then return nil end
+	local best
+	for _, recipe in ipairs(dish_recipes(seller, item)) do
+		local cost, known = 0, true
+		for _, input in ipairs(recipe.from) do
+			local unit = costs[input[1]]
+			if unit then cost = cost + unit * input[2] else known = false end
+		end
+		if known then
+			local coal = prices.price(seller._villages_prices, COAL) or 0
+			cost = cost + (recipe.fuel or 0) / SMELTS_PER_LUMP * coal
+			local floor = PROFIT * cost / (recipe.count or 1)
+			if not best or floor < best then best = floor end
+		end
+	end
+	return best
+end
+
 function M.ask(seller, item, view)
 	local reference = prices.price(seller._villages_prices, item)
 	if not reference then return nil end
@@ -146,6 +209,8 @@ function M.ask(seller, item, view)
 	local own = view and not M.stock_in_trade(seller, item) and view.value(item)
 	if cost then ask = math.max(ask, cost)
 	elseif own then ask = math.max(ask, own) end
+	local dish = M.dish_floor(seller, item)
+	if dish then ask = math.max(ask, dish) end
 	ask = math.max(ask, BID_SHARE * M.best_bid(seller, item))
 	local peddle = seller._villages_peddle
 	if peddle and peddle.item == item and not peddle.buying and peddle.bid then ask = math.max(ask, peddle.bid) end

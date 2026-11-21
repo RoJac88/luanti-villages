@@ -331,6 +331,8 @@ function M.buy_from_stash(self, trip, chest)
 	-- Its reference price learns what it paid (ticket 21b), and an alchemist's book (ticket 30).
 	prices.learn(self, trip.item, paid / count)
 	alchemist.bought(self, possessions.held(self), trip.item, count, paid)
+	-- A cook's raw input costs what it paid (asks.note_input, ticket 42).
+	asks.note_input(self, trip.item, count, paid)
 	-- A keeper's dish costs what it paid (dinner.note_cost, ticket 39b).
 	if self._villages_keeper then dinner.note_cost(self, trip.item, count, paid) end
 	-- The seller, away from its stash but loaded, counts the sale as one made to its face
