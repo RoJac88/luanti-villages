@@ -50,8 +50,15 @@ local glut = {_villages_asks = {[BEEF] = 1.8}, _villages_prices = {[BEEF] = 0.12
 assert(near(asks.ask(glut, BEEF), ledger.price(BEEF) * 1.8 * 0.125))
 glut._villages_prices[BEEF] = 4
 assert(near(asks.ask(glut, BEEF), ledger.price(BEEF) * 1.8 * 4))
--- Never below its own value, given its view.
-assert(near(asks.ask(glut, BEEF, {value = function() return 1e6 end}), 1e6))
+-- Never below its value with no money in it, for one it wants and holds no spare of (ticket
+-- 43b); spare, or one it does not want, has no use value to it.
+local function wanting(spare, target)
+	return {real = function() return 1e6 end, value = function() return 1e9 end,
+		surplus = {[BEEF] = spare}, targets = {[BEEF] = target}}
+end
+assert(near(asks.ask(glut, BEEF, wanting(nil, 10)), 1e6), "its real value, not the money-scaled one")
+assert(near(asks.ask(glut, BEEF, wanting(5, 10)), ledger.price(BEEF) * 1.8 * 4), "spare")
+assert(near(asks.ask(glut, BEEF, wanting(nil, 0)), ledger.price(BEEF) * 1.8 * 4), "not wanted")
 -- A peddler still never asks below what it paid.
 glut._villages_prices[BEEF] = 0.125
 glut._villages_peddle = {item = BEEF, bid = 5}
@@ -93,69 +100,66 @@ local florist = {_id = "f", _villages_market_news = {
 	{kind = "needs", item = "mcl_flowers:poppy", group = "flower", who = "rich", price = 90, heard = 0, hops = 1}}}
 assert(asks.best_bid(florist, "mcl_flowers:poppy", 0) == 0)
 
--- The cleric's leather (ticket 37b): never at a loss or break even, from what its flesh cost
--- it on average: PROFIT over three flesh, and at least an emerald over.
+-- The cleric's leather (ticket 37b): never at a loss, from what its flesh cost it: PROFIT
+-- over three flesh (ticket 43b: no longer an emerald over too).
 do
 	local goods = dofile("goods.lua")
-	local LEATHER = "mcl_mobitems:leather"
+	local book = dofile("cost_book.lua")
+	local FLESH, LEATHER = "mcl_mobitems:rotten_flesh", "mcl_mobitems:leather"
 	local conversion = goods.CONVERSIONS.cleric[1]
 	local c = {_id = "cl", _profession = "cleric"}
-	local book = dofile("cost_book.lua")
-	local FLESH = "mcl_mobitems:rotten_flesh"
-	assert(asks.cost_floor(c, conversion) == nil, "nothing paid, no floor")
+	local unpaid = asks.reservation(c, LEATHER)
+	assert(near(unpaid, 3 * ledger.price(FLESH) * asks.GATHER_SHARE * asks.PROFIT), "flesh never bought: gathered")
 	book.note(c, FLESH, 10, 20)
-	assert(book.cost(c, FLESH) == 2, "its cost book's price for flesh (ticket 43a)")
-	assert(asks.cost_floor(c, conversion) == 6 * asks.PROFIT)
-	c._villages_input_cost[FLESH] = 0.2
-	assert(asks.cost_floor(c, conversion) == 0.6 + 1, "at least an emerald over")
-	c._villages_input_cost[FLESH] = 2
-	-- A flesh ask fallen to a quarter cannot drag leather below the floor.
-	c._villages_asks = {["mcl_mobitems:rotten_flesh"] = asks.MIN}
-	assert(asks.converted(c, conversion) >= 6 * asks.PROFIT)
-	assert(asks.converted(c, conversion) >= asks.cost_floor(c, conversion))
-	-- Without the cost field (the alchemist's), as before.
-	local plain = {ratio = 1 / 3, from = "mcl_mobitems:rotten_flesh", to = LEATHER, takes = 3}
-	assert(asks.converted(c, plain) < 6)
+	assert(near(asks.reservation(c, LEATHER), 6 * asks.PROFIT))
+	-- A flesh ask fallen to a quarter cannot drag leather below it.
+	c._villages_asks = {[FLESH] = asks.MIN}
+	assert(asks.converted(c, conversion) >= 6 * asks.PROFIT - 1e-9)
+	-- Flesh itself, bought, sells at no less than it cost.
+	assert(asks.ask(c, FLESH) >= 2 - 1e-9)
 end
 
--- Ticket 40a: food its trade makes is stock in trade, asked with no floor at its own value.
--- A rich leatherworker valued its spare beef at 4.62 and asked that, eleven times its 0.42.
+-- Ticket 43b: the reservation price. Grown, gathered or raised: GATHER_SHARE of base, fixed,
+-- whatever its wealth; a rich leatherworker's spare beef no longer at its money-scaled value.
 do
-	local view = {value = function() return 50 end}
-	local tanner = {_profession = "leatherworker", _villages_asks = {[BEEF] = 0.5}}
-	assert(asks.stock_in_trade(tanner, BEEF) and not asks.stock_in_trade(tanner, "mcl_mobitems:leather"))
-	local ledger = dofile("ledger.lua")
-	assert(near(asks.ask(tanner, BEEF, view), ledger.price(BEEF) * 0.5), "its beef by supply")
-	assert(asks.ask(tanner, "mcl_mobitems:leather", view) == 50, "its leather, no food, at its value")
-	-- Food it does not make keeps the floor: the fisherman's beef.
-	local fisher = {_profession = "fisherman", _villages_asks = {[BEEF] = 0.5}}
-	assert(not asks.stock_in_trade(fisher, BEEF) and asks.ask(fisher, BEEF, view) == 50)
-	assert(asks.stock_in_trade({_profession = "butcher"}, "mcl_mobitems:cooked_beef"))
+	local view = {value = function() return 50 end, real = function() return 50 end,
+		surplus = {[BEEF] = 290}, targets = {}}
+	local tanner = {_profession = "leatherworker", _villages_asks = {[BEEF] = 0.25}, _villages_prices = {[BEEF] = 1 / 64}}
+	assert(near(asks.reservation(tanner, BEEF, view), ledger.price(BEEF) * asks.GATHER_SHARE))
+	assert(near(asks.ask(tanner, BEEF, view), ledger.price(BEEF) * asks.GATHER_SHARE), "the spiral stops at the floor")
+	tanner._villages_prices[BEEF] = 1
+	assert(near(asks.ask(tanner, BEEF, view), ledger.price(BEEF) * 0.25), "over the floor, by supply")
+	-- An item with no base price has none.
+	assert(asks.reservation(tanner, "no:price") == nil)
 end
 
--- Ticket 42: a cook's dish is asked at no less than PROFIT times what its raw inputs cost
--- it. The butcher sold 3 cooked salmon for an emerald, from fish it paid 0.25 each for.
+-- Made goods: PROFIT times inputs at what they cost (bought) or GATHER_SHARE of base (its own),
+-- and fuel at the reference price for coal, never under GATHER_SHARE of coal's base. The
+-- butcher sold cooked beef from its own herd at 0.25 while raw beef was asked at 0.34.
 do
-	local ledger = dofile("ledger.lua")
-	local BEEF_COOKED = "mcl_mobitems:cooked_beef"
-	local butch = {_profession = "butcher", _villages_asks = {[BEEF_COOKED] = 0.25}, _villages_prices = {}}
-	assert(asks.dish_floor(butch, BEEF_COOKED) == nil, "no cost known")
 	local book = dofile("cost_book.lua")
-	book.note(butch, "mcl_core:cobble", 4, 4)
-	assert(butch._villages_input_cost == nil, "not an input of its dishes")
+	local BEEF_COOKED = "mcl_mobitems:cooked_beef"
+	local COAL = "mcl_core:coal_lump"
+	local butch = {_profession = "butcher", _villages_asks = {[BEEF_COOKED] = 0.25},
+		_villages_prices = {[BEEF_COOKED] = 1 / 64, [COAL] = 1 / 64}}
+	local coal = ledger.price(COAL) * asks.GATHER_SHARE
+	assert(near(asks.fuel_cost(butch), coal), "coal's reference fell under the floor")
+	local own = asks.PROFIT * (ledger.price(BEEF) * asks.GATHER_SHARE + coal / 8)
+	assert(near(asks.reservation(butch, BEEF_COOKED), own), "from its own herd")
+	assert(asks.reservation(butch, BEEF_COOKED) > ledger.price(BEEF) * asks.GATHER_SHARE, "over raw beef's")
 	book.note(butch, BEEF, 10, 20)
-	assert(near(butch._villages_input_cost[BEEF], 2))
-	book.note(butch, BEEF, 8, 0)
-	assert(near(butch._villages_input_cost[BEEF], (2 * 8 + 0) / 16), "an average over about 8")
-	butch._villages_input_cost[BEEF] = 2
-	local coal = ledger.price("mcl_core:coal_lump")
-	local floor = asks.PROFIT * (2 + coal / 8)
-	assert(near(asks.dish_floor(butch, BEEF_COOKED), floor))
-	assert(near(asks.ask(butch, BEEF_COOKED), math.max(ledger.price(BEEF_COOKED) * 0.25, floor)))
-	assert(asks.ask(butch, BEEF_COOKED) >= floor)
-	-- Never the keeper's, which cooks only as a last resort.
-	local kip = {_profession = "butcher", _villages_keeper = true, _villages_input_cost = {[BEEF] = 2}}
-	assert(asks.dish_floor(kip, BEEF_COOKED) == nil)
+	local bought = asks.PROFIT * (2 + coal / 8)
+	assert(near(asks.reservation(butch, BEEF_COOKED), bought), "from beef it paid 2 for")
+	assert(near(asks.ask(butch, BEEF_COOKED), bought))
+	assert(near(asks.reservation(butch, BEEF), 2), "raw beef it bought: what it paid, no profit")
+	-- A keeper's dish, bought to sell on: what it paid.
+	local kip = {_villages_keeper = true}
+	book.note(kip, BEEF_COOKED, 2, 3)
+	assert(near(asks.reservation(kip, BEEF_COOKED), 1.5))
+	-- A conversion of its own: the woodcutter's planks from its own logs, four to one.
+	local wood = {_profession = "woodcutter"}
+	local planks = dofile("goods.lua").SPECIES["mcl_core:tree"]
+	assert(near(asks.reservation(wood, planks), asks.PROFIT * ledger.price("mcl_core:tree") * asks.GATHER_SHARE / 4))
 end
 
 print("asks.lua: ok")

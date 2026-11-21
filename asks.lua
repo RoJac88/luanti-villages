@@ -22,26 +22,26 @@
 --   now and then kept asking near MAX while 26 more piled up (ColonyFood, 2026-11-14);
 -- * it stays within MIN and MAX.
 --
--- An ask never falls below the seller's own value for the item (given its view): one
--- with a glut or no money values it little, a rich one more. Not food its trade makes
--- (ticket 40a, M.stock_in_trade): that is priced by supply, its sales and the days it
--- sits unsold, as the farm chest's (39a). At a money factor of 0.18 a leatherworker
--- valued its 290 spare beef at 4.62 each and asked that, eleven times its ask of 0.42,
--- and the butcher, valuing cooked beef at 22.55, asked that of a keeper whose plates
--- earn 2 (ColonyFood, 2026-11-21). A peddler (labour.lua)
--- never asks less than it paid for its lot. Nothing else floors it: the alchemist's floor
--- at its inputs' cost went with ticket 21b (ColonyFood, 2026-11-15: broke, it held 30
--- flint it could not sell at cost to a fletcher with one emerald). An item with no base
--- price has no ask: exchange.lua falls back to the midpoint for it.
+-- An ask never falls below the seller's reservation price for the item (ticket 43b,
+-- M.reservation, docs/villager-economy-design.md), the larger of:
 --
--- A cook's dish (a `demand` recipe's output, recipes.lua: the butcher's) is asked at no less
--- than PROFIT times what its raw inputs cost it, as bought (cost_book.lua, ticket 43a), and
--- its fuel at the cook's reference price for coal (M.dish_floor, ticket
--- 42). With no floor at its own value (40a) and 16 dishes unsold for days while the keeper
--- bought none, the butcher's asks fell to a quarter of its reference price and that price
--- followed its sales down: it sold 3 cooked salmon for an emerald, and 12 baked potatoes,
--- from fish and beef it paid 0.25 to 0.4 each for (ColonyFood, 2026-11-21). Not 37b's
--- extra emerald over cost, which would more than double a dish's price.
+-- * what it costs to replace (M.replacement): what it paid, for a good bought (its cost
+--   book, cost_book.lua); PROFIT times its inputs at that cost and its fuel, for a good its
+--   trade makes, an input it raised or gathered itself at GATHER_SHARE of its base price;
+--   GATHER_SHARE of the base price, for a good grown, gathered, caught or raised; an
+--   alchemist's goods at their cost times its MARGIN (ticket 30);
+-- * with its view, for an item it holds no spare of, its value with no money in it.
+--
+-- It replaces six floors that each fixed one case: its own value, which the money factor
+-- raised for the rich (a leatherworker at λ 0.18 valued its 290 spare beef at 4.62 each
+-- against an ask of 0.42) and lowered for the poor; none for food its trade made (40a), so
+-- markdowns and the reference price learning from them pulled each other down to 1/64 of
+-- base (the butcher sold 3 cooked salmon for an emerald, ColonyFood, 2026-11-21); a cook's
+-- dish at its bought inputs only (42), so cooked beef from its own herd sold at 0.25 while
+-- raw beef was asked at 0.34; the cleric's leather at its flesh cost and an emerald over
+-- (37b); and the alchemist's (ticket 30). A peddler (labour.lua) still never asks less
+-- than its bid for its lot. An item with no base price has no ask: exchange.lua falls back
+-- to the midpoint for it.
 --
 -- A comfort (comforts.lua) is asked at no less than BID_SHARE of the best bid for it the
 -- seller heard in the last BID_DAYS game days (market news "needs" entries, a bid capped
@@ -62,6 +62,11 @@ local recipes = dofile(core.get_modpath("living_villages") .. "/recipes.lua")
 local cost_book = dofile(core.get_modpath("living_villages") .. "/cost_book.lua")
 local COAL = "mcl_core:coal_lump"
 local SMELTS_PER_LUMP = 8
+-- What a good grown, gathered, caught or raised costs to replace, as a share of its base
+-- price (ticket 43b): a potato 0.12, raw fish 0.21, beef 0.32, cobble 0.13, a log 0.8.
+local GATHER_SHARE = 0.05
+-- How deep a made good's inputs are costed (a carved stone from stone from cobble).
+local MAX_DEPTH = 4
 
 local MIN, MAX = 0.25, 4
 local MARKUP, MARKDOWN = 1.05, 0.9
@@ -76,10 +81,10 @@ local BID_DAYS = 2
 local BID_CATEGORIES = {stone = true, log = true, planks = true, fuel = true}
 local DEFAULT_TIME_SPEED = 72
 
--- A product made from sources the seller paid for sells for at least this much over their
--- cost, and at least an emerald over it (M.cost_floor, ticket 37b).
+-- A good the seller makes is asked at no less than this times what it costs to make
+-- (M.replacement, ticket 43b).
 local PROFIT = 1.25
-local M = {PROFIT = PROFIT, MIN = MIN, MAX = MAX, MARKUP = MARKUP, MARKDOWN = MARKDOWN, SLOW_SHARE = SLOW_SHARE,
+local M = {PROFIT = PROFIT, GATHER_SHARE = GATHER_SHARE, MIN = MIN, MAX = MAX, MARKUP = MARKUP, MARKDOWN = MARKDOWN, SLOW_SHARE = SLOW_SHARE,
 	BID_SHARE = BID_SHARE, BID_DAYS = BID_DAYS}
 
 local function clamp(factor)
@@ -137,64 +142,94 @@ function M.best_bid(seller, item, now)
 	return best
 end
 
--- What the seller asks for one, or nil for an item with no base price. With its view
--- (possessions.assess), never less than its own value for the item; a comfort never less
--- than BID_SHARE of the best bid it heard.
--- Whether the item is food, or cooks into food, that the seller's trade makes (ledger.outputs,
--- ledger.food_good): stock in trade, asked with no floor at its own value (ticket 40a).
-function M.stock_in_trade(seller, item)
-	if not ledger.food_good(item) then return false end
-	local trade = seller._villages_alchemist and "alchemist" or (seller._villages_keeper and "keeper")
-		or seller._profession
-	return trade ~= nil and ledger.outputs(trade, seller._max_trade_tier)[item] == true
-end
-
--- The demand recipes (recipes.lua) a cook makes `item` by, or an empty list: never the
--- keeper's, which cooks only as a last resort.
-local function dish_recipes(seller, item)
-	local found = {}
-	if seller._villages_keeper or not seller._profession then return found end
-	for _, recipe in ipairs(recipes[seller._profession] or {}) do
-		if recipe.demand and (item == nil or recipe.makes == item) then found[#found + 1] = recipe end
-	end
-	return found
-end
-
--- The least a cook asks for one of a dish (ticket 42): PROFIT times its inputs at what they
--- cost it and its fuel at its reference price for coal, by its cheapest recipe for it. Nil
--- with no input cost known (its coop's chicken, raised not bought).
-function M.dish_floor(seller, item)
-	local costs = cost_book.book(seller)
-	if not costs then return nil end
-	local best
-	for _, recipe in ipairs(dish_recipes(seller, item)) do
-		local cost, known = 0, true
-		for _, input in ipairs(recipe.from) do
-			local unit = costs[input[1]]
-			if unit then cost = cost + unit * input[2] else known = false end
+-- What one of the item costs the seller to replace, with no profit on it (ticket 43b), or nil
+-- for an item with no base price: what it paid (its cost book, cost_book.lua); else, made by
+-- a recipe of its trade, its inputs at this cost and its fuel, by the cheapest recipe; else,
+-- a conversion's product its trade makes, its source's cost over the ratio; else grown,
+-- gathered, caught or raised, GATHER_SHARE of its base price. `depth` stops a loop.
+local function unit_cost(seller, item, depth)
+	local paid = cost_book.cost(seller, item)
+	if paid then return paid, "paid" end
+	depth = depth or 0
+	local trade = cost_book.trade_of(seller)
+	if trade and depth < MAX_DEPTH then
+		local best
+		for _, recipe in ipairs(recipes[trade] or {}) do
+			if recipe.makes == item then
+				local cost = 0
+				for _, input in ipairs(recipe.from) do cost = cost + (unit_cost(seller, input[1], depth + 1) or 0) * input[2] end
+				cost = (cost + (recipe.fuel or 0) / SMELTS_PER_LUMP * M.fuel_cost(seller)) / (recipe.count or 1)
+				if not best or cost < best then best = cost end
+			end
 		end
-		if known then
-			local coal = prices.price(seller._villages_prices, COAL) or 0
-			cost = cost + (recipe.fuel or 0) / SMELTS_PER_LUMP * coal
-			local floor = PROFIT * cost / (recipe.count or 1)
-			if not best or floor < best then best = floor end
+		for _, conversion in ipairs(goods.CONVERSIONS[trade] or {}) do
+			if conversion.to == item then
+				local source = unit_cost(seller, conversion.from, depth + 1)
+				local cost = source and source / conversion.ratio
+				if cost and (not best or cost < best) then best = cost end
+			end
 		end
+		if best then return best, "made" end
 	end
-	return best
+	local base = ledger.price(item)
+	return base and base * GATHER_SHARE, "gathered"
 end
 
+-- What a lump of coal costs a recipe: its reference price, no less than GATHER_SHARE of its
+-- base price, since that reference has fallen to 1/64 of base in a glut.
+function M.fuel_cost(seller)
+	local base = ledger.price(COAL) or 0
+	return math.max(prices.price(seller._villages_prices, COAL) or base, base * GATHER_SHARE)
+end
+
+-- What one of the item costs the seller to replace (ticket 43b, rule 1): an alchemist's
+-- good at its cost times its MARGIN (ticket 30, alchemist.stock_cost); one bought, what it
+-- paid, to sell on at no loss; one it makes, PROFIT times its unit cost; one grown or
+-- gathered, GATHER_SHARE of its base price. Nil for an item with no base price.
+function M.replacement(seller, item)
+	if seller._villages_alchemist and alchemist.GOODS[item] then
+		return alchemist.stock_cost(seller, item) * alchemist.MARGIN
+	end
+	local cost, how = unit_cost(seller, item)
+	if not cost then return nil end
+	return how == "made" and cost * PROFIT or cost
+end
+
+-- The least the seller asks for one (ticket 43b): the larger of what it costs to replace
+-- (M.replacement) and, with its view, for an item it wants and holds no spare of (within
+-- its targets and their reserve, ledger.assess), its value with no money in it (the view's
+-- `real`). Spare
+-- has no use value to it: a rich leatherworker's 290th beef is worth what it cost. Nil for
+-- an item with neither.
+-- Whether the view wants the item at all: a target for it, or for a category it is in.
+local function wanted(view, item)
+	local target = view.targets and view.targets[item]
+	if target then return target > 0 end
+	for name, category in pairs(view.categories or {}) do
+		if category.target > 0 and goods.CATEGORIES[name] and goods.CATEGORIES[name][item] then return true end
+	end
+	return false
+end
+
+function M.reservation(seller, item, view)
+	local floor = M.replacement(seller, item)
+	if view and view.real and not (view.surplus and view.surplus[item]) and wanted(view, item) then
+		local own = view.real(item)
+		if own and (not floor or own > floor) then floor = own end
+	end
+	return floor
+end
+
+-- What the seller asks for one, or nil for an item with no base price: its reference price
+-- times its factor, never under its reservation price (given its view, M.reservation); a
+-- comfort or material never less than BID_SHARE of the best bid it heard; a peddler's lot
+-- never under its bid.
 function M.ask(seller, item, view)
 	local reference = prices.price(seller._villages_prices, item)
 	if not reference then return nil end
 	local ask = reference * M.factor(seller, item)
-	-- An alchemist's goods at no less than their cost (ticket 30), not its own value: its
-	-- money raised that to four times what it believed a nugget worth.
-	local cost = alchemist.ask_floor(seller, item)
-	local own = view and not M.stock_in_trade(seller, item) and view.value(item)
-	if cost then ask = math.max(ask, cost)
-	elseif own then ask = math.max(ask, own) end
-	local dish = M.dish_floor(seller, item)
-	if dish then ask = math.max(ask, dish) end
+	local floor = M.reservation(seller, item, view)
+	if floor then ask = math.max(ask, floor) end
 	ask = math.max(ask, BID_SHARE * M.best_bid(seller, item))
 	local peddle = seller._villages_peddle
 	if peddle and peddle.item == item and not peddle.buying and peddle.bid then ask = math.max(ask, peddle.bid) end
@@ -218,27 +253,16 @@ end
 -- The product's own ask stands only when it is lower. A product the seller never holds
 -- keeps its seed price (nothing marks it down), while the source it does hold falls until
 -- it sells: since 21b an alchemist asked 115 for an ingot while it valued a nugget at 0.8.
--- A product whose sources it paid for (a conversion with `cost`, its sources at what they
--- cost it in its book, cost_book.lua: the cleric's rotten flesh, ticket 37b) never sells at
--- a loss or break even: at least M.cost_floor.
+-- It never goes under the product's reservation price (M.reservation): the cleric's leather,
+-- from flesh it paid for, never sells at a loss (ticket 37b).
 function M.converted(seller, conversion, view)
 	local own = M.ask(seller, conversion.to, view)
 	local source = M.ask(seller, conversion.from, view)
-	local floor = M.cost_floor(seller, conversion)
-	if not source then return floor and math.max(own or floor, floor) or own end
+	local floor = M.reservation(seller, conversion.to, view)
+	if not source then return own end
 	local via = source / conversion.ratio
 	local ask = own and math.min(own, via) or via
 	return floor and math.max(ask, floor) or ask
-end
-
--- The least one of a conversion's product sells for, from what its sources cost it
--- (cost_book.cost): PROFIT times that, and at least an emerald over it. Nil for a
--- conversion with no `cost`, or sources that cost nothing.
-function M.cost_floor(seller, conversion)
-	local cost = conversion.cost and cost_book.cost(seller, conversion.from)
-	if not cost or cost <= 0 then return nil end
-	local per = cost / conversion.ratio
-	return math.max(per * PROFIT, per + 1)
 end
 
 -- `_villages_ask_sold` is {[item] = {day, count}}: the last day it sold the item, and how

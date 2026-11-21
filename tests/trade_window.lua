@@ -456,7 +456,7 @@ do
 	assert(near(cleric._villages_input_cost[FLESH], price / lot), "its cost book's price per flesh")
 	-- Its leather now sells for more than three flesh cost it, whatever its asks say.
 	local leather_row = row(window.rows(view, pouch, 5, 0, nil, false, nil, function() return 0.5 end, nil,
-		{budget = 0, unit = unit, floor = asks.cost_floor(cleric, dofile("goods.lua").CONVERSIONS.cleric[1])}).sells, LEATHER)
+		{budget = 0, unit = unit, floor = asks.reservation(cleric, LEATHER)}).sells, LEATHER)
 	assert(leather_row and leather_row.price > 3 * price / lot, leather_row and leather_row.price)
 	-- Honoured at a master cleric: pearls (8 a day at level 5) and bottles o' enchanting.
 	rep = 60
