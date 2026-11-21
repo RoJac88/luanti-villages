@@ -129,9 +129,9 @@ assert(next(ledger.inputs("farmer")) == nil, "a farmer grows what its table buys
 assert(ledger.inputs("shepherd")["mcl_wool:white"] == nil and ledger.inputs("shepherd")["mcl_dye:white"] == 12)
 assert(ledger.inputs("shepherd")["mcl_dye:red"] == 12 and ledger.inputs("shepherd")["mcl_dye:black"] == nil)
 assert(ledger.outputs("farmer")["mcl_farming:bread"] and ledger.outputs("farmer")["mcl_farming:wheat_item"])
--- The keeper buys bread and cooked fish ready made; only farmers bake, only butchers cook.
-assert(ledger.inputs("keeper")["mcl_farming:bread"] and ledger.inputs("keeper")["mcl_fishing:fish_cooked"])
-assert(not ledger.inputs("keeper")["mcl_farming:wheat_item"] and not ledger.inputs("keeper")["mcl_fishing:fish_raw"])
+-- The keeper has no fixed inputs (ticket 39g): it buys dishes by the pantry's shortfall
+-- (keeper_supply.update_wants).
+assert(next(ledger.inputs("keeper")) == nil)
 assert(ledger.outputs("keeper")["mcl_farming:bread"])
 assert(next(ledger.inputs("nitwit")) == nil and next(ledger.inputs("unemployed")) == nil)
 local flint = ledger.producers("mcl_core:flint")

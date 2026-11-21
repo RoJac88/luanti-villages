@@ -485,6 +485,11 @@ do
 	assert(farmer._villages_ask_sold[POTATO].count == 10)
 	assert(stock.take_chest_sales(at, POTATO) == 0, "taken up")
 	assert(stock.chest_ask(at, POTATO) > posted, "and the posted ask with it")
+	-- No floor at its own value: a rich farmer asks its reference price times its factor.
+	farmer._villages_belongings["mcl_core:emerald"] = 5000
+	farmer_module.price_chest(farmer, at)
+	local prices = dofile("prices.lua")
+	assert(math.abs(stock.chest_ask(at, POTATO) - prices.price(farmer._villages_prices, POTATO) * asks.factor(farmer, POTATO)) < 1e-3)
 end
 -- Bone meal over its keep of four too, up to eight, to sell as white dye (19h).
 setup({_villages_farm_pouch = {["mcl_bone_meal:bone_meal"] = 14}})

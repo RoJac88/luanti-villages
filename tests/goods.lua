@@ -93,4 +93,15 @@ assert(goods.units("stone", "mcl_core:stone") == 1 and goods.units("stone", "mcl
 assert(not goods.units("stone", "mcl_core:stonebrick"))
 assert(goods.target_category("mcl_core:stone") == nil and goods.target_category("mcl_core:cobble") == nil)
 assert(goods.active("mcl_core:cobble", {stone = 72}) == "stone" and goods.active("mcl_core:cobble", {}) == nil)
+-- Any prepared dish, one a meal (ticket 39g): what the keeper buys by. Raw food is none,
+-- and a dish's reference price stays under food.
+do
+	assert(goods.units("dish", "mcl_fishing:fish_cooked") == 1 and goods.units("dish", "mcl_farming:bread") == 1)
+	assert(goods.units("dish", "mcl_farming:potato_item") == nil and goods.units("dish", "mcl_fishing:fish_raw") == nil)
+	assert(goods.category_of("mcl_fishing:fish_cooked") == "food")
+	assert(goods.active("mcl_fishing:fish_cooked", {dish = 3, food = 10}) == "dish")
+	assert(goods.active("mcl_farming:potato_item", {dish = 3, food = 10}) == "food")
+	assert(goods.active("mcl_fishing:fish_cooked", {food = 10}) == "food")
+end
+
 print("goods.lua: ok")

@@ -183,10 +183,12 @@ local NOT_BOUGHT = {
 -- Roles this mod adds, which have no vanilla table of their own.
 local ROLES = {
 	keeper = {
-		-- Only the butcher cooks meat and fish, and only the farmer bakes bread: it buys
-		-- those ready made (cooked beef since ticket 11e), and bakes potatoes itself.
-		inputs = {["mcl_farming:bread"] = 9, ["mcl_farming:potato_item"] = 6, ["mcl_fishing:fish_cooked"] = 6,
-			["mcl_mobitems:cooked_beef"] = 6},
+		-- None fixed (ticket 39g): it buys dishes ready made, as many as the pantry is short
+		-- of its target (goods.lua's dish category, `_villages_dish_short`), and a few of
+		-- each it has heard of (keeper_supply.dish_wants). Its fixed 9 bread, 6 potatoes, 6
+		-- cooked fish and 6 cooked beef were wanted again every shift, whatever the pantry
+		-- held, and the potatoes were for its own baking.
+		inputs = {},
 		outputs = {
 			["mcl_farming:bread"] = true, ["mcl_farming:potato_item_baked"] = true, ["mcl_fishing:fish_cooked"] = true,
 			["mcl_mushrooms:mushroom_stew"] = true, ["mcl_farming:pumpkin_pie"] = true,

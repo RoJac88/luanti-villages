@@ -386,11 +386,15 @@ local function price_chest(self, pos)
 		local count, paid = stock.take_chest_sales(pos, item)
 		if count > 0 then asks.sold(self, item, day, count, paid > 0 and paid / count or nil) end
 	end
-	local view = possessions.assess(self)
+	-- Its reference price times its ask factor, with no floor at its own value: the chest is
+	-- stock for sale, not its food, and a farmer holding 1487 emeralds valued a potato at
+	-- several times its price, so the keeper paid about 6 a potato and 7 a loaf from 470
+	-- potatoes nobody else bought (ColonyFood, 2026-11-21). The daily markdown on the
+	-- chest's spare brings the ask down as it piles up.
 	local spare
 	for _, item in ipairs(CHEST_GOODS) do
 		local held = stock.chest_count(pos, item)
-		stock.post_ask(pos, item, held > 0 and asks.ask(self, item, view) or nil)
+		stock.post_ask(pos, item, held > 0 and asks.ask(self, item) or nil)
 		if held > 0 then
 			spare = spare or {}
 			spare[item] = held

@@ -71,6 +71,9 @@ local PLAN_SECONDS = 60
 -- It stops making an output once it holds this many past its target, or one if
 -- no one asks for it and it has no target for it.
 local STOCK = 16
+-- The most of one input it wants for what it hears asked for (input_demand, ticket 39f),
+-- beyond its batch: with ledger.lua's batch of 4, ledger's INPUT_CAP (32).
+local DEMAND_CAP = 28
 local UNASKED_STOCK = 1
 local SMELTS_PER_LUMP = 8
 -- Burn seconds per smelt: a lump of coal's 80 make 8 (goods.lua's fuel).
@@ -86,7 +89,7 @@ local MAX_TIER = 5
 -- mobs_mc/villager.lua's badges, by tier.
 local BADGES = {"mobs_mc_stone.png", "mobs_mc_iron.png", "mobs_mc_gold.png", "mobs_mc_emerald.png", "mobs_mc_diamond.png"}
 
-local M = {RECIPES = recipes, STOCK = STOCK, UNASKED_STOCK = UNASKED_STOCK, SMELTS_PER_LUMP = SMELTS_PER_LUMP, JOBSITE_REACH = JOBSITE_REACH}
+local M = {RECIPES = recipes, STOCK = STOCK, UNASKED_STOCK = UNASKED_STOCK, SMELTS_PER_LUMP = SMELTS_PER_LUMP, JOBSITE_REACH = JOBSITE_REACH, DEMAND_CAP = DEMAND_CAP}
 
 local function short_id(self)
 	return tostring(self._id):sub(1, 6)
@@ -119,10 +122,11 @@ local function work_day_seconds(self)
 end
 
 -- What one craft of the recipe costs in banked seconds: its `share` of a working day
--- (the alchemist's, recipes.lua), or living_villages_craft_seconds an item.
+-- (the alchemist's, recipes.lua), its own `seconds` an item (the butcher's cooking,
+-- ticket 39f), or living_villages_craft_seconds an item.
 function M.cost(self, recipe)
 	if recipe.share then return recipe.share * work_day_seconds(self) end
-	return M.craft_seconds() * recipe.count
+	return (recipe.seconds or M.craft_seconds()) * recipe.count
 end
 
 -- An input any species of which will do (ticket 15): a recipe written with oak logs or
@@ -437,6 +441,7 @@ end
 
 local last_read = setmetatable({}, {__mode = "k"})
 local next_step = setmetatable({}, {__mode = "k"})
+local next_demand = setmetatable({}, {__mode = "k"})
 
 -- Banks `elapsed` in `field` and makes what that covers from `list` (nil: its own
 -- recipes). Returns the crafts made, and whether it found nothing to make.
@@ -560,9 +565,75 @@ function M.labour_index(recipe)
 	end
 end
 
+-- Ticket 39f: for a recipe whose inputs follow demand (recipes.lua's `demand`, the
+-- butcher's cooking), how many of each input it wants beyond its batch: what it heard
+-- asked for of the output, less what it holds of it, up to DEMAND_CAP. A need for one item
+-- counts in full, each villager's once; a category's (the keeper's dishes, a villager's
+-- food) is shared among the outputs that fill it, in their units. Item to count, or nil.
+function M.input_demand(self, heard, list)
+	list = list or M.recipes(self)
+	if not list then return nil end
+	local outputs, fills = {}, {}
+	for _, recipe in ipairs(list) do
+		if recipe.demand then outputs[recipe.makes] = recipe end
+	end
+	if not next(outputs) then return nil end
+	-- How many of its outputs fill each category.
+	local function share(group)
+		if fills[group] == nil then
+			local n = 0
+			for item in pairs(outputs) do if goods.units(group, item) then n = n + 1 end end
+			fills[group] = n
+		end
+		return fills[group]
+	end
+	local by_who = {}
+	for _, entry in ipairs(heard) do
+		if entry.kind == "needs" and (entry.count or 0) > 0 then
+			for item in pairs(outputs) do
+				local count
+				if entry.item == item then
+					count = entry.count
+				elseif entry.group and goods.units(entry.group, item) and goods.units(entry.group, entry.item) then
+					local units = entry.count * goods.units(entry.group, entry.item)
+					count = units / goods.units(entry.group, item) / share(entry.group)
+				end
+				if count then
+					local key = item .. "|" .. tostring(entry.who)
+					by_who[key] = math.max(by_who[key] or 0, count)
+				end
+			end
+		end
+	end
+	local asked = {}
+	for key, count in pairs(by_who) do
+		local item = key:match("^(.-)|")
+		asked[item] = (asked[item] or 0) + count
+	end
+	local held = possessions.held(self)
+	local found
+	for item, recipe in pairs(outputs) do
+		local short = math.ceil((asked[item] or 0) - (held[item] or 0) - 1e-6)
+		if short > 0 then
+			local crafts = math.ceil(short / recipe.count)
+			for _, input in ipairs(recipe.from) do
+				found = found or {}
+				found[input[1]] = math.min((found[input[1]] or 0) + crafts * input[2], DEMAND_CAP)
+			end
+		end
+	end
+	return found
+end
+
 function M.step(self, now)
 	if now < (next_step[self] or 0) then return end
 	next_step[self] = now + STEP_SECONDS
+	-- What its demand recipes' inputs follow (input_demand), read by possessions.assess.
+	if now >= (next_demand[self] or 0) then
+		next_demand[self] = now + PLAN_SECONDS
+		local list = M.recipes(self)
+		self._villages_input_demand = list and M.input_demand(self, news.heard(self, core.get_gametime()), list) or nil
+	end
 	local reading = clock.read(self)
 	local last = last_read[self]
 	last_read[self] = reading
