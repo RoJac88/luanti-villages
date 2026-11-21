@@ -3789,6 +3789,139 @@ The sub-tickets (one PR each, against `main`):
 - **Open.** Whether a woodland map at 1,500 to 3,500 nodes is too far for the game's pace,
   and whether the prices sit right beside the saddle (8) and pearls (4).
 
+### 39. Food priced by supply, cooked by the butcher
+
+Hunger in ColonyFood went from 0 or 1 a day (days 803 to 820) to about 8 of 24 adults a day
+from day 838, while the farm chests held about 900 potatoes, the fisherman 274 raw fish and
+the leatherworker 87 raw beef. Food never ran short. Dinner got too dear, and the menu was
+almost all baked potatoes and bread.
+
+**Measured (ColonyFood logs, days 803 to 940).**
+
+| Code | Days | Keeper's food cost per meal | Bread traded at | Hungry + starving a day |
+|---|---|---|---|---|
+| #128 | 803-815 | 0.74 | 2.1 | 0.3 |
+| #129-#131 | 815-833 | 1.06-1.12 | 2.3-3.0 | 0.8 |
+| #133-#136 | 834-843 | 1.28-1.54 | 3.0-4.5 | 7 |
+| #137 | 843-897 | 3.29 | 6.3 | 7.8 |
+| ad6fa04 | 897-940 | 4.13 | 7.2 | 7.6 |
+
+**What went wrong.**
+
+- **Two numbers move one price, and they feed each other.** Dinner is the keeper's food cost
+  times its factor (21e). The food cost is the keeper's reference price for a loaf, which
+  moves toward every loaf it buys. Since ticket 35 it buys loaves at up to its dinner price.
+  With a food cost of 2 and a factor of 2, dinner is 4. The keeper buys a loaf at 4, its
+  loaf price moves to 2.6, dinner becomes 5.2, and the next loaf may cost 5.2. The factor
+  ends up inside the food cost and is then applied to it again. The keeper also pays the
+  farm chest that food cost for every potato, so it paid 4.13 a potato against 0.74 before.
+  Potatoes traded at about 1.5 in the street.
+- **Supply never lowers a price.** A farmer's asks count only what it carries, not its
+  chest, and the keeper prices chest potatoes by its own loaf price. Nothing reads 458
+  potatoes in a chest as "potatoes are cheap".
+- **Most nudges push the price up.** The factor goes up 10% the day after the keeper runs out
+  or dips into its float (27). Dipping into the float happened on most days, even when every
+  guest was fed. It goes down only when a hungry guest turns dinner down in person. From day
+  815 to 843 the factor climbed from 1.18 to 3.5.
+- **Guests judge dinner against bread.** A guest dines when dinner costs no more than a
+  loaf is worth to it. A loaf's worth follows bread trades, and the keeper's bids pushed
+  those up too. Poor villagers then passed over loaves at 8.6 with 1 to 7 emeralds.
+- **Only potatoes and bread on the menu.** In 44 days the keeper bought 10 cooked fish,
+  salmon or beef, against about 490 dinners. After ticket 34 guests tire of both dishes,
+  value dinner less and turn it down. The keeper logged guests turned away on 22 of 44 days.
+- **The butcher hardly cooks.** It made 29 dishes in 44 days and labours on idle days. Its
+  inputs come from vanilla's trade table (`ledger.inputs`): mutton, rabbit and porkchop,
+  which nothing in the village produces, so those needs stay unmet at the top of its list
+  (mutton at 92, rabbit at 76). The raw fish, salmon and beef that do exist get a target of
+  one craft batch (4), so it holds 4 and stops buying. Ticket 34 changed what villagers eat
+  and what the keeper buys, not what the butcher makes.
+- **The starving fallback never fires.** A starving guest who won't pay gets a raw plate:
+  4 carrots or 4 beetroot (`meal.lua`'s `RAW_PLATES`). The pantry held 2 carrots all run.
+- **Money pools with whoever owns the chests.** The keeper paid about 2,450 for 593
+  potatoes in 44 days, mostly to two farmers who sell nothing from those chests to anyone
+  else.
+
+**The design.** Supply sets food prices. Dinner is what its plate cost plus one margin.
+The butcher does the cooking.
+
+- **39a. Supply prices raw food.**
+  - A farmer's chest counts as its supply. Its asks for potatoes and bread read the chest
+    as well as what it carries, so a full chest lowers them (asks.lua's daily markdown on
+    unsold spare, applied to the chest stock too).
+  - Whoever takes from a farm chest, the keeper or the butcher, pays the farmer's ask for
+    each item, not its own loaf price.
+  - The fisherman's catch already works this way: its asks fell to 1 while it sat unsold.
+    The leatherworker's beef doesn't, because its ask floor is its own value over its money
+    factor (ColonyFood, 2026-11-20). The PR checks whether that floor should hold for food.
+- **39b. Dinner is the plate's cost plus a margin.**
+  - The keeper keeps an average cost for each dish it holds, from what it paid. A bought
+    dish costs its price; a dish it cooks costs its raw input. This works as the cleric's
+    flesh cost does (`asks.note_cost`, 37b).
+  - The plate cost is the average of the dishes in the pantry. Dinner is the plate cost
+    times one margin, in whole emeralds, at least 1.
+  - The margin starts at 1.1. It goes up 10% when the keeper ran out while guests would
+    have paid. It goes down 10% when hungry guests turned dinner down while dishes were left.
+    It stays within 1.0 to 2.0.
+  - The `dear` rule (27) goes. Dinner always covers what its plate cost, so the pantry
+    can't lose money on a plate. The float stays as working capital.
+  - The keeper's loaf price no longer enters dinner.
+- **39c. Guests weigh dinner against feeding themselves.** A meal's worth to a guest is
+  what the same food points cost in the cheapest prepared food it has heard offered. That
+  is its own way to eat. Its urgency, money factor and variety apply as before. A dear
+  street loaf no longer makes a dear dinner look fair, and a cheap plate of fish looks
+  cheap.
+- **39d. The keeper buys at the plate cost, not the dinner price.** It values each dish, its
+  fixed inputs included, at no more than the plate cost times the top margin (2.0). It
+  never pays more for a dish than a plate can earn, and its buying no longer moves its own
+  prices except through the plate cost.
+- **39e. Wants only for goods the village has.**
+  - A want from a vanilla trade table counts only if something in the village can supply
+    that good: a profession `MAKES` it, a recipe or labour makes it, or a villager has
+    offered it in the last week (the keeper's `known_dishes` rule).
+  - This drops the butcher's mutton, rabbit, porkchop and dried kelp, and keeps beef,
+    chicken, sweet berries and coal.
+  - The rule applies to every profession. The PR lists each want it drops, so none that
+    matters goes unnoticed.
+  - A dropped want comes back on its own if the good turns up, for example from a player.
+- **39f. The butcher cooks for the tavern.**
+  - Its targets for raw fish, salmon, beef and chicken follow demand: the cooked dishes the
+    keeper and other villagers ask for, plus its usual sale stock. They are no longer one
+    batch of 4.
+  - It gains a recipe for baked potatoes, buying raw potatoes from the farmers at their ask.
+  - Among inputs it can get, it ranks by gain, so a cheap glut (raw fish at 1, cooked fish
+    selling at 7) is what it cooks most.
+  - Its float is its stock. The keeper pays on delivery, as for any dish.
+- **39g. The keeper cooks only as a last resort.**
+  - The keeper buys dishes ready made and no longer bakes potatoes in the normal course.
+  - It cooks only when the pantry holds fewer meals than tonight's demand, and at a loss:
+    2 raw items to a dish and twice as slow (`COOK_SECONDS` 20). That keeps buying from
+    the butcher the cheaper way.
+  - Its farm fetches carry bread, and raw potatoes only for this fallback and for raw plates.
+- **39h. A starving guest always eats.** A raw plate is any raw food in the pantry, at 4
+  carrots, beetroot or potatoes or 2 raw fish, salmon or beef, for `BROKE_PRICE` (1). The
+  keeper keeps one raw plate a guest for the starving (from its farm fetch) and serves it
+  even when it won't cook.
+
+**Order.** 39e and 39h are small and fix the worst at once. 39a, 39b and 39d are the price
+redesign and land together, as they replace one rule with another. 39f, 39g and 39c follow.
+
+**Success, on ColonyFood.**
+
+- Hungry and starving back to 0 or 1 a day.
+- The plate cost between 1 and 2.
+- Bread back under 3.
+- Most dinners are dishes the butcher cooked, at least 3 different dishes in the pantry on
+  most evenings, and the keeper cooking on fewer than 1 day in 5.
+
+**Open.**
+
+- Whether the shepherd should slaughter old sheep for mutton, a supply that would bring
+  the butcher's mutton want back under 39e.
+- Whether the farmer should sell potatoes to the butcher from its chest directly, or only
+  through its belongings as now.
+- Whether a cleric or alchemist with hundreds of emeralds, eating free or never eating,
+  should count in the keeper's demand.
+
 ## Open questions
 
 - Price discovery (ticket 21):
