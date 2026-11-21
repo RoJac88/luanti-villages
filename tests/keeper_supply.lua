@@ -541,6 +541,16 @@ do
 	inventories[key(pantry_chest)] = {["mcl_farming:potato_item"] = RESERVE, ["mcl_fishing:fish_cooked"] = supply.TARGET_MEALS}
 	assert(supply.potatoes_wanted(fetcher, chests, 0) == 0, "the butcher's dishes enough, the reserve full")
 	assert(supply.potatoes_wanted(fetcher, nil, 0) == math.huge)
+	-- Ticket 41: hearing a dish offered, it buys that, and fetches only the reserve.
+	inventories[key(pantry_chest)] = {}
+	assert(not supply.dishes_offered(fetcher, 1000))
+	fetcher._villages_market_news = {{item = "mcl_mobitems:cooked_beef", who = "butch", kind = "has", count = 16,
+		price = 4, heard = 1000, hops = 1}}
+	assert(supply.dishes_offered(fetcher, 1000))
+	assert(supply.potatoes_wanted(fetcher, chests, 0, 1000) == RESERVE, "the butcher's, not its own")
+	fetcher._villages_market_news = {{item = "mcl_farming:potato_item", who = "farm", kind = "has", count = 16,
+		price = 1, heard = 1000, hops = 1}}
+	assert(not supply.dishes_offered(fetcher, 1000), "a raw food is no dish")
 	inventories[key(pantry_chest)] = {}
 end
 

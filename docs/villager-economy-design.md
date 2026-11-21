@@ -4035,6 +4035,31 @@ the pantry's potatoes most days. A dump of the news and asks found four causes:
 cooking on fewer than 1 day in 5, and the leatherworker's beef and the fishermen's fish
 selling to the butcher at their asks.
 
+### 41. The keeper buys the butcher's dishes
+
+**Run.** ColonyFood, days 963 to 968 (main a68c570, ticket 40). The butcher bought 15 beef
+for 6 and 44 fish and salmon for about 11, and cooked 53 dishes in four working days, which
+it sold to villagers at 3 to 4. The keeper bought none: its pantry was raw potatoes from
+the farm chests, 74 one day and 96 the next, which it baked and served.
+
+**Cause.** A loop. Its farm fetches brought 2 raw potatoes for every dish the pantry was
+short of tonight's demand (39g's fallback), so every plate was its own baked potato, at a
+plate cost of about 1 (potatoes at 0.5). It bids at most the plate cost times 2 for a dish
+(39d), so 2, while villagers valued cooked meat and fish at 10 to 12 and paid 3 to 4. It
+never won a dish, so the pantry stayed short, so it fetched and baked again.
+
+**Change.** It fetches potatoes for baking only while it hears no prepared dish offered
+(`keeper_supply.dishes_offered`, `potatoes_wanted`): otherwise only the raw plates'
+reserve (39h). So it buys dishes, the butcher's baked potato first (a potato and fuel, its
+ask about 1.2 to 1.5, within the keeper's bid), and the butcher hears that demand (40b).
+As bought dishes replace its own, the plate cost and its bid rise toward the butcher's
+meat and fish, whose unsold stock is marked down to meet it. Its own baking is left for a
+village with no butcher or nothing cooked. Also, dish costs noted before 40d that are no
+food are dropped at the next note.
+
+**Success, on ColonyFood.** Ticket 39's: most dinners the butcher's, the keeper baking on
+fewer than 1 day in 5, hungry and starving at 0 or 1, the plate cost between 1 and 2.
+
 ## Open questions
 
 - Price discovery (ticket 21):
