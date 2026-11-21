@@ -152,11 +152,13 @@ M.LINES = {
 				inputs = {{item = ROD, count = 1, leave = 1}}},
 		},
 	},
-	-- The leatherworker's saddle from 4 leather (VoxeLibre has no recipe for one), and
-	-- leather boots it made with Feather Falling IV. It keeps 4 leather.
+	-- The leatherworker's leather boots it made with Feather Falling II and IV, and a saddle
+	-- from 4 leather (VoxeLibre has no recipe for one). It keeps 4 leather.
 	leatherworker = {
 		keeps = {[LEATHER] = 4},
 		goods = {
+			{id = "boots_feather_falling_2", from = "mcl_armor:boots_leather", label = "Leather boots", level = 3,
+				enchants = {feather_falling = 2}, inputs = {{item = "mcl_armor:boots_leather", count = 1}}},
 			{id = "saddle", from = "mcl_mobitems:saddle", label = "Saddle", level = 4, dinners = 8,
 				inputs = {{item = LEATHER, count = 4}}},
 			{id = "boots_feather_falling", from = "mcl_armor:boots_leather", label = "Leather boots", level = 5,
