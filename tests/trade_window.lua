@@ -377,8 +377,8 @@ do
 	handlers.fields(player, window.FORMNAME, {tab = "2"})
 	assert(shown[#shown].spec:find("needs a friend (30)", 1, true))
 	handlers.fields(player, window.FORMNAME, {quit = "true"})
-	-- A fisherman has no Special tab (yet).
-	local fisher = {_id = "fish-1", _profession = "fisherman", _villages_belongings = {}, object = villager.object}
+	-- A shepherd has no Special tab.
+	local fisher = {_id = "shep-1", _profession = "shepherd", _villages_belongings = {}, object = villager.object}
 	def.on_rightclick(fisher, player)
 	assert(not shown[#shown].spec:find("tabheader[", 1, true))
 	handlers.fields(player, window.FORMNAME, {quit = "true"})
@@ -544,5 +544,26 @@ do
 	assert(logs[#logs]:find("received 2", 1, true))
 	handlers.fields(player, window.FORMNAME, {quit = "true"})
 	values[DIAMOND] = nil
+end
+-- The fisherman (ticket 37e): an enchanted rod from one past the rod it fishes with.
+do
+	local ROD = "mcl_fishing:fishing_rod"
+	local tackle = {[EMERALD] = 0, [ROD] = 1}
+	local fisher2 = {_id = "fish-2", _profession = "fisherman", _max_trade_tier = 5, _villages_belongings = tackle,
+		object = villager.object}
+	view = {surplus = {}, needs = {}, value = function(item) return values[item] end}
+	player_inv.contents[EMERALD] = 5000
+	rep = 60
+	def.on_rightclick(fisher2, player)
+	handlers.fields(player, window.FORMNAME, {tab = "2"})
+	assert(shown[#shown].spec:find("Fishing rod: Luck of the Sea III, Lure III", 1, true))
+	handlers.fields(player, window.FORMNAME, {premium_buy_1 = true})
+	assert(tackle[ROD] == 1 and chats[#chats]:find("nothing to make", 1, true), "never its own rod")
+	tackle[ROD] = 2
+	handlers.fields(player, window.FORMNAME, {tab = "2"})
+	handlers.fields(player, window.FORMNAME, {premium_buy_1 = true})
+	assert(made[#made].id == "rod_3" and made[#made].enchants.lure == 3 and tackle[ROD] == 1)
+	handlers.fields(player, window.FORMNAME, {quit = "true"})
+	rep = 0
 end
 print("trade_window.lua: ok")

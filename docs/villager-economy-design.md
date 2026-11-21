@@ -3603,10 +3603,23 @@ The lines, by sub-ticket (one PR each, against `main`):
     one stick and nothing taken, then made from three diamonds and two sticks, tallied; a
     diamond sold, two received, the price learnt per diamond sold).
     Checked on the real engine: all fifteen come out enchanted as registered items.
-- **37e. Fletcher, fisherman, leatherworker.** The fletcher's bow: Power III; Power IV and
-  Unbreaking II; Power V and Infinity. The fisherman's rod (keeps 1): Lure I and Luck I; Lure
-  II and Luck II; Lure III and Luck III. The leatherworker: a saddle from 4 leather (8 dinners)
-  at level 4; at 5 also leather boots with Feather Falling IV.
+- **37e. Fletcher, fisherman, leatherworker (done).**
+
+  | | Level 3 | Level 4 | Level 5 |
+  |---|---|---|---|
+  | Fletcher | bow, Power III (8) | bow, Power IV, Unbreaking II (28) | bow, Power V, Infinity (56) |
+  | Fisherman | rod, Lure I, Luck of the Sea I (7) | rod, Lure II, Luck of the Sea II (14) | rod, Lure III, Luck of the Sea III (28) |
+  | Leatherworker | leather boots, Feather Falling II (4) | saddle from 4 leather (8) | leather boots, Feather Falling IV (16) |
+
+  The fletcher's bows come from bows it made, and it keeps none (out of stock without one).
+  The fisherman keeps one rod past the one it fishes with (wants.lua's), and never sells
+  that one (an input's `leave`), so it buys a spare from the fletcher. The leatherworker keeps
+  4 leather for saddles (VoxeLibre has no saddle recipe), and both pairs of boots are ones it made. The
+  saddle has no enchantments and its own price (`dinners`).
+  - **Tests:** `tests/premium.lua` (the three lines, the rod it fishes with left, the saddle's
+    own price, keeps); `tests/trade_window.lua` (a rod refused while it holds only its own,
+    then sold from a second). Checked on the real engine: all nine come out as registered
+    items, enchanted as listed.
 - **None.** The shepherd, mason, butcher and keeper have no rare goods in vanilla; the
   Builder, alchemist and nitwit keep their own roles.
 - **Later: the cartographer.** Explorer maps (VoxeLibre has none) from 8 paper: a map of the
