@@ -664,6 +664,8 @@ function M.install(def, deps)
 		-- alchemist's book (ticket 30).
 		prices.learn(villager, entry.item, pay / count)
 		alchemist.bought(villager, possessions.held(villager), entry.item, count, pay)
+		-- A cook's raw input costs what it paid (asks.note_input, ticket 42).
+		asks.note_input(villager, entry.item, received, pay)
 		-- A keeper's dish costs what it paid (dinner.note_cost, ticket 39b).
 		if villager._villages_keeper then dinner.note_cost(villager, entry.item, received, pay) end
 		local left = inv:add_item("main", EMERALD .. " " .. pay)

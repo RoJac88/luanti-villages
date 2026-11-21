@@ -133,4 +133,30 @@ do
 	assert(asks.stock_in_trade({_profession = "butcher"}, "mcl_mobitems:cooked_beef"))
 end
 
+-- Ticket 42: a cook's dish is asked at no less than PROFIT times what its raw inputs cost
+-- it. The butcher sold 3 cooked salmon for an emerald, from fish it paid 0.25 each for.
+do
+	local ledger = dofile("ledger.lua")
+	local BEEF_COOKED = "mcl_mobitems:cooked_beef"
+	local butch = {_profession = "butcher", _villages_asks = {[BEEF_COOKED] = 0.25}, _villages_prices = {}}
+	assert(asks.dish_floor(butch, BEEF_COOKED) == nil, "no cost known")
+	asks.note_input(butch, "mcl_core:cobble", 4, 4)
+	assert(butch._villages_input_cost == nil, "not an input of its dishes")
+	asks.note_input(butch, BEEF, 10, 20)
+	assert(near(butch._villages_input_cost[BEEF], 2))
+	asks.note_input(butch, BEEF, 8, 0)
+	assert(near(butch._villages_input_cost[BEEF], (2 * 8 + 0) / 16), "an average over about 8")
+	butch._villages_input_cost[BEEF] = 2
+	local coal = ledger.price("mcl_core:coal_lump")
+	local floor = asks.PROFIT * (2 + coal / 8)
+	assert(near(asks.dish_floor(butch, BEEF_COOKED), floor))
+	assert(near(asks.ask(butch, BEEF_COOKED), math.max(ledger.price(BEEF_COOKED) * 0.25, floor)))
+	assert(asks.ask(butch, BEEF_COOKED) >= floor)
+	-- Never the keeper's, which cooks only as a last resort.
+	local kip = {_profession = "butcher", _villages_keeper = true, _villages_input_cost = {[BEEF] = 2}}
+	assert(asks.dish_floor(kip, BEEF_COOKED) == nil)
+	asks.note_input(kip, "mcl_mobitems:beef", 1, 5)
+	assert(kip._villages_input_cost[BEEF] == 2)
+end
+
 print("asks.lua: ok")

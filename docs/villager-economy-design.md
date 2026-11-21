@@ -4060,6 +4060,29 @@ food are dropped at the next note.
 **Success, on ColonyFood.** Ticket 39's: most dinners the butcher's, the keeper baking on
 fewer than 1 day in 5, hungry and starving at 0 or 1, the plate cost between 1 and 2.
 
+### 42. A dish never sells under its cost
+
+**Run.** ColonyFood, days 975 to 979 (main 4f33444, ticket 41). The keeper bought the
+butcher's dishes cheaply (cooked beef at 1.45, fish at 0.67 to 0.86), but the butcher's asks
+had collapsed: every sale was 2 or 3 cooked fish, salmon or beef for an emerald, and once
+12 baked potatoes, from raw food it paid 0.25 to 0.4 each for. In the #153 run it held 16
+dishes unsold for days, its asks fell 10% a day to a quarter of its reference price, and
+that price followed its sales down; 40a had taken away the floor at its own value, and no
+other floor stood. Villagers bought their dinners from it and ate at home: the tavern
+served 4 to 10 a day where it had served 13 to 22, while hunger stayed at 0 to 2.
+
+**Change.** A cook's dish (a `demand` recipe's output) is asked at no less than PROFIT
+(1.25) times what its raw inputs cost it and its fuel at its reference price for coal
+(`asks.dish_floor`). Each raw input it buys, in conversation, on a trade trip or at a
+player's window, goes into an average of what it paid over about 8 (`asks.note_input`,
+`_villages_input_cost`). 37b's extra emerald over cost is left out: it would more than
+double a dish. A dish from inputs it never bought (its coop's chicken) has no floor, and
+the keeper none at all.
+
+**Next.** The tavern should stay the main place to eat. Once the floor has run, judge
+whether villagers still buy their dinners from the butcher and skip the tavern; if so, a
+tavern dinner needs to be worth more to a guest than the same dish eaten at home.
+
 ## Open questions
 
 - Price discovery (ticket 21):
