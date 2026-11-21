@@ -199,3 +199,8 @@ living_villages_profile (Profile villager callbacks) bool false
 # With profiling on, log the figures and start over every this many seconds; 0 only
 # answers the chat command.
 living_villages_profile_log_seconds (Profile log interval) int 60 0 3600
+
+# A village's cartographer charts ocean temples and woodland cabins for explorer maps by
+# generating likely land around the village, one chunk at a time (ticket 38a). Seconds
+# between chunks: more is gentler on a busy server.
+living_villages_charting_pause (Pause between chunks a chart generates) float 2 0 60

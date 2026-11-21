@@ -3687,9 +3687,11 @@ The sub-tickets (one PR each, against `main`):
     call, as `village_index.lua` wraps `settlements.place_schematics`) and logs every
     `ocean_temple` and `woodland_cabin` placed: name and position, in mod storage. Exploring
     players chart for free.
-  - **Charts by village.** A village is its bell (`_villages_bell`). Once a cartographer with
-    that bell reaches tier 3 a chart for ocean temples starts there, and at tier 4 one for
-    woodland cabins. A chart keeps up to 3 sites nearest the bell, each with its map (38b).
+  - **Charts by village.** A village is its `village_index` record, as the Builder's (a
+    villager's `_villages_bell` lasts only a gathering). Once a cartographer within 160 of
+    one reaches tier 3 a chart for ocean temples starts at its centre, and at tier 4 one for
+    woodland cabins; a cartographer with no record nearby starts one where it stands. A
+    globalstep looks for cartographers every 30 s. A chart keeps up to 3 sites nearest the bell, each with its map (38b).
     Logged sites within its radius count first.
   - **The search.** Chunks (80 nodes, from -32) within the radius, nearest first: 3,000
     nodes for temples, 6,000 for cabins. Each is classified by noise alone, 16 samples: deep
@@ -3706,8 +3708,17 @@ The sub-tickets (one PR each, against `main`):
     or the mapgen is singlenode or flat. The classifier needs v7, VoxeLibre's default: other
     mapgens chart only from seen sites. A chart that reaches its radius with no site says so,
     and doesn't search again.
-  - `/living_villages_charts` lists a village's charts, their sites and how far each search
-    has got.
+  - `/living_villages_charts` (debug privilege) lists each village's charts, their sites and
+    how far each search has got; `start [x,z]` charts both kinds around the player or x,z,
+    as a tier 4 cartographer would.
+  - **Old land's signatures.** Ocean temple: prismarine and prismarine bricks, 150 or more
+    (each schematic has about 600, and no other structure any). Woodland cabin: cobbled
+    deepslate (48 in the cabin) or stripped dark oak (310 in the outpost), 24 or more, with
+    the wither skeleton head each has within 24 of the cluster's centre, which tells it from
+    a player's build.
+  - **Checked on the real engine (2026-11-21).** Started at 0,0 on the ColonyFood seed, both
+    charts filled in 30 s: temples 206, 451 and 494 away, cabins 1,450 to 1,740 away in one
+    forest. With the record wiped and the land kept, the scan found the same six.
   - **Tests:** `tests/charting.lua` (chunk maths, nearest-first order, the classifier on stub
     noise, logged sites counted first, a chart stopping at 3 sites and at its radius, resumed
     from storage, no chart for a disabled structure or another mapgen, the scan's cluster
