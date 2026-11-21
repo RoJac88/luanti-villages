@@ -186,13 +186,14 @@ end
 -- good at its cost times its MARGIN (ticket 30, alchemist.stock_cost); one bought, what it
 -- paid, to sell on at no loss; one it makes, PROFIT times its unit cost; one grown or
 -- gathered, GATHER_SHARE of its base price. Nil for an item with no base price.
+-- Also returns how it was reckoned: "paid", "made", "gathered" or "alchemist".
 function M.replacement(seller, item)
 	if seller._villages_alchemist and alchemist.GOODS[item] then
-		return alchemist.stock_cost(seller, item) * alchemist.MARGIN
+		return alchemist.stock_cost(seller, item) * alchemist.MARGIN, "alchemist"
 	end
 	local cost, how = unit_cost(seller, item)
 	if not cost then return nil end
-	return how == "made" and cost * PROFIT or cost
+	return how == "made" and cost * PROFIT or cost, how
 end
 
 -- The least the seller asks for one (ticket 43b): the larger of what it costs to replace
@@ -234,6 +235,35 @@ function M.ask(seller, item, view)
 	local peddle = seller._villages_peddle
 	if peddle and peddle.item == item and not peddle.buying and peddle.bid then ask = math.max(ask, peddle.bid) end
 	return ask
+end
+
+-- Its asks for its `n` (3 if nil) largest spare goods (the view's surplus), each with its
+-- reservation price and how that was reckoned, for the inspector and the daily log (ticket
+-- 43d): "beef 0.34 (floor 0.32 gathered)", "at floor" when the ask is the floor.
+function M.describe(seller, view, n)
+	local list = {}
+	for item, count in pairs(view and view.surplus or {}) do list[#list + 1] = {item = item, count = count} end
+	table.sort(list, function(a, b)
+		if a.count ~= b.count then return a.count > b.count end
+		return a.item < b.item
+	end)
+	local parts = {}
+	for _, entry in ipairs(list) do
+		if #parts >= (n or 3) then break end
+		local ask = M.ask(seller, entry.item, view)
+		if ask then
+			local floor = M.reservation(seller, entry.item, view)
+			local _, how = M.replacement(seller, entry.item)
+			local name = entry.item:gsub("^.*:", "")
+			local note = ""
+			if floor then
+				note = ask <= floor + 1e-9 and string.format(" (at floor, %s)", how or "value")
+					or string.format(" (floor %.2f %s)", floor, how or "value")
+			end
+			parts[#parts + 1] = string.format("%d %s %.2f%s", entry.count, name, ask, note)
+		end
+	end
+	return #parts > 0 and table.concat(parts, ", ") or "none spare"
 end
 
 -- Its ask for a comfort raised to BID_SHARE of a bid made to its face (a buyer in its

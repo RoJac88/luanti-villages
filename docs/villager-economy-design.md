@@ -4102,6 +4102,8 @@ lifts a factor already under it (most were at MIN with references at 1/64), so a
 from the floor; `asks.sold` teaches the reference no less than the replacement cost, since a
 lot grown to a whole emerald (3 for 1 at an ask of 0.34) sells a little under the ask. The farm
 chest needed nothing more: its ask is `asks.ask` with no view, floored since 43b.
+43d built: `asks.describe`, the inspector's `Asks` line and a daily `asks:` log line, e.g.
+"30 beef 0.32 (at floor, gathered), 12 cooked_beef 0.61 (floor 0.47 made)".
 
 **Problem.** A seller has no sound lowest price. Tickets 39 to 42 each fixed one failure and
 uncovered the next, and they share a cause.
