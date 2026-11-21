@@ -188,4 +188,32 @@ do
 	assert(premium.stock(find(bows, "bow_power"), {[BOW] = 2}) == 2)
 end
 
+-- The cartographer (ticket 38c): explorer maps from 8 paper, stocked by charted sites too.
+do
+	local PAPER = "mcl_core:paper"
+	local maps = premium.offers("cartographer")
+	assert(#maps == 2 and maps[1].id == "woodland_explorer_map" and maps[2].id == "ocean_explorer_map")
+	assert(maps[1].level == 4 and maps[1].dinners == 10 and maps[1].chart == "woodland_cabin")
+	assert(maps[2].level == 3 and maps[2].dinners == 6 and maps[2].chart == "ocean_temple")
+	assert(maps[2].makes == "mcl_maps:filled_map" and maps[2].base == PAPER and maps[2].count == 8)
+	assert(premium.price(maps[2], 18, function() return 1 end, 0) == 6 * 18 + 8, "dinners plus its paper")
+	assert(premium.keeps({_profession = "cartographer", _max_trade_tier = 3})[PAPER] == 16)
+	assert(premium.keeps({_profession = "cartographer", _max_trade_tier = 2}) == nil)
+	local function charted(offer)
+		if offer.chart == "ocean_temple" then return 2 end
+		return 0, "still charting the woods"
+	end
+	local rows = premium.rows("cartographer", 5, 50, {[PAPER] = 40}, 18, function() return 1 end, 0, nil, charted)
+	assert(rows[2].stock == 2 and rows[2].reason == nil, "two sites, though paper for five")
+	assert(rows[1].stock == 0 and rows[1].reason == "still charting the woods")
+	rows = premium.rows("cartographer", 5, 50, {[PAPER] = 8}, 18, function() return 1 end, 0, nil, charted)
+	assert(rows[2].stock == 1, "paper for one")
+	rows = premium.rows("cartographer", 5, 50, {[PAPER] = 40}, 18, function() return 1 end, 0)
+	assert(rows[2].stock == 0 and rows[2].reason == "can't chart here", "no charts at all")
+	assert(rows[1].locked == nil and premium.rows("cartographer", 3, 50, {}, 18, 1, 0)[1].locked == "needs an expert")
+	-- Other lines are untouched by charts.
+	local books = premium.rows("librarian", 5, 50, {[BOOK] = 3}, 18, function() return 1 end, 0, nil, charted)
+	assert(books[1].stock == 3 and books[1].reason == nil)
+end
+
 print("premium ok")

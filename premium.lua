@@ -32,6 +32,9 @@
 --   `base` and `count` are the first. An input's `leave` is how many it never sells of it
 --   (ticket 37e: the rod a fisherman fishes with). A good with no enchantments (the
 --   leatherworker's saddle) has its own `dinners`.
+-- * Explorer maps (ticket 38c: the cartographer's) carry `chart`, the structure they lead to.
+--   Each is the map of a site its village charted (charting.lua); `rows` takes `charted(offer)`
+--   for the sites left for the player, so stock is also those, and a row with none its reason.
 --
 -- Premium goods never enter villager trade, market news or asks: they exist only once a
 -- player buys one.
@@ -43,6 +46,7 @@ local BOTTLE = "mcl_potions:glass_bottle"
 local WHEAT, POTATO = "mcl_farming:wheat_item", "mcl_farming:potato_item"
 local DIAMOND, STICK = "mcl_core:diamond", "mcl_core:stick"
 local BOW, ROD, LEATHER = "mcl_bows:bow", "mcl_fishing:fishing_rod", "mcl_mobitems:leather"
+local PAPER, MAP = "mcl_core:paper", "mcl_maps:filled_map"
 
 M.MIN_LEVEL, M.MAX_LEVEL = 3, 5
 M.SCALE = 1
@@ -166,6 +170,19 @@ M.LINES = {
 		},
 	},
 }
+-- Ticket 38c: the cartographer's explorer maps, each of a site its village charted
+-- (charting.lua) and drew (explorer_map.lua), from the empty map's 8 paper: it stands in for
+-- the compass no village can make. `chart` names the structure; a map's stock is also the
+-- charted sites the player hasn't bought.
+M.LINES.cartographer = {
+	keeps = {[PAPER] = 16},
+	goods = {
+		{id = "ocean_explorer_map", from = MAP, label = "Ocean explorer map", level = 3, dinners = 6,
+			chart = "ocean_temple", inputs = {{item = PAPER, count = 8}}},
+		{id = "woodland_explorer_map", from = MAP, label = "Woodland explorer map", level = 4, dinners = 10,
+			chart = "woodland_cabin", inputs = {{item = PAPER, count = 8}}},
+	},
+}
 -- The armorer's: each iron piece it made with Protection II; diamond leggings and boots
 -- with Protection III; a diamond helmet and chestplate with Protection IV and Unbreaking III.
 for _, piece in ipairs({{"helmet", "Iron helmet"}, {"chestplate", "Iron chestplate"}, {"leggings", "Iron leggings"},
@@ -229,7 +246,7 @@ function M.offers(profession)
 		if good.inputs then
 			local first = good.inputs[1]
 			list[#list + 1] = {id = good.id, makes = good.from, from = good.from, enchants = good.enchants,
-				level = good.level, dinners = good.dinners or M.dinners(good.enchants),
+				chart = good.chart, level = good.level, dinners = good.dinners or M.dinners(good.enchants),
 				label = good.enchants and (good.label .. ": " .. M.describe(good.enchants)) or good.label,
 				inputs = good.inputs, base = first.item, count = first.count}
 		else
@@ -340,15 +357,24 @@ end
 -- stock (sales its base held allows, and today's cap), locked (nil or why), left (nil, or
 -- what today's cap leaves)}. `held` is what it holds, `dinner` its reference price for a
 -- dinner, `value(item)` a base's reference value, `share` reputation's share, `sold` what
--- the player bought of each offer today ({id = count}, nil for none).
-function M.rows(profession, tier, rep, held, dinner, value, share, sold)
+-- the player bought of each offer today ({id = count}, nil for none). `charted(offer)`
+-- (ticket 38c) gives a map's sites left for the player, and why none: a row's `reason`.
+function M.rows(profession, tier, rep, held, dinner, value, share, sold, charted)
 	local rows = {}
 	local level = M.level(tier, rep)
 	for _, offer in ipairs(M.offers(profession)) do
 		local stock = M.stock(offer, held)
 		local left = M.left(offer, level, sold and sold[offer.cap or offer.id])
+		local reason
+		if offer.chart then
+			local sites, why = 0, "can't chart here"
+			if charted then sites, why = charted(offer) end
+			if sites < 1 then reason = why end
+			stock = math.min(stock, sites)
+		end
 		rows[#rows + 1] = {offer = offer, price = M.price(offer, dinner, value, share),
-			stock = left and math.min(stock, left) or stock, left = left, locked = M.locked(offer.level, tier, rep)}
+			stock = left and math.min(stock, left) or stock, left = left, locked = M.locked(offer.level, tier, rep),
+			reason = reason}
 	end
 	return rows
 end

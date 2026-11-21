@@ -3764,18 +3764,28 @@ The sub-tickets (one PR each, against `main`):
   - Each takes 8 paper (the empty map's recipe; the cartographer stands in for the compass
     no village can make). From journeyman up it keeps 16 paper (`keeps`), so it buys paper
     from players and makes its own from cane, as now.
-  - **Stock.** A map row's stock is the lower of its paper and the chart's sites that player
-    hasn't bought from this village. A sale hands over that site's map, drawn already, so
-    buying stays at once. The window says why one is missing: "still charting the sea", or
-    "knows of no woodland cabin within 6,000 blocks".
-  - **One map a site a player.** A village remembers which sites each player bought. Another
-    player gets the nearest; the same player the next. A chart refills to 3 behind sales.
-  - The offer has a `chart` field (`ocean_temple`, `woodland_cabin`); `premium.rows` takes
-    the sites as it takes held goods, and `make` builds the map from the site.
-  - **Tests:** `tests/premium.lua` (the two rows, levels, prices, stock by paper and by sites);
-    `tests/trade_window.lua` (a map sold with its site's meta and paper taken; the same
-    player's second map is the next site; another player's first is the nearest; out of stock
-    while charting, with the reason).
+  - **Stock.** A map row's stock is the lower of its paper and the drawn sites of its village's
+    chart that player hasn't bought. A sale hands over the nearest such map, drawn already, so
+    buying stays at once. The window says why none: "still charting the sea" (or "the woods")
+    while a chart searches or draws, "knows of no woodland cabin within 6,000 blocks" or "knows
+    of no other …" once it has reached its radius, "can't chart here" with no charts at all.
+  - **One map a site a player.** A chart remembers which sites each player bought
+    (`chart.bought`). Another player gets the nearest; the same player the next. A chart keeps
+    3 sites ahead of its keenest buyer (`charting.most_bought`), so a sale can start its search
+    again.
+  - **Wiring.** `charting.install` returns the live charts' view, which `init.lua` keeps (as
+    it keeps `village_index`) and hands the trade window (`deps.charting`): `available(pos,
+    kind, name)`, the count or why none, and `take(pos, kind, name)`, the map's item and a
+    function noting the sale once paid. The cartographer's village is the record within 160 of
+    it, as when it started the chart. The offer's `chart` field names the structure;
+    `premium.rows` takes `charted(offer)` and gives a row's `reason`.
+  - **Tests:** `tests/premium.lua` (the two rows, levels, prices, the paper kept, stock by
+    paper and by sites, the reason, other lines untouched); `tests/charting.lua` (the nearest
+    drawn site unbought, another player's, refilling behind the keenest buyer, each reason,
+    `available` and `take` at the cartographer's village); `tests/trade_window.lua` (both rows
+    say why before anything is charted; the nearest map sold, 8 paper taken, paid; the same
+    player's next is the next site, then none; another player's first is the nearest; out of
+    paper, out of stock).
 - **Open.** Whether a woodland map at 1,500 to 3,500 nodes is too far for the game's pace,
   and whether the prices sit right beside the saddle (8) and pearls (4).
 

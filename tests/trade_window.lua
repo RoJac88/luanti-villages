@@ -135,8 +135,33 @@ local function make(offer, count)
 	made[#made + 1] = offer
 	return {item = offer.id, get_count = function() return count or 1 end}
 end
+-- The live charts (ticket 38c), stubbed: drawn sites by kind, and what each player bought.
+local chart_sites = {ocean_temple = {}, woodland_cabin = {}}
+local chart_bought = {}
+local function unbought(kind, name)
+	local list = {}
+	for _, site in ipairs(chart_sites[kind]) do
+		if not (chart_bought[name] and chart_bought[name][site]) then list[#list + 1] = site end
+	end
+	return list
+end
+local charting = {
+	available = function(_, kind, name)
+		local n = #unbought(kind, name)
+		if n > 0 then return n end
+		return 0, kind == "ocean_temple" and "still charting the sea" or "still charting the woods"
+	end,
+	take = function(_, kind, name)
+		local site = unbought(kind, name)[1]
+		if not site then return nil end
+		return {item = "map:" .. site, get_count = function() return 1 end}, function()
+			chart_bought[name] = chart_bought[name] or {}
+			chart_bought[name][site] = true
+		end
+	end,
+}
 window.install(def, {possessions = possessions, gossip = gossip, tavern = tavern, alms = alms, make = make,
-	clock = {enabled = function() return enabled end}})
+	clock = {enabled = function() return enabled end}, charting = charting})
 
 local function inventory(contents)
 	local inv = {contents = contents}
@@ -564,6 +589,58 @@ do
 	handlers.fields(player, window.FORMNAME, {premium_buy_1 = true})
 	assert(made[#made].id == "rod_3" and made[#made].enchants.lure == 3 and tackle[ROD] == 1)
 	handlers.fields(player, window.FORMNAME, {quit = "true"})
+	rep = 0
+end
+-- The cartographer (ticket 38c): explorer maps of its village's charted sites, from 8 paper.
+do
+	local PAPER = "mcl_core:paper"
+	local desk = {[EMERALD] = 0, [PAPER] = 24}
+	local carto = {_id = "carto-1", _profession = "cartographer", _max_trade_tier = 5, _villages_belongings = desk,
+		object = villager.object}
+	view = {surplus = {}, needs = {}, value = function(item) return values[item] end}
+	player_inv.contents[EMERALD] = 5000
+	rep = 60
+	-- Nothing charted yet: both rows say why.
+	def.on_rightclick(carto, player)
+	handlers.fields(player, window.FORMNAME, {tab = "2"})
+	local spec = shown[#shown].spec
+	assert(spec:find("Woodland explorer map", 1, true) and spec:find("Ocean explorer map", 1, true))
+	assert(spec:find("still charting the woods", 1, true) and spec:find("still charting the sea", 1, true))
+	assert(not spec:find("premium_buy_", 1, true), "nothing to buy")
+	handlers.fields(player, window.FORMNAME, {quit = "true"})
+	-- Two temples drawn: the ocean row (second, below the level 4 woodland one) sells them.
+	chart_sites.ocean_temple = {"near", "far"}
+	def.on_rightclick(carto, player)
+	handlers.fields(player, window.FORMNAME, {tab = "2"})
+	assert(shown[#shown].spec:find("can make 2", 1, true))
+	local made_before, emeralds = #made, player_inv.contents[EMERALD]
+	handlers.fields(player, window.FORMNAME, {premium_buy_2 = true})
+	assert(player_inv.contents["map:near"] == 1, "the nearest first")
+	assert(desk[PAPER] == 16 and #made == made_before, "8 paper taken, made from the chart")
+	assert(player_inv.contents[EMERALD] < emeralds and desk[EMERALD] == emeralds - player_inv.contents[EMERALD])
+	-- The same player's next map is the next site; then it has none for them.
+	handlers.fields(player, window.FORMNAME, {tab = "2"})
+	handlers.fields(player, window.FORMNAME, {premium_buy_2 = true})
+	assert(player_inv.contents["map:far"] == 1 and desk[PAPER] == 8)
+	handlers.fields(player, window.FORMNAME, {tab = "2"})
+	assert(shown[#shown].spec:find("still charting the sea", 1, true))
+	handlers.fields(player, window.FORMNAME, {premium_buy_2 = true})
+	assert(desk[PAPER] == 8, "nothing sold")
+	handlers.fields(player, window.FORMNAME, {quit = "true"})
+	-- Another player's first is the nearest.
+	local inv2 = inventory({[EMERALD] = 5000})
+	local player2 = {
+		is_player = function() return true end, get_player_name = function() return "other" end,
+		get_pos = function() return {x = 1, y = 0, z = 0} end, get_inventory = function() return inv2 end,
+	}
+	def.on_rightclick(carto, player2)
+	handlers.fields(player2, window.FORMNAME, {tab = "2"})
+	handlers.fields(player2, window.FORMNAME, {premium_buy_2 = true})
+	assert(inv2.contents["map:near"] == 1 and desk[PAPER] == 0)
+	handlers.fields(player2, window.FORMNAME, {tab = "2"})
+	-- Out of paper: out of stock, though a site is left for them.
+	assert(not shown[#shown].spec:find("can make", 1, true))
+	handlers.fields(player2, window.FORMNAME, {quit = "true"})
 	rep = 0
 end
 print("trade_window.lua: ok")

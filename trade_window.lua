@@ -388,6 +388,8 @@ end
 
 function M.install(def, deps)
 	local possessions, gossip, clock = deps.possessions, deps.gossip, deps.clock
+	-- The live charts (charting.lua's install), for the cartographer's explorer maps (38c).
+	local charting = deps.charting
 	local asks = deps.asks or dofile(core.get_modpath("living_villages") .. "/asks.lua")
 	local prices = deps.prices or dofile(core.get_modpath("living_villages") .. "/prices.lua")
 	local tavern = deps.tavern or M.pantry_till()
@@ -417,8 +419,13 @@ function M.install(def, deps)
 		local r = reputation(villager, name)
 		local function value(item) return prices.price(villager._villages_prices, item) or 0 end
 		local day = core.get_day_count and core.get_day_count() or 0
+		local function charted(offer)
+			local pos = villager.object and villager.object:get_pos()
+			if not charting or not pos then return 0, "can't chart here" end
+			return charting.available(pos, offer.chart, name)
+		end
 		return premium.rows(villager._profession, villager._max_trade_tier or 1, r, possessions.held(villager),
-			dinner.reference(villager), value, M.rep_share(r), premium.sold_today(villager, name, day))
+			dinner.reference(villager), value, M.rep_share(r), premium.sold_today(villager, name, day), charted)
 	end
 
 	-- What the player carries: {item = count}.
@@ -477,7 +484,7 @@ function M.install(def, deps)
 				local entry = special[i]
 				local x, y = i <= PREMIUM_ROWS / 2 and 0.5 or 6.8, 1.6 + ((i - 1) % (PREMIUM_ROWS / 2)) * 0.95
 				local status = entry.locked or (entry.stock > 0 and string.format("can make %d", entry.stock))
-					or (entry.left == 0 and "sold out to you today") or "out of stock"
+					or (entry.left == 0 and "sold out to you today") or entry.reason or "out of stock"
 				parts[#parts + 1] = string.format("item_image[%g,%g;0.8,0.8;%s]", x, y, entry.offer.makes)
 				parts[#parts + 1] = string.format("label[%g,%g;%s]", x + 0.9, y + 0.2,
 					esc(string.format("%s: %d em", entry.offer.label, entry.price)))
@@ -689,7 +696,18 @@ function M.install(def, deps)
 			core.chat_send_player(name, "You have too few emeralds for that.")
 			return
 		end
-		local stack = make(offer, count)
+		-- An explorer map (38c) is the nearest charted site's the player hasn't bought.
+		local stack, note_map
+		if offer.chart then
+			local pos = villager.object and villager.object:get_pos()
+			if charting and pos then stack, note_map = charting.take(pos, offer.chart, name) end
+			if not stack then
+				core.chat_send_player(name, "It has no map to sell you.")
+				return
+			end
+		else
+			stack = make(offer, count)
+		end
 		if not inv:room_for_item("main", stack) then
 			core.chat_send_player(name, "You have no room for that.")
 			return
@@ -710,6 +728,7 @@ function M.install(def, deps)
 		inv:add_item("main", stack)
 		local day = core.get_day_count and core.get_day_count() or 0
 		premium.note_sold(villager, name, offer.cap or offer.id, count, day)
+		if note_map then note_map() end
 		tally.note(villager, nil, used, day)
 		tally.money(villager, "premium_in", pay, day)
 		if gossip then gossip.add(villager, name, "trading") end
