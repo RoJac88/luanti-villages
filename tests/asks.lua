@@ -118,4 +118,19 @@ do
 	assert(asks.converted(c, plain) < 6)
 end
 
+-- Ticket 40a: food its trade makes is stock in trade, asked with no floor at its own value.
+-- A rich leatherworker valued its spare beef at 4.62 and asked that, eleven times its 0.42.
+do
+	local view = {value = function() return 50 end}
+	local tanner = {_profession = "leatherworker", _villages_asks = {[BEEF] = 0.5}}
+	assert(asks.stock_in_trade(tanner, BEEF) and not asks.stock_in_trade(tanner, "mcl_mobitems:leather"))
+	local ledger = dofile("ledger.lua")
+	assert(near(asks.ask(tanner, BEEF, view), ledger.price(BEEF) * 0.5), "its beef by supply")
+	assert(asks.ask(tanner, "mcl_mobitems:leather", view) == 50, "its leather, no food, at its value")
+	-- Food it does not make keeps the floor: the fisherman's beef.
+	local fisher = {_profession = "fisherman", _villages_asks = {[BEEF] = 0.5}}
+	assert(not asks.stock_in_trade(fisher, BEEF) and asks.ask(fisher, BEEF, view) == 50)
+	assert(asks.stock_in_trade({_profession = "butcher"}, "mcl_mobitems:cooked_beef"))
+end
+
 print("asks.lua: ok")

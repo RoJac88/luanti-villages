@@ -245,6 +245,18 @@ function M.own(self, view, now)
 			end
 			if fuel then add(fuel, list[fuel]) end
 			for _, top in ipairs(ledger.top(inputs, view.value, OWN_ITEMS)) do add(top.item, top.count) end
+			-- A keeper's dishes (ticket 40c), whatever their rank: the pantry's shortfall, under
+			-- its cheapest dish, and the few of each it keeps. Capped at what a plate earns, they
+			-- ranked under a bow, an allium and a carpet, so nobody heard the tavern wanted food.
+			if self._villages_keeper then
+				local dish = cheapest.dish
+				if dish and not told[dish.item] then add(dish.item, list[dish.item]) end
+				local wanted = {}
+				for item in pairs(self._villages_dish_wants or {}) do
+					if list[item] and not told[item] then wanted[item] = list[item] end
+				end
+				for _, top in ipairs(ledger.top(wanted, view.value, OWN_ITEMS)) do add(top.item, top.count) end
+			end
 		end
 		if kind == "has" then
 			-- What its trade makes (ledger.outputs) is told too, the most a buyer would pay at
@@ -320,9 +332,29 @@ local function receive(listener, entry)
 	return true
 end
 
+-- What a cook's trade takes and makes (ticket 40b): its demand recipes' (recipes.lua)
+-- inputs and outputs, as {takes = set, makes = set}; nil for a villager with none (all but
+-- the butcher). Never the keeper, which cooks only as a last resort.
+local trades = {}
+function M.trade_goods(self)
+	if self._villages_keeper or self._villages_builder or self._villages_alchemist or not self._profession then return nil end
+	local profession = self._profession
+	if trades[profession] == nil then
+		local takes, makes = {}, {}
+		for _, recipe in ipairs(recipes[profession] or {}) do
+			if recipe.demand then
+				makes[recipe.makes] = true
+				for _, input in ipairs(recipe.from) do takes[input[1]] = true end
+			end
+		end
+		trades[profession] = next(makes) and {takes = takes, makes = makes} or false
+	end
+	return trades[profession] or nil
+end
+
 -- Drops the least interesting entries past NEWS_ENTRIES (`limit`, if given).
 local function trim(listener, view, now, limit)
-	limit = limit or (listener._villages_alchemist and OVERHEAR_ENTRIES) or NEWS_ENTRIES
+	limit = limit or ((listener._villages_alchemist or M.trade_goods(listener)) and OVERHEAR_ENTRIES) or NEWS_ENTRIES
 	local list = listener._villages_market_news
 	if not list or #list <= limit then return end
 	local known = M.wanted_and_had(list)
@@ -448,6 +480,68 @@ function M.overhear(listener, villagers, now)
 	return kept, told_kept
 end
 
+-- Whether a news entry is about a cook's trade (M.trade_goods): an offer of what it takes,
+-- or a want of what it makes, a category's (the keeper's dishes) if a member is one.
+local function about(trade, entry)
+	if entry.kind == "has" then return trade.takes[entry.item] == true end
+	if trade.makes[entry.item] then return true end
+	for item in pairs(entry.group and goods.CATEGORIES[entry.group] or {}) do
+		if trade.makes[item] then return true end
+	end
+	return false
+end
+
+-- A cook knows its trade partners (ticket 40b), as the alchemist hears everyone (above):
+-- the butcher takes in, a hop away, the own news (M.own) of every loaded adult villager in
+-- `villagers` that is about its trade, the leatherworker's beef, the fishermen's catch, the
+-- farmers' potatoes on offer and the keeper's dishes wanted; and each of them takes in the
+-- butcher's offers of dishes it needs and wants of what it has spare. Gossip never brought
+-- them together: every villager's 24 entries were full of wood, sticks and cobble, so for
+-- 8 days the butcher heard of no beef while the leatherworker held 95, and of no dish wanted
+-- (ColonyFood, 2026-11-21). What they trade at is their asks and bids as ever (asks.lua,
+-- prices.lua): this only carries the news. Returns how many entries it kept, and how many
+-- the others kept of its news.
+function M.partners(cook, villagers, now)
+	local trade = M.trade_goods(cook)
+	if not trade or not clock.enabled() then return 0, 0 end
+	now = now or core.get_gametime()
+	price_day(cook, now)
+	local cook_view = possessions.assess(cook)
+	local own = {}
+	for _, entry in ipairs(M.own(cook, cook_view, now)) do
+		if (entry.kind == "has" and trade.makes[entry.item]) or (entry.kind == "needs" and trade.takes[entry.item]) then
+			own[#own + 1] = entry
+		end
+	end
+	local kept, told_kept = 0, 0
+	for _, villager in ipairs(villagers) do
+		if villager ~= cook and villager._id and villager._id ~= cook._id and not villager.child then
+			local view = possessions.assess(villager)
+			for _, entry in ipairs(M.own(villager, view, now)) do
+				if about(trade, entry) then
+					local told = copy(entry)
+					told.hops = (told.hops or 0) + 1
+					if receive(cook, told) then kept = kept + 1 end
+				end
+			end
+			local took = false
+			for _, entry in ipairs(own) do
+				if (entry.kind == "has" and view.needs[entry.item]) or (entry.kind == "needs" and view.surplus[entry.item]) then
+					local told = copy(entry)
+					told.hops = (told.hops or 0) + 1
+					if receive(villager, told) then
+						told_kept = told_kept + 1
+						took = true
+					end
+				end
+			end
+			if took then trim(villager, view, now) end
+		end
+	end
+	trim(cook, cook_view, now)
+	return kept, told_kept
+end
+
 -- The loaded adult villagers: every active villager entity.
 local function loaded_villagers()
 	local out = {}
@@ -457,14 +551,26 @@ local function loaded_villagers()
 	return out
 end
 
--- Wraps do_custom: an alchemist overhears every OVERHEAR_SECONDS.
+-- Wraps do_custom: an alchemist overhears every OVERHEAR_SECONDS, and a cook hears its
+-- trade partners as often (M.partners).
 local next_overhear = setmetatable({}, {__mode = "k"})
 function M.install(def)
 	if not clock.enabled() then return end
 	local original = def.do_custom
 	def.do_custom = function(self, dtime)
 		local result = original(self, dtime)
-		if self._villages_alchemist and not self.child and self._id then
+		if not self._villages_alchemist and not self.child and self._id and M.trade_goods(self) then
+			local now = core.get_gametime()
+			if now >= (next_overhear[self] or 0) then
+				next_overhear[self] = now + OVERHEAR_SECONDS
+				local kept, told = M.partners(self, loaded_villagers(), now)
+				if kept > 0 or told > 0 then
+					core.log("action", string.format(
+						"[living_villages] market news: cook %s heard %d entries from its trade partners, told them %d",
+						short_id(self._id), kept, told))
+				end
+			end
+		elseif self._villages_alchemist and not self.child and self._id then
 			local now = core.get_gametime()
 			if now >= (next_overhear[self] or 0) then
 				next_overhear[self] = now + OVERHEAR_SECONDS

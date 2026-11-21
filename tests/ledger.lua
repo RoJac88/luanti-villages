@@ -240,4 +240,23 @@ do
 	assert(all.value("mcl_core:coal_lump") == plain.value("mcl_core:coal_lump"), "food only")
 end
 
+-- Ticket 40c: a recipe's output is supplied only once what it takes is: nothing here raises
+-- pigs, so no cooked porkchop; the coop's chicken and the herd's beef cook. The keeper makes
+-- no stew or pie. A food nothing supplies is no member of a food or dish need unless some
+-- is about; fuel's are, whatever M.supplied knows.
+do
+	assert(not ledger.supplied("mcl_mobitems:cooked_porkchop") and ledger.supplied("mcl_mobitems:cooked_beef"))
+	assert(ledger.supplied("mcl_mobitems:cooked_chicken") and ledger.supplied("mcl_core:stick"), "recipes on recipes")
+	assert(not ledger.supplied("mcl_farming:pumpkin_pie") and not ledger.supplied("mcl_mushrooms:mushroom_stew"))
+	local keeper = ledger.assess({id = "kip", profession = "keeper", held = {}, extra_categories = {dish = 10}})
+	assert(keeper.needs["mcl_mobitems:cooked_beef"] == 10 and keeper.group["mcl_mobitems:cooked_beef"] == "dish")
+	assert(not keeper.needs["mcl_farming:pumpkin_pie"] and not keeper.needs["mcl_mobitems:cooked_porkchop"])
+	local offered = ledger.assess({id = "kip", profession = "keeper", held = {}, extra_categories = {dish = 10},
+		available = {["mcl_farming:pumpkin_pie"] = true}})
+	assert(offered.needs["mcl_farming:pumpkin_pie"] == 10, "while some is about")
+	-- Food goods (ticket 40a): food, and what a recipe cooks into food.
+	assert(ledger.food_good("mcl_mobitems:beef") and ledger.food_good("mcl_fishing:fish_raw"))
+	assert(ledger.food_good("mcl_farming:bread") and not ledger.food_good("mcl_mobitems:leather"))
+end
+
 print("ledger.lua: ok")

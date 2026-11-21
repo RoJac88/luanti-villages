@@ -55,8 +55,9 @@ function M.food_cost(keeper)
 end
 
 -- `count` of a dish (or what it becomes: a potato as the baked potato) bought for `paid`.
+-- Food only (ticket 40d): its armor stand and carpets were noted as dishes.
 function M.note_cost(keeper, item, count, paid)
-	if not keeper or count <= 0 or not paid or paid < 0 then return end
+	if not keeper or count <= 0 or not paid or paid < 0 or not food.POINTS[item] then return end
 	local costs = keeper._villages_dish_cost or {}
 	local before = costs[item]
 	costs[item] = before and (before * COST_KEEP + paid) / (COST_KEEP + count) or paid / count

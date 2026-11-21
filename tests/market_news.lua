@@ -355,6 +355,46 @@ do
 	minetest.get_day_count = nil
 end
 
+-- Ticket 40c: a keeper tells the dishes the pantry is short of, whatever their rank, under a
+-- dish the village makes. Capped at what a plate earns, they ranked under a bow and a carpet.
+do
+	local kip = villager("kip", {["mcl_core:emerald"] = 50}, {_profession = "butcher", _villages_keeper = true,
+		_villages_dish_short = 10})
+	local view = possessions.assess(kip)
+	assert(view.needs["mcl_mobitems:cooked_beef"] and not view.needs["mcl_farming:pumpkin_pie"])
+	local dish
+	for _, entry in ipairs(news.own(kip, view, now)) do
+		if entry.kind == "needs" and entry.group == "dish" then dish = entry end
+	end
+	assert(dish and dish.count == 10, "its dishes are news")
+end
+
+-- Ticket 40b: a cook hears its trade partners. The butcher takes in the leatherworker's beef
+-- and the keeper's dishes, not the nitwit's sticks; the keeper hears its cooked beef offered,
+-- and the leatherworker that it wants beef.
+do
+	local butch = villager("butch", {["mcl_core:emerald"] = 40, ["mcl_mobitems:cooked_beef"] = 6},
+		{_profession = "butcher"})
+	local tan = villager("tan", {["mcl_mobitems:beef"] = 90}, {_profession = "leatherworker"})
+	local kip = villager("kip", {["mcl_core:emerald"] = 50}, {_profession = "butcher", _villages_keeper = true,
+		_villages_dish_short = 10})
+	local nit = villager("nit", {["mcl_core:stick"] = 64})
+	assert(news.trade_goods(butch).takes["mcl_mobitems:beef"] and news.trade_goods(butch).makes["mcl_mobitems:cooked_beef"])
+	assert(news.trade_goods(kip) == nil and news.trade_goods(tan) == nil, "only a cook")
+	local kept, told = news.partners(butch, {butch, tan, kip, nit}, now)
+	assert(kept > 0 and told > 0)
+	assert(knows(butch, "tan", "has", "mcl_mobitems:beef"), "the leatherworker's beef")
+	local wanted = false
+	for _, entry in ipairs(news.heard(butch, now)) do
+		if entry.who == "kip" and entry.kind == "needs" and entry.group == "dish" then wanted = entry.hops == 1 end
+	end
+	assert(wanted, "the keeper's dishes")
+	assert(not knows(butch, "nit"), "not the nitwit's sticks")
+	assert(knows(kip, "butch", "has", "mcl_mobitems:cooked_beef"), "the keeper hears its dishes")
+	assert(knows(tan, "butch", "needs", "mcl_mobitems:beef"), "the leatherworker hears it wants beef")
+	assert(not knows(nit, "butch"), "the nitwit hears nothing")
+end
+
 settings.living_villages_economy = false
 local hal, ivy = villager("hal", {["mcl_core:coal_lump"] = 40}), villager("ivy", {})
 assert(news.exchange({hal, ivy}) == 0 and ivy._villages_market_news == nil)

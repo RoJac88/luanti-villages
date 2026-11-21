@@ -3984,6 +3984,57 @@ redesign and land together, as they replace one rule with another. 39f, 39g and 
 - Whether a cleric or alchemist with hundreds of emeralds, eating free or never eating,
   should count in the keeper's demand.
 
+### 40. The butcher meets its suppliers and the tavern
+
+**Run.** ColonyFood, days 953 to 960 (main c4c85d9, ticket 39 complete). Prices came right:
+the plate cost fell from 2.00 to 0.90, bread to 2.61, nobody starved. But the butcher held
+3 or 4 baked potatoes all week and sold the keeper 9 cooked beef once, and the keeper baked
+the pantry's potatoes most days. A dump of the news and asks found four causes:
+
+- Nobody told the butcher. It wanted 10 beef at 4.89 with 191 emeralds; the leatherworker
+  held 95 and the fisherman hundreds of raw fish. Only the alchemist, which overhears
+  everyone, had heard of either. Each villager's 24 entries were full of wood, sticks and
+  cobble.
+- The keeper never said it wanted food. Its dish need is capped at what a plate earns
+  (39d), about 2, so it ranked under a bow at 144, an allium and a carpet, and its news
+  was those. The butcher heard no dish wanted, so its input demand (39f) was empty.
+- The keeper's needs listed 36 each of pumpkin pie, mushroom stew and cooked porkchop:
+  `ledger.supplied` counted any recipe's output (the butcher's porkchop recipe, though
+  nothing raises pigs) and the keeper role's outputs (stew and pie, which it no longer
+  makes).
+- Asks were floored at the seller's own value, and money divides value (the money factor,
+  21a). The leatherworker, at λ 0.18, valued its 290 spare beef at 4.62 and asked that,
+  eleven times its 0.42 ask by reference price and factor. The butcher valued cooked beef
+  at 22.55 and would have asked that of a keeper whose plates earn 2. #151 had lifted the
+  same floor from the farm chest's ask.
+
+**Parts.**
+
+- **40a. Food is priced by supply.** Food its trade makes, or what its trade makes that a
+  recipe cooks into food (`asks.stock_in_trade`: `ledger.outputs`, `ledger.food_good`), is
+  asked at the seller's reference price times its ask factor, with no floor at its own
+  value. Sales raise it and the days it sits unsold lower it, as for the farm chest (39a).
+  Other goods keep the floor, so a rich smith still values its own tools.
+- **40b. A cook hears its trade partners.** Every 60 s, as the alchemist overhears, the
+  butcher (any villager with `demand` recipes, `market_news.trade_goods`) takes in the own
+  news of every loaded adult that is about its trade: offers of what its recipes take
+  (beef, fish, potatoes) and wants of what they make (the keeper's dishes, anyone's food).
+  Each of them takes in its offers of dishes it needs and its wants of what it has spare.
+  Its list holds 96, as the alchemist's. Only the news moves: the trades are at the asks
+  and bids as before, and the trip is an ordinary trade trip.
+- **40c. The keeper tells its dish need, and only for dishes the village makes.** A
+  recipe's output is supplied only once what it takes is (found over passes, so planks
+  and sticks still count). The keeper role's outputs lose stew and pie. A food member of
+  a category need (food, dish) that nothing supplies is left out unless some is about
+  (`available`). The keeper's own news always tells its dish shortfall and its few of
+  each, whatever their rank.
+- **40d. Only food is a dish cost.** `dinner.note_cost` ignores anything else; the
+  keeper's armor stand (6) and carpet (40) were noted.
+
+**Success, on ColonyFood.** Ticket 39's: most dinners cooked by the butcher, the keeper
+cooking on fewer than 1 day in 5, and the leatherworker's beef and the fishermen's fish
+selling to the butcher at their asks.
+
 ## Open questions
 
 - Price discovery (ticket 21):

@@ -23,7 +23,12 @@
 -- * it stays within MIN and MAX.
 --
 -- An ask never falls below the seller's own value for the item (given its view): one
--- with a glut or no money values it little, a rich one more. A peddler (labour.lua)
+-- with a glut or no money values it little, a rich one more. Not food its trade makes
+-- (ticket 40a, M.stock_in_trade): that is priced by supply, its sales and the days it
+-- sits unsold, as the farm chest's (39a). At a money factor of 0.18 a leatherworker
+-- valued its 290 spare beef at 4.62 each and asked that, eleven times its ask of 0.42,
+-- and the butcher, valuing cooked beef at 22.55, asked that of a keeper whose plates
+-- earn 2 (ColonyFood, 2026-11-21). A peddler (labour.lua)
 -- never asks less than it paid for its lot. Nothing else floors it: the alchemist's floor
 -- at its inputs' cost went with ticket 21b (ColonyFood, 2026-11-15: broke, it held 30
 -- flint it could not sell at cost to a fletcher with one emerald). An item with no base
@@ -122,6 +127,15 @@ end
 -- What the seller asks for one, or nil for an item with no base price. With its view
 -- (possessions.assess), never less than its own value for the item; a comfort never less
 -- than BID_SHARE of the best bid it heard.
+-- Whether the item is food, or cooks into food, that the seller's trade makes (ledger.outputs,
+-- ledger.food_good): stock in trade, asked with no floor at its own value (ticket 40a).
+function M.stock_in_trade(seller, item)
+	if not ledger.food_good(item) then return false end
+	local trade = seller._villages_alchemist and "alchemist" or (seller._villages_keeper and "keeper")
+		or seller._profession
+	return trade ~= nil and ledger.outputs(trade, seller._max_trade_tier)[item] == true
+end
+
 function M.ask(seller, item, view)
 	local reference = prices.price(seller._villages_prices, item)
 	if not reference then return nil end
@@ -129,7 +143,7 @@ function M.ask(seller, item, view)
 	-- An alchemist's goods at no less than their cost (ticket 30), not its own value: its
 	-- money raised that to four times what it believed a nugget worth.
 	local cost = alchemist.ask_floor(seller, item)
-	local own = view and view.value(item)
+	local own = view and not M.stock_in_trade(seller, item) and view.value(item)
 	if cost then ask = math.max(ask, cost)
 	elseif own then ask = math.max(ask, own) end
 	ask = math.max(ask, BID_SHARE * M.best_bid(seller, item))

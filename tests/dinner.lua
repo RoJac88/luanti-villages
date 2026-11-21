@@ -232,4 +232,13 @@ assert(near(ledger.assess({money = 40, dinner = 9}).lambda, ledger.lambda(80)))
 assert(comforts.slots(possessions.in_dinners(cheap, comforts.SAVINGS / 2 + comforts.STEP / 2)) == 1)
 assert(alms.donation(alms.SAVINGS, 0.5) > 0 and alms.donation(alms.SAVINGS, 1) == 0)
 
+-- Ticket 40d: only food is a dish cost; its armor stand and carpets were noted.
+do
+	local kip = {_villages_keeper = true}
+	dinner.note_cost(kip, "mcl_armor_stand:armor_stand", 1, 6)
+	assert(kip._villages_dish_cost == nil)
+	dinner.note_cost(kip, "mcl_farming:bread", 2, 3)
+	assert(math.abs(kip._villages_dish_cost["mcl_farming:bread"] - 1.5) < 1e-9)
+end
+
 print("dinner.lua: ok")
