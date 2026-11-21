@@ -100,15 +100,15 @@ do
 	local LEATHER = "mcl_mobitems:leather"
 	local conversion = goods.CONVERSIONS.cleric[1]
 	local c = {_id = "cl", _profession = "cleric"}
+	local book = dofile("cost_book.lua")
+	local FLESH = "mcl_mobitems:rotten_flesh"
 	assert(asks.cost_floor(c, conversion) == nil, "nothing paid, no floor")
-	asks.note_cost(c, conversion.cost, 0, 10, 10)
-	assert(c._villages_flesh_cost == 1)
-	asks.note_cost(c, conversion.cost, 10, 10, 30)
-	assert(c._villages_flesh_cost == 2, "the average over what it held")
+	book.note(c, FLESH, 10, 20)
+	assert(book.cost(c, FLESH) == 2, "its cost book's price for flesh (ticket 43a)")
 	assert(asks.cost_floor(c, conversion) == 6 * asks.PROFIT)
-	c._villages_flesh_cost = 0.2
+	c._villages_input_cost[FLESH] = 0.2
 	assert(asks.cost_floor(c, conversion) == 0.6 + 1, "at least an emerald over")
-	c._villages_flesh_cost = 2
+	c._villages_input_cost[FLESH] = 2
 	-- A flesh ask fallen to a quarter cannot drag leather below the floor.
 	c._villages_asks = {["mcl_mobitems:rotten_flesh"] = asks.MIN}
 	assert(asks.converted(c, conversion) >= 6 * asks.PROFIT)
@@ -140,11 +140,12 @@ do
 	local BEEF_COOKED = "mcl_mobitems:cooked_beef"
 	local butch = {_profession = "butcher", _villages_asks = {[BEEF_COOKED] = 0.25}, _villages_prices = {}}
 	assert(asks.dish_floor(butch, BEEF_COOKED) == nil, "no cost known")
-	asks.note_input(butch, "mcl_core:cobble", 4, 4)
+	local book = dofile("cost_book.lua")
+	book.note(butch, "mcl_core:cobble", 4, 4)
 	assert(butch._villages_input_cost == nil, "not an input of its dishes")
-	asks.note_input(butch, BEEF, 10, 20)
+	book.note(butch, BEEF, 10, 20)
 	assert(near(butch._villages_input_cost[BEEF], 2))
-	asks.note_input(butch, BEEF, 8, 0)
+	book.note(butch, BEEF, 8, 0)
 	assert(near(butch._villages_input_cost[BEEF], (2 * 8 + 0) / 16), "an average over about 8")
 	butch._villages_input_cost[BEEF] = 2
 	local coal = ledger.price("mcl_core:coal_lump")
@@ -155,8 +156,6 @@ do
 	-- Never the keeper's, which cooks only as a last resort.
 	local kip = {_profession = "butcher", _villages_keeper = true, _villages_input_cost = {[BEEF] = 2}}
 	assert(asks.dish_floor(kip, BEEF_COOKED) == nil)
-	asks.note_input(kip, "mcl_mobitems:beef", 1, 5)
-	assert(kip._villages_input_cost[BEEF] == 2)
 end
 
 print("asks.lua: ok")

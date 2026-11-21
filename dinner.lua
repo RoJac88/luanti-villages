@@ -3,8 +3,8 @@
 --
 -- * The plate cost (`_villages_plate_cost`, set by keeper_supply.lua) is the average cost
 --   of the dishes the pantry holds, each at what the keeper paid for it: a dish it bought
---   at its price, a potato it baked at what the farm chest asked for it (`note_cost`,
---   `_villages_dish_cost`, an average over about COST_KEEP of the last bought). Until one
+--   at its price, a potato it baked at what the farm chest asked for it (`note_cost`, into
+--   its cost book, cost_book.lua, an average over about COST_KEEP of the last bought). Until one
 --   is known it is a meal's food at the keeper's reference price for a loaf (`food_cost`).
 -- * Its dinner price is the plate cost times its margin, rounded up to whole emeralds, at
 --   least 1, so a plate always covers what it cost. The margin (`_villages_dinner.factor`,
@@ -32,13 +32,14 @@ local core = minetest
 local ledger = dofile(core.get_modpath("living_villages") .. "/ledger.lua")
 local prices = dofile(core.get_modpath("living_villages") .. "/prices.lua")
 local food = dofile(core.get_modpath("living_villages") .. "/food.lua")
+local cost_book = dofile(core.get_modpath("living_villages") .. "/cost_book.lua")
 
 local ITEM = ledger.DINNER_ITEM
 local BREAD = "mcl_farming:bread"
 local MARKUP, MARKDOWN = 1.1, 0.9
 local MARGIN_START, MARGIN_MIN, MARGIN_MAX = 1.1, 1, 2
 -- A dish's cost is an average over about this many of the last bought.
-local COST_KEEP = 8
+local COST_KEEP = cost_book.KEEP
 local POSTED = "villages_dinner_price"
 local EPSILON = 1e-6
 
@@ -54,26 +55,17 @@ function M.food_cost(keeper)
 	return prices.price(keeper and keeper._villages_prices, BREAD) or ledger.DINNER
 end
 
--- `count` of a dish (or what it becomes: a potato as the baked potato) bought for `paid`.
--- Food only (ticket 40d): its armor stand and carpets were noted as dishes.
+-- `count` of a dish (or what it becomes: a potato as the baked potato) bought for `paid`,
+-- into its cost book (cost_book.lua, ticket 43a). Food only (ticket 40d): its armor stand
+-- and carpets were noted as dishes.
 function M.note_cost(keeper, item, count, paid)
-	if not keeper then return end
-	local costs = keeper._villages_dish_cost or {}
-	-- What was noted before ticket 40d that is no food goes (ticket 41).
-	for noted in pairs(costs) do
-		if not food.POINTS[noted] then costs[noted] = nil end
-	end
-	if count <= 0 or not paid or paid < 0 or not food.POINTS[item] then return end
-	local before = costs[item]
-	costs[item] = before and (before * COST_KEEP + paid) / (COST_KEEP + count) or paid / count
-	keeper._villages_dish_cost = costs
+	if not keeper or not food.POINTS[item] then return end
+	cost_book.record(keeper, item, count, paid)
 end
 
 -- What one of a dish cost the keeper: as noted, or its reference price for it.
 function M.dish_cost(keeper, item)
-	local noted = keeper._villages_dish_cost and keeper._villages_dish_cost[item]
-	if noted then return noted end
-	return prices.price(keeper._villages_prices, item)
+	return cost_book.cost(keeper, item) or prices.price(keeper._villages_prices, item)
 end
 
 -- The average cost of `counts` ({dish = count}, what the pantry holds), or nil for none.
