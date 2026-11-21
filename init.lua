@@ -355,6 +355,8 @@ end
 
 -- Loaded below, at normal load: it wraps the generator, and there must be only one of it.
 local village_index
+-- Installed below too (charting.lua, ticket 38a): the live charts the trade window sells maps of.
+local charting
 
 core.register_on_mods_loaded(function()
 	local def = core.registered_entities["mobs_mc:villager"]
@@ -782,6 +784,7 @@ core.register_on_mods_loaded(function()
 		possessions = dofile(core.get_modpath("living_villages") .. "/possessions.lua"),
 		gossip = gossip,
 		clock = dofile(core.get_modpath("living_villages") .. "/economy_clock.lua"),
+		charting = charting,
 	})
 	-- Taking from a stash in sight of a villager is gossip about the taker.
 	dofile(core.get_modpath("living_villages") .. "/theft.lua").install(gossip, def)
@@ -859,8 +862,9 @@ if not dofile(core.get_modpath("living_villages") .. "/loomless_house.lua").inst
 end
 village_index = dofile(core.get_modpath("living_villages") .. "/village_index.lua")
 -- The cartographer's charts (ticket 38a): sites for explorer maps, found by generating land.
-if not dofile(core.get_modpath("living_villages") .. "/charting.lua").install({
-		village_index = village_index, storage = path_storage, structures = rawget(_G, "mcl_structures")}) then
+charting = dofile(core.get_modpath("living_villages") .. "/charting.lua").install({
+	village_index = village_index, storage = path_storage, structures = rawget(_G, "mcl_structures")})
+if not charting then
 	core.log("warning", "[living_villages] no explorer map charts: mcl_structures is missing or the mapgen "
 		.. "has no structures")
 end

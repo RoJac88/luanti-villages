@@ -98,6 +98,37 @@ local passed, total = charting.progress(chart, 80)
 assert(passed == total)
 assert(charting.describe(chart, 80):find("none within 3000"))
 
+-- Sales (ticket 38c): each player the nearest drawn site they haven't bought; the chart
+-- keeps three ahead of its keenest buyer.
+chart = charting.new_chart("ocean_temple", {x = 0, y = 5, z = 0})
+charting.add_site(chart, {x = 100, y = -10, z = 0})
+charting.add_site(chart, {x = 500, y = -10, z = 0})
+charting.add_site(chart, {x = 900, y = -10, z = 0})
+local maps = {["100,-10,0"] = {id = "m1"}, ["900,-10,0"] = {id = "m3"}}
+local site, info, count = charting.choose(chart, "ann", maps)
+assert(site.pos.x == 100 and info.id == "m1" and count == 2, "only drawn sites")
+charting.note_bought(chart, "ann", site)
+site, info, count = charting.choose(chart, "ann", maps)
+assert(site.pos.x == 900 and count == 1, "past the undrawn one")
+assert(charting.choose(chart, "bob", maps).pos.x == 100, "another player starts at the nearest")
+assert(charting.most_bought(chart) == 1)
+assert(charting.wants(chart), "refills behind a sale")
+assert(charting.add_site(chart, {x = 1300, y = -10, z = 0}))
+assert(not charting.wants(chart) and not charting.add_site(chart, {x = 1700, y = -10, z = 0}))
+charting.note_bought(chart, "ann", chart.sites[3])
+assert(not charting.choose(chart, "ann", maps), "ann has every drawn one")
+assert(charting.reason(chart, "ann", maps) == "still charting the sea")
+assert(charting.reason(nil, "ann", maps, "woodland_cabin") == "still charting the woods")
+chart.done = true
+assert(charting.reason(chart, "ann", maps) == "still charting the sea", "two left to draw")
+maps["500,-10,0"], maps["1300,-10,0"] = {id = "m2"}, {id = "m4"}
+charting.note_bought(chart, "ann", chart.sites[2])
+charting.note_bought(chart, "ann", chart.sites[4])
+assert(charting.reason(chart, "ann", maps) == "knows of no other ocean temple within 3,000 blocks")
+local empty = charting.new_chart("woodland_cabin", {x = 0, y = 5, z = 0})
+empty.done = true
+assert(charting.reason(empty, "ann", {}) == "knows of no woodland cabin within 6,000 blocks")
+
 -- Old land: clusters of signature nodes, big enough, with the cabin's head nearby.
 local temple = charting.KINDS.ocean_temple.signature
 local nodes = {}
@@ -163,8 +194,9 @@ local engine = {
 local draws = {}
 local maps_stub = {draw = function(_, kind, pos, n, cb) draws[#draws + 1] = {kind = kind, pos = pos, n = n, cb = cb} end}
 local function drawn(i) draws[i].cb({id = "map" .. draws[i].n, kind = draws[i].kind}) end
-assert(charting.install({engine = engine, storage = storage, structures = structures, village_index = village_index,
-	explorer_map = maps_stub}))
+local charting_api = charting.install({engine = engine, storage = storage, structures = structures,
+	village_index = village_index, explorer_map = maps_stub})
+assert(charting_api)
 -- A temple placed before any chart is seen, and offered to the chart made later.
 assert(structures.place_structure({x = 600, y = -8, z = 40}, {name = "ocean_temple"}) == true)
 assert(#charting.state.seen == 1)
@@ -264,6 +296,25 @@ end
 assert(ok and with_maps >= 1 and #given == with_maps and given[1].id:find("^map"), text)
 assert(text == string.format("Gave %d explorer map(s).", with_maps))
 engine.get_player_by_name = nil
+-- The trade window's view (ticket 38c): maps for sale at the cartographer's village.
+do
+	local api = charting_api
+	local pos = {x = 12, y = 5, z = 9}
+	local n = api.available(pos, "ocean_temple", "rskj")
+	assert(n >= 1, "drawn sites for sale")
+	local stack, note = api.take(pos, "ocean_temple", "rskj")
+	assert(stack and stack.id:find("^map"))
+	note()
+	assert(api.available(pos, "ocean_temple", "rskj") == n - 1, "one fewer for that player")
+	assert(api.available(pos, "ocean_temple", "other") == n)
+	local zero, why = api.available(pos, "woodland_cabin", "rskj")
+	assert(zero == 0 and why == "still charting the woods", "no woodland chart yet")
+	village_index.read_village = function() return nil end
+	zero, why = api.available(pos, "ocean_temple", "rskj")
+	assert(zero == 0 and why == "still charting the sea", "no village record")
+	assert(api.take(pos, "ocean_temple", "rskj") == nil)
+	village_index.read_village = function() return villages_made[1] end
+end
 -- At tier 4 the woodland chart starts too.
 cartographer._max_trade_tier = 4
 registered.step(31)

@@ -166,13 +166,32 @@ function M.new_chart(kind, center)
 	return {kind = kind, center = {x = center.x, y = center.y, z = center.z}, cursor = 0, sites = {}, done = false}
 end
 
+-- Sites sold (ticket 38c): `chart.bought` = {player = {site key = true}}. The most any one
+-- player has bought of the sites it holds.
+function M.most_bought(chart)
+	local held = {}
+	for _, site in ipairs(chart.sites) do held[key(site.pos)] = true end
+	local most = 0
+	for _, keys in pairs(chart.bought or {}) do
+		local n = 0
+		for k in pairs(keys) do if held[k] then n = n + 1 end end
+		if n > most then most = n end
+	end
+	return most
+end
+
+-- A chart keeps MAX_SITES ahead of its keenest buyer.
+local function room(chart)
+	return M.MAX_SITES + M.most_bought(chart)
+end
+
 function M.wants(chart)
-	return not chart.done and #chart.sites < M.MAX_SITES
+	return not chart.done and #chart.sites < room(chart)
 end
 
 -- Adds a site the chart doesn't hold, within its radius, while it wants more. True if added.
 function M.add_site(chart, pos)
-	if #chart.sites >= M.MAX_SITES then return false end
+	if #chart.sites >= room(chart) then return false end
 	if flat_distance(pos, chart.center) > M.KINDS[chart.kind].radius then return false end
 	for _, site in ipairs(chart.sites) do
 		if vector.distance(site.pos, pos) <= M.SAME_SITE then return false end
@@ -205,6 +224,47 @@ end
 
 function M.passed(chart, index)
 	if index > chart.cursor then chart.cursor = index end
+end
+
+-- The site to sell player `name`: the nearest drawn (`maps` by site key) it hasn't bought.
+-- Returns the site, its map and how many such there are; or nil, 0.
+function M.choose(chart, name, maps)
+	local mine = chart.bought and chart.bought[name] or {}
+	local first, count = nil, 0
+	for _, site in ipairs(chart.sites) do
+		local k = key(site.pos)
+		if maps[k] and not mine[k] then
+			count = count + 1
+			first = first or site
+		end
+	end
+	if not first then return nil, 0 end
+	return first, maps[key(first.pos)], count
+end
+
+function M.note_bought(chart, name, site)
+	chart.bought = chart.bought or {}
+	chart.bought[name] = chart.bought[name] or {}
+	chart.bought[name][key(site.pos)] = true
+end
+
+-- Why there is no map to sell `name` (chart nil: none started yet).
+function M.reason(chart, name, maps, kind)
+	kind = kind or chart.kind
+	local def = M.KINDS[kind]
+	local still = kind == "woodland_cabin" and "still charting the woods" or "still charting the sea"
+	if not chart then return still end
+	if chart.done then
+		local mine = chart.bought and chart.bought[name] or {}
+		for _, site in ipairs(chart.sites) do
+			local k = key(site.pos)
+			if not mine[k] and not maps[k] then return still end
+		end
+		local within = string.format("within %s blocks", (tostring(def.radius):gsub("^(%d)(%d%d%d)$", "%1,%2")))
+		if #chart.sites == 0 then return string.format("knows of no %s %s", def.label, within) end
+		return string.format("knows of no other %s %s", def.label, within)
+	end
+	return still
 end
 
 -- How far the search has got: chunks passed of all within the radius.
@@ -529,7 +589,37 @@ function M.install(deps)
 	})
 
 	M.state = state
-	return true
+
+	-- For the cartographer's trade window (ticket 38c). `pos` is the cartographer's: its
+	-- village is the record within VILLAGE_RADIUS, as when it started the chart.
+	local api = {}
+	local function chart_at(pos, kind)
+		local village = villages.read_village(pos, VILLAGE_RADIUS)
+		return village and state.charts[kind .. "@" .. key(village.center)]
+	end
+	-- How many maps of `kind` it can sell `name`, and why none.
+	function api.available(pos, kind, name)
+		if not kinds[kind] then return 0, "can't chart those here" end
+		local chart = chart_at(pos, kind)
+		local _, _, count = M.choose(chart or {sites = {}}, name, state.maps)
+		if (count or 0) > 0 then return count end
+		return 0, M.reason(chart, name, state.maps, kind)
+	end
+	-- The map to sell `name` now, as an item, and a function noting the sale; or nil.
+	function api.take(pos, kind, name)
+		local chart = chart_at(pos, kind)
+		if not chart then return nil end
+		local site, info = M.choose(chart, name, state.maps)
+		if not site then return nil end
+		local stack = maps_module.item(ItemStack, info, engine.pos_to_string, engine.colorize)
+		return stack, function()
+			M.note_bought(chart, name, site)
+			save()
+			engine.log("action", string.format("[living_villages] %s bought the %s map of %s",
+				name, M.KINDS[kind].label, key(site.pos)))
+		end
+	end
+	return api
 end
 
 return M
