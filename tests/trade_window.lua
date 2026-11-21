@@ -197,19 +197,20 @@ def.on_rightclick(villager, player)
 assert(not villager.vanilla and shown[#shown].formname == window.FORMNAME, "the mod's window, not vanilla's")
 assert(villager._trading_players.rskj, "it stands still while trading")
 assert(shown[#shown].spec:find("Bread", 1, true) or shown[#shown].spec:find(BREAD, 1, true))
--- Buy one bread at its ask: its value of 20, over its reference price (its base, 10.7).
+-- Buy one bread at its ask: its reference price (its base, 10.7), rounded up. Not its value
+-- of 20: bread is a farmer's stock in trade, priced by supply (ticket 40a).
 local ledger = dofile("ledger.lua")
 local prices = dofile("prices.lua")
 local asks = dofile("asks.lua")
 handlers.fields(player, window.FORMNAME, {sell_one_1 = true})
-assert(player_inv.contents[BREAD] == 1 and player_inv.contents[EMERALD] == 180 and belongings[EMERALD] == 120)
+assert(player_inv.contents[BREAD] == 1 and player_inv.contents[EMERALD] == 189 and belongings[EMERALD] == 111)
 assert(belongings[BREAD] == 5 and gossiped[#gossiped] == "trading")
--- A sale like any: its reference price learnt the 20 paid, and its ask rose.
-assert(near(prices.factor(villager._villages_prices, BREAD), (20 / ledger.price(BREAD)) ^ prices.LEARN_TRADE))
+-- A sale like any: its reference price learnt the price, its own ask, so stood, and its ask rose.
+assert(near(prices.factor(villager._villages_prices, BREAD), 1))
 assert(asks.factor(villager, BREAD) > 1)
--- Sell it iron: urgent, so good gossip too; 120 emeralds pay for 3 at its value of 40.
+-- Sell it iron: urgent, so good gossip too; 111 emeralds pay for 2 at its value of 40.
 handlers.fields(player, window.FORMNAME, {buy_all_1 = true})
-assert(player_inv.contents[IRON] == 7 and belongings[IRON] == 3 and belongings[EMERALD] == 0)
+assert(player_inv.contents[IRON] == 8 and belongings[IRON] == 2 and belongings[EMERALD] == 31)
 assert(gossiped[#gossiped] == "minor_positive")
 -- A purchase like any: its reference price for iron learnt the 40 it paid.
 assert(near(prices.factor(villager._villages_prices, IRON), (40 / ledger.price(IRON)) ^ prices.LEARN_TRADE))
@@ -341,7 +342,7 @@ do
 	-- Nine nuggets at their cost and the alchemist's margin (ticket 30): with nothing made
 	-- yet, a nugget's cost is its base price.
 	local price = math.ceil(ledger.price(IRON) * 1.05 - 1e-9)
-	assert(pouch[NUGGET] == 11 and player_inv.contents[IRON] == 7 + 1 and pouch[EMERALD] == 10 + price, pouch[NUGGET])
+	assert(pouch[NUGGET] == 11 and player_inv.contents[IRON] == 8 + 1 and pouch[EMERALD] == 10 + price, pouch[NUGGET])
 	assert(logs[#logs]:find("(from 9 mcl_core:iron_nugget)", 1, true))
 	pouch[IRON] = 1
 	rows_now = window.rows(empty, pouch, pouch[EMERALD], 0, nil, true)

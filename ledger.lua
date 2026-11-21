@@ -190,8 +190,9 @@ local ROLES = {
 		-- held, and the potatoes were for its own baking.
 		inputs = {},
 		outputs = {
+			-- What its tavern serves of the village's. Its menu's mushroom stew and pumpkin
+			-- pie are not: it makes neither, so nothing here supplies them (ticket 40c).
 			["mcl_farming:bread"] = true, ["mcl_farming:potato_item_baked"] = true, ["mcl_fishing:fish_cooked"] = true,
-			["mcl_mushrooms:mushroom_stew"] = true, ["mcl_farming:pumpkin_pie"] = true,
 		},
 	},
 	-- The alchemist (ticket 20): its inputs change with what it holds (alchemist.targets,
@@ -332,7 +333,7 @@ local GATHERED = {
 local supplied
 
 -- Whether something in the village makes `item` (ticket 39e): a profession that makes it
--- for itself (MAKES), a recipe's output (a labourer's too), a role's output (the keeper's
+-- for itself (MAKES), a recipe's output whose inputs are supplied (a labourer's too, ticket 40c), a role's output (the keeper's
 -- dishes, the alchemist's iron), a conversion's product (wool to string, a poppy to red
 -- dye) or what labourers gather.
 function M.supplied(item)
@@ -342,9 +343,6 @@ function M.supplied(item)
 		for _, set in pairs(MAKES) do
 			for made in pairs(set) do supplied[made] = true end
 		end
-		for _, list in pairs(recipes) do
-			for _, recipe in ipairs(list) do supplied[recipe.makes] = true end
-		end
 		for _, role in pairs(ROLES) do
 			for made in pairs(role.outputs) do supplied[made] = true end
 		end
@@ -352,8 +350,47 @@ function M.supplied(item)
 			for _, conversion in ipairs(list) do supplied[conversion.to] = true end
 		end
 		for _, conversion in ipairs(goods.ANYONE) do supplied[conversion.to] = true end
+		-- A recipe's output only once what it takes is supplied (ticket 40c), so recipes
+		-- built on recipes (logs to planks to sticks) are found over passes. An input
+		-- nothing prices is gathered (sand, gravel), and a category's is any member. The
+		-- butcher's cooked porkchop counted, though nothing here raises pigs, and the
+		-- keeper wanted 36 of it (ColonyFood, 2026-11-21).
+		local function have(item)
+			return supplied[item] or not M.price(item) or goods.target_category(item) ~= nil
+		end
+		local found = true
+		while found do
+			found = false
+			for _, list in pairs(recipes) do
+				for _, recipe in ipairs(list) do
+					if not supplied[recipe.makes] then
+						local all = true
+						for _, input in ipairs(recipe.from) do all = all and have(input[1]) == true end
+						if all then supplied[recipe.makes], found = true, true end
+					end
+				end
+			end
+		end
 	end
 	return supplied[item] == true
+end
+
+-- Food, or what a recipe cooks into food (the leatherworker's raw beef, the fishermen's
+-- fish, the farmers' wheat): ticket 40a prices a producer's own by supply (asks.lua).
+local food_goods
+function M.food_good(item)
+	if goods.category_of(item) == "food" then return true end
+	if not food_goods then
+		food_goods = {}
+		for _, list in pairs(recipes) do
+			for _, recipe in ipairs(list) do
+				if goods.category_of(recipe.makes) == "food" then
+					for _, input in ipairs(recipe.from) do food_goods[input[1]] = true end
+				end
+			end
+		end
+	end
+	return food_goods[item] == true
 end
 
 -- What a profession buys to work, as item to the batch it wants, up to max_tier.
@@ -526,7 +563,13 @@ function M.assess(input)
 		categories[category] = {target = amount, held = have, short = math.max(amount - have, 0)}
 		if amount > have then
 			for item, units in pairs(goods.CATEGORIES[category]) do
-				if M.price(item) and category_of(item) == category then
+				-- A food nothing here supplies only while some is about (`available`, ticket
+				-- 40c): a need for it would never be met. The keeper's 36 pumpkin pies, stews and
+				-- porkchops were told before the dishes the butcher cooks. Food alone: fuel's coal
+				-- and wool's colours come from outside what M.supplied knows.
+				if M.price(item) and category_of(item) == category
+					and (goods.category_of(item) ~= "food" or M.supplied(item)
+						or (input.available and input.available[item])) then
 					needs[item] = math.ceil((amount - have) / units)
 					group[item] = category
 				end
