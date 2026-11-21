@@ -4097,6 +4097,11 @@ it or its category), or an alchemist holding no ingots floored them at its 136 v
 recipe's fuel is costed at the reference price for coal but no less than GATHER_SHARE of coal's
 base, since that reference sits at 1/64; and the cleric's leather loses 37b's emerald over cost,
 keeping PROFIT. A player's reputation discount in the trade window can still go under it.
+43c built: `asks.daily` stops the factor at the replacement cost over the reference price and
+lifts a factor already under it (most were at MIN with references at 1/64), so a sale marks up
+from the floor; `asks.sold` teaches the reference no less than the replacement cost, since a
+lot grown to a whole emerald (3 for 1 at an ask of 0.34) sells a little under the ask. The farm
+chest needed nothing more: its ask is `asks.ask` with no view, floored since 43b.
 
 **Problem.** A seller has no sound lowest price. Tickets 39 to 42 each fixed one failure and
 uncovered the next, and they share a cause.
