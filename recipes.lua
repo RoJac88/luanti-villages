@@ -13,6 +13,10 @@
 -- * fuel: furnace smelts it takes, where the real item is smelted (bricks, glass, cooked
 --   meat: one each, as in a furnace), and one per ingot for the smiths, who work iron
 --   at a forge. A coal or charcoal lump is 8 smelts (its burntime 80 over cooktime 10).
+-- * seconds: banked seconds an item, where not living_villages_craft_seconds (the
+--   butcher's cooking, a furnace's smelt, ticket 39f).
+-- * demand: its inputs follow what the profession hears asked for of its output
+--   (production.input_demand, ticket 39f), not one batch.
 -- * tier: the tier of the trade that sells it, for tier advancement (ticket 9). A
 --   villager makes every recipe in its list whatever its tier: the list holds only plain
 --   goods a village can supply, never enchanted ones.
@@ -65,14 +69,21 @@ return {
 		-- A comfort (comforts.lua, ticket 29): its armour found no buyer.
 		{makes = "mcl_cauldrons:cauldron", count = 1, tier = 1, from = {{IRON, 7}}, fuel = 7},
 	},
+	-- Cooking takes `seconds` an item, a furnace's smelt (10), not a craft's 120 (ticket
+	-- 39f): at 120 the butcher's 425 s working day cooked 3 or 4 dishes, against a tavern
+	-- serving 20 (ColonyFood, 2026-11-21: 29 dishes in 44 days). Its raw inputs follow the
+	-- dishes it hears asked for (`demand`, production.lua's input_demand).
 	butcher = {
-		{makes = "mcl_mobitems:cooked_porkchop", count = 1, tier = 2, from = {{"mcl_mobitems:porkchop", 1}}, fuel = 1},
-		{makes = "mcl_mobitems:cooked_chicken", count = 1, tier = 2, from = {{"mcl_mobitems:chicken", 1}}, fuel = 1},
+		{makes = "mcl_mobitems:cooked_porkchop", count = 1, tier = 2, from = {{"mcl_mobitems:porkchop", 1}}, fuel = 1, seconds = 10, demand = true},
+		{makes = "mcl_mobitems:cooked_chicken", count = 1, tier = 2, from = {{"mcl_mobitems:chicken", 1}}, fuel = 1, seconds = 10, demand = true},
 		-- The leatherworker's herd's beef (herd.lua, ticket 11e), for the tavern.
-		{makes = "mcl_mobitems:cooked_beef", count = 1, tier = 1, from = {{"mcl_mobitems:beef", 1}}, fuel = 1},
+		{makes = "mcl_mobitems:cooked_beef", count = 1, tier = 1, from = {{"mcl_mobitems:beef", 1}}, fuel = 1, seconds = 10, demand = true},
 		-- The fishermen's catch (ticket 15): raw fish is no food, and nobody else cooks it.
-		{makes = "mcl_fishing:fish_cooked", count = 1, tier = 1, from = {{"mcl_fishing:fish_raw", 1}}, fuel = 1},
-		{makes = "mcl_fishing:salmon_cooked", count = 1, tier = 1, from = {{"mcl_fishing:salmon_raw", 1}}, fuel = 1},
+		{makes = "mcl_fishing:fish_cooked", count = 1, tier = 1, from = {{"mcl_fishing:fish_raw", 1}}, fuel = 1, seconds = 10, demand = true},
+		{makes = "mcl_fishing:salmon_cooked", count = 1, tier = 1, from = {{"mcl_fishing:salmon_raw", 1}}, fuel = 1, seconds = 10, demand = true},
+		-- The farmers' potatoes, baked for the tavern (ticket 39f): the keeper bakes only
+		-- as a last resort (keeper_supply.lua).
+		{makes = "mcl_farming:potato_item_baked", count = 1, tier = 1, from = {{"mcl_farming:potato_item", 1}}, fuel = 1, seconds = 10, demand = true},
 	},
 	-- White wool from the shepherd, sticks of its own (mcl_banners' recipe: six wool, a stick).
 	-- Paper from cane, as the librarian's: the paper it wants (its trade table buys it)

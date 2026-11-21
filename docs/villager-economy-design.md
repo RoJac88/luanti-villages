@@ -3857,9 +3857,11 @@ The butcher does the cooking.
     its ask at the chest for the bread, potatoes, carrots and beetroot there, and takes up
     what the keeper took as sales, which raise its ask. The chest's goods count as its
     spare in the daily markdown (`_villages_chest_spare`). The keeper pays the posted ask,
-    or its own reference price for that food when none is posted. The ask floor (own value
-    over money factor) is left as it is for now: a farmer's value for potatoes it holds by
-    the hundred is low, so its floor is too.
+    or its own reference price for that food when none is posted.
+  - The chest ask has no floor at the farmer's own value (39f's PR). Left in at first, it
+    made the keeper pay about 6 a potato and 7.3 a loaf: farmer 84ebb7 held 1,487
+    emeralds, a money factor of 0.22, so it valued food at several times its price while
+    470 potatoes sat in its chest (ColonyFood, 2026-11-21).
 - **39b. Dinner is the plate's cost plus a margin.**
   - The keeper keeps an average cost for each dish it holds, from what it paid. A bought
     dish costs its price; a dish it cooks costs its raw input. This works as the cleric's
@@ -3922,12 +3924,31 @@ The butcher does the cooking.
   - Among inputs it can get, it ranks by gain, so a cheap glut (raw fish at 1, cooked fish
     selling at 7) is what it cooks most.
   - Its float is its stock. The keeper pays on delivery, as for any dish.
+  - Built (`recipes.lua`'s `seconds` and `demand`, `production.input_demand`):
+    - Cooking takes 10 s a dish, a furnace's smelt, not a craft's 120 s. At 120 the
+      butcher's 425 s working day cooked 3 or 4 dishes: 29 in 44 days on ColonyFood, and on
+      18 days it had nothing to make and laboured. That, more than its targets, was why it
+      never fed the tavern.
+    - Its raw targets are its batch of 4 plus the dishes it heard asked for, less the
+      cooked ones it holds, up to 28 more. Each villager's need counts once. A category's
+      need (the keeper's dishes, a villager's food) is shared among the dishes that fill
+      it.
+    - Ranking by gain was already production's rule (21d).
 - **39g. The keeper cooks only as a last resort.**
   - The keeper buys dishes ready made and no longer bakes potatoes in the normal course.
   - It cooks only when the pantry holds fewer meals than tonight's demand, and at a loss:
     2 raw items to a dish and twice as slow (`COOK_SECONDS` 20). That keeps buying from
     the butcher the cheaper way.
   - Its farm fetches carry bread, and raw potatoes only for this fallback and for raw plates.
+  - Built (`keeper_supply.update_wants`, `tonight`, `potatoes_wanted`; goods.lua's `dish`
+    category):
+    - The keeper role has no fixed inputs. Its 9 bread, 6 potatoes, 6 cooked fish and 6
+      cooked beef were wanted again every shift whatever the pantry held.
+    - It wants a few of each dish it knows, the baked potato included, plus as many dishes
+      of any kind as the pantry is short of its target (`_villages_dish_short`). Any
+      prepared food fills that, one a meal, so it buys whichever dish is cheapest to it.
+    - The dish category is never the category a reference price is kept under: all
+      food keeps one price.
 - **39h. A starving guest always eats.**
   - A raw plate is about a dish's points of any raw food in the pantry: 4 carrots,
     beetroot or potatoes, or 4 raw fish or salmon, which feed 1 point each as a last

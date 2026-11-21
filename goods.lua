@@ -69,8 +69,18 @@ end
 -- Any carpet, for a comfort (comforts.lua, ticket 24), so a shepherd's grey, black or
 -- brown wool sells as carpet as well as its white. Like flowers, no job's target category.
 for _, colour in ipairs(WOOL_COLOURS) do categories.carpet["mcl_wool:" .. colour .. "_carpet"] = 1 end
+-- Any prepared dish, one a meal (ticket 39g): the keeper buys dishes for the pantry by the
+-- meal, whichever it can get. Wanted only by it, and never the category a reference price
+-- is kept under (ORDER): every food keeps one price, group:food.
+categories.dish = {}
+for item in pairs(food.POINTS) do
+	if food.is_prepared(item) then categories.dish[item] = 1 end
+end
 -- Which category a member belongs to first, when it is in two (a log is fuel too).
 local ORDER = {"log", "planks", "wool", "stone", "flower", "carpet", "food", "fuel"}
+-- Which category a wanted member counts toward: a dish, if dishes are wanted, before food.
+local ACTIVE_ORDER = {"dish"}
+for _, category in ipairs(ORDER) do ACTIVE_ORDER[#ACTIVE_ORDER + 1] = category end
 
 local conversions = {
 	shepherd = {},
@@ -161,7 +171,7 @@ end
 -- The category an item counts toward for a villager with these category targets
 -- ({category = amount}): the first in ORDER that holds it and is wanted. Nil for none.
 function M.active(item, targets)
-	for _, category in ipairs(ORDER) do
+	for _, category in ipairs(ACTIVE_ORDER) do
 		if categories[category][item] and (targets[category] or 0) > 0 then return category end
 	end
 	return nil

@@ -588,4 +588,49 @@ do
 	assert(possessions.assess(librarian).targets["mcl_mobitems:feather"] == 4, "it buys feathers")
 end
 
+-- The butcher (ticket 39f): its cooking takes a furnace's smelt, 10 s an item, not a craft's
+-- 120; it bakes potatoes for the tavern; its raw inputs follow the dishes it hears asked
+-- for, each villager's need once, a category's shared among the dishes that fill it.
+do
+	local butcher = smith({_id = "bu", _profession = "butcher"})
+	local list = production.recipes(butcher)
+	local baked, fish
+	for _, recipe in ipairs(list) do
+		assert(recipe.seconds == 10 and recipe.demand, recipe.makes)
+		assert(production.cost(butcher, recipe) == 10)
+		if recipe.makes == "mcl_farming:potato_item_baked" then baked = recipe end
+		if recipe.makes == "mcl_fishing:fish_cooked" then fish = recipe end
+	end
+	assert(baked and baked.from[1][1] == "mcl_farming:potato_item")
+	assert(production.input_demand(butcher, {}) == nil, "nothing asked for")
+	local heard = {
+		{kind = "needs", item = "mcl_fishing:fish_cooked", who = "a", count = 5},
+		{kind = "needs", item = "mcl_fishing:fish_cooked", who = "a", count = 3},
+		{kind = "needs", item = "mcl_fishing:fish_cooked", who = "b", count = 2},
+		{kind = "has", item = "mcl_fishing:fish_cooked", who = "c", count = 9},
+	}
+	local demand = production.input_demand(butcher, heard)
+	assert(demand["mcl_fishing:fish_raw"] == 7, tostring(demand["mcl_fishing:fish_raw"]))
+	assert(demand["mcl_farming:potato_item"] == nil)
+	-- What it holds cooked comes off.
+	possessions.add(butcher, "mcl_fishing:fish_cooked", 3)
+	assert(production.input_demand(butcher, heard)["mcl_fishing:fish_raw"] == 4)
+	possessions.take(butcher, "mcl_fishing:fish_cooked", 3)
+	-- The keeper's 12 dishes of any kind, shared among its 6.
+	demand = production.input_demand(butcher, {{kind = "needs", item = "mcl_farming:bread", group = "dish", who = "k", count = 12}})
+	assert(demand["mcl_fishing:fish_raw"] == 2 and demand["mcl_farming:potato_item"] == 2 and demand["mcl_mobitems:beef"] == 2)
+	-- At most DEMAND_CAP, and its view wants that on top of its batch.
+	demand = production.input_demand(butcher, {{kind = "needs", item = "mcl_fishing:fish_cooked", who = "a", count = 500}})
+	assert(demand["mcl_fishing:fish_raw"] == production.DEMAND_CAP)
+	local batch = possessions.assess(butcher).targets["mcl_fishing:fish_raw"]
+	butcher._villages_input_demand = demand
+	assert(possessions.assess(butcher).targets["mcl_fishing:fish_raw"] == batch + production.DEMAND_CAP)
+	-- A dish in 10 s of work, not 120: a day's 425 s cooks dozens, not 3 or 4.
+	possessions.add(butcher, "mcl_fishing:fish_raw", 2)
+	possessions.add(butcher, "mcl_core:coal_lump", 1)
+	butcher._villages_input_demand = nil
+	assert(production.work(butcher, 10) == 1 and count(butcher, "mcl_fishing:fish_cooked") == 1)
+	assert(fish)
+end
+
 print("production.lua: ok")

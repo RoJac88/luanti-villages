@@ -846,14 +846,19 @@ function M.assess(self, offered)
 	for item, count in pairs(self._villages_builder and self._villages_builder_wants or {}) do
 		extra[item] = (extra[item] or 0) + count
 	end
+	-- What its demand recipes' inputs follow (production.input_demand, ticket 39f): the
+	-- butcher's raw fish, beef and potatoes for the dishes it hears asked for.
+	for item, count in pairs(not self.child and self._villages_input_demand or {}) do
+		extra[item] = (extra[item] or 0) + count
+	end
 	-- A keeper's few of each dish (keeper_supply.dish_wants, ticket 35): no fewer than it
-	-- holds, so one it carries to the pantry is never spare. Every dish it buys, its fixed
-	-- inputs too, is worth no more to it than a plate can earn: the plate cost times the
-	-- top margin (ticket 39d). It bought loaves at up to its dinner price, and each one
-	-- raised that price (ColonyFood, 2026-11-21).
+	-- holds, so one it carries to the pantry is never spare. Every dish it buys is worth no
+	-- more to it than a plate can earn: the plate cost times the top margin (ticket 39d).
+	-- It bought loaves at up to its dinner price, and each one raised that price
+	-- (ColonyFood, 2026-11-21).
 	if self._villages_keeper and not self.child then
 		local cap = dinner.plate(self) * dinner.MARGIN_MAX
-		for item in pairs(ledger.inputs("keeper")) do worth[item] = math.min(worth[item] or math.huge, cap) end
+		for item in pairs(goods.CATEGORIES.dish) do worth[item] = math.min(worth[item] or math.huge, cap) end
 		local held
 		for item, count in pairs(self._villages_dish_wants or {}) do
 			held = held or M.held(self)
@@ -979,6 +984,9 @@ function M.assess(self, offered)
 		end
 	elseif self._villages_builder and (self._villages_builder_logs or self._villages_builder_wool) then
 		categories = {log = self._villages_builder_logs, wool = self._villages_builder_wool}
+	elseif self._villages_keeper and not self.child and (self._villages_dish_short or 0) > 0 then
+		-- The dishes the pantry is short of its target, any dish (ticket 39g).
+		categories = {dish = self._villages_dish_short}
 	end
 	for category, amount in pairs(labour_categories or {}) do
 		categories = categories or {}

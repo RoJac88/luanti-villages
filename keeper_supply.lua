@@ -81,7 +81,9 @@ local RETRY_SECONDS = 120
 -- A source it could not walk to is passed over this long, so the next nearest gets a
 -- turn rather than the keeper trying the nearest, and nothing else, for ever.
 local SKIP_SECONDS = 600
-local COOK_SECONDS = 10
+-- Ticket 39g: twice the butcher's pace (recipes.lua's 10 s smelt), and 2 potatoes a dish
+-- (RECIPES), so buying the butcher's baked potatoes is the cheaper way.
+local COOK_SECONDS = 20
 -- In emeralds at ledger.SCALE (ticket 11h).
 local PURSE = 8 * SCALE
 local DINNER = ledger.DINNER
@@ -109,7 +111,7 @@ local CARROTS_PER_MEAL = 4
 local BEETROOT = "mcl_farming:beetroot_item"
 local SUPPLIES = {BREAD, POTATO, CARROT, BEETROOT}
 local RECIPES = {
-	{from = POTATO, count = 1, to = "mcl_farming:potato_item_baked"},
+	{from = POTATO, count = 2, to = "mcl_farming:potato_item_baked"},
 }
 -- Raw potatoes it never bakes, for RESERVE_PLATES raw plates (meal.lua, ticket 39h): a
 -- starving guest always eats. They count toward no meal the pantry holds, so its fetches
@@ -136,20 +138,42 @@ local function menu_items()
 end
 
 -- Ticket 35: for each dish it heard offered lately (keeper.known_dishes), how many short
--- of keeper.MIN_DISHES the pantry is, 0 for none. None for its fixed inputs (ledger.lua's keeper role,
--- wanted already) nor what it cooks itself (RECIPES).
+-- of keeper.MIN_DISHES the pantry is, 0 for none. The baked potato too since ticket 39g:
+-- the butcher bakes them.
 function M.dish_wants(self, chests, day)
 	local wants = {}
-	local fixed = ledger.inputs("keeper")
-	local cooked = {}
-	for _, recipe in ipairs(RECIPES) do cooked[recipe.to] = true end
 	for _, item in ipairs(keeper.known_dishes(self, day)) do
-		if not fixed[item] and not cooked[item] then
-			-- 0 for one it has enough of: still its own, so one it carries is never spare.
-			wants[item] = math.max(keeper.MIN_DISHES - pantry.count(chests, item), 0)
-		end
+		-- 0 for one it has enough of: still its own, so one it carries is never spare.
+		wants[item] = math.max(keeper.MIN_DISHES - pantry.count(chests, item), 0)
 	end
 	return wants
+end
+
+-- The prepared dishes the pantry holds, raw food left out.
+function M.dishes(chests)
+	local total = 0
+	for _, item in ipairs(menu_items()) do total = total + pantry.count(chests, item) end
+	return total
+end
+
+-- Tonight's demand (ticket 39g): the last evening's (dinner.demand), TARGET_MEALS before
+-- there is one.
+function M.tonight(self)
+	local demand = dinner.demand(self)
+	return demand > 0 and demand or TARGET_MEALS
+end
+
+-- What it buys for the pantry (ticket 39g), set on its shift and when it stocks the
+-- pantry: a few of each dish it knows (`_villages_dish_wants`), and as many dishes of
+-- any kind as the pantry is short of its target past those (`_villages_dish_short`,
+-- goods.lua's dish category, possessions.assess).
+function M.update_wants(self, chests)
+	local wants = M.dish_wants(self, chests, core.get_day_count())
+	local wanted = 0
+	for _, count in pairs(wants) do wanted = wanted + count end
+	self._villages_dish_wants = wants
+	local short = M.target(self) - M.dishes(chests) - wanted
+	self._villages_dish_short = short > 0 and short or nil
 end
 
 -- How much of a raw food the pantry holds past its raw plates' reserve (RAW_RESERVE).
@@ -316,16 +340,31 @@ function M.pay(self, chest, taken)
 	return paid, owed
 end
 
+-- The raw potatoes worth fetching (ticket 39g): what the raw plates' reserve lacks, and
+-- RECIPES' 2 for each dish the pantry, with `bread` loaves on the way, falls short of
+-- tonight's demand, for cooking as a last resort. Unlimited with no pantry at hand.
+function M.potatoes_wanted(self, chests, bread)
+	if not chests then return math.huge end
+	local reserve = math.max((RAW_RESERVE[POTATO] or 0) - pantry.count(chests, POTATO), 0)
+	local fallback = math.max(M.tonight(self) - M.dishes(chests) - (bread or 0), 0)
+	return reserve + fallback * RECIPES[1].count
+end
+
 local function fetch(self, chest)
 	write_off(self, chest)
 	local room = M.carry(self) - carried(self)
 	local purse = stock.count(self, EMERALD)
 	local budget = purse - M.tab(chest)
 	local taken, short = {}, 0
+	local jukebox = keeper.claimed_jukebox(self)
+	local chests = jukebox and pantry.chests(jukebox)
 	for _, item in ipairs(SUPPLIES) do
 		if room <= 0 then break end
 		local unit = M.unit(self, chest, item)
 		local want = math.min(room, stock.chest_count(chest, item))
+		if item == POTATO then
+			want = math.min(want, math.max(M.potatoes_wanted(self, chests, stock.count(self, BREAD)) - stock.count(self, POTATO), 0))
+		end
 		local afford = unit > 0 and math.max(math.floor((budget + EPSILON) / unit), 0) or want
 		local moved = stock.take_from_chest(self, chest, item, math.min(want, afford))
 		if moved > 0 then
@@ -333,7 +372,9 @@ local function fetch(self, chest)
 			-- The farmer takes these up as sales at its next visit (farmer.lua), and the dish
 			-- they make costs what they did (dinner.note_cost).
 			stock.note_chest_sale(chest, item, moved, moved * unit)
-			dinner.note_cost(self, DISH_OF[item] or item, moved, moved * unit)
+			-- RECIPES' 2 potatoes a baked potato.
+			local per = item == POTATO and RECIPES[1].count or 1
+			dinner.note_cost(self, DISH_OF[item] or item, moved / per, moved * unit)
 		end
 		short = short + want - moved
 		budget, room = budget - moved * unit, room - moved
@@ -364,10 +405,14 @@ local function deliver(self, jukebox)
 	core.log("action", string.format("[living_villages] keeper %s stocked the pantry with %d food",
 		tostring(self._id), delivered))
 	M.price_plate(self, chests)
+	M.update_wants(self, chests)
 end
 
--- One dish, if the pantry holds what it takes and there is room for it.
-function M.cook(chests)
+-- One dish, if the pantry holds what it takes and there is room for it, and only as a
+-- last resort (ticket 39g): while it holds fewer dishes than `need` (tonight's demand).
+-- With no `need`, whenever it can.
+function M.cook(chests, need)
+	if need and M.dishes(chests) >= need then return nil end
 	for _, recipe in ipairs(RECIPES) do
 		if M.cookable(chests, recipe.from) >= recipe.count and pantry.has_room(chests, recipe.to, 1) then
 			for _ = 1, recipe.count do pantry.take(chests, recipe.from) end
@@ -517,11 +562,11 @@ local function cook_tick(self, jukebox, now)
 	if chests then
 		M.float(self, chests)
 		M.shelve(self, chests)
-		M.cook(chests)
+		M.cook(chests, M.tonight(self))
 		M.feed_keeper(self, chests)
 		M.price_plate(self, chests)
-		-- What it buys to keep a few of each dish it knows (possessions.assess).
-		self._villages_dish_wants = M.dish_wants(self, chests, core.get_day_count())
+		-- What it buys for the pantry (possessions.assess).
+		M.update_wants(self, chests)
 	end
 end
 
