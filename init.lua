@@ -858,6 +858,12 @@ if not dofile(core.get_modpath("living_villages") .. "/loomless_house.lua").inst
 		.. "or settlements.schematic_table is missing; every small house keeps its loom")
 end
 village_index = dofile(core.get_modpath("living_villages") .. "/village_index.lua")
+-- The cartographer's charts (ticket 38a): sites for explorer maps, found by generating land.
+if not dofile(core.get_modpath("living_villages") .. "/charting.lua").install({
+		village_index = village_index, storage = path_storage, structures = rawget(_G, "mcl_structures")}) then
+	core.log("warning", "[living_villages] no explorer map charts: mcl_structures is missing or the mapgen "
+		.. "has no structures")
+end
 -- Outermost, so one batch covers every building of the village.
 if not village_staffing.install(rawget(_G, "settlements"), rawget(_G, "mcl_structures"), job_roles, core,
 		path_storage) then
