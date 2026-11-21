@@ -230,7 +230,8 @@ local function order(self, jukebox, chests, choose)
 	local day = core.get_day_count()
 	-- A villager pays only what a meal is worth to it (dinner.lua, ticket 21e).
 	local willing = price == 0
-		or (can_pay() and (not villager or always or dinner.wants(self, price, day, possessions.assess, dishes)))
+		or (can_pay() and (not villager or always or dinner.wants(self, price, day, possessions.assess, dishes,
+			news.heard(self, core.get_gametime()))))
 	local keeper = villager and price > 0 and keeper_state(jukebox) or nil
 	if #dishes == 0 and willing then dinner.ran_out(keeper, day, self._id) end
 	if #dishes == 0 and not (villager and raw_plate(chests)) then return nil, "the pantry is empty" end

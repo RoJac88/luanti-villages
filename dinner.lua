@@ -31,6 +31,7 @@
 local core = minetest
 local ledger = dofile(core.get_modpath("living_villages") .. "/ledger.lua")
 local prices = dofile(core.get_modpath("living_villages") .. "/prices.lua")
+local food = dofile(core.get_modpath("living_villages") .. "/food.lua")
 
 local ITEM = ledger.DINNER_ITEM
 local BREAD = "mcl_farming:bread"
@@ -177,12 +178,30 @@ function M.demand(keeper)
 	return (keeper and keeper._villages_dinner or {}).demand or 0
 end
 
+-- Ticket 39c: what a loaf's points cost in the cheapest prepared food offered in `heard`
+-- (market news, market_news.heard): its ask per point times a loaf's points. Nil with none.
+function M.street_cost(heard)
+	local best
+	for _, entry in ipairs(heard or {}) do
+		local points = food.POINTS[entry.item]
+		if entry.kind == "has" and entry.price and entry.price > 0 and points and food.is_prepared(entry.item) then
+			local per = entry.price / points
+			if not best or per < best then best = per end
+		end
+	end
+	return best and best * food.POINTS[BREAD]
+end
+
 -- Whether a villager dines at `price`: no more than a loaf is worth to it. Asked of its
 -- view once a day and price (`_villages_dinner_choice`), learning the price the first time.
 -- With the `dishes` the pantry offers (ticket 34), a loaf's worth without its own variety
 -- times the best variety factor among them (view.variety, variety.lua): a guest tired of
--- every dish on offer values the dinner less.
-function M.wants(self, price, day, assess, dishes)
+-- every dish on offer values the dinner less. With what it has `heard` (ticket 39c), a
+-- loaf's worth scaled down to the cheapest prepared food offered (street_cost), where
+-- that is under its reference price for a loaf: it would feed itself for that. Its urgency,
+-- money factor and variety apply as before. A dear street loaf no longer makes a dear
+-- dinner look fair.
+function M.wants(self, price, day, assess, dishes, heard)
 	local choice = self._villages_dinner_choice
 	if choice and choice.day == day and choice.price == price then return choice.dines end
 	local view = assess(self)
@@ -192,6 +211,9 @@ function M.wants(self, price, day, assess, dishes)
 		for _, dish in ipairs(dishes) do best = math.max(best, view.variety(dish)) end
 		value = value / view.variety(BREAD) * best
 	end
+	local street = M.street_cost(heard)
+	local loaf = prices.price(self._villages_prices, BREAD)
+	if street and loaf and street < loaf then value = value * street / loaf end
 	local dines = value >= price
 	if not choice or choice.day ~= day then prices.learn(self, ITEM, price, prices.LEARN_NEWS) end
 	self._villages_dinner_choice = {day = day, price = price, dines = dines}

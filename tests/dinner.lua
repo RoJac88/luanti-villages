@@ -149,6 +149,31 @@ do
 	assert(not dinner.wants(peckish("g1"), math.floor(base), 1, possessions.assess, {BAKED}), "tired of the dish")
 	assert(dinner.wants(peckish("g2"), math.floor(base), 1, possessions.assess, {BAKED, FISH}), "a new dish")
 end
+-- Ticket 39c: against feeding itself. The cheapest prepared food it heard offered, per
+-- point, prices a loaf's points (street_cost); under its loaf price, a dinner is worth that
+-- much less to it.
+do
+	local FISH = "mcl_fishing:fish_cooked"
+	assert(dinner.street_cost({}) == nil and dinner.street_cost(nil) == nil)
+	local heard = {
+		{kind = "has", item = FISH, price = 2},
+		{kind = "has", item = "mcl_fishing:salmon_cooked", price = 10},
+		{kind = "needs", item = BREAD, price = 0.5},
+		{kind = "has", item = "mcl_farming:potato_item", price = 0.1},
+	}
+	assert(near(dinner.street_cost(heard), 2 / 4 * 4), "cooked fish's 2 for 4 points: raw food and needs left out")
+	local guest = villager("sc", {[EMERALD] = 72}, {_villages_food = 0})
+	local worth = possessions.assess(guest).value(BREAD)
+	local cheap = {{kind = "has", item = FISH, price = LOAF / 4}}
+	assert(dinner.wants(guest, math.floor(worth), 1, possessions.assess), "worth a loaf")
+	guest._villages_dinner_choice = nil
+	assert(not dinner.wants(guest, math.floor(worth), 1, possessions.assess, nil, cheap), "fish at a quarter: it would buy that instead")
+	guest._villages_dinner_choice = nil
+	assert(dinner.wants(guest, math.floor(worth / 4), 1, possessions.assess, nil, cheap), "a quarter of the worth is fair")
+	-- Street food dearer than its loaf price raises nothing.
+	guest._villages_dinner_choice = nil
+	assert(not dinner.wants(guest, math.ceil(worth) + 1, 1, possessions.assess, nil, {{kind = "has", item = FISH, price = LOAF * 10}}))
+end
 -- Paying teaches it more than seeing: LEARN_TRADE.
 local payer = villager("pay", {})
 dinner.paid(payer, 9)
