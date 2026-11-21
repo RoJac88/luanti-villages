@@ -162,4 +162,32 @@ do
 	assert(near(asks.reservation(wood, planks), asks.PROFIT * ledger.price("mcl_core:tree") * asks.GATHER_SHARE / 4))
 end
 
+-- Ticket 43c: the markdown stops at the replacement cost, a factor under it is lifted there,
+-- and a sale under it teaches the floor, not the price paid.
+do
+	-- (Paper: a log's reference is kept under its category, group:log.)
+	local LOG = "mcl_core:paper"
+	local floor = ledger.price(LOG) * asks.GATHER_SHARE
+	local cutter = {_villages_prices = {[LOG] = 1 / 64}, _villages_asks = {[LOG] = asks.MIN}}
+	asks.daily(cutter, {[LOG] = 40}, 1)
+	asks.daily(cutter, {[LOG] = 40}, 2)
+	assert(near(asks.factor(cutter, LOG), floor / (ledger.price(LOG) / 64)), "lifted to the floor")
+	assert(near(asks.ask(cutter, LOG), floor))
+	for d = 3, 30 do asks.daily(cutter, {[LOG] = 40}, d) end
+	assert(near(asks.ask(cutter, LOG), floor), "unsold for weeks, still the floor")
+	-- Over the floor it falls as before.
+	local high = {_villages_prices = {[LOG] = 1}}
+	asks.daily(high, {[LOG] = 40}, 1)
+	asks.daily(high, {[LOG] = 40}, 2)
+	assert(near(asks.factor(high, LOG), asks.MARKDOWN))
+	-- A sale under the floor: the reference learns the floor.
+	local seller = {_villages_prices = {[LOG] = 0.01}}
+	asks.sold(seller, LOG, 1, 3, floor / 3)
+	local learnt = prices.price(seller._villages_prices, LOG)
+	assert(learnt > ledger.price(LOG) * 0.01 and learnt <= floor + 1e-9, learnt)
+	local same = {_villages_prices = {[LOG] = 0.01}}
+	asks.sold(same, LOG, 1, 1, floor)
+	assert(near(prices.price(same._villages_prices, LOG), learnt), "as if sold at the floor")
+end
+
 print("asks.lua: ok")

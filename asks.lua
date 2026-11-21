@@ -278,7 +278,11 @@ end
 function M.sold(seller, item, day, count, unit)
 	local factor = M.factor(seller, item)
 	if unit and unit > 0 then
-		prices.learn(seller, item, unit, prices.LEARN_TRADE)
+		-- Never under what it costs to replace (ticket 43c): a sale under it (a lot grown to
+		-- make a whole emerald, a player's reputation discount) teaches the floor, so the
+		-- reference price cannot follow it down past it.
+		local floor = M.replacement(seller, item)
+		prices.learn(seller, item, floor and math.max(unit, floor) or unit, prices.LEARN_TRADE)
 		factor = factor ^ (1 - prices.LEARN_TRADE)
 		-- What an alchemist's good last sold for, for its bids (alchemist.floors, ticket 28b).
 		if seller._villages_alchemist then
@@ -294,7 +298,8 @@ function M.sold(seller, item, day, count, unit)
 end
 
 -- Once a game day: every item of `surplus` (item -> count) it sold less than SLOW_SHARE of
--- since the last time is asked for less, twice as fast with `money` under the cushion.
+-- since the last time is asked for less, twice as fast with `money` under the cushion,
+-- down to its replacement cost and no further (ticket 43c).
 -- Returns whether it ran today.
 function M.daily(seller, surplus, day, money)
 	if not day or seller._villages_asks_day == day then return false end
@@ -305,10 +310,20 @@ function M.daily(seller, surplus, day, money)
 	for item, count in pairs(surplus or {}) do
 		local entry = sale(sold, item)
 		local moved = entry and entry.day >= since and entry.count or 0
+		local factor = M.factor(seller, item)
+		local before = factor
 		if count > 0 and ledger.price(item) and moved < count * SLOW_SHARE then
 			local short = money and money < ledger.CUSHION
-			set_factor(seller, item, M.factor(seller, item) * MARKDOWN * (short and MARKDOWN or 1))
+			factor = factor * MARKDOWN * (short and MARKDOWN or 1)
 		end
+		-- Not under its reservation price (ticket 43c): the factor stops where its ask meets
+		-- what the item costs to replace, and one already under it is lifted there, so a sale
+		-- marks up from the floor. Before, it fell to MIN while the reference price learnt
+		-- from those sales, and the two spiralled to 1/64 of base.
+		local reference = prices.price(seller._villages_prices, item)
+		local floor = count > 0 and reference and reference > 0 and M.replacement(seller, item)
+		if floor then factor = math.max(factor, floor / reference) end
+		if factor ~= before then set_factor(seller, item, factor) end
 	end
 	-- Each day's count starts afresh; what sold before the last day is forgotten.
 	local kept = {}

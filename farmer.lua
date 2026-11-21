@@ -390,7 +390,8 @@ local function price_chest(self, pos)
 	-- stock for sale, not its food, and a farmer holding 1487 emeralds valued a potato at
 	-- several times its price, so the keeper paid about 6 a potato and 7 a loaf from 470
 	-- potatoes nobody else bought (ColonyFood, 2026-11-21). The daily markdown on the
-	-- chest's spare brings the ask down as it piles up.
+	-- chest's spare brings the ask down as it piles up, to its replacement cost (ticket 43:
+	-- GATHER_SHARE of a crop's base price, asks.ask with no view) and no further.
 	local spare
 	for _, item in ipairs(CHEST_GOODS) do
 		local held = stock.chest_count(pos, item)
