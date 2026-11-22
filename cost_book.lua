@@ -8,8 +8,8 @@
 --   - an input of a recipe its trade makes (recipes.lua; a category input, any member of
 --     it), the butcher's beef and fish (ticket 42) or the mason's clay,
 --   - a conversion's source its trade takes (goods.lua), the cleric's rotten flesh (37b),
---   - or bought to sell on: a keeper's food (its dishes, ticket 39b, and a potato it bakes
---     at the baked potato's cost: dinner.note_cost) and a peddler's lot (labour.lua).
+--   - or bought to sell on: a keeper's food (its dishes, ticket 39b, and its raw plates'
+--     potatoes: dinner.note_cost) and a peddler's lot (labour.lua).
 --   Fuel is not noted: a recipe's fuel is reckoned at the reference price for coal.
 -- * Category entries ({stone = .., log = .., fuel = ..}) are the alchemist's (ticket 30,
 --   alchemist.bought): what a unit of the category cost, over what it holds. M.note passes

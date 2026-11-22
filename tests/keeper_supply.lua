@@ -147,13 +147,14 @@ local frugal = {_villages_prices = {["group:food"] = 0.5}}
 assert(math.abs(supply.worth({["mcl_farming:potato_item"] = 10}, frugal) - POT * 5) < 1e-9)
 assert(inventories[key(farm_chest)]["mcl_core:emerald"] == math.floor(owed + 1e-3), "paid in full")
 assert(supply.tab(farm_chest) < 1, "a fraction at most owed")
--- The farmer takes up what it took as sales at its next visit, and each dish costs what
--- its food did (two potatoes as the baked potato they make, ticket 39g).
+-- The farmer takes up what it took as sales at its next visit, and each food costs what it
+-- paid (ticket 45: a potato is a raw plate's, no longer half a baked potato).
 local sold, paid_for = stock.take_chest_sales(farm_chest, "mcl_farming:potato_item")
 assert(sold == 10 and math.abs(paid_for - POT * 10) < 1e-3, sold .. " " .. paid_for)
 assert(stock.take_chest_sales(farm_chest, "mcl_farming:potato_item") == 0, "taken up once")
 assert(stock.take_chest_sales(farm_chest, "mcl_farming:bread") == 4)
-assert(math.abs(kate._villages_input_cost["mcl_farming:potato_item_baked"] - 2 * POT) < 1e-9)
+assert(math.abs(kate._villages_input_cost["mcl_farming:potato_item"] - POT) < 1e-9)
+assert(kate._villages_input_cost["mcl_farming:potato_item_baked"] == nil)
 assert(math.abs(kate._villages_input_cost["mcl_farming:bread"] - LOAF) < 1e-9)
 -- An ask the farmer posted is what it pays.
 stock.post_ask(farm_chest, "mcl_farming:potato_item", 1.5)
@@ -204,15 +205,17 @@ kate._villages_supply_next = nil
 -- under the reserve, and the 4 loaves are the meals.
 local RESERVE = supply.RAW_RESERVE["mcl_farming:potato_item"]
 assert(RESERVE == 16 and supply.meals(chests) == 4)
--- With the reserve on top, 4 loaves and 20 potatoes to bake, 2 a dish (ticket 39g):
+-- Potatoes past the reserve count for nothing either: it bakes none (ticket 45). 14 loaves:
 -- enough, so no trip.
 inventories[key(pantry_chest)]["mcl_farming:potato_item"] = 20 + RESERVE
+assert(supply.meals(chests) == 4, "raw potatoes are no meals")
+inventories[key(pantry_chest)]["mcl_farming:bread"] = 14
 assert(supply.meals(chests) == 14)
 now = now + supply.CHECK_SECONDS
 supply.step(kate, now)
 assert(not trip, "pantry stocked: stays")
 
--- Stocked to demand (ticket 22c): last evening 30 meals were wanted, so 14 is short of the 38 it stocks to (a quarter over), and
+-- Stocked to demand (ticket 22c; loaves: it fetches potatoes only for the raw plates, ticket 45): last evening 30 meals were wanted, so 14 is short of the 38 it stocks to (a quarter over), and
 -- it carries 38. Busier still, at most CARRY_MAX a trip; the tab's cap grows with it.
 do
 	local dinner = dofile("dinner.lua")
@@ -221,27 +224,27 @@ do
 	kate._villages_dinner = {day = day, factor = 1, demand = 30}
 	assert(supply.target(kate) == 38 and supply.carry(kate) == 38, supply.target(kate))
 	assert(supply.tab_cap() == supply.TAB_CAP, "the cap stays a fraction")
-	inventories[key(farm_chest)]["mcl_farming:potato_item"] = 50
-	-- The farmer asks 2 a potato, and there is dinner money for all 38 (76).
-	stock.post_ask(farm_chest, "mcl_farming:potato_item", 2)
+	inventories[key(farm_chest)]["mcl_farming:bread"] = 50
+	-- The farmer asks 2 a loaf, and there is dinner money for all 38 (76).
+	stock.post_ask(farm_chest, "mcl_farming:bread", 2)
 	inventories[key(pantry_chest)]["mcl_core:emerald"] = 76
 	now = now + supply.CHECK_SECONDS
 	supply.step(kate, now)
 	assert(trip and vector.equals(trip.target, farm_chest), "14 is short of 38")
 	arrive_at(farm_chest)
-	assert(kate._villages_farm_pouch["mcl_farming:potato_item"] == 38, "carries the target")
-	assert(inventories[key(farm_chest)]["mcl_farming:potato_item"] == 12)
+	assert(kate._villages_farm_pouch["mcl_farming:bread"] == 38, "carries the target")
+	assert(inventories[key(farm_chest)]["mcl_farming:bread"] == 12)
 	assert(inventories[key(farm_chest)]["mcl_core:emerald"] == 76)
-	-- Only the food its purse pays for (ticket 27): with 40, 20 potatoes of the 24 the
+	-- Only the food its purse pays for (ticket 27): with 40, 20 loaves of the 24 the
 	-- pantry lacks. That no longer moves dinner (ticket 39b): the price covers each plate.
 	kate._villages_farm_pouch = {}
 	kate._villages_supply_next = nil
-	inventories[key(farm_chest)] = {["mcl_farming:potato_item"] = 50}
+	inventories[key(farm_chest)] = {["mcl_farming:bread"] = 50}
 	inventories[key(pantry_chest)]["mcl_core:emerald"] = 40
 	now = now + supply.CHECK_SECONDS
 	supply.step(kate, now)
 	arrive_at(farm_chest)
-	assert(kate._villages_farm_pouch["mcl_farming:potato_item"] == 20, "what 40 pays for")
+	assert(kate._villages_farm_pouch["mcl_farming:bread"] == 20, "what 40 pays for")
 	assert(inventories[key(farm_chest)]["mcl_core:emerald"] == 40 and supply.tab(farm_chest) == 0)
 	assert(logs[#logs]:find("left 18 food its purse could not pay for"), logs[#logs])
 	local factor = dinner.factor(kate)
@@ -254,34 +257,34 @@ do
 	kate._villages_farm_pouch = {}
 	kate._villages_supply_next = nil
 	kate._villages_belongings = {["mcl_core:emerald"] = 30}
-	inventories[key(farm_chest)] = {["mcl_farming:potato_item"] = 50}
+	inventories[key(farm_chest)] = {["mcl_farming:bread"] = 50}
 	inventories[key(pantry_chest)]["mcl_core:emerald"] = nil
 	now = now + supply.CHECK_SECONDS
 	supply.step(kate, now)
 	arrive_at(farm_chest)
-	assert(kate._villages_farm_pouch["mcl_farming:potato_item"] == 15 and not kate._villages_belongings, "its 30")
+	assert(kate._villages_farm_pouch["mcl_farming:bread"] == 15 and not kate._villages_belongings, "its 30")
 	-- A tab from before (it took food it could not pay for, up to a cap that grew) is
 	-- written off when it next fetches there.
 	kate._villages_farm_pouch = {}
 	kate._villages_supply_next = nil
-	inventories[key(farm_chest)] = {["mcl_farming:potato_item"] = 50}
+	inventories[key(farm_chest)] = {["mcl_farming:bread"] = 50}
 	inventories[key(pantry_chest)]["mcl_core:emerald"] = 76
 	minetest.get_meta(farm_chest):set_string(supply.TAB, "987.39")
 	now = now + supply.CHECK_SECONDS
 	supply.step(kate, now)
 	arrive_at(farm_chest)
-	assert(kate._villages_farm_pouch["mcl_farming:potato_item"] == 38, "the old tab takes nothing from the purse")
+	assert(kate._villages_farm_pouch["mcl_farming:bread"] == 38, "the old tab takes nothing from the purse")
 	local found
 	for _, line in ipairs(logs) do if line:find("wrote off 987.39 emerald") then found = true end end
 	assert(found and supply.tab(farm_chest) < 1, "written off")
-	stock.post_ask(farm_chest, "mcl_farming:potato_item", nil)
+	stock.post_ask(farm_chest, "mcl_farming:bread", nil)
 	kate._villages_dinner.demand = 500
 	assert(supply.carry(kate) == supply.CARRY_MAX)
 	assert(dinner.demand(kate) == 500)
 	-- Back as it was for what follows.
 	kate._villages_dinner, kate._villages_farm_pouch = nil, {}
 	kate._villages_supply_next, kate._villages_supply_target, trip = nil, nil, nil
-	inventories[key(farm_chest)]["mcl_farming:potato_item"] = nil
+	inventories[key(farm_chest)]["mcl_farming:bread"] = nil
 	inventories[key(farm_chest)]["mcl_core:emerald"] = nil
 end
 
@@ -348,11 +351,12 @@ local near_food = inventories[key(farm_chest)]
 inventories[key(farm_chest)] = {["mcl_farming:bread"] = 4, ["mcl_farming:potato_item"] = 10}
 inventories[key(far_chest)] = {["mcl_farming:potato_item"] = 300}
 assert(vector.equals(supply.source(jukebox, chests), far_chest), "the fullest farm")
--- Carrots count a quarter of a meal each.
-inventories[key(far_chest)] = {["mcl_farming:carrot_item"] = 40}
-assert(vector.equals(supply.source(jukebox, chests), farm_chest), "40 carrots are 10 meals, under 14")
+-- Carrots count a quarter of a meal each, potatoes a raw plate's share (ticket 45): 4 loaves
+-- and 10 potatoes are 6.5.
+inventories[key(far_chest)] = {["mcl_farming:carrot_item"] = 20}
+assert(vector.equals(supply.source(jukebox, chests), farm_chest), "20 carrots are 5 meals, under 6.5")
 -- Equal: the nearer.
-inventories[key(far_chest)] = {["mcl_farming:potato_item"] = 14}
+inventories[key(far_chest)] = {["mcl_farming:bread"] = 4, ["mcl_farming:potato_item"] = 10}
 assert(vector.equals(supply.source(jukebox, chests), farm_chest), "the nearer of equals")
 nodes[key(far_composter)], nodes[key(far_chest)] = nil, nil
 inventories[key(farm_chest)] = near_food
@@ -369,41 +373,26 @@ local CARROT_PRICE = dofile("ledger.lua").price("mcl_farming:carrot_item")
 assert(math.abs(supply.worth({["mcl_farming:carrot_item"] = 4}) - 4 * CARROT_PRICE) < 1e-9)
 inventories[key(farm_chest)] = {}
 
--- Its shift, the pantry short of tonight's demand: a last resort (ticket 39g), one dish
--- every COOK_SECONDS at the jukebox, 2 potatoes baked into one. Wheat and raw fish it
--- leaves: only the farmer bakes bread, only the butcher cooks fish. The reserve for raw
--- plates (ticket 39h) it never bakes.
+-- Its shift: it cooks nothing (ticket 45), whatever the pantry holds or lacks. Wheat, raw
+-- fish and potatoes stay raw: the farmer bakes bread, the butcher cooks the rest.
 assert(supply.COOK_SECONDS == 20)
-inventories[key(pantry_chest)] = {["mcl_farming:wheat_item"] = 4, ["mcl_farming:potato_item"] = 4 + RESERVE,
+inventories[key(pantry_chest)] = {["mcl_farming:wheat_item"] = 4, ["mcl_farming:potato_item"] = 40 + RESERVE,
 	["mcl_fishing:fish_raw"] = 2}
 time = 15000 / 24000
 kate.order = "work"
 kate._villages_food = 12 -- fed: the keeper's own dinner is tested below
-supply.step(kate, now)
-assert(inventories[key(pantry_chest)]["mcl_farming:potato_item_baked"] == 1)
-assert(inventories[key(pantry_chest)]["mcl_farming:potato_item"] == 2 + RESERVE)
-supply.step(kate, now + 1)
-assert(inventories[key(pantry_chest)]["mcl_farming:potato_item"] == 2 + RESERVE, "one dish per COOK_SECONDS")
-now = now + supply.COOK_SECONDS
-supply.step(kate, now)
-assert(inventories[key(pantry_chest)]["mcl_farming:potato_item_baked"] == 2)
-now = now + supply.COOK_SECONDS
-supply.step(kate, now)
-assert(inventories[key(pantry_chest)]["mcl_farming:potato_item_baked"] == 2, "the reserve stays raw")
-assert(inventories[key(pantry_chest)]["mcl_farming:potato_item"] == RESERVE)
-now = now + supply.COOK_SECONDS
-supply.step(kate, now)
+for _ = 1, 4 do
+	supply.step(kate, now)
+	now = now + supply.COOK_SECONDS
+end
+assert(not inventories[key(pantry_chest)]["mcl_farming:potato_item_baked"], "no baking")
+assert(inventories[key(pantry_chest)]["mcl_farming:potato_item"] == 40 + RESERVE)
 assert(inventories[key(pantry_chest)]["mcl_farming:wheat_item"] == 4 and not inventories[key(pantry_chest)]["mcl_farming:bread"])
 assert(inventories[key(pantry_chest)]["mcl_fishing:fish_raw"] == 2 and not inventories[key(pantry_chest)]["mcl_fishing:fish_cooked"])
--- With as many dishes as tonight's demand (TARGET_MEALS before any) it cooks nothing.
+assert(supply.cook == nil)
 assert(supply.tonight(kate) == supply.TARGET_MEALS)
 inventories[key(pantry_chest)]["mcl_farming:potato_item"] = 10 + RESERVE
-inventories[key(pantry_chest)]["mcl_fishing:fish_cooked"] = supply.TARGET_MEALS - 2
-now = now + supply.COOK_SECONDS
-supply.step(kate, now)
-assert(inventories[key(pantry_chest)]["mcl_farming:potato_item"] == 10 + RESERVE, "dishes enough: no cooking")
-assert(supply.cook(chests, supply.TARGET_MEALS) == nil)
-assert(supply.cook(chests) == "mcl_farming:potato_item_baked", "with no need, whenever it can")
+inventories[key(pantry_chest)]["mcl_fishing:fish_cooked"] = supply.TARGET_MEALS + 1
 -- What it buys (ticket 39g): a few of each dish it knows, and dishes of any kind for the
 -- rest of its target.
 assert(supply.dishes(chests) == supply.TARGET_MEALS + 1)
@@ -516,14 +505,16 @@ do
 	assert(supply.dish_wants(knower, chests, day)[CHICKEN] == 0)
 end
 
--- The plate cost (ticket 39b): the average cost of the dishes the pantry holds and can
--- cook, the raw plates' reserve left out, at what each cost the keeper.
+-- The plate cost (ticket 39b): the average cost of the dishes the pantry holds, raw food
+-- left out (ticket 45: raw potatoes are no dish), at what each cost the keeper.
 do
 	local plater = {_id = "plater", _villages_keeper = true,
 		_villages_dish_cost = {["mcl_farming:potato_item_baked"] = 1, ["mcl_fishing:fish_cooked"] = 5}}
-	inventories[key(pantry_chest)] = {["mcl_farming:potato_item"] = 12 + RESERVE, ["mcl_fishing:fish_cooked"] = 2}
+	inventories[key(pantry_chest)] = {["mcl_farming:potato_item"] = 12 + RESERVE, ["mcl_farming:potato_item_baked"] = 6,
+		["mcl_fishing:fish_cooked"] = 2}
 	local counts = supply.dish_counts(chests)
 	assert(counts["mcl_farming:potato_item_baked"] == 6 and counts["mcl_fishing:fish_cooked"] == 2)
+	assert(counts["mcl_farming:potato_item"] == nil)
 	assert(math.abs(supply.price_plate(plater, chests) - (6 * 1 + 2 * 5) / 8) < 1e-9)
 	assert(plater._villages_plate_cost == 2)
 	-- An empty pantry keeps the last plate cost.
@@ -531,24 +522,17 @@ do
 	assert(supply.price_plate(plater, chests) == nil and plater._villages_plate_cost == 2)
 end
 
--- Raw potatoes it fetches only for raw plates and its last-resort cooking (ticket 39g):
--- the reserve the pantry lacks, and 2 for each dish short of tonight's demand.
+-- Raw potatoes it fetches only for the raw plates' reserve (ticket 45): it bakes none, so
+-- neither tonight's demand, bread on the way nor dishes heard offered or held change that.
 do
 	local fetcher = {_id = "fe", _villages_keeper = true}
 	inventories[key(pantry_chest)] = {}
-	assert(supply.potatoes_wanted(fetcher, chests, 0) == RESERVE + 2 * supply.TARGET_MEALS)
-	assert(supply.potatoes_wanted(fetcher, chests, 4) == RESERVE + 2 * (supply.TARGET_MEALS - 4), "bread on the way")
-	inventories[key(pantry_chest)] = {["mcl_farming:potato_item"] = RESERVE, ["mcl_fishing:fish_cooked"] = supply.TARGET_MEALS}
-	assert(supply.potatoes_wanted(fetcher, chests, 0) == 0, "the butcher's dishes enough, the reserve full")
-	assert(supply.potatoes_wanted(fetcher, nil, 0) == math.huge)
-	-- Ticket 44: a dish heard offered no longer stands it down, only dishes it has: bought
-	-- and not yet shelved.
-	inventories[key(pantry_chest)] = {}
-	fetcher._villages_market_news = {{item = "mcl_mobitems:cooked_beef", who = "butch", kind = "has", count = 16,
-		price = 4, heard = 1000, hops = 1}}
-	assert(supply.potatoes_wanted(fetcher, chests, 0) == RESERVE + 2 * supply.TARGET_MEALS, "heard is not had")
-	fetcher._villages_belongings = {["mcl_mobitems:cooked_beef"] = 3}
-	assert(supply.potatoes_wanted(fetcher, chests, 0) == RESERVE + 2 * (supply.TARGET_MEALS - 3), "its own three count")
+	assert(supply.potatoes_wanted(fetcher, chests) == RESERVE)
+	inventories[key(pantry_chest)] = {["mcl_farming:potato_item"] = RESERVE - 5}
+	assert(supply.potatoes_wanted(fetcher, chests) == 5)
+	inventories[key(pantry_chest)] = {["mcl_farming:potato_item"] = RESERVE + 30}
+	assert(supply.potatoes_wanted(fetcher, chests) == 0)
+	assert(supply.potatoes_wanted(fetcher, nil) == math.huge)
 	inventories[key(pantry_chest)] = {}
 end
 
