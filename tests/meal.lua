@@ -737,6 +737,42 @@ meal.tick(vera, 0.1, jukebox)
 -- Back to a dinner factor of 1 for what follows.
 day = day + 1
 kate._villages_dinner = nil
+-- Take-home dishes (ticket 48c): fed, and owning no food, she buys two loaves to keep at
+-- the dinner price, up to two days' food; the pantry keeps its last three for later guests.
+do
+	pantry_items["mcl_farming:bread"] = 10
+	pantry_items["mcl_core:emerald"] = nil
+	vera._villages_food = 4
+	vera._villages_belongings["mcl_farming:bread"] = nil
+	now = now + 10
+	meal.tick(vera, 0.1, jukebox)
+	assert(vera._villages_food == 12 and vera._villages_belongings["mcl_farming:bread"] == 2,
+		tostring(vera._villages_belongings["mcl_farming:bread"]))
+	assert(pantry_items["mcl_farming:bread"] == 6)
+	assert(logs[#logs]:find("villager vera took 2 dish%(es%) home"), logs[#logs])
+	now = now + 20
+	meal.tick(vera, 0.1, jukebox)
+	-- Holding two days' food, she takes none; nor past the pantry's last three.
+	day = day + 1
+	vera._villages_food = 4
+	now = now + 10
+	meal.tick(vera, 0.1, jukebox)
+	assert(vera._villages_belongings["mcl_farming:bread"] == 2 and pantry_items["mcl_farming:bread"] == 4)
+	now = now + 20
+	meal.tick(vera, 0.1, jukebox)
+	day = day + 1
+	vera._villages_belongings["mcl_farming:bread"] = nil
+	pantry_items["mcl_farming:bread"] = 5
+	vera._villages_food = 4
+	now = now + 10
+	meal.tick(vera, 0.1, jukebox)
+	assert((vera._villages_belongings["mcl_farming:bread"] or 0) == 0 and pantry_items["mcl_farming:bread"] == 3)
+	now = now + 20
+	meal.tick(vera, 0.1, jukebox)
+	day = day + 1
+	pantry_items["mcl_farming:bread"] = nil
+	kate._villages_dinner = nil
+end
 -- Variety (ticket 34): she is served the dish she ate least of lately, not bread again;
 -- the keeper notes each dish its guests ate.
 pantry_items["mcl_core:emerald"] = nil

@@ -208,6 +208,16 @@ assert(trip and trip.item == COBBLE and trip.who == "quinn-quarrier" and trip.wa
 assert(trips.plan(bob, view, {has_news("far", COBBLE, {x = 200, y = 1, z = 0}, 0.03)}, bob._bed) == nil)
 assert(trips.plan(bob, view, {has_news("dear", COBBLE, {x = 20, y = 1, z = 0}, 100)}, bob._bed) == nil)
 assert(trips.plan(bob, view, {has_news("bob-builder", COBBLE, {x = 20, y = 1, z = 0}, 0.03)}, bob._bed) == nil)
+-- ...or to one whose goods are for the keeper alone (tavern_duty.lua, ticket 48a), unless it
+-- is the keeper; nor buys them from that one's stash.
+local only = has_news("quinn-quarrier", COBBLE, {x = 20, y = 1, z = 0}, 0.03)
+only.keeper_only = true
+assert(trips.plan(bob, view, {only}, bob._bed) == nil)
+bob._villages_keeper = true
+local keeper_trip = trips.plan(bob, view, {only}, bob._bed)
+assert(keeper_trip and keeper_trip.keeper_only)
+bob._villages_keeper = nil
+assert(trips.buy_from_stash(bob, keeper_trip, {x = 20, y = 1, z = 0}) == 0)
 -- At the economy's scale one cobble is worth whole emeralds, so a seller with one is a
 -- trip (ticket 11h; at vanilla's prices it came to under one, run 34)...
 local few = has_news("few", COBBLE, {x = 20, y = 1, z = 0}, 0.03)

@@ -266,6 +266,8 @@ assert(not hal._villages_seat and not hal._villages_seated, "does not take a cha
 -- the 17:00 leave-by still turns back a guest who has not arrived. Day 8 is a
 -- holiday; day 7 is not.
 time, day = 14999 / 24000, 8
+-- Its keeper was at the tavern yesterday: not absent (tavern_duty.lua, ticket 48b).
+minetest.get_meta(jukebox):set_string("villages_keeper_staffed", tostring(day - 1))
 local jo = villager("jo", {x = 2, y = 0, z = 0}, {_bed = {x = 0, y = 0, z = 0}})
 count = #gopaths
 def.do_custom(jo, 0.1)
