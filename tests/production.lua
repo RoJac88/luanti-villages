@@ -470,7 +470,8 @@ end
 -- Labourers craft while they wait (ticket 23a).
 do
 	local function labourer(id)
-		local v = smith({_id = id, _profession = "nitwit", _jobsite = nil})
+		local v = smith({_id = id, _profession = "nitwit"})
+		v._jobsite = nil -- a nil field in smith's list overrides nothing
 		v._villages_labour = {day = day, activity = "quarrier"}
 		v._villages_econ_clock = 0
 		return v
@@ -577,6 +578,12 @@ do
 	c._villages_labour_plan.day = day
 	c._villages_labour = {day = day - 1, activity = "quarrier"}
 	assert(possessions.labour_plan(c) == nil)
+	-- An idle crafter labours but buys no plan's inputs: its money is for its own trade's.
+	c._villages_labour = {day = day, activity = "quarrier"}
+	assert(possessions.labour_plan(c) ~= nil)
+	c._jobsite = {x = 0, y = 0, z = 0}
+	assert(possessions.labour_plan(c) == nil and not possessions.assess(c).needs["mcl_core:cobble"])
+	c._jobsite = nil
 end
 
 -- A librarian binds a book and a feather into a book and quill (ticket 32), a comfort.

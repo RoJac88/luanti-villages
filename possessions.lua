@@ -826,6 +826,12 @@ function M.labour_plan(self)
 	if commissioned then return recipes.labour[commissioned.index] end
 	local plan = self._villages_labour_plan
 	if not plan or not plan.index or not M.labouring(self) or plan.day ~= core.get_day_count() then return nil end
+	-- An idle crafter, one with a jobsite and nothing of its own to make, gathers but buys
+	-- no labour craft's inputs: its money is for its own trade's. A new village's butcher,
+	-- with no fish to cook, paid 438 emeralds for 9 logs to saw into planks, sold one
+	-- plank, and could not then buy the fish and beef the fishermen and the leatherworker
+	-- held (lv_pair aa, 2026-11-22).
+	if self._jobsite then return nil end
 	return recipes.labour[plan.index]
 end
 
