@@ -67,15 +67,18 @@ end
 
 local next_check = setmetatable({}, {__mode = "k"})
 
--- One step at market. Returns true while it is busy there (keeper_supply skips its farm
--- run). `go(self, target, arrive)` walks it.
+-- One step at market. Returns true while it has a stall to go to (keeper_supply skips its
+-- farm run), false with none: on the first market day of lv_pair e5 no stall showed food,
+-- and it stood the market hours out with the pantry empty.
+-- `go(self, target, arrive)` walks it.
 function M.step(self, now, day, go)
-	if now < (next_check[self] or 0) then return true end
+	if now < (next_check[self] or 0) then return self._villages_market_busy == true end
 	next_check[self] = now + M.CHECK_SECONDS
 	local pos = self.object and self.object:get_pos()
-	if not pos then return true end
+	if not pos then return false end
 	local stall = M.stalls(self, pos, day)[1]
-	if not stall then return true end
+	self._villages_market_busy = stall ~= nil or nil
+	if not stall then return false end
 	local seller = stall.seller
 	local at = seller.object:get_pos()
 	if not at then return true end

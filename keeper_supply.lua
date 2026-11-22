@@ -639,7 +639,8 @@ function M.step(self, now)
 	local stage = common.schedule_stage(nil, self)
 	if stage == "staff" then
 		cook_tick(self, jukebox, now)
-	elseif stage == "free" and market.open(common.is_holiday()) and not self._villages_supply_target then
+	elseif stage == "free" and market.open(common.is_holiday()) and not self._villages_supply_target
+		and carried(self) == 0 then
 		-- Market day (ticket 51): round the stalls, not the farms.
 		local day = core.get_day_count()
 		local chests = pantry.chests(jukebox)
@@ -650,10 +651,13 @@ function M.step(self, now)
 			core.log("action", string.format("[living_villages] keeper %s goes to market with %d emerald(s), wanting %d dishes",
 				tostring(self._id):sub(1, 6), possessions.emeralds(self), self._villages_dish_short or 0))
 		end
-		market.step(self, now, day, function(entity, target, arrive)
+		-- With no stall showing food, the farms as on any day.
+		if not market.step(self, now, day, function(entity, target, arrive)
 			local started = entity:gopath(target, arrive, true)
 			if started == false then arrive(entity) end
-		end)
+		end) then
+			supply(self, jukebox, now)
+		end
 	elseif stage == "free" then
 		supply(self, jukebox, now)
 	else

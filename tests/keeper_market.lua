@@ -55,6 +55,10 @@ now = now + market.CHECK_SECONDS
 walked = nil
 market.step(keeper, now, day, step_go)
 assert(walked and walked.target.x == 20)
+-- None left to visit: it says so, and keeper_supply goes to the farms.
+keeper._villages_market_visited.butcher = true
+now = now + market.CHECK_SECONDS
+assert(market.step(keeper, now, day, step_go) == false)
 -- A new day: every stall again.
 assert(#market.stalls(keeper, {x = 0, y = 0, z = 0}, day + 4) == 2)
 
