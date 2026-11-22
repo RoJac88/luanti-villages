@@ -182,7 +182,11 @@ function M.plan(self, view, heard, from)
 					and (M.terms(need, entry.count or 0, value, entry.price or 0, possessions.emeralds(self))
 						or log_short(self, entry, need, value)) then
 					local distance = vector.distance(from, entry.home)
-					local worth = need * value
+					-- What it could bring back (ticket 50): no more than the seller was heard to
+					-- have. Weighed by its need alone, the butcher went eleven times for salmon a
+					-- fisherman had one or two of, and twice for the 22 raw fish the other held at
+					-- 2 each, and cooked on two days of five (lv_pair e3, 2026-11-22).
+					local worth = math.min(need, entry.count or need) * value
 					if distance <= TRIP_RADIUS and (not best or worth > best_worth
 						or (worth == best_worth and distance < best_distance)) then
 						best, best_worth, best_distance = entry, worth, distance

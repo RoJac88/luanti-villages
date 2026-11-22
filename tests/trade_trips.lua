@@ -223,6 +223,13 @@ assert(trips.buy_from_stash(bob, keeper_trip, {x = 20, y = 1, z = 0}) == 0)
 local few = has_news("few", COBBLE, {x = 20, y = 1, z = 0}, 0.03)
 few.count = 1
 assert(trips.plan(bob, view, {few}, bob._bed), "one cobble is a sale")
+-- Weighed by what it could bring back (ticket 50): a farther seller with forty goes before a
+-- nearer one with one.
+do
+	local many = has_news("many", COBBLE, {x = 30, y = 1, z = 0}, 0.03)
+	local pick = trips.plan(bob, view, {few, many}, bob._bed)
+	assert(pick and pick.who == "many", pick and pick.who)
+end
 -- ...but a seller it cannot make a sale with is passed over, and logged once a day.
 do
 	local purse = bob._villages_belongings[EMERALD]
