@@ -81,8 +81,8 @@ return {
 		-- The fishermen's catch (ticket 15): raw fish is no food, and nobody else cooks it.
 		{makes = "mcl_fishing:fish_cooked", count = 1, tier = 1, from = {{"mcl_fishing:fish_raw", 1}}, fuel = 1, seconds = 10, demand = true},
 		{makes = "mcl_fishing:salmon_cooked", count = 1, tier = 1, from = {{"mcl_fishing:salmon_raw", 1}}, fuel = 1, seconds = 10, demand = true},
-		-- The farmers' potatoes, baked for the tavern (ticket 39f): the keeper bakes only
-		-- as a last resort (keeper_supply.lua).
+		-- The farmers' potatoes, baked for the tavern (ticket 39f): the keeper bakes none
+		-- (keeper_supply.lua, ticket 45).
 		{makes = "mcl_farming:potato_item_baked", count = 1, tier = 1, from = {{"mcl_farming:potato_item", 1}}, fuel = 1, seconds = 10, demand = true},
 	},
 	-- White wool from the shepherd, sticks of its own (mcl_banners' recipe: six wool, a stick).

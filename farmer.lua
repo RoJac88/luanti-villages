@@ -82,7 +82,8 @@ local BONE_MEAL_LIMIT_WITH_CHEST = 4
 -- What it holds on to when it goes to a chest. Anything else it picks up goes in whole:
 -- carrots and beetroot, which it no longer sows (farm_field.lua), go to the chest, the
 -- carrots for the tavern's last resort (meal.lua). Potatoes are kept for a field's half
--- of potato plots, not more: the rest go to the keeper to bake (keeper_supply.lua).
+-- of potato plots, not more: the rest go to the chest, for sale to the butcher to bake
+-- and to the keeper's raw plates (keeper_supply.lua, ticket 45).
 local DEPOSIT_KEEP = {
 	["mcl_farming:wheat_seeds"] = 16,
 	["mcl_farming:potato_item"] = 8,
@@ -120,7 +121,7 @@ local KEEPER_RESERVE = stock.KEEPER_RESERVE
 -- A trip to a chest waits for this much over the keep, unless the pouch is full.
 local DEPOSIT_TRIGGER = 8
 -- Food is worth a trip sooner: past the keep, bread is for its own dinners and the
--- tavern's pantry and potatoes for the keeper to bake, and both reach them only through
+-- tavern's pantry and potatoes for sale (the butcher bakes them), and both reach them only through
 -- the chest trip (run of 2026-11-13: a starving farmer carried 8 loaves, 6 over the
 -- keep, while the keeper found none to fetch).
 local FOOD_TRIGGER = 2

@@ -69,7 +69,7 @@
 -- The tavern keeper (ticket 33) sells the dishes in its pantry (tavern_pantry.lua: a
 -- keeper.dishes item), each one dinner at its posted dinner price (dinner.lua), paid into
 -- the pantry, its till, as a player's meal is (player_meals.lua). It keeps the last
--- evening's demand (dinner.demand) in meals, cookable potatoes counted, for the village's
+-- evening's demand (dinner.demand) in meals, its dishes (ticket 45: it cooks none), for the village's
 -- dinner. It buys its inputs (ledger.lua's keeper role) as anyone, from its float. With
 -- no pantry it sells what it holds, as anyone.
 --

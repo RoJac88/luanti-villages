@@ -334,7 +334,7 @@ end
 
 -- What a cook's trade takes and makes (ticket 40b): its demand recipes' (recipes.lua)
 -- inputs and outputs, as {takes = set, makes = set}; nil for a villager with none (all but
--- the butcher). Never the keeper, which cooks only as a last resort.
+-- the butcher). Never the keeper, which cooks nothing (ticket 45).
 local trades = {}
 function M.trade_goods(self)
 	if self._villages_keeper or self._villages_builder or self._villages_alchemist or not self._profession then return nil end

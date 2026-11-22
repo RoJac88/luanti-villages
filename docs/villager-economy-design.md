@@ -4227,6 +4227,30 @@ the street. The pantry stood at 4 apples and 2 carrots each day turn. Two rules 
 the butcher's dishes; the pantry not empty at the day turn; the butcher still cooking most of
 the village's dishes.
 
+### 45. The keeper cooks nothing
+
+Status: built.
+
+**Problem.** Ticket 44 brought the tavern back (12, 19, 19, 20 dined on days 1009 to 1012,
+dinner at 1), but the keeper baked nearly every plate itself. Its baked potatoes, two farm
+potatoes each, kept its plate cost near 0.27; it bids for a dish at most twice its plate cost
+(39d), 0.54, under the butcher's 0.6 to 0.8 since ticket 43's floors. It bought no dish, and
+the butcher sold 2 of the 9 it cooked in four days. Tickets 39g, 41 and 44 each rationed the
+keeper's baking; none made it a costly last resort.
+
+**Rule.** The keeper cooks nothing. Every dish in the pantry is bought: the butcher's, and a
+farmer's bread from the farm chest. It fetches raw potatoes only for the raw plates' reserve
+(39h). Raw food counts toward no meal and no plate cost. With bought dishes only, its plate
+cost is theirs, so its bid cap rises to meet the butcher's prices.
+
+**Risk.** Supply: farmers held 3 to 6 spare loaves and the butcher cooked about 5 dishes a day,
+against a demand near 30 meals. A short evening raises tomorrow's dinner 10%, the keeper's
+plate cost and bids follow, and the butcher hears the demand; whether it and the farmers
+cook more is what the run tests.
+
+**Success, on ColonyFood.** The butcher cooking most of the village's dishes and selling many
+to the keeper; dinners near demand within a few days; dinner between 1 and 2.
+
 ## Open questions
 
 - Price discovery (ticket 21):
