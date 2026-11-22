@@ -6,6 +6,10 @@
 #
 # Worlds <name>-a and <name>-b are made from ~/<template>.tar (tools/lv_town/build.sh
 # --push), replacing older ones of those names. Port 30123 is left to ColonyFood.
+# The weather never changes (mcl_doWeatherCycle): a thunderstorm sends every villager to
+# bed at any hour, and the two copies draw their weather apart. In pair e3 (2026-11-22)
+# one copy slept through a storm of 1.3 game days, ate 4 meal points in a day and served no
+# dinner, while the other had rain.
 set -eu
 here=$(cd "$(dirname "$0")" && pwd)
 host=${LV_HOST:-rodri@thinkpad-win11}
@@ -28,6 +32,6 @@ for side in a b; do
 	lvw stop "$name-$side" > /dev/null
 	lvw new "$name-$side" "~/$template.tar"
 done
-lvw start "$name-a" "$porta" "$name-a"
-lvw start "$name-b" "$portb" "$name-b"
+lvw start "$name-a" "$porta" "$name-a" mcl_doWeatherCycle=false
+lvw start "$name-b" "$portb" "$name-b" mcl_doWeatherCycle=false
 echo "compare with: tools/lv_pair/compare.sh $name"

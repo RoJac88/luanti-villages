@@ -58,6 +58,10 @@ tools/lv_pair/stop.sh food
 
 - `run.sh` pushes each ref as its own tarball (`push-mod.sh <ref> <tag>`). Nothing is
   checked out, so a branch only needs to be committed.
+- Both worlds start with the weather cycle off (`mcl_doWeatherCycle = false`), so they stay
+  clear. A thunderstorm sends every villager to bed at any hour, and two copies draw their
+  weather apart: in pair e3 one copy slept through a storm of 1.3 game days and served no
+  dinner, while the other had rain.
 - It makes both worlds fresh from `~/LVTown-1.tar` (`--template`) and starts them on ports
   30124 and 30125 (`--ports`). Port 30123 stays ColonyFood's.
 - Both worlds run until stopped. `lv_keep` skips nights, so a game day takes about 11.5
