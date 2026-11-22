@@ -4198,6 +4198,35 @@ where it decides who can pay.
 - Whether a good bought for its owner's own use (a comfort, a tool) and later sold counts
   as bought to sell on, at what was paid, or as used, at its value.
 
+### 44. The keeper can pay for the butcher's dishes
+
+Status: built.
+
+**Problem.** After ticket 43 the tavern fell to 4 to 8 diners a day, of a demand of 12 to 18
+(ColonyFood, days 996 to 1003), while the butcher sold all 42 dishes it cooked to villagers in
+the street. The pantry stood at 4 apples and 2 carrots each day turn. Two rules locked:
+
+- Ticket 41 fetched potatoes only for the raw plates' reserve while the keeper heard any dish
+  offered, so it would buy the butcher's. It heard one most of the time, and fetched nothing
+  on 66 of 76 trips.
+- It could not buy them. It sets out with a purse from the pantry (up to PURSE) in its pouch,
+  and what it does not spend goes back with the food it carries; a trip that fetched nothing
+  carried nothing back, so 360 emeralds sat in its pouch. Its float, the emeralds it trades
+  with, is topped up from the pantry, which then held none: it had 0 to 6, and bought 3 loaves
+  at a time. Before ticket 43 the butcher's dishes were cheap enough for that.
+
+**Rule.**
+
+- Its float tops up from the pantry and, short there, from the purse in its pouch: the
+  tavern's money either way.
+- It fetches potatoes for what tonight's demand lacks after the dishes it has: the pantry's,
+  those it holds bought and not yet shelved, and bread on the way. A dish only heard of no
+  longer counts. It still buys the butcher's first, on its rounds, and bakes for the rest.
+
+**Success, on ColonyFood.** Dinners back near demand (about 15 to 20 a day); the keeper buying
+the butcher's dishes; the pantry not empty at the day turn; the butcher still cooking most of
+the village's dishes.
+
 ## Open questions
 
 - Price discovery (ticket 21):

@@ -541,16 +541,32 @@ do
 	inventories[key(pantry_chest)] = {["mcl_farming:potato_item"] = RESERVE, ["mcl_fishing:fish_cooked"] = supply.TARGET_MEALS}
 	assert(supply.potatoes_wanted(fetcher, chests, 0) == 0, "the butcher's dishes enough, the reserve full")
 	assert(supply.potatoes_wanted(fetcher, nil, 0) == math.huge)
-	-- Ticket 41: hearing a dish offered, it buys that, and fetches only the reserve.
+	-- Ticket 44: a dish heard offered no longer stands it down, only dishes it has: bought
+	-- and not yet shelved.
 	inventories[key(pantry_chest)] = {}
-	assert(not supply.dishes_offered(fetcher, 1000))
 	fetcher._villages_market_news = {{item = "mcl_mobitems:cooked_beef", who = "butch", kind = "has", count = 16,
 		price = 4, heard = 1000, hops = 1}}
-	assert(supply.dishes_offered(fetcher, 1000))
-	assert(supply.potatoes_wanted(fetcher, chests, 0, 1000) == RESERVE, "the butcher's, not its own")
-	fetcher._villages_market_news = {{item = "mcl_farming:potato_item", who = "farm", kind = "has", count = 16,
-		price = 1, heard = 1000, hops = 1}}
-	assert(not supply.dishes_offered(fetcher, 1000), "a raw food is no dish")
+	assert(supply.potatoes_wanted(fetcher, chests, 0) == RESERVE + 2 * supply.TARGET_MEALS, "heard is not had")
+	fetcher._villages_belongings = {["mcl_mobitems:cooked_beef"] = 3}
+	assert(supply.potatoes_wanted(fetcher, chests, 0) == RESERVE + 2 * (supply.TARGET_MEALS - 3), "its own three count")
+	inventories[key(pantry_chest)] = {}
+end
+
+-- Ticket 44: its float tops up from the purse in its pouch when the pantry has no money.
+do
+	local possessions = dofile("possessions.lua")
+	local stock = dofile("farm_stock.lua")
+	inventories[key(pantry_chest)] = {}
+	local kip = {_id = "kip44", _villages_keeper = true, _villages_belongings = {["mcl_core:emerald"] = 5}}
+	stock.add(kip, "mcl_core:emerald", 900)
+	assert(supply.float(kip, chests) == supply.FLOAT - 5)
+	assert(possessions.emeralds(kip) == supply.FLOAT and stock.count(kip, "mcl_core:emerald") == 900 - (supply.FLOAT - 5))
+	-- The pantry's money first.
+	local kit = {_id = "kit44", _villages_keeper = true, _villages_belongings = {}}
+	stock.add(kit, "mcl_core:emerald", 900)
+	pantry.put(chests, "mcl_core:emerald", 10)
+	assert(supply.float(kit, chests) == supply.FLOAT)
+	assert(pantry.count(chests, "mcl_core:emerald") == 0 and stock.count(kit, "mcl_core:emerald") == 900 - (supply.FLOAT - 10))
 	inventories[key(pantry_chest)] = {}
 end
 
