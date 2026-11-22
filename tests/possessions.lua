@@ -499,6 +499,30 @@ do
 	assert((larder["mcl_farming:bread"] or 0) == loaves, "a butcher's bread stays carried")
 	larder[BEEF] = nil
 	possessions.take(kim, BEEF, 5)
+	-- Ticket 47b: with only the slots kept for deliveries free, its food takes one; a good
+	-- it does not make takes none.
+	local function entries() local n = 0 for _, c in pairs(larder) do if c > 0 then n = n + 1 end end return n end
+	local fillers = 0
+	while entries() < 24 do fillers = fillers + 1; larder["test:full" .. fillers] = 1 end
+	possessions.add(kim, BEEF, 10)
+	possessions.add(kim, "mcl_core:flint", 20)
+	assert(possessions.stash_spare(kim, nil, spare_view({[BEEF] = 10, ["mcl_core:flint"] = 20})) == 5)
+	assert(larder[BEEF] == 5 and not larder["mcl_core:flint"], "the dish gets a delivery slot, the flint none")
+	larder[BEEF] = nil
+	possessions.take(kim, BEEF, 5)
+	possessions.take(kim, "mcl_core:flint", 20)
+	for i = 1, fillers do larder["test:full" .. i] = nil end
+	-- Ticket 47a: its stash sheds eggs past what it keeps, its own carried ones counted.
+	local EGG = "mcl_throwing:egg"
+	assert(possessions.SHED[EGG] == dofile("coop.lua").EGG_KEEP)
+	larder[EGG] = 40
+	possessions.add(kim, EGG, 4)
+	possessions.stash_spare(kim, nil, spare_view({}))
+	assert(larder[EGG] == 12 and possessions.count(kim, EGG) == 4, tostring(larder[EGG]))
+	possessions.stash_spare(kim, nil, spare_view({}))
+	assert(larder[EGG] == 12, "nothing more to shed")
+	possessions.take(kim, EGG, 4)
+	larder[EGG] = nil
 	kim._profession = nil
 end
 assert(possessions.same_house({x = 0, y = 0, z = 0}, {x = 5, y = 4, z = -5}))

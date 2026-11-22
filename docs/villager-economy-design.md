@@ -4278,6 +4278,28 @@ its plate cost, an average over what the pantry last held, 0.47 on day 1015: 0.9
 **Success, on ColonyFood.** Most trips to the butcher ending in a sale; the keeper buying the
 butcher's dishes; dinners near demand, at whatever price that takes.
 
+### 47. Room in the butcher's chest
+
+Status: built.
+
+**Problem.** Ticket 46b worked: the keeper bought 13 lots of the butcher's dishes on days
+1020 to 1059, and its plate cost rose from 0.75 to about 1.25, dinner from 2 to 3. 46a did
+not: the butcher cooked 285 dishes, but 312 of 397 trips for them still failed, and every
+stash they fell back on was empty. A live read of its chest showed why: 24 of its 27 slots
+held 12 stacks of eggs, 7 of feathers, seeds, cobble, logs and two armor stands, and
+`stash_spare` keeps the last 3 free for deliveries, so no dish ever fitted.
+
+**Rule.**
+
+- **a.** A villager's stash sheds goods with no price past what it keeps of them, belongings
+  and stash together (`possessions.SHED`): the butcher's eggs past the coop's 16. They are
+  discarded, and logged (`discarded N ... from its stash`).
+- **b.** Food it makes may take a slot kept for deliveries, all but `FOOD_FREE_SLOTS` (2):
+  its dishes reach the stash whatever else fills it.
+
+**Success, on ColonyFood.** Dishes in the butcher's chest, and most trips to it ending in a sale,
+the keeper's among them; dinners nearer demand.
+
 ## Open questions
 
 - Price discovery (ticket 21):
