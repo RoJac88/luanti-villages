@@ -88,7 +88,22 @@ run to run. Before trusting an A/B difference, run an A/A pair (`run.sh aa main 
 about 15 game days and compare it. Any gap between its two columns is noise, and an A/B
 difference no bigger than that shows nothing.
 
-A/A noise floor: *(not measured yet)*.
+A/A noise floor, measured on pair `aa` (main 5c7f5c5 on both copies of LVTown-1, 24 game
+days, 2026-11-22). Means per day:
+
+| | diners | demand | price | hungry | trades | emeralds | dishes | keeper buys | fails | dead |
+|---|---|---|---|---|---|---|---|---|---|---|
+| A | 7.2 | 11.4 | 31.67 | 6.4 | 7.3 | 268.7 | 2.7 | 0.3 | 8.7 | 1 |
+| B | 8.5 | 11.3 | 22.79 | 4.8 | 6.8 | 258.8 | 3.3 | 0.2 | 4.9 | 2 |
+
+Read an A/B difference against these gaps:
+- Diners, demand, trades, emeralds and dishes held within about 20% over 24 days.
+- The dinner price drifted by a third, and failed trips nearly doubled, so neither shows
+  much over a short run.
+- Hungry adults differed by 1.6.
+- The deaths were the same labourer smothered in its own grove tree, in both copies.
+
+Over the first 5 days the two copies differ more: one day's diners differed by 7.
 
 ## lvw.sh
 
