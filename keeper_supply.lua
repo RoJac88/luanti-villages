@@ -73,6 +73,7 @@ local possessions = dofile(core.get_modpath("living_villages") .. "/possessions.
 local food = dofile(core.get_modpath("living_villages") .. "/food.lua")
 local dinner = dofile(core.get_modpath("living_villages") .. "/dinner.lua")
 local prices = dofile(core.get_modpath("living_villages") .. "/prices.lua")
+local market = dofile(core.get_modpath("living_villages") .. "/keeper_market.lua")
 
 local SUPPLY_RADIUS = 48
 local COMPOSTER_HEIGHT = 8
@@ -174,7 +175,9 @@ function M.update_wants(self, chests)
 	local wanted = 0
 	for _, count in pairs(wants) do wanted = wanted + count end
 	self._villages_dish_wants = wants
-	local short = M.target(self) - M.dishes(chests) - wanted
+	-- At market (ticket 51) it stocks for the days to the next one.
+	local days = self._villages_at_market == core.get_day_count() and market.STOCK_DAYS or 1
+	local short = M.target(self) * days - M.dishes(chests) - wanted
 	self._villages_dish_short = short > 0 and short or nil
 	self._villages_dish_bids = M.dish_bids(self)
 end
@@ -562,8 +565,20 @@ end
 -- Ticket 44: a trip that fetched no food left the purse in the pouch, with nothing carried
 -- to take it back to the pantry; the pantry held no money to float it, and it bought dishes
 -- from its 0 to 6 emeralds while 360 sat in its pouch (ColonyFood, 2026-11-21).
-function M.float(self, chests)
-	local short = FLOAT - possessions.emeralds(self)
+function M.float(self, chests, all)
+	-- At market (ticket 51), all the pantry's money: it shops for days.
+	local short = all and math.huge or FLOAT - possessions.emeralds(self)
+	-- Back from market, what it did not spend over FLOAT goes back in the pantry: the
+	-- tavern's money, not its own to spend.
+	if self._villages_at_market and short < 0 and self._villages_at_market ~= core.get_day_count() then
+		local back = 0
+		while back < -short and pantry.has_room(chests, EMERALD, 1) and possessions.take(self, EMERALD, 1) == 1 do
+			pantry.put(chests, EMERALD, 1)
+			back = back + 1
+		end
+		self._villages_at_market = nil
+		return -back
+	end
 	local taken = 0
 	while taken < short and pantry.take(chests, EMERALD) do taken = taken + 1 end
 	local pouch = math.min(short - taken, stock.count(self, EMERALD))
@@ -624,6 +639,21 @@ function M.step(self, now)
 	local stage = common.schedule_stage(nil, self)
 	if stage == "staff" then
 		cook_tick(self, jukebox, now)
+	elseif stage == "free" and market.open(common.is_holiday()) and not self._villages_supply_target then
+		-- Market day (ticket 51): round the stalls, not the farms.
+		local day = core.get_day_count()
+		local chests = pantry.chests(jukebox)
+		if self._villages_at_market ~= day and chests then
+			self._villages_at_market = day
+			M.float(self, chests, true)
+			M.update_wants(self, chests)
+			core.log("action", string.format("[living_villages] keeper %s goes to market with %d emerald(s), wanting %d dishes",
+				tostring(self._id):sub(1, 6), possessions.emeralds(self), self._villages_dish_short or 0))
+		end
+		market.step(self, now, day, function(entity, target, arrive)
+			local started = entity:gopath(target, arrive, true)
+			if started == false then arrive(entity) end
+		end)
 	elseif stage == "free" then
 		supply(self, jukebox, now)
 	else
