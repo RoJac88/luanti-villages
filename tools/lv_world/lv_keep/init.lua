@@ -210,6 +210,87 @@ end
 
 local function short(item) return (item:gsub("^[^:]*:", "")) end
 
+-- Food ledger (2026-11-22, tools/lv_pair): once a day, the village's food in meal points
+-- (an ingredient at the points of the dish it makes: three wheat a loaf, raw fish its
+-- cooked fish), who holds it, what was eaten yesterday at home and at the tavern (every
+-- meal goes through food.receive into _villages_meals; the tavern's into the keeper's
+-- _villages_served_dishes), and what was made: today's holdings less yesterday's, plus
+-- what was eaten. Need is four points a day per adult (food.lua's hunger).
+local AS = {["mcl_farming:wheat_item"] = {"mcl_farming:bread", 1 / 3},
+	["mcl_farming:potato_item"] = {"mcl_farming:potato_item_baked", 1},
+	["mcl_mobitems:beef"] = {"mcl_mobitems:cooked_beef", 1}, ["mcl_mobitems:porkchop"] = {"mcl_mobitems:cooked_porkchop", 1},
+	["mcl_mobitems:chicken"] = {"mcl_mobitems:cooked_chicken", 1}, ["mcl_mobitems:mutton"] = {"mcl_mobitems:cooked_mutton", 1},
+	["mcl_mobitems:rabbit"] = {"mcl_mobitems:cooked_rabbit", 1}, ["mcl_fishing:fish_raw"] = {"mcl_fishing:fish_cooked", 1},
+	["mcl_fishing:salmon_raw"] = {"mcl_fishing:salmon_cooked", 1}}
+local function meal_points(item, count)
+	local as = AS[item]
+	if as then return (food.POINTS[as[1]] or 0) * as[2] * count end
+	return (food.POINTS[item] or 0) * count
+end
+local function points_of(counts)
+	local total = 0
+	for item, count in pairs(counts or {}) do total = total + meal_points(item, count) end
+	return total
+end
+local ledger_held -- yesterday's total, kept in memory only
+local function group_of(e)
+	if e._villages_keeper then return "keeper" end
+	if e._profession == "farmer" or e._profession == "butcher" or e._profession == "fisherman" then return e._profession end
+	return "other"
+end
+local function food_ledger(list)
+	local day = core.get_day_count()
+	local held = {farmer = 0, butcher = 0, fisherman = 0, keeper = 0, other = 0}
+	local sites, eaten, tavern = {}, 0, 0
+	for _, e in ipairs(list) do
+		local g = group_of(e)
+		held[g] = held[g] + points_of(e._villages_belongings) + points_of(e._villages_farm_pouch)
+		if e._jobsite then sites[#sites + 1] = {pos = e._jobsite, group = g} end
+		for item, count in pairs((e._villages_meals or {})[day - 1] or {}) do eaten = eaten + meal_points(item, count) end
+		if e._villages_keeper then
+			for item, count in pairs((e._villages_served_dishes or {})[day - 1] or {}) do
+				tavern = tavern + meal_points(item, count)
+			end
+		end
+	end
+	-- Every chest and barrel in the area: a work chest by its jobsite's group, a stash by
+	-- its owner's, anything else to others.
+	local owner_group = {}
+	for _, e in ipairs(list) do owner_group[e._id] = group_of(e) end
+	local r = RADIUS + 16
+	for _, pos in ipairs(core.find_nodes_in_area(vector.offset(CENTER, -r, -LOW, -r), vector.offset(CENTER, r, HIGH, r),
+			{"group:container"})) do
+		local inv = core.get_meta(pos):get_inventory()
+		local list_main = inv and inv:get_list("main")
+		if list_main then
+			local counts = {}
+			for _, stack in ipairs(list_main) do
+				if not stack:is_empty() then counts[stack:get_name()] = (counts[stack:get_name()] or 0) + stack:get_count() end
+			end
+			local pts = points_of(counts)
+			if pts > 0 then
+				local g = owner_group[core.get_meta(pos):get_string("villages_owner")]
+				if not g then
+					local best
+					for _, site in ipairs(sites) do
+						local d = vector.distance(site.pos, pos)
+						if d <= 8 and (not best or d < best) then best, g = d, site.group end
+					end
+				end
+				g = g or "other"
+				held[g] = held[g] + pts
+			end
+		end
+	end
+	local total = 0
+	for _, v in pairs(held) do total = total + v end
+	local made = ledger_held and string.format("%.0f", total - ledger_held + eaten) or "?"
+	ledger_held = total
+	core.log("action", string.format("[lv_keep] food ledger day %d: held=%.0f (farmer %.0f, butcher %.0f, fisherman %.0f, keeper %.0f, other %.0f); yesterday ate=%.0f (tavern %.0f, home %.0f) need=%d made=%s",
+		day, total, held.farmer, held.butcher, held.fisherman, held.keeper, held.other, eaten, tavern, eaten - tavern,
+		#list * 4, made))
+end
+
 local function summary(why)
 	local list = {}
 	for _, e in pairs(core.luaentities) do
@@ -224,7 +305,7 @@ local function summary(why)
 	core.log("action", string.format("[lv_keep] %s day %d (holiday %s): %d adults; hunger full=%d fed=%d hungry=%d starving=%d",
 		why, core.get_day_count(), tostring(common.is_holiday()), #list,
 		states.full, states.fed, states.hungry, states.starving))
-	if why == "work start" then food_flow(list) end
+	if why == "work start" then food_flow(list); if #list > 0 then food_ledger(list) end end
 	-- Who holds the money (ticket 21a): the total, the richest three's share, and each
 	-- adult's emeralds and money factor, richest first.
 	local purses, total = {}, 0

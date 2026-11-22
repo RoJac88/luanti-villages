@@ -26,6 +26,18 @@ FNR == 1 { side = (side == "") ? "a" : "b"; cur = "" }
 	match($0, /dined=[0-9]+/); dined[side, d] = substr($0, RSTART + 6, RLENGTH - 6) + 0
 	next
 }
+/\[lv_keep\] food ledger day / {
+	match($0, /day [0-9]+/); d = substr($0, RSTART + 4, RLENGTH - 4) + 0
+	match($0, /held=[0-9]+/); fheld[side, d] = substr($0, RSTART + 5, RLENGTH - 5)
+	# Yesterday's: what was eaten and made belongs to the day before.
+	match($0, /ate=[0-9]+/); fate[side, d - 1] = substr($0, RSTART + 4, RLENGTH - 4)
+	match($0, /tavern [0-9]+/); ftav[side, d - 1] = substr($0, RSTART + 7, RLENGTH - 7)
+	match($0, /need=[0-9]+/); fneed[side, d - 1] = substr($0, RSTART + 5, RLENGTH - 5)
+	if (match($0, /made=-?[0-9]+/)) fmade[side, d - 1] = substr($0, RSTART + 5, RLENGTH - 5)
+	ledger = 1
+	if (d - 1 >= from) days[d - 1] = 1
+	next
+}
 /\[lv_keep\] food [0-9a-f]+ keeper / { split($0, f, "food "); split(f[2], g, " "); keeper[side] = g[1] }
 cur == "" { next }
 /\[lv_keep\] dinner / {
@@ -55,6 +67,10 @@ function cell(s, d) {
 		(s, d) in top3 ? top3[s, d] : "-", trades[s, d], em[s, d], dish[s, d], kbuys[s, d],
 		fails[s, d], dead[s, d])
 }
+function fcell(s, d) {
+	return sprintf("%4s %4s %4s (%3s) %4s", (s, d) in fheld ? fheld[s, d] : "-", (s, d) in fmade ? fmade[s, d] : "-",
+		(s, d) in fate ? fate[s, d] : "-", (s, d) in ftav ? ftav[s, d] : "-", (s, d) in fneed ? fneed[s, d] : "-")
+}
 function add(s, d) {
 	n[s]++; sd[s] += dined[s, d]; sdem[s] += demand[s, d]; sp[s] += price[s, d]; sh[s] += hungry[s, d]
 	st[s] += trades[s, d]; se[s] += em[s, d]; sdi[s] += dish[s, d]; sk[s] += kbuys[s, d]
@@ -71,6 +87,14 @@ END {
 		printf "%5d |   %s |   %s\n", d, cell("a", d), cell("b", d)
 		# Means over days both sides finished: the evening and the next morning are in.
 		if (("a", d) in dined && ("b", d) in dined) { add("a", d); add("b", d) }
+	}
+	if (ledger) {
+		print "\nfood in meal points: held at the day's start; made, eaten (at the tavern), needed that day"
+		printf "%5s | %-30s | %-30s\n", "day", "A held made  ate (tav) need", "B held made  ate (tav) need"
+		for (i = 1; i <= count; i++) {
+			d = list[i]
+			printf "%5d |   %s |   %s\n", d, fcell("a", d), fcell("b", d)
+		}
 	}
 	if (n["a"] == 0) { print "no day both sides finished yet"; exit }
 	printf "\nmeans over %d days both finished:\n", n["a"]

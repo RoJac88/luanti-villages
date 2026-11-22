@@ -12,7 +12,8 @@
 #   lvw.sh import <name> <world.tar>   a world tarred with its folder named <name>
 #   lvw.sh new <name> <template.tar>   a fresh world from a template (lv_town), any
 #                             folder name inside; replaces an old world of that name
-#   lvw.sh path <name>        the current log's Windows-free path, for scp
+#   lvw.sh path <name>        the current log's Windows path, for scp
+#   lvw.sh all <name>         every session's log joined in logs/all.txt; prints its path
 ROOT=/c/Users/rodri/lv_probe/worlds
 LUANTI_EXE='C:\Users\rodri\AppData\Local\luanti\5.18.0\bin\luanti.exe'
 mkdir -p "$ROOT"
@@ -83,5 +84,7 @@ log)
 	f=$(cat "$w/logs/current"); tail -n +"${3:-1}" "$f"; echo "count $(($(wc -l < "$f") + 1))" ;;
 path)
 	sed 's#^/c/#C:/#' "$w/logs/current" ;;
+all)
+	cat "$w"/logs/2*.log > "$w/logs/all.txt"; echo "$w/logs/all.txt" | sed 's#^/c/#C:/#' ;;
 *) sed -n '2,16p' "$0" ;;
 esac
