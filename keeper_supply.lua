@@ -461,6 +461,40 @@ local function go(self, target, now, arrive)
 	end
 end
 
+-- Errands by taste (ticket 49). The keeper sees every dish it serves (meal.lua's
+-- `_villages_served_dishes`), the sum of what its guests ate at the tavern, and each guest
+-- picks the dish it ate least of lately (variety.lua): a dish served often is one they
+-- tire of. Before fetching bread from a farm it asks whether a dish it wants for the
+-- pantry, with a seller heard of, is one its guests are no more tired of than bread
+-- (possessions.variety_of); if so it goes for that first: its trade trip (trade_trips.lua,
+-- which ranks the dishes by their value, the same taste in it) gets PREFER_SECONDS before
+-- a farm fetch starts. Each dish is preferred so once per PREFER_AGAIN, so a trip that
+-- keeps failing does not keep it from the farms.
+local PREFER_SECONDS = 90
+local PREFER_AGAIN = 600
+
+-- The dish it would rather go for than a farm's bread, and the two tastes; or nil.
+function M.preferred_dish(self, now)
+	local wants = self._villages_dish_wants or {}
+	local short = (self._villages_dish_short or 0) > 0
+	local taste = possessions.variety_of(self)
+	local bread = taste(BREAD)
+	local tried = self._villages_preferred or {}
+	local best, best_taste
+	for _, entry in ipairs(self._villages_market_news or {}) do
+		local item = entry.item
+		if entry.kind == "has" and entry.who ~= self._id and item ~= BREAD and food.is_prepared(item)
+			and ((wants[item] or 0) > 0 or (short and wants[item] == nil)) and (entry.count or 0) > 0
+			and (tried[item] or 0) <= now then
+			local t = taste(item)
+			if t >= bread and (not best or t > best_taste or (t == best_taste and item < best)) then
+				best, best_taste = item, t
+			end
+		end
+	end
+	return best, best_taste, bread
+end
+
 local function supply(self, jukebox, now)
 	if self._villages_supply_target then
 		-- The walk ended without arriving: try again later.
@@ -484,6 +518,17 @@ local function supply(self, jukebox, now)
 		return go(self, jukebox, now, function(entity) deliver(entity, jukebox) end)
 	end
 	if M.meals(chests) >= M.target(self) then return end
+	-- A trade trip under way (ticket 49): no farm fetch to pull it off its walk.
+	if self._villages_trade_trip then return end
+	local dish, dish_taste, bread_taste = M.preferred_dish(self, now)
+	if dish then
+		self._villages_preferred = self._villages_preferred or {}
+		self._villages_preferred[dish] = now + PREFER_AGAIN
+		self._villages_supply_next = now + PREFER_SECONDS
+		core.log("action", string.format("[living_villages] keeper %s goes for %s (taste %.2f) before the farms' bread (%.2f)",
+			tostring(self._id):sub(1, 6), dish, dish_taste, bread_taste))
+		return
+	end
 	local source = M.source(jukebox, chests, skipped(self, now))
 	if not source then
 		self._villages_supply_next = now + RETRY_SECONDS

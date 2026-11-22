@@ -594,6 +594,10 @@ end
 -- alchemist in the work stage too), and go on with one under way in either.
 local function may_travel(self, trip, stage)
 	if stage == "putter" then return true end
+	-- The keeper's free hours too (ticket 49): in its one putter hour alone it set off twice
+	-- in three days while the butcher held 14 dishes it wanted (lv_pair e2, 2026-11-22).
+	-- keeper_supply.lua holds its farm fetches back while a trip is under way.
+	if stage == "free" and self._villages_keeper then return true end
 	if stage ~= "work" then return false end
 	return trip ~= nil or self._villages_alchemist or commission.of(self) ~= nil or self._villages_builder_wants ~= nil or self._villages_builder_logs ~= nil
 		or self._villages_builder_wool ~= nil
