@@ -405,6 +405,25 @@ assert(kate._villages_dish_short == supply.target(kate) - (supply.TARGET_MEALS +
 local view = dofile("possessions.lua").assess(kate)
 assert((view.needs["mcl_fishing:salmon_cooked"] or 0) > 0 and (view.needs["mcl_farming:potato_item_baked"] or 0) > 0, "any dish")
 assert(not view.needs["mcl_farming:potato_item"], "no raw potatoes to bake")
+-- Its bids (ticket 46b): the cheapest ask it heard for a dish, where over its plate cap;
+-- raw food, a category's news, its own and asks under the cap left out.
+assert(kate._villages_dish_bids == nil, "nothing heard")
+local dinner_mod = dofile("dinner.lua")
+kate._villages_plate_cost = 0.5
+local cap = 0.5 * dinner_mod.MARGIN_MAX
+kate._villages_market_news = {
+	{kind = "has", item = "mcl_mobitems:cooked_beef", who = "b1", price = 1.4, heard = 0},
+	{kind = "has", item = "mcl_mobitems:cooked_beef", who = "b2", price = 1.18, heard = 0},
+	{kind = "has", item = "mcl_fishing:fish_cooked", who = "b1", price = cap - 0.1, heard = 0},
+	{kind = "has", item = "mcl_mobitems:beef", who = "b1", price = 3, heard = 0},
+	{kind = "needs", item = "mcl_farming:bread", who = "b1", price = 3, heard = 0},
+	{kind = "has", item = "mcl_farming:bread", who = kate._id, price = 3, heard = 0}}
+supply.update_wants(kate, chests)
+local bids = kate._villages_dish_bids
+assert(bids and math.abs(bids["mcl_mobitems:cooked_beef"] - 1.18) < 1e-9, "the cheapest ask")
+assert(not bids["mcl_fishing:fish_cooked"] and not bids["mcl_mobitems:beef"] and not bids["mcl_farming:bread"])
+assert(math.abs(dofile("possessions.lua").assess(kate).value("mcl_mobitems:cooked_beef") - 1.18) < 1e-9)
+kate._villages_market_news, kate._villages_plate_cost, kate._villages_dish_bids = nil, nil, nil
 kate._villages_dinner, kate._villages_known_dishes, kate._villages_dish_wants, kate._villages_dish_short = nil, nil, nil, nil
 inventories[key(pantry_chest)]["mcl_fishing:fish_cooked"] = nil
 -- Not cooking until it is at the jukebox working.

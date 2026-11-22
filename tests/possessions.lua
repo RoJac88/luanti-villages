@@ -334,6 +334,16 @@ do
 	k._villages_prices = {["group:food"] = 4}
 	v = possessions.assess(k)
 	assert(v.value("mcl_farming:bread") <= cap + 1e-9 and v.value("mcl_fishing:fish_cooked") <= cap + 1e-9)
+	-- Ticket 46b: a dish it heard asked over its cap it bids the ask for, and while short
+	-- of it, values it at that whatever its hunger and money.
+	k._villages_prices = nil
+	k._villages_dish_bids = {[CHICKEN] = 4.5}
+	v = possessions.assess(k)
+	assert(math.abs(v.value(CHICKEN) - 4.5) < 1e-9, tostring(v.value(CHICKEN)))
+	assert(v.value("mcl_fishing:fish_cooked") <= cap + 1e-9, "other dishes keep the cap")
+	k._villages_dish_bids = nil
+	v = possessions.assess(k)
+	assert(math.abs(v.value(CHICKEN) - cap) < 1e-9, "a wanted dish at its cap: " .. v.value(CHICKEN))
 	-- Without the wants, a keeper has no such need.
 	k._villages_dish_wants = nil
 	assert(not possessions.assess(k).needs[CHICKEN])
@@ -477,6 +487,20 @@ possessions.take(kim, "mcl_core:flint", 20)
 kim._villages_labour = {day = minetest.get_day_count(), activity = "peddler"}
 assert(possessions.stash_spare(kim, nil, spare_view({[NUG] = 28})) == 0, "a peddler carries its stock")
 kim._villages_labour = nil
+-- Food it makes goes in like any good (ticket 46a): a butcher's spare cooked beef, half
+-- kept on it, while bread it does not make stays carried.
+do
+	local BEEF = "mcl_mobitems:cooked_beef"
+	kim._profession = "butcher"
+	possessions.add(kim, BEEF, 10)
+	local loaves = larder["mcl_farming:bread"] or 0
+	assert(possessions.stash_spare(kim, nil, spare_view({[BEEF] = 10, ["mcl_farming:bread"] = 5})) == 5)
+	assert(larder[BEEF] == 5 and possessions.count(kim, BEEF) == 5, "keeps half for sales in person")
+	assert((larder["mcl_farming:bread"] or 0) == loaves, "a butcher's bread stays carried")
+	larder[BEEF] = nil
+	possessions.take(kim, BEEF, 5)
+	kim._profession = nil
+end
 assert(possessions.same_house({x = 0, y = 0, z = 0}, {x = 5, y = 4, z = -5}))
 assert(not possessions.same_house({x = 0, y = 0, z = 0}, {x = 6, y = 0, z = 0}) and not possessions.same_house(nil, kim_bed))
 minetest.get_meta = stash_meta

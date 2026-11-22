@@ -52,7 +52,8 @@
 --   (keeper.known_dishes), but its fixed inputs and the baked potato, it wants up to
 --   keeper.MIN_DISHES of in the pantry (M.dish_wants, `_villages_dish_wants`, set on its
 --   shift), at no more than a plate's cost times dinner.MARGIN_MAX (possessions.assess,
---   ticket 39d; its dinner price before), so the menu has
+--   ticket 39d; its dinner price before), or the cheapest ask it heard for the dish where
+--   that is higher (M.dish_bids, `_villages_dish_bids`, ticket 46b), so the menu has
 --   something new for a guest tired of the rest (ticket 34) and never at a loss. Every
 --   prepared food is on the menu (keeper.dishes), and shelving takes from its stash too.
 -- * A newly generated tavern's chest gets STARTING_STOCK on top of its loot, through
@@ -175,6 +176,28 @@ function M.update_wants(self, chests)
 	self._villages_dish_wants = wants
 	local short = M.target(self) - M.dishes(chests) - wanted
 	self._villages_dish_short = short > 0 and short or nil
+	self._villages_dish_bids = M.dish_bids(self)
+end
+
+-- Ticket 46b: the most it pays for each dish, {dish = emeralds}, or nil for none over its
+-- plate cap: what a plate earns (the plate cost times dinner.MARGIN_MAX, ticket 39d), or
+-- the cheapest ask it heard for the dish (market news, `_villages_market_news`), the
+-- higher. Its plate cost is an average over what the pantry last held, and with the
+-- pantry empty it stayed at 0.47, a cap of 0.94 under the butcher's 1.18 for cooked beef:
+-- the tavern served 0 to 8 a night while the butcher held 16 (ColonyFood, 2026-11-22).
+-- Dinner is still the plate cost times its margin, so a dearer dish raises it.
+function M.dish_bids(self)
+	local cap = dinner.plate(self) * dinner.MARGIN_MAX
+	local bids
+	for _, entry in ipairs(self._villages_market_news or {}) do
+		local item = entry.item
+		if entry.kind == "has" and not entry.group and entry.who ~= self._id and entry.price and entry.price > cap
+			and food.is_prepared(item) then
+			bids = bids or {}
+			if not bids[item] or entry.price < bids[item] then bids[item] = entry.price end
+		end
+	end
+	return bids
 end
 
 -- How many dinners the pantry holds: its dishes. It cooks none (ticket 45), so raw food

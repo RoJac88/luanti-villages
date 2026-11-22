@@ -450,7 +450,8 @@ end
 -- for them found it out and its stash empty, a commission among them (ColonyFood,
 -- 2026-11-19). Of each good's surplus it keeps half on itself, at most CARRY, for sales in
 -- person (exchange.lua sells from belongings); food stays with it (it eats from its
--- belongings first), and so does a peddler's stock, its trade being to carry it. What
+-- belongings first), but food it makes (ticket 46a: the butcher's dishes, a farmer's
+-- bread), and so does a peddler's stock, its trade being to carry it. What
 -- the chest has no room for stays carried. Returns how many it put in.
 -- How many of the item stash_spare may put in the stash: the room on its stacks of it,
 -- plus whole stacks in the free slots beyond STASH_FREE_SLOTS, kept for what a porter, a
@@ -487,6 +488,11 @@ function M.stash_spare(self, reach, view)
 	view = view or M.assess(self)
 	local owed = M.owed(self)
 	local put = 0
+	-- Ticket 46a: the food its recipes make goes in too. The butcher carried its dishes,
+	-- and 25 of 36 trips for them found it out and its stash empty, the keeper's among
+	-- them, while it held 16 cooked beef (ColonyFood, 2026-11-22).
+	local makes = {}
+	for _, recipe in ipairs(M.recipes_of(self) or {}) do makes[recipe.makes] = true end
 	local items = {}
 	for item in pairs(view.surplus or {}) do items[#items + 1] = item end
 	table.sort(items)
@@ -495,7 +501,7 @@ function M.stash_spare(self, reach, view)
 		local carried = M.count(self, item)
 		local move = math.min(carried - (owed[item] or 0), spare) - math.min(CARRY, math.ceil(spare / 2))
 		if move > 0 then move = math.min(move, stash_room(stash, item)) end
-		if item ~= EMERALD and not food.POINTS[item] and move > 0 then
+		if item ~= EMERALD and (not food.POINTS[item] or makes[item]) and move > 0 then
 			local left = move
 			for _, half in ipairs(halves(stash)) do
 				if left <= 0 then break end
@@ -856,14 +862,33 @@ function M.assess(self, offered)
 	-- more to it than a plate can earn: the plate cost times the top margin (ticket 39d).
 	-- It bought loaves at up to its dinner price, and each one raised that price
 	-- (ColonyFood, 2026-11-21).
+	-- Ticket 46b: or the cheapest ask it heard for the dish, where that is higher
+	-- (keeper_supply.dish_bids), and while the pantry is short of the dish it is worth
+	-- that much to it, its own hunger and money aside: it buys for the tavern. Fed, it
+	-- valued cooked beef at about 1 under its cap of 1.5.
+	local dish_least
 	if self._villages_keeper and not self.child then
 		local cap = dinner.plate(self) * dinner.MARGIN_MAX
-		for item in pairs(goods.CATEGORIES.dish) do worth[item] = math.min(worth[item] or math.huge, cap) end
+		local bids = self._villages_dish_bids or {}
+		local short = (self._villages_dish_short or 0) > 0
+		for item in pairs(goods.CATEGORIES.dish) do
+			local bid = math.max(cap, bids[item] or 0)
+			worth[item] = math.min(worth[item] or math.huge, bid)
+			if short then
+				dish_least = dish_least or {}
+				dish_least[item] = bid
+			end
+		end
 		local held
 		for item, count in pairs(self._villages_dish_wants or {}) do
 			held = held or M.held(self)
 			extra[item] = (extra[item] or 0) + math.max(count, held[item] or 0)
-			worth[item] = math.min(worth[item] or math.huge, cap)
+			local bid = math.max(cap, bids[item] or 0)
+			worth[item] = math.min(worth[item] or math.huge, bid)
+			if count > 0 then
+				dish_least = dish_least or {}
+				dish_least[item] = bid
+			end
 		end
 	end
 	-- The base good of its premium trades (premium.keeps, ticket 37), from journeyman up:
@@ -886,14 +911,15 @@ function M.assess(self, offered)
 	end
 	-- A peddler (labour.lua): buying, it wants its lot at its bid and no more; holding it,
 	-- it takes no less than the bid, so it never sells at a loss.
-	local least
+	local least = dish_least
 	local peddle = self._villages_peddle
 	if peddle then
 		if peddle.buying then
 			extra[peddle.item] = (extra[peddle.item] or 0) + peddle.count
 			worth[peddle.item] = peddle.bid
 		end
-		least = {[peddle.item] = peddle.bid}
+		least = least or {}
+		least[peddle.item] = peddle.bid
 	end
 	-- A labourer (ticket 23a) wants one craft's worth of its plan's inputs, a category's
 	-- (stone, wool, planks) as the category.

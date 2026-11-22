@@ -4251,6 +4251,33 @@ cook more is what the run tests.
 **Success, on ColonyFood.** The butcher cooking most of the village's dishes and selling many
 to the keeper; dinners near demand within a few days; dinner between 1 and 2.
 
+### 46. The butcher's dishes reach the market
+
+Status: built.
+
+**Problem.** After ticket 45 the tavern served 15, 4, 5, 0 and 8 on days 1014 to 1018, its
+pantry down to 4 apples and 2 carrots against a demand of 10 to 17. The butcher cooked about
+5 dishes a day and held 16 cooked beef at 1.18, but villagers set off 36 times to buy from it
+and only 7 trips ended in a sale: 10 could not catch it, 9 found no trade face to face, 4 never
+reached it, and every stash they fell back on was empty, since a villager never stashes food.
+The keeper bought 3 loaves in five days and no dish. Its bid for a dish was capped at twice
+its plate cost, an average over what the pantry last held, 0.47 on day 1015: 0.94, under
+1.18. And fed, its own value for cooked beef was about 1, under even that cap.
+
+**Rule.**
+
+- **a.** Food a villager makes goes in its stash like its other goods (`possessions.stash_spare`,
+  half of each surplus kept on it for sales in person): the butcher's dishes, a farmer's bread.
+  A buyer who cannot catch the butcher buys from its chest.
+- **b.** The keeper bids for each dish the higher of its plate cap (39d) and the cheapest ask it
+  heard for that dish (`keeper_supply.dish_bids`, `_villages_dish_bids`, set with its wants),
+  and while the pantry is short of a dish, values it at that bid whatever its own hunger and
+  money: it buys for the tavern. Dinner is still the plate cost times its margin, so a dearer
+  dish raises it, and guests decide whether to pay.
+
+**Success, on ColonyFood.** Most trips to the butcher ending in a sale; the keeper buying the
+butcher's dishes; dinners near demand, at whatever price that takes.
+
 ## Open questions
 
 - Price discovery (ticket 21):
