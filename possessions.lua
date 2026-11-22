@@ -86,8 +86,13 @@ local EAT_AT = food.FULL - food.HUNGRY
 local STASH_REACH = 4
 -- Of a good it sells, the most it keeps on itself for a sale in person (M.stash_spare).
 local CARRY = 8
--- Free slots stash_spare leaves in a stash.
-local STASH_FREE_SLOTS = 3
+-- Free slots stash_spare leaves in a stash; food it makes may take all but FOOD_FREE_SLOTS
+-- of them (ticket 47b).
+local STASH_FREE_SLOTS, FOOD_FREE_SLOTS = 3, 2
+-- Goods with no price a villager keeps only so many of, belongings and stash together: its
+-- stash sheds the rest (ticket 47a). The butcher's eggs, coop.lua's EGG_KEEP: it throws
+-- them to grow its flock, and nobody buys them.
+local SHED = {["mcl_throwing:egg"] = 16}
 -- How often it looks at its food: the home stage after dinner is a game hour, 50 s.
 local EAT_CHECK_SECONDS = 10
 local STARVING_SPEED = 0.7
@@ -450,14 +455,15 @@ end
 -- for them found it out and its stash empty, a commission among them (ColonyFood,
 -- 2026-11-19). Of each good's surplus it keeps half on itself, at most CARRY, for sales in
 -- person (exchange.lua sells from belongings); food stays with it (it eats from its
--- belongings first), but food it makes (ticket 46a: the butcher's dishes, a farmer's
+-- belongings first), but for food it makes (ticket 46a: the butcher's dishes, a farmer's
 -- bread), and so does a peddler's stock, its trade being to carry it. What
--- the chest has no room for stays carried. Returns how many it put in.
+-- the chest has no room for stays carried. Returns how many it put in. First its stash
+-- sheds what SHED keeps it from holding (ticket 47a).
 -- How many of the item stash_spare may put in the stash: the room on its stacks of it,
 -- plus whole stacks in the free slots beyond STASH_FREE_SLOTS, kept for what a porter, a
 -- commission or a purchase brings. In ColonyFood (2026-11-19) a leatherworker's stash
 -- filled with 576 logs and charcoal, and a commissioned armor stand found no room.
-local function stash_room(stash, item)
+local function stash_room(stash, item, keep_free)
 	local def = core.registered_items and core.registered_items[item]
 	local max = def and def.stack_max or 64
 	local free, partial = 0, 0
@@ -473,8 +479,37 @@ local function stash_room(stash, item)
 		end
 		free = free + math.max((inv:get_size("main") or 0) - used, 0)
 	end
-	return partial + math.max(free - STASH_FREE_SLOTS, 0) * max
+	return partial + math.max(free - (keep_free or STASH_FREE_SLOTS), 0) * max
 end
+
+-- Ticket 47a: takes out of the stash what SHED keeps it from holding, and discards it.
+-- The butcher's chest held 12 stacks of eggs and 7 of feathers in 24 of its 27 slots,
+-- so none of its dishes fitted, and 312 of 397 trips for them found it empty
+-- (ColonyFood, 2026-11-22). Returns how many it discarded.
+local function shed(self, stash)
+	local gone = 0
+	for item, keep in pairs(SHED) do
+		local stashed = 0
+		for _, half in ipairs(halves(stash)) do
+			for _, stack in ipairs(core.get_meta(half):get_inventory():get_list("main") or {}) do
+				if stack:get_name() == item then stashed = stashed + stack:get_count() end
+			end
+		end
+		local excess = math.min(M.count(self, item) + stashed - keep, stashed)
+		local left = excess
+		for _, half in ipairs(halves(stash)) do
+			if left <= 0 then break end
+			left = left - core.get_meta(half):get_inventory():remove_item("main", item .. " " .. left):get_count()
+		end
+		if excess > 0 then
+			gone = gone + excess - left
+			core.log("action", string.format("[living_villages] villager %s discarded %d %s from its stash at %s",
+				tostring(self._id):sub(1, 6), excess - left, item, core.pos_to_string(stash)))
+		end
+	end
+	return gone
+end
+M.SHED = SHED
 
 function M.stash_spare(self, reach, view)
 	local stash = self._villages_stash
@@ -482,6 +517,7 @@ function M.stash_spare(self, reach, view)
 	if not stash or not pos or vector.distance(pos, stash) > (reach or STASH_REACH) or not owned_by(stash, self) then
 		return 0
 	end
+	shed(self, stash)
 	local labour = self._villages_labour
 	local day = core.get_day_count and core.get_day_count() or 0
 	if labour and labour.day == day and labour.activity == "peddler" then return 0 end
@@ -500,7 +536,9 @@ function M.stash_spare(self, reach, view)
 		local spare = math.floor(view.surplus[item])
 		local carried = M.count(self, item)
 		local move = math.min(carried - (owed[item] or 0), spare) - math.min(CARRY, math.ceil(spare / 2))
-		if move > 0 then move = math.min(move, stash_room(stash, item)) end
+		-- Food it makes may take a slot kept for deliveries (ticket 47b): its dishes reach
+		-- the stash whatever else fills it.
+		if move > 0 then move = math.min(move, stash_room(stash, item, makes[item] and FOOD_FREE_SLOTS)) end
 		if item ~= EMERALD and (not food.POINTS[item] or makes[item]) and move > 0 then
 			local left = move
 			for _, half in ipairs(halves(stash)) do
