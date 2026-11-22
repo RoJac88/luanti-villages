@@ -29,6 +29,7 @@ local common = dofile(core.get_modpath("living_villages") .. "/common.lua")
 local music = dofile(core.get_modpath("living_villages") .. "/music.lua")
 local stock = dofile(core.get_modpath("living_villages") .. "/farm_stock.lua")
 local food = dofile(core.get_modpath("living_villages") .. "/food.lua")
+local duty = dofile(core.get_modpath("living_villages") .. "/tavern_duty.lua")
 local S = core.get_translator and core.get_translator("living_villages") or function(message) return message end
 local JUKEBOX = "mcl_jukebox:jukebox"
 local BASE_PROFESSION = "butcher"
@@ -119,8 +120,9 @@ local function claimed_jukebox(self)
 	return is_jukebox(pos) and core.get_meta(pos):get_string("villager") == self._id and pos or nil
 end
 
+-- Free to take: unclaimed, or its keeper missed too many dinners (tavern_duty.lua).
 local function unclaimed(pos)
-	return core.get_meta(pos):get_string("villager") == ""
+	return duty.vacant(pos)
 end
 
 -- Who may take up a free jukebox: an unemployed adult, or a keeper that lost
@@ -133,8 +135,14 @@ end
 
 local function employ(self, pos)
 	if not is_jukebox(pos) or not unclaimed(pos) or not wants_jukebox(self) then return false end
+	local before = core.get_meta(pos):get_string("villager")
+	if before ~= "" and before ~= self._id then
+		core.log("action", string.format("[living_villages] villager %s takes the jukebox at %s from absent keeper %s",
+			tostring(self._id), pos_string(pos), before))
+	end
 	core.get_meta(pos):set_string("villager", self._id)
 	self._jobsite = {x = pos.x, y = pos.y, z = pos.z}
+	duty.note(self, pos)
 	if not self._villages_keeper then
 		self._profession = BASE_PROFESSION
 		self._trades = keeper_trades()
@@ -238,6 +246,7 @@ local function staff(self)
 	local pos = self.object:get_pos()
 	if not jukebox or not pos then return end
 	if vector.distance(pos, jukebox) < STAFF_DISTANCE then
+		if self._villages_keeper_staffed ~= core.get_day_count() then duty.note(self, jukebox) end
 		self.order = "work"
 		music.tick(self, jukebox)
 		return
@@ -247,6 +256,32 @@ local function staff(self)
 	if now < (self._villages_keeper_staff_check or 0) then return end
 	self._villages_keeper_staff_check = now + STAFF_INTERVAL
 	self:gopath(jukebox, nil, true)
+end
+
+-- A keeper that missed duty.MISSED_LIMIT dinners in a row gives up the tavern (ticket
+-- 48b) and is unemployed, free to take any job, the tavern again among them. What its
+-- pouch held, the pantry's float, it keeps in its belongings: dropped where it was lost,
+-- in a cave, it would be gone. Returns whether it resigned.
+local function resign_if_absent(self)
+	local jukebox = claimed_jukebox(self)
+	if not jukebox then return false end
+	if self._villages_keeper_staffed == nil then duty.note(self, jukebox) return false end
+	if not duty.absent(self._villages_keeper_staffed) then return false end
+	core.get_meta(jukebox):set_string("villager", "")
+	core.get_meta(jukebox):set_string(duty.STAFFED, "")
+	local pouch = self._villages_farm_pouch
+	if pouch then
+		self._villages_belongings = self._villages_belongings or {}
+		for name, count in pairs(pouch) do
+			self._villages_belongings[name] = (self._villages_belongings[name] or 0) + count
+		end
+		self._villages_farm_pouch = nil
+	end
+	self._jobsite, self._profession, self._trades = nil, "unemployed", nil
+	self._villages_keeper, self._villages_keeper_staffed = nil, nil
+	core.log("action", string.format("[living_villages] villager %s missed %d dinners at the tavern at %s and is no longer its keeper",
+		tostring(self._id), duty.MISSED_LIMIT, pos_string(jukebox)))
+	return true
 end
 
 -- After vanilla's own activity has run: follow its verdicts on the role, and
@@ -298,6 +333,7 @@ local function install(def)
 		local jobsite_before = self._jobsite
 		local result = original_custom(self, dtime)
 		reconcile(self, jobsite_before)
+		if self._villages_keeper and not has_traded(self) then resign_if_absent(self) end
 		if result == false or self.following or self.state == "gowp" then return result end
 		if self._villages_keeper and common.is_work_time(self) then
 			staff(self)
@@ -358,6 +394,7 @@ return {
 	employ = employ,
 	take_over = take_over,
 	claimed_jukebox = claimed_jukebox,
+	resign_if_absent = resign_if_absent,
 	status = function(self)
 		if not self._villages_keeper then return "not a keeper" end
 		local jukebox = claimed_jukebox(self)

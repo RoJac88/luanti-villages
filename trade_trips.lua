@@ -68,6 +68,7 @@ local stock = dofile(core.get_modpath("living_villages") .. "/farm_stock.lua")
 local cells = dofile(core.get_modpath("living_villages") .. "/cells.lua")
 local goods_mod = dofile(core.get_modpath("living_villages") .. "/goods.lua")
 local commission = dofile(core.get_modpath("living_villages") .. "/commission.lua")
+local duty = dofile(core.get_modpath("living_villages") .. "/tavern_duty.lua")
 -- As builder_market.lua splits them.
 local PLANKS_PER_LOG = 4
 
@@ -175,6 +176,7 @@ function M.plan(self, view, heard, from)
 		if item ~= EMERALD and value and M.urgency(view, item) >= URGENT then
 			for _, entry in ipairs(heard) do
 				if entry.kind == "has" and entry.item == item and entry.home and entry.who ~= self._id
+					and (not entry.keeper_only or self._villages_keeper)
 					and (entry.price or 0) <= value and not is_skipped(self, entry.who, item)
 					and vector.distance(from, entry.home) <= TRIP_RADIUS
 					and (M.terms(need, entry.count or 0, value, entry.price or 0, possessions.emeralds(self))
@@ -195,6 +197,7 @@ function M.plan(self, view, heard, from)
 		want = view.needs[best.item], leg = "seller", day = today(),
 		-- A product the seller makes on sale (ticket 29): its sources, as told.
 		from = best.from, ratio = best.ratio, takes = best.takes, reserve = best.reserve,
+		keeper_only = best.keeper_only,
 	}
 end
 
@@ -296,6 +299,7 @@ end
 -- sources when the stash holds none of the product: whole lots of `takes`, none of the
 -- `reserve`, at the told price for each product.
 function M.buy_from_stash(self, trip, chest)
+	if trip.keeper_only and not self._villages_keeper then return 0, "its dishes are for the keeper" end
 	local budget, value = budget_and_value(self, trip)
 	local want = trip.want - (trip.bought or 0)
 	local held = chest_count(chest, trip.item)

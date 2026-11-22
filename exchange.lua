@@ -41,6 +41,7 @@ local gossip = dofile(core.get_modpath("living_villages") .. "/gossip.lua")
 local goods_mod = dofile(core.get_modpath("living_villages") .. "/goods.lua")
 local asks = dofile(core.get_modpath("living_villages") .. "/asks.lua")
 local prices = dofile(core.get_modpath("living_villages") .. "/prices.lua")
+local duty = dofile(core.get_modpath("living_villages") .. "/tavern_duty.lua")
 
 local EMERALD = "mcl_core:emerald"
 -- A sale must come to at least this many emeralds before rounding, or it grows: less,
@@ -153,6 +154,8 @@ end
 -- of the `reserve` it keeps (the alchemist's gold, ticket 20); never under the product's
 -- reservation price (asks.reservation).
 function M.quote(seller, seller_view, buyer, buyer_view, item, wanted, from, ratio, takes, reserve)
+	-- The butcher's dishes are the keeper's alone while a keeper serves (tavern_duty.lua).
+	if not duty.may_sell(seller, buyer, item) then return nil end
 	local conversion = {from = from, to = item, ratio = ratio, takes = takes, reserve = reserve}
 	local stock = spare(seller, seller_view, from)
 	if reserve then stock = math.min(stock, possessions.count(seller, from) - reserve) end
