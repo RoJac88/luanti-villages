@@ -47,6 +47,11 @@
 --   worth: its want is told in market news, so a crafter that could make it hears of it,
 --   and a commission (commission.lua) can still be paid for it, and a new good can come
 --   into the village. Bought or heard offered, the taste is about again and takes its slots.
+-- * A taste it holds comes first, so buying one (and so holding less money, so fewer
+--   slots) never leaves it spare to sell on (e9: a helmet passed back and forth between a
+--   weapon smith and the keeper). A taste takes at most its share of the slots
+--   (slots / TASTES, rounded up), another comfort one: slots past that stay empty (e9: a
+--   keeper wanted four helmets, the one comfort on offer).
 -- * Worth is capped at MAX_MARKUP times the base price: the richer still pay more, but
 --   a cauldron is no longer worth 11,285 to a butcher.
 local core = minetest
@@ -225,11 +230,27 @@ function M.plan(self, emeralds, now, count)
 		end
 		return false
 	end
-	local order, dormant, mine = {}, {}, {}
+	local function held(comfort)
+		if not count then return false end
+		for _, item in ipairs(items_of(comfort)) do
+			if count(self, item) > 0 then return true end
+		end
+		return false
+	end
+	-- Held tastes first (E9b): a comfort it bought keeps a slot when paying for it left it
+	-- fewer, rather than turning spare and sold on.
+	local order, dormant, mine, later = {}, {}, {}, {}
 	for _, taste in ipairs(tastes) do
 		mine[taste] = true
-		if about(taste, true) then order[#order + 1] = taste else dormant[#dormant + 1] = taste end
+		if not about(taste, true) then
+			dormant[#dormant + 1] = taste
+		elseif held(taste) then
+			order[#order + 1] = taste
+		else
+			later[#later + 1] = taste
+		end
 	end
+	for _, taste in ipairs(later) do order[#order + 1] = taste end
 	local others = {}
 	for _, comfort in ipairs(M.COMFORTS) do
 		if not mine[comfort] and about(comfort, false) then others[#others + 1] = comfort end
@@ -240,12 +261,19 @@ function M.plan(self, emeralds, now, count)
 		return a.item < b.item
 	end)
 	for _, comfort in ipairs(others) do order[#order + 1] = comfort end
-	local per = {}
-	if #order > 0 then
-		for slot = 1, slots do
-			local comfort = order[(slot - 1) % #order + 1]
-			per[comfort] = (per[comfort] or 0) + 1
+	-- Round the order, a taste up to its share of the slots (as if all its tastes were
+	-- about), another comfort one (E9b): the richest buy more kinds, not four of one.
+	local per, share = {}, math.max(math.ceil(slots / M.TASTES), 1)
+	local left = slots
+	while left > 0 do
+		local placed = false
+		for _, comfort in ipairs(order) do
+			if left == 0 then break end
+			if (per[comfort] or 0) < (mine[comfort] and share or 1) then
+				per[comfort], left, placed = (per[comfort] or 0) + 1, left - 1, true
+			end
 		end
+		if not placed then break end
 	end
 	return per, order, slots > 0 and dormant or {}, slots
 end

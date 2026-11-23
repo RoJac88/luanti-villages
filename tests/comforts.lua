@@ -287,7 +287,8 @@ do
 		assert(wanted_of(taste, targets, categories) == 1, "a probe each")
 		assert(worth[item_of(taste)] > 0, "worth something")
 	end
-	-- Its slots go to the comforts others have, cheapest first, one each before a second.
+	-- Its slots go to the comforts others have, cheapest first, one each: never a second of
+	-- a comfort not its taste (E9b), so slots past them stay empty.
 	local mine = {}
 	for _, taste in ipairs(list) do mine[taste] = true end
 	local others = {}
@@ -298,8 +299,8 @@ do
 	local cheap, dear = others[1], others[#others]
 	offer(d, {cheap, dear})
 	targets, worth, categories = comforts.targets(d, rich, clock)
-	assert(targets[cheap.item] == 3 and targets[dear.item] == 2, tostring(targets[cheap.item]) .. " " .. tostring(targets[dear.item]))
-	assert(total(targets, categories) == 5 + #list, "five slots and the four probes")
+	assert(targets[cheap.item] == 1 and targets[dear.item] == 1, tostring(targets[cheap.item]) .. " " .. tostring(targets[dear.item]))
+	assert(total(targets, categories) == 2 + #list, "two slots and the four probes")
 	assert(worth[dear.item] <= comforts.MAX_MARKUP * ledger.price(dear.item) + 1e-9, "capped")
 	-- Held, another villager's comfort fills a slot; one of its own tastes held is about.
 	local held = {[cheap.item] = 5, [item_of(list[1])] = 1}
@@ -329,6 +330,25 @@ do
 		heard = clock}}}
 	targets = comforts.targets(own, rich, clock)
 	assert(not targets[cheap.item], "its own")
+end
+-- E9b: a taste takes at most its share of the slots (slots / TASTES, rounded up), and a
+-- taste it holds comes first, so one just bought keeps a slot when it has fewer.
+do
+	local v = {_id = "rich-farmer"}
+	local list = comforts.tastes(v._id)
+	offer(v, {list[1]})
+	local slots = comforts.slots(comforts.SAVINGS + 5 * comforts.STEP)
+	local targets, _, categories = comforts.targets(v, comforts.SAVINGS + 5 * comforts.STEP, clock)
+	assert(wanted_of(list[1], targets, categories) == math.ceil(slots / comforts.TASTES),
+		"its share, not all " .. slots)
+	-- One slot, two tastes about: the one held fills it, though the other comes first.
+	local w = {_id = "rich-farmer"}
+	offer(w, {list[1], list[2]})
+	local held = {[item_of(list[2])] = 1}
+	local one = comforts.SAVINGS + comforts.STEP
+	comforts.update(w, one, take_from(held), clock, function(_, item) return held[item] or 0 end)
+	assert(w._villages_comforts and #w._villages_comforts == 1 and w._villages_comforts[1].item == item_of(list[2]),
+		"the held taste keeps the slot")
 end
 -- The worth cap: the richest pay at most MAX_MARKUP times the base price.
 do
