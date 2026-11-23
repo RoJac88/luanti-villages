@@ -72,10 +72,12 @@ local SCHEDULE = {
 	{start = 17500, stage = "home"},
 	{start = 18500, stage = "sleep"},
 }
+-- The keeper's staff stage starts half an hour before its guests (ticket 51): from 14000
+-- it stood an hour and a half at an empty bar that it could have spent buying.
 local KEEPER_SCHEDULE = {
 	{start = 7000, stage = "putter"},
 	{start = 8000, stage = "free"},
-	{start = 14000, stage = "staff"},
+	{start = 15000, stage = "staff"},
 	{start = 18500, stage = "home"},
 	{start = 19000, stage = "sleep"},
 }
