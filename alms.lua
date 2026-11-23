@@ -44,6 +44,14 @@
 -- of a tenth of all past 8. A librarian paid for a Mending book gives back a good share of
 -- it, to go round as alms.
 --
+-- The alchemist's stake (E11). An alchemist never goes to church, gives nothing and gets no
+-- alms, but it is the village's only iron, and one that runs out of money buys no stone and
+-- makes none (lv_pair e9b: 0 emeralds from day 3 to day 21, with 270 cobble spare in the
+-- village at 1 or 2). So at each service the cleric tops every alchemist within
+-- ALCHEMIST_REACH of the pulpit up to ALCHEMIST_STAKE (24 dinners, about a day's stone and
+-- fuel for nuggets), after the alms and stakes, from the fund and then its own emeralds
+-- over SAVINGS; the fund's target counts it. Paid back, in a way, by the iron it sells.
+--
 -- Rotten flesh (ticket 37b). The fund's target adds FLESH_RESERVE (12 dinners) to its
 -- holidays of alms, so the cleric can buy the flesh players sell it (trade_window.lua). The
 -- alms part is noted at each service (`_villages_alms_need`); the flesh budget is the fund
@@ -87,12 +95,16 @@ local FUND_HOLIDAYS = 4
 -- Progressive donations: the share of savings from each band's start, in dinners.
 local BANDS = {{from = 8, share = 0.1}, {from = 24, share = 0.2}, {from = 64, share = 0.3}}
 local FLESH_RESERVE = 12 * DINNER
+-- The alchemist's stake (E11), and how far from the pulpit the cleric finds an alchemist.
+local ALCHEMIST_STAKE = 24 * DINNER
+local ALCHEMIST_REACH = 64
 local COAL = "mcl_core:coal_lump"
 local recipes = dofile(core.get_modpath("living_villages") .. "/recipes.lua")
 
 local M = {SAVINGS = SAVINGS, MAJOR = MAJOR, ALMS_TO = ALMS_TO, KEEP_SHARE = KEEP_SHARE, REACH = REACH,
 	FLESH_RESERVE = FLESH_RESERVE, BANDS = BANDS,
-	CRAFT_BATCH = CRAFT_BATCH, STAKE_CAP = STAKE_CAP, FUND_HOLIDAYS = FUND_HOLIDAYS}
+	CRAFT_BATCH = CRAFT_BATCH, STAKE_CAP = STAKE_CAP, FUND_HOLIDAYS = FUND_HOLIDAYS,
+	ALCHEMIST_STAKE = ALCHEMIST_STAKE, ALCHEMIST_REACH = ALCHEMIST_REACH}
 
 local function short_id(id)
 	return tostring(id):sub(1, 6)
@@ -178,13 +190,19 @@ function M.level(villager)
 	return math.ceil(ALMS_TO * dinner.scale(villager)) + M.stake(villager)
 end
 
+-- An alchemist's stake (E11), at its dinner scale.
+function M.alchemist_stake(alchemist)
+	return math.ceil(ALCHEMIST_STAKE * dinner.scale(alchemist))
+end
+
 -- The fund's target among `list`: FUND_HOLIDAYS holidays of everyone's level but the
--- cleric's own.
-function M.fund_target(priest, list)
+-- cleric's own, and of each of `alchemists`' stakes (E11).
+function M.fund_target(priest, list, alchemists)
 	local total = 0
 	for _, villager in ipairs(list) do
 		if villager ~= priest then total = total + M.level(villager) end
 	end
+	for _, alchemist in ipairs(alchemists or {}) do total = total + M.alchemist_stake(alchemist) end
 	return FUND_HOLIDAYS * total
 end
 
@@ -267,6 +285,19 @@ local function congregation(pulpit)
 	return list
 end
 
+-- The adult alchemists within ALCHEMIST_REACH of the pulpit (E11).
+function M.alchemists(pulpit)
+	local list = {}
+	for _, object in ipairs(core.get_objects_inside_radius(pulpit, ALCHEMIST_REACH)) do
+		local entity = object:get_luaentity()
+		if entity and entity.name == VILLAGER and entity._id and not entity.child and entity._villages_alchemist then
+			list[#list + 1] = entity
+		end
+	end
+	table.sort(list, function(a, b) return a._id < b._id end)
+	return list
+end
+
 -- Swaps market news with the cleric, once a holiday. Returns whether it did.
 function M.church_news(priest, villager, day)
 	if villager == priest or villager._villages_church_news == day then return false end
@@ -276,14 +307,16 @@ function M.church_news(priest, villager, day)
 end
 
 -- Donations first, then alms, then news, among `list`. An alchemist (ticket 20) never goes
--- to church, so one that happens to stand near the pulpit neither gives nor gets.
-function M.hold(priest, list, day, gossip)
+-- to church, so one that happens to stand near the pulpit neither gives nor gets; those in
+-- `alchemists` (found near the pulpit, M.step) get their stake (E11) after the alms.
+function M.hold(priest, list, day, gossip, alchemists)
 	local members = {}
 	for _, villager in ipairs(list) do
 		if not villager._villages_alchemist then members[#members + 1] = villager end
 	end
 	list = members
-	local need = M.fund_target(priest, list)
+	alchemists = alchemists or {}
+	local need = M.fund_target(priest, list, alchemists)
 	priest._villages_alms_need = need
 	local target = need + M.flesh_reserve(priest)
 	for _, villager in ipairs(list) do
@@ -296,6 +329,7 @@ function M.hold(priest, list, day, gossip)
 		local stake = M.stake(villager)
 		if stake > 0 then M.give(priest, villager, day, M.level(villager)) end
 	end
+	for _, alchemist in ipairs(alchemists) do M.give(priest, alchemist, day, M.alchemist_stake(alchemist)) end
 	-- The fund over its target goes out, poorest first, toward each one's savings.
 	local poorest = {}
 	for _, villager in ipairs(list) do
@@ -315,6 +349,7 @@ function M.hold(priest, list, day, gossip)
 end
 
 local next_check = setmetatable({}, {__mode = "k"})
+local alchemists_seen = setmetatable({}, {__mode = "k"})
 
 function M.step(self, now, gossip)
 	if now < (next_check[self] or 0) then return end
@@ -323,7 +358,14 @@ function M.step(self, now, gossip)
 	if common.schedule_stage(nil, self) ~= "social" then return end
 	local pulpit = cleric.claimed_pulpit(self)
 	if not pulpit then return end
-	M.hold(self, congregation(pulpit), core.get_day_count(), gossip)
+	-- The alchemists are looked for once a service, not every RECHECK_SECONDS.
+	local day = core.get_day_count()
+	local found = alchemists_seen[self]
+	if not found or found.day ~= day then
+		found = {day = day, list = M.alchemists(pulpit)}
+		alchemists_seen[self] = found
+	end
+	M.hold(self, congregation(pulpit), day, gossip, found.list)
 end
 
 function M.install(def, gossip)

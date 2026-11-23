@@ -185,6 +185,19 @@ do
 	alms.hold(fund, {fund, rich_alchemist, poor_alchemist}, day + 40, gossip)
 	assert(emeralds(rich_alchemist) == alms.SAVINGS + 800 and not rich_alchemist._villages_donated, "gives nothing")
 	assert(emeralds(poor_alchemist) == 0 and fund._villages_alms == 500, "gets nothing")
+	-- Found near the pulpit (E11), a poor one gets its stake: topped up to ALCHEMIST_STAKE,
+	-- from the fund; a rich one nothing.
+	alms.hold(fund, {fund}, day + 41, gossip, {rich_alchemist, poor_alchemist})
+	local stake = alms.alchemist_stake(poor_alchemist)
+	assert(stake == alms.ALCHEMIST_STAKE, stake)
+	assert(emeralds(poor_alchemist) == math.min(stake, 500), emeralds(poor_alchemist))
+	assert(emeralds(rich_alchemist) == alms.SAVINGS + 800, "a rich one gets none")
+	-- Once a service: the same day again gives nothing more.
+	local had = emeralds(poor_alchemist)
+	alms.hold(fund, {fund}, day + 41, gossip, {poor_alchemist})
+	assert(emeralds(poor_alchemist) == had)
+	-- The fund's target counts each one's stake.
+	assert(alms.fund_target(fund, {fund}, {poor_alchemist}) == alms.FUND_HOLIDAYS * stake)
 end
 
 -- With the economy off, nothing is installed.
