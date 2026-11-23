@@ -170,14 +170,23 @@ end
 -- pantry: a few of each dish it knows (`_villages_dish_wants`), and as many dishes of
 -- any kind as the pantry is short of its target past those (`_villages_dish_short`,
 -- goods.lua's dish category, possessions.assess).
+-- Experiment E8: the dishes it carries count with the pantry's. It shelves what it buys
+-- at its shift, so all day its few of each looked unfilled and the shortfall nothing: it
+-- bought 3 of each of the butcher's three dishes a day for a demand of 13 (lv_pair e7).
+function M.held_dishes(self)
+	local total = 0
+	for _, item in ipairs(menu_items()) do total = total + possessions.count(self, item) end
+	return total
+end
+
 function M.update_wants(self, chests)
 	local wants = M.dish_wants(self, chests, core.get_day_count())
 	local wanted = 0
-	for _, count in pairs(wants) do wanted = wanted + count end
+	for item, count in pairs(wants) do wanted = wanted + math.max(count - possessions.count(self, item), 0) end
 	self._villages_dish_wants = wants
 	-- At market (ticket 51) it stocks for the days to the next one.
 	local days = self._villages_at_market == core.get_day_count() and market.STOCK_DAYS or 1
-	local short = M.target(self) * days - M.dishes(chests) - wanted
+	local short = M.target(self) * days - M.dishes(chests) - M.held_dishes(self) - wanted
 	self._villages_dish_short = short > 0 and short or nil
 	self._villages_dish_bids = M.dish_bids(self)
 end
@@ -521,6 +530,8 @@ local function supply(self, jukebox, now)
 		return go(self, jukebox, now, function(entity) deliver(entity, jukebox) end)
 	end
 	if M.meals(chests) >= M.target(self) then return end
+	-- What it still wants, with what it bought since the last look (E8).
+	M.update_wants(self, chests)
 	-- A trade trip under way (ticket 49): no farm fetch to pull it off its walk.
 	if self._villages_trade_trip then return end
 	local dish, dish_taste, bread_taste = M.preferred_dish(self, now)
