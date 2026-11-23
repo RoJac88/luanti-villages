@@ -423,6 +423,29 @@ local bids = kate._villages_dish_bids
 assert(bids and math.abs(bids["mcl_mobitems:cooked_beef"] - 1.18) < 1e-9, "the cheapest ask")
 assert(not bids["mcl_fishing:fish_cooked"] and not bids["mcl_mobitems:beef"] and not bids["mcl_farming:bread"])
 assert(math.abs(dofile("possessions.lua").assess(kate).value("mcl_mobitems:cooked_beef") - 1.18) < 1e-9)
+-- Errands by taste (ticket 49): a wanted dish with a seller, that its guests are no more
+-- tired of than bread, goes before a farm fetch; one they ate all week does not.
+do
+	local fish, bread = "mcl_fishing:fish_cooked", "mcl_farming:bread"
+	kate._villages_dish_wants = {[fish] = 3}
+	kate._villages_market_news = {{kind = "has", item = fish, who = "b1", price = 1, count = 4, heard = 0},
+		{kind = "has", item = "mcl_mobitems:beef", who = "b1", price = 1, count = 4, heard = 0}}
+	kate._villages_served_dishes = {[day] = {[bread] = 10}}
+	local dish, dish_taste, bread_taste = supply.preferred_dish(kate, now)
+	assert(dish == fish and dish_taste > bread_taste, tostring(dish))
+	-- Its guests ate fish all week, bread hardly: the farm first.
+	kate._villages_served_dishes = {[day] = {[fish] = 10, [bread] = 1}}
+	assert(supply.preferred_dish(kate, now) == nil)
+	-- Preferred once: not again for a while, should the trip fail.
+	kate._villages_served_dishes = {[day] = {[bread] = 10}}
+	kate._villages_preferred = {[fish] = now + 600}
+	assert(supply.preferred_dish(kate, now) == nil)
+	assert(supply.preferred_dish(kate, now + 601) == fish)
+	-- None wanted, nor short: nothing.
+	kate._villages_preferred, kate._villages_dish_wants = nil, {[fish] = 0}
+	assert(supply.preferred_dish(kate, now) == nil)
+	kate._villages_served_dishes, kate._villages_dish_wants = nil, nil
+end
 kate._villages_market_news, kate._villages_plate_cost, kate._villages_dish_bids = nil, nil, nil
 kate._villages_dinner, kate._villages_known_dishes, kate._villages_dish_wants, kate._villages_dish_short = nil, nil, nil, nil
 inventories[key(pantry_chest)]["mcl_fishing:fish_cooked"] = nil

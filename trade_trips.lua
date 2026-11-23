@@ -68,6 +68,7 @@ local stock = dofile(core.get_modpath("living_villages") .. "/farm_stock.lua")
 local cells = dofile(core.get_modpath("living_villages") .. "/cells.lua")
 local goods_mod = dofile(core.get_modpath("living_villages") .. "/goods.lua")
 local commission = dofile(core.get_modpath("living_villages") .. "/commission.lua")
+local duty = dofile(core.get_modpath("living_villages") .. "/tavern_duty.lua")
 -- As builder_market.lua splits them.
 local PLANKS_PER_LOG = 4
 
@@ -175,12 +176,17 @@ function M.plan(self, view, heard, from)
 		if item ~= EMERALD and value and M.urgency(view, item) >= URGENT then
 			for _, entry in ipairs(heard) do
 				if entry.kind == "has" and entry.item == item and entry.home and entry.who ~= self._id
+					and (not entry.keeper_only or self._villages_keeper)
 					and (entry.price or 0) <= value and not is_skipped(self, entry.who, item)
 					and vector.distance(from, entry.home) <= TRIP_RADIUS
 					and (M.terms(need, entry.count or 0, value, entry.price or 0, possessions.emeralds(self))
 						or log_short(self, entry, need, value)) then
 					local distance = vector.distance(from, entry.home)
-					local worth = need * value
+					-- What it could bring back (ticket 50): no more than the seller was heard to
+					-- have. Weighed by its need alone, the butcher went eleven times for salmon a
+					-- fisherman had one or two of, and twice for the 22 raw fish the other held at
+					-- 2 each, and cooked on two days of five (lv_pair e3, 2026-11-22).
+					local worth = math.min(need, entry.count or need) * value
 					if distance <= TRIP_RADIUS and (not best or worth > best_worth
 						or (worth == best_worth and distance < best_distance)) then
 						best, best_worth, best_distance = entry, worth, distance
@@ -195,6 +201,7 @@ function M.plan(self, view, heard, from)
 		want = view.needs[best.item], leg = "seller", day = today(),
 		-- A product the seller makes on sale (ticket 29): its sources, as told.
 		from = best.from, ratio = best.ratio, takes = best.takes, reserve = best.reserve,
+		keeper_only = best.keeper_only,
 	}
 end
 
@@ -296,6 +303,7 @@ end
 -- sources when the stash holds none of the product: whole lots of `takes`, none of the
 -- `reserve`, at the told price for each product.
 function M.buy_from_stash(self, trip, chest)
+	if trip.keeper_only and not self._villages_keeper then return 0, "its dishes are for the keeper" end
 	local budget, value = budget_and_value(self, trip)
 	local want = trip.want - (trip.bought or 0)
 	local held = chest_count(chest, trip.item)
@@ -590,6 +598,10 @@ end
 -- alchemist in the work stage too), and go on with one under way in either.
 local function may_travel(self, trip, stage)
 	if stage == "putter" then return true end
+	-- The keeper's free hours too (ticket 49): in its one putter hour alone it set off twice
+	-- in three days while the butcher held 14 dishes it wanted (lv_pair e2, 2026-11-22).
+	-- keeper_supply.lua holds its farm fetches back while a trip is under way.
+	if stage == "free" and self._villages_keeper then return true end
 	if stage ~= "work" then return false end
 	return trip ~= nil or self._villages_alchemist or commission.of(self) ~= nil or self._villages_builder_wants ~= nil or self._villages_builder_logs ~= nil
 		or self._villages_builder_wool ~= nil

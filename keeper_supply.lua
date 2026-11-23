@@ -73,6 +73,7 @@ local possessions = dofile(core.get_modpath("living_villages") .. "/possessions.
 local food = dofile(core.get_modpath("living_villages") .. "/food.lua")
 local dinner = dofile(core.get_modpath("living_villages") .. "/dinner.lua")
 local prices = dofile(core.get_modpath("living_villages") .. "/prices.lua")
+local market = dofile(core.get_modpath("living_villages") .. "/keeper_market.lua")
 
 local SUPPLY_RADIUS = 48
 local COMPOSTER_HEIGHT = 8
@@ -174,7 +175,9 @@ function M.update_wants(self, chests)
 	local wanted = 0
 	for _, count in pairs(wants) do wanted = wanted + count end
 	self._villages_dish_wants = wants
-	local short = M.target(self) - M.dishes(chests) - wanted
+	-- At market (ticket 51) it stocks for the days to the next one.
+	local days = self._villages_at_market == core.get_day_count() and market.STOCK_DAYS or 1
+	local short = M.target(self) * days - M.dishes(chests) - wanted
 	self._villages_dish_short = short > 0 and short or nil
 	self._villages_dish_bids = M.dish_bids(self)
 end
@@ -461,6 +464,40 @@ local function go(self, target, now, arrive)
 	end
 end
 
+-- Errands by taste (ticket 49). The keeper sees every dish it serves (meal.lua's
+-- `_villages_served_dishes`), the sum of what its guests ate at the tavern, and each guest
+-- picks the dish it ate least of lately (variety.lua): a dish served often is one they
+-- tire of. Before fetching bread from a farm it asks whether a dish it wants for the
+-- pantry, with a seller heard of, is one its guests are no more tired of than bread
+-- (possessions.variety_of); if so it goes for that first: its trade trip (trade_trips.lua,
+-- which ranks the dishes by their value, the same taste in it) gets PREFER_SECONDS before
+-- a farm fetch starts. Each dish is preferred so once per PREFER_AGAIN, so a trip that
+-- keeps failing does not keep it from the farms.
+local PREFER_SECONDS = 90
+local PREFER_AGAIN = 600
+
+-- The dish it would rather go for than a farm's bread, and the two tastes; or nil.
+function M.preferred_dish(self, now)
+	local wants = self._villages_dish_wants or {}
+	local short = (self._villages_dish_short or 0) > 0
+	local taste = possessions.variety_of(self)
+	local bread = taste(BREAD)
+	local tried = self._villages_preferred or {}
+	local best, best_taste
+	for _, entry in ipairs(self._villages_market_news or {}) do
+		local item = entry.item
+		if entry.kind == "has" and entry.who ~= self._id and item ~= BREAD and food.is_prepared(item)
+			and ((wants[item] or 0) > 0 or (short and wants[item] == nil)) and (entry.count or 0) > 0
+			and (tried[item] or 0) <= now then
+			local t = taste(item)
+			if t >= bread and (not best or t > best_taste or (t == best_taste and item < best)) then
+				best, best_taste = item, t
+			end
+		end
+	end
+	return best, best_taste, bread
+end
+
 local function supply(self, jukebox, now)
 	if self._villages_supply_target then
 		-- The walk ended without arriving: try again later.
@@ -484,6 +521,17 @@ local function supply(self, jukebox, now)
 		return go(self, jukebox, now, function(entity) deliver(entity, jukebox) end)
 	end
 	if M.meals(chests) >= M.target(self) then return end
+	-- A trade trip under way (ticket 49): no farm fetch to pull it off its walk.
+	if self._villages_trade_trip then return end
+	local dish, dish_taste, bread_taste = M.preferred_dish(self, now)
+	if dish then
+		self._villages_preferred = self._villages_preferred or {}
+		self._villages_preferred[dish] = now + PREFER_AGAIN
+		self._villages_supply_next = now + PREFER_SECONDS
+		core.log("action", string.format("[living_villages] keeper %s goes for %s (taste %.2f) before the farms' bread (%.2f)",
+			tostring(self._id):sub(1, 6), dish, dish_taste, bread_taste))
+		return
+	end
 	local source = M.source(jukebox, chests, skipped(self, now))
 	if not source then
 		self._villages_supply_next = now + RETRY_SECONDS
@@ -517,8 +565,20 @@ end
 -- Ticket 44: a trip that fetched no food left the purse in the pouch, with nothing carried
 -- to take it back to the pantry; the pantry held no money to float it, and it bought dishes
 -- from its 0 to 6 emeralds while 360 sat in its pouch (ColonyFood, 2026-11-21).
-function M.float(self, chests)
-	local short = FLOAT - possessions.emeralds(self)
+function M.float(self, chests, all)
+	-- At market (ticket 51), all the pantry's money: it shops for days.
+	local short = all and math.huge or FLOAT - possessions.emeralds(self)
+	-- Back from market, what it did not spend over FLOAT goes back in the pantry: the
+	-- tavern's money, not its own to spend.
+	if self._villages_at_market and short < 0 and self._villages_at_market ~= core.get_day_count() then
+		local back = 0
+		while back < -short and pantry.has_room(chests, EMERALD, 1) and possessions.take(self, EMERALD, 1) == 1 do
+			pantry.put(chests, EMERALD, 1)
+			back = back + 1
+		end
+		self._villages_at_market = nil
+		return -back
+	end
 	local taken = 0
 	while taken < short and pantry.take(chests, EMERALD) do taken = taken + 1 end
 	local pouch = math.min(short - taken, stock.count(self, EMERALD))
@@ -579,6 +639,22 @@ function M.step(self, now)
 	local stage = common.schedule_stage(nil, self)
 	if stage == "staff" then
 		cook_tick(self, jukebox, now)
+	elseif stage == "free" and market.open(common.is_holiday()) and not self._villages_supply_target
+		and carried(self) == 0 then
+		-- Market day (ticket 51): round the stalls, not the farms.
+		local day = core.get_day_count()
+		local chests = pantry.chests(jukebox)
+		if self._villages_at_market ~= day and chests then
+			self._villages_at_market = day
+			M.float(self, chests, true)
+			M.update_wants(self, chests)
+			core.log("action", string.format("[living_villages] keeper %s goes to market with %d emerald(s), wanting %d dishes",
+				tostring(self._id):sub(1, 6), possessions.emeralds(self), self._villages_dish_short or 0))
+		end
+		-- With no stall showing food, the farms as on any day.
+		if not market.step(self, now, day, market.go) then
+			supply(self, jukebox, now)
+		end
 	elseif stage == "free" then
 		supply(self, jukebox, now)
 	else

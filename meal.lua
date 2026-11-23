@@ -88,6 +88,12 @@ local CLERIC_SAVINGS = 8 * ledger.DINNER
 -- Dishes a villager guest may have in one evening: enough to take it from starving (0)
 -- to above EAT_AT (4 + 4 + 4 points).
 local MAX_DISHES = 3
+-- Take-home dishes (ticket 48c): fed, a villager guest buys dishes to keep, at the price of
+-- a dish at dinner, up to possessions.PARENT_FOOD points of food owned (two days', what a
+-- birth asks of each parent), at most MAX_TAKEAWAY an evening, and never the pantry's last
+-- TAKEAWAY_KEEP dishes, which are for the guests still to come.
+local MAX_TAKEAWAY = 2
+local TAKEAWAY_KEEP = 3
 -- How far from the jukebox its keeper is looked for: keeper.lua's staffing
 -- distance, with room to spare.
 local KEEPER_RADIUS = 4
@@ -426,6 +432,42 @@ local function seconds(self, jukebox, chests)
 	return more
 end
 
+-- Dishes a fed villager guest buys to take home (ticket 48c), while it owns under
+-- possessions.PARENT_FOOD points of food and values the dish at its price. The butcher
+-- sells its dishes to the keeper alone while a keeper serves (tavern_duty.lua), so this
+-- is where a villager buys one to keep. Each counts toward the evening's demand, which the
+-- keeper stocks the pantry to. Returns how many it took.
+local function takeaway(self, jukebox, chests)
+	local price, can_pay, pay = terms(self, jukebox)
+	-- Who eats free (the keeper's household, a poor cleric) takes nothing home free.
+	if price <= 0 or self._villages_keeper then return 0 end
+	local owned = possessions.food_owned(self)
+	if owned >= possessions.PARENT_FOOD then return 0 end
+	local view = possessions.assess(self)
+	local day = core.get_day_count()
+	local taken = 0
+	while taken < MAX_TAKEAWAY and owned < possessions.PARENT_FOOD do
+		if not can_pay() then break end
+		local dishes = pantry.available(chests, menu())
+		local left = 0
+		for _, item in ipairs(dishes) do left = left + pantry.count(chests, item) end
+		if left <= TAKEAWAY_KEEP then break end
+		local item = pick_dish(self, dishes)
+		if (view.value(item) or 0) < price then break end
+		if not settle(self, jukebox, chests, item, 1, price, pay, "a dish to take home") then break end
+		possessions.add(self, item, 1)
+		dinner.served(keeper_on_duty(jukebox), day)
+		owned = owned + (food.POINTS[item] or 0)
+		taken = taken + 1
+	end
+	if taken > 0 then
+		core.log("action", string.format("[living_villages] villager %s took %d dish(es) home from the tavern at %s",
+			tostring(self._id):sub(1, 6), taken, core.pos_to_string(jukebox)))
+	end
+	return taken
+end
+M.takeaway = takeaway
+
 local function serve(self, jukebox)
 	local pos, node = plate_for(self)
 	if not pos or not plate_empty(pos) or held_by_other(pos, self._id) then return end
@@ -471,6 +513,7 @@ local function serve(self, jukebox)
 		for _ = 1, portion do food.receive(self, item) end
 		-- A dish, not a raw plate: more while it is still hungry.
 		if not food.raw_portion(item) then seconds(self, jukebox, chests) end
+		takeaway(self, jukebox, chests)
 		-- Its dinner for the day: it eats nothing of its own tonight (possessions.lua).
 		self._villages_dined_day = core.get_day_count()
 	end

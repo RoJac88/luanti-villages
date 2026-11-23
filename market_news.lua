@@ -43,6 +43,7 @@ local goods = dofile(core.get_modpath("living_villages") .. "/goods.lua")
 local stock = dofile(core.get_modpath("living_villages") .. "/farm_stock.lua")
 local recipes = dofile(core.get_modpath("living_villages") .. "/recipes.lua")
 local food = dofile(core.get_modpath("living_villages") .. "/food.lua")
+local duty = dofile(core.get_modpath("living_villages") .. "/tavern_duty.lua")
 local COAL = "mcl_core:coal_lump"
 
 local NEWS_ENTRIES = 24
@@ -225,6 +226,8 @@ function M.own(self, view, now)
 				-- for the alchemist's ingots all failed, its stash holding only nuggets).
 				from = converted and converted.from or nil, ratio = converted and converted.ratio or nil,
 				takes = converted and converted.takes or nil, reserve = converted and converted.reserve or nil,
+				-- A butcher's dish while a keeper serves: for the keeper alone (tavern_duty.lua).
+				keeper_only = kind == "has" and duty.keeper_only(self, item) or nil,
 			}
 		end
 		for _, top in ipairs(ledger.top(list, view.value, OWN_ITEMS)) do add(top.item, top.count) end

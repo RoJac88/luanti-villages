@@ -163,7 +163,8 @@ assert(production.work(starving, 400) == 0 and starving._villages_craft == 100)
 assert(production.work(starving, 80) == 1, "slowly, but it makes one")
 assert(production.restock_held(starving) == "starving")
 
--- Fuel: a lump is 8 smelts, charcoal burned first, the rest kept for the next item.
+-- Fuel: a lump is 8 smelts, charcoal burned first, the rest kept for the next item. A
+-- smoker's dish takes half a smelt (E6).
 -- (With over 5 dinners' emeralds it wants two days' food, 8 points: one cooked beef's 6 leave
 -- it wanting a second, tickets 15 and 17. Beef, not porkchop: nothing here raises pigs, so
 -- cooked porkchop is no food it wants, ticket 40c.)
@@ -174,15 +175,15 @@ possessions.add(bram, "mcl_core:coal_lump", 1)
 possessions.add(bram, "mcl_core:charcoal_lump", 1)
 assert(production.work(bram, 240) == 2)
 assert(count(bram, "mcl_mobitems:cooked_beef") == 2 and count(bram, "mcl_core:coal_lump") == 1)
-assert(count(bram, "mcl_core:charcoal_lump") == 0 and bram._villages_fuel == 6)
+assert(count(bram, "mcl_core:charcoal_lump") == 0 and bram._villages_fuel == 7)
 -- Any fuel will do (ticket 15): planks burn 1.5 smelts each, and the butcher cooks fish.
 local planker = smith({_id = "planker", _profession = "butcher", _villages_food = 4})
 possessions.add(planker, "mcl_core:emerald", 100)
 possessions.add(planker, "mcl_fishing:fish_raw", 2)
 possessions.add(planker, "mcl_core:wood", 3)
 assert(production.work(planker, 240) == 2, "cooks both fish")
-assert(count(planker, "mcl_fishing:fish_cooked") == 2 and count(planker, "mcl_core:wood") == 1)
-assert(math.abs((planker._villages_fuel or 0) - 1) < 1e-9, planker._villages_fuel)
+assert(count(planker, "mcl_fishing:fish_cooked") == 2 and count(planker, "mcl_core:wood") == 2)
+assert(math.abs((planker._villages_fuel or 0) - 0.5) < 1e-9, planker._villages_fuel)
 -- Any species will do (ticket 15): a cartographer with birch logs and white wool splits
 -- them into birch planks, sticks from those, and a banner.
 do
@@ -408,10 +409,15 @@ do
 	time = 9000 / 24000
 	assert(production.idle_today(bare) == true and bare._villages_idle.day == day)
 	assert(logs[#logs]:find("ida%-id %(tool_smith%) has nothing to make today and labours"), logs[#logs])
-	-- Cobble that comes in later the same day changes nothing until tomorrow.
+	-- Cobble that comes in later the same day brings it back within IDLE_RECHECK (E6).
 	possessions.add(bare, "mcl_core:cobble", 3)
 	possessions.add(bare, "mcl_core:stick", 2)
-	assert(production.idle_today(bare) == true, "settled for the day")
+	local saved_now = now
+	assert(production.idle_today(bare) == true, "not asked again yet")
+	now = now + production.IDLE_RECHECK
+	assert(production.idle_today(bare) == false, "back to its jobsite once it can make something")
+	assert(logs[#logs]:find("has work again"), logs[#logs])
+	now = saved_now
 	day = day + 1
 	assert(production.idle_today(bare) == false, "back to its jobsite the next day")
 	day = day - 1
@@ -470,7 +476,8 @@ end
 -- Labourers craft while they wait (ticket 23a).
 do
 	local function labourer(id)
-		local v = smith({_id = id, _profession = "nitwit", _jobsite = nil})
+		local v = smith({_id = id, _profession = "nitwit"})
+		v._jobsite = nil -- a nil field in smith's list overrides nothing
 		v._villages_labour = {day = day, activity = "quarrier"}
 		v._villages_econ_clock = 0
 		return v
@@ -577,6 +584,12 @@ do
 	c._villages_labour_plan.day = day
 	c._villages_labour = {day = day - 1, activity = "quarrier"}
 	assert(possessions.labour_plan(c) == nil)
+	-- An idle crafter labours but buys no plan's inputs: its money is for its own trade's.
+	c._villages_labour = {day = day, activity = "quarrier"}
+	assert(possessions.labour_plan(c) ~= nil)
+	c._jobsite = {x = 0, y = 0, z = 0}
+	assert(possessions.labour_plan(c) == nil and not possessions.assess(c).needs["mcl_core:cobble"])
+	c._jobsite = nil
 end
 
 -- A librarian binds a book and a feather into a book and quill (ticket 32), a comfort.

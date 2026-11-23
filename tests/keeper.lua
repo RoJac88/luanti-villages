@@ -138,13 +138,13 @@ alice.order = nil
 def.do_custom(alice, 0.1)
 assert(alice.order == nil, "no hold once service ends")
 
--- Holiday hours (#285): staffing starts at 14:30, half an hour before an
--- ordinary day's 15:00, and ends at 18:30.
+-- Holiday hours (#285): staffing starts at 14:30, half an hour before its guests come at
+-- 15:00, as an ordinary day's at 15:00 is before theirs at 15:30 (ticket 51), and ends at 18:30.
 local schedule = dofile("common.lua")
 local function stage_at(ticks) return schedule.schedule_stage(ticks / 24000, alice) end
 day = 3
-assert(stage_at(13500) == "free", "ordinary day: not yet")
-assert(stage_at(14000) == "staff")
+assert(stage_at(14999) == "free", "ordinary day: not yet")
+assert(stage_at(15000) == "staff")
 day = 4
 assert(stage_at(14499) == "free", "holiday: not before 14:30")
 assert(stage_at(14500) == "staff", "holiday: starts staffing at 14:30")
@@ -248,5 +248,55 @@ do
 	local known = keeper.known_dishes(k, 10)
 	assert(#known == 1 and known[1] == "mcl_mobitems:cooked_chicken" and not k._villages_known_dishes["mcl_fishing:salmon_cooked"])
 	assert(#keeper.known_dishes({}, 10) == 0)
+end
+-- A keeper that misses two dinners in a row gives the tavern up (ticket 48b), keeping its
+-- pouch's float; its jukebox is anyone's, even while it is away and unloaded.
+do
+	vanilla_custom = function() end
+	local box = {x = 70, y = 0, z = 0}
+	nodes[key(box)] = "mcl_jukebox:jukebox"
+	metas[key(box)] = {}
+	local lost = villager("lost", {x = 69, y = 0, z = 0})
+	def.do_custom(lost, 0.1)
+	assert(lost._villages_keeper and lost._villages_keeper_staffed == day)
+	lost._villages_farm_pouch = {["mcl_core:emerald"] = 40}
+	lost._villages_belongings = {["mcl_core:emerald"] = 5}
+	-- Away for one dinner: still the keeper.
+	local start_day, start_time = day, time
+	day, time = day + 2, 10000 / 24000
+	def.do_custom(lost, 0.1)
+	assert(lost._villages_keeper, "one dinner missed")
+	-- Its jukebox, with the keeper unloaded far away after the second: vacant to a seeker.
+	day = day + 1
+	local seeker = villager("seeker", {x = 71, y = 0, z = 0})
+	now = now + 100
+	def.do_custom(seeker, 0.1)
+	assert(seeker._villages_keeper and minetest.get_meta(box):get_string("villager") == "seeker",
+		"the absent keeper's tavern is taken")
+	-- Back from the cave, the old keeper is no longer one.
+	vanilla_custom = function(self)
+		if self._jobsite and minetest.get_meta(self._jobsite):get_string("villager") ~= self._id then
+			self._jobsite, self._profession, self._trades = nil, "unemployed", nil
+		end
+	end
+	def.do_custom(lost, 0.1)
+	assert(not lost._villages_keeper and lost._profession == "unemployed")
+	-- One that resigns itself keeps the float in its belongings.
+	vanilla_custom = function() end
+	local box2 = {x = 90, y = 0, z = 0}
+	nodes[key(box2)] = "mcl_jukebox:jukebox"
+	metas[key(box2)] = {}
+	time = 10000 / 24000
+	local away = villager("away", {x = 89, y = 0, z = 0})
+	def.do_custom(away, 0.1)
+	assert(away._villages_keeper)
+	away._villages_farm_pouch = {["mcl_core:emerald"] = 40}
+	away._villages_belongings = {["mcl_core:emerald"] = 5}
+	day, time = day + 2, 18600 / 24000
+	assert(keeper.resign_if_absent(away))
+	assert(not away._villages_keeper and away._profession == "unemployed" and away._jobsite == nil)
+	assert(away._villages_belongings["mcl_core:emerald"] == 45 and away._villages_farm_pouch == nil)
+	assert(minetest.get_meta(box2):get_string("villager") == "")
+	day, time = start_day, start_time
 end
 print("keeper.lua: ok")
