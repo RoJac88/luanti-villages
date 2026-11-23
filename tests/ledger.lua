@@ -259,4 +259,19 @@ do
 	assert(ledger.food_good("mcl_farming:bread") and not ledger.food_good("mcl_mobitems:leather"))
 end
 
+-- Experiment E7: a log or planks wanted as fuel is worth its burn seconds at coal's value,
+-- not its timber price; one wanted as logs keeps that.
+do
+	local LOG, COAL_LUMP, CHAR = "mcl_core:tree", "mcl_core:coal_lump", "mcl_core:charcoal_lump"
+	local cook = ledger.assess({profession = "butcher", max_tier = 5, held = {}})
+	assert(cook.group[LOG] == "fuel", tostring(cook.group[LOG]))
+	local coal = cook.value(COAL_LUMP)
+	assert(math.abs(cook.value(LOG) - coal * 15 / 80) < 1e-9, cook.value(LOG))
+	assert(math.abs(cook.value("mcl_core:wood") - coal * 15 / 80) < 1e-9)
+	assert(cook.value(LOG) < cook.value(CHAR) / 4, "a lump burns over five logs' time")
+	-- A buyer of logs as logs (a Builder's, extra_categories) values them as timber.
+	local builder = ledger.assess({profession = "nitwit", held = {}, extra_categories = {log = 16}})
+	assert(builder.value(LOG) > ledger.price(LOG), builder.value(LOG))
+end
+
 print("ledger.lua: ok")

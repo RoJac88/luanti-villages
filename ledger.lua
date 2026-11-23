@@ -57,6 +57,8 @@ local MAX_URGENCY, MIN_URGENCY = 3, 0.5
 -- Crafts' worth of each recipe input it wants to hold, and lumps of fuel.
 local CRAFT_BATCH = 4
 local FUEL_BATCH = 4
+-- The member a category's other members are valued against when wanted for it (E7).
+local BURN_REFERENCE = {fuel = "mcl_core:coal_lump"}
 local COAL = "mcl_core:coal_lump"
 -- The money factor (ticket 21a, docs/villager-economy-design.md's Price discovery): what
 -- an emerald is worth to a villager falls with how many it holds. Its marginal value is
@@ -627,10 +629,23 @@ function M.assess(input)
 	local function variety(item)
 		return input.variety and goods.category_of(item) == "food" and input.variety(item) or 1
 	end
-	local function value(item)
+	local value
+	function value(item)
 		local price = M.price(item)
 		if not price then return nil end
 		if item == EMERALD then return 1 end
+		-- Wanted for a category it is priced apart from (a log or planks burned as fuel), it is
+		-- worth its units of the category at the reference member's value (experiment E7): the
+		-- butcher valued a log at its timber price, 137 to it, wanted 16, and paid 20 to 74
+		-- each for 1.5 smelts while charcoal, 8 smelts, sold at 7 (lv_pair e5).
+		local active = category_of(item)
+		local reference = active and BURN_REFERENCE[active]
+		if reference and item ~= reference and goods.category_of(item) ~= active then
+			local per = value(reference)
+			local units, reference_units = goods.units(active, item), goods.units(active, reference)
+			if not per or not units or not reference_units then return nil end
+			return per * units / reference_units
+		end
 		-- Its reference price's factor (prices.lua): a category's members share one.
 		local beliefs = input.prices
 		local category = beliefs and goods.category_of(item)
