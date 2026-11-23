@@ -134,7 +134,7 @@ do
 end
 
 -- Made goods: PROFIT times inputs at what they cost (bought) or GATHER_SHARE of base (its own),
--- and fuel at the reference price for coal, never under GATHER_SHARE of coal's base. The
+-- and fuel at the reference price for coal (half a smelt a dish, E6), never under GATHER_SHARE of coal's base. The
 -- butcher sold cooked beef from its own herd at 0.25 while raw beef was asked at 0.34.
 do
 	local book = dofile("cost_book.lua")
@@ -144,11 +144,11 @@ do
 		_villages_prices = {[BEEF_COOKED] = 1 / 64, [COAL] = 1 / 64}}
 	local coal = ledger.price(COAL) * asks.GATHER_SHARE
 	assert(near(asks.fuel_cost(butch), coal), "coal's reference fell under the floor")
-	local own = asks.PROFIT * (ledger.price(BEEF) * asks.GATHER_SHARE + coal / 8)
+	local own = asks.PROFIT * (ledger.price(BEEF) * asks.GATHER_SHARE + coal / 16)
 	assert(near(asks.reservation(butch, BEEF_COOKED), own), "from its own herd")
 	assert(asks.reservation(butch, BEEF_COOKED) > ledger.price(BEEF) * asks.GATHER_SHARE, "over raw beef's")
 	book.note(butch, BEEF, 10, 20)
-	local bought = asks.PROFIT * (2 + coal / 8)
+	local bought = asks.PROFIT * (2 + coal / 16)
 	assert(near(asks.reservation(butch, BEEF_COOKED), bought), "from beef it paid 2 for")
 	assert(near(asks.ask(butch, BEEF_COOKED), bought))
 	assert(near(asks.reservation(butch, BEEF), 2), "raw beef it bought: what it paid, no profit")

@@ -64,6 +64,8 @@ local news = dofile(core.get_modpath("living_villages") .. "/market_news.lua")
 local wants = dofile(core.get_modpath("living_villages") .. "/wants.lua")
 
 local DEFAULT_CRAFT_SECONDS = 120
+-- Seconds of game time between an idle crafter's looks for something to make again.
+local IDLE_RECHECK = 60
 local JOBSITE_REACH = 3
 local STEP_SECONDS = 5
 -- How often a labourer waiting looks again for the labour recipe to buy for.
@@ -89,7 +91,7 @@ local MAX_TIER = 5
 -- mobs_mc/villager.lua's badges, by tier.
 local BADGES = {"mobs_mc_stone.png", "mobs_mc_iron.png", "mobs_mc_gold.png", "mobs_mc_emerald.png", "mobs_mc_diamond.png"}
 
-local M = {RECIPES = recipes, STOCK = STOCK, UNASKED_STOCK = UNASKED_STOCK, SMELTS_PER_LUMP = SMELTS_PER_LUMP, JOBSITE_REACH = JOBSITE_REACH, DEMAND_CAP = DEMAND_CAP}
+local M = {IDLE_RECHECK = IDLE_RECHECK, RECIPES = recipes, STOCK = STOCK, UNASKED_STOCK = UNASKED_STOCK, SMELTS_PER_LUMP = SMELTS_PER_LUMP, JOBSITE_REACH = JOBSITE_REACH, DEMAND_CAP = DEMAND_CAP}
 
 local function short_id(self)
 	return tostring(self._id):sub(1, 6)
@@ -408,11 +410,23 @@ function M.idle_today(self)
 	if self._profession == "shepherd" or self._villages_alchemist then return false end
 	if self._profession == "nitwit" or self._profession == "unemployed" or not M.recipes(self) then return false end
 	local day = core.get_day_count()
+	local now = core.get_gametime and core.get_gametime() or 0
 	local idle = self._villages_idle
-	if idle and idle.day == day then return idle.idle end
+	-- Idle, it asks again every IDLE_RECHECK (experiment E6): the butcher found no fish at
+	-- the work bell, bought some on a trip, and laboured the rest of the day with it.
+	if idle and idle.day == day and not (idle.idle and now - (idle.at or 0) >= IDLE_RECHECK
+		and common.schedule_stage(nil, self) == "work") then
+		return idle.idle
+	end
 	if common.schedule_stage(nil, self) ~= "work" then return false end
 	local nothing = M.choose(self) == nil
-	self._villages_idle = {day = day, idle = nothing}
+	local logged = idle and idle.day == day
+	self._villages_idle = {day = day, idle = nothing, at = now}
+	if nothing and logged then return true end
+	if not nothing and logged then
+		core.log("action", string.format("[living_villages] production: villager %s (%s) has work again and goes back to it",
+			short_id(self), trade_name(self)))
+	end
 	if nothing then
 		core.log("action", string.format("[living_villages] production: villager %s (%s) has nothing to make today and labours",
 			short_id(self), trade_name(self)))
