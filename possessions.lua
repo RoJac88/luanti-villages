@@ -924,12 +924,17 @@ function M.assess(self, offered)
 			end
 		end
 		local held
+		-- The pantry's shortfall (E8) on each dish it knows as well: those are the dishes on
+		-- offer. The dish category leaves out a good wanted by name, so the shortfall fell only
+		-- on dishes nobody made (its needs read 60 baked potatoes, cooked beef and cooked
+		-- chicken, lv_pair e7) and the butcher's three dishes stayed at their few each.
+		local spread = math.max(self._villages_dish_short or 0, 0)
 		for item, count in pairs(self._villages_dish_wants or {}) do
 			held = held or M.held(self)
-			extra[item] = (extra[item] or 0) + math.max(count, held[item] or 0)
+			extra[item] = (extra[item] or 0) + math.max(count, held[item] or 0) + spread
 			local bid = math.max(cap, bids[item] or 0)
 			worth[item] = math.min(worth[item] or math.huge, bid)
-			if count > 0 then
+			if count > 0 or spread > 0 then
 				dish_least = dish_least or {}
 				dish_least[item] = bid
 			end

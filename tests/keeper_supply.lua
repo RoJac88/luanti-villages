@@ -405,6 +405,23 @@ assert(kate._villages_dish_short == supply.target(kate) - (supply.TARGET_MEALS +
 local view = dofile("possessions.lua").assess(kate)
 assert((view.needs["mcl_fishing:salmon_cooked"] or 0) > 0 and (view.needs["mcl_farming:potato_item_baked"] or 0) > 0, "any dish")
 assert(not view.needs["mcl_farming:potato_item"], "no raw potatoes to bake")
+-- E8: a dish it knows takes the shortfall too, past its few: not only the dishes nobody
+-- offers.
+assert((view.needs["mcl_mobitems:cooked_beef"] or 0) == dofile("keeper.lua").MIN_DISHES + kate._villages_dish_short,
+	tostring(view.needs["mcl_mobitems:cooked_beef"]))
+-- What it carries counts with the pantry: 5 cooked beef bought fill its few and part of
+-- the shortfall.
+do
+	local poss = dofile("possessions.lua")
+	local before = kate._villages_dish_short
+	poss.add(kate, "mcl_mobitems:cooked_beef", 5)
+	supply.update_wants(kate, chests)
+	assert(kate._villages_dish_short == before + dofile("keeper.lua").MIN_DISHES - 5, tostring(kate._villages_dish_short))
+	assert(supply.held_dishes(kate) == 5)
+	poss.take_held(kate, "mcl_mobitems:cooked_beef", 5)
+	supply.update_wants(kate, chests)
+	assert(kate._villages_dish_short == before)
+end
 -- Its bids (ticket 46b): the cheapest ask it heard for a dish, where over its plate cap;
 -- raw food, a category's news, its own and asks under the cap left out.
 assert(kate._villages_dish_bids == nil, "nothing heard")
