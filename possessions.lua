@@ -668,7 +668,7 @@ function M.step(self, now)
 	M.collect_stash_emeralds(self)
 	M.stash_spare(self)
 	-- It takes up comforts it holds, and puts down those used up (comforts.lua).
-	comforts.update(self, M.in_dinners(self, M.emeralds(self)), M.take_own, now)
+	comforts.update(self, M.in_dinners(self, M.emeralds(self)), M.take_own, now, M.count)
 	-- Its asks for what it did not sell yesterday come down (asks.lua): a farmer's chest
 	-- counts as its spare (`_villages_chest_spare`, farmer.lua, ticket 39a), so a full chest
 	-- the keeper takes little of lowers what it pays.
@@ -890,7 +890,7 @@ function M.assess(self, offered)
 	local own_emeralds = M.emeralds(self)
 	own_emeralds = own_emeralds - commission.reserve(self, own_emeralds)
 	local comfort, comfort_worth, comfort_categories = comforts.targets(self, M.in_dinners(self, own_emeralds),
-		core.get_gametime())
+		core.get_gametime(), M.count)
 	for item, count in pairs(comfort) do extra[item] = (extra[item] or 0) + count end
 	for item, value in pairs(comfort_worth) do worth[item] = math.max(worth[item] or 0, value) end
 	for item, count in pairs(self._villages_builder and self._villages_builder_wants or {}) do

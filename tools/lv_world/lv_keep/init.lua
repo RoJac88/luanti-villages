@@ -132,6 +132,7 @@ local common = dofile(lv .. "/common.lua")
 local food = dofile(lv .. "/food.lua")
 local stock = dofile(lv .. "/farm_stock.lua")
 local pantry = dofile(lv .. "/tavern_pantry.lua")
+local goods = dofile(lv .. "/goods.lua")
 
 -- Food flow (2026-11-13): what farmers hold and store, what the pantry holds, and the
 -- food anyone else carries, so a day's summary shows where the village's food sits.
@@ -351,9 +352,31 @@ local function summary(why)
 		for _, top in ipairs(ledger.top(view.surplus, view.value, 3)) do
 			spare[#spare + 1] = top.count .. " " .. short(top.item) .. "@" .. string.format("%.0f", view.value(top.item) or 0)
 		end
+		-- A category's need once, under its member cheapest per unit, as market news tells it:
+		-- every member carries the whole shortfall, so "48 cherrytree, 48 acaciatree, 48
+		-- birchtree" was one need for 48 logs of any kind.
+		local collapsed, cheapest = {}, {}
+		for item, count in pairs(view.needs) do
+			local group = view.group and view.group[item]
+			if group then
+				local per = (view.value(item) or math.huge) / goods.units(group, item)
+				local best = cheapest[group]
+				if not best or per < best.per or (per == best.per and item < best.item) then
+					cheapest[group] = {item = item, per = per}
+				end
+			else
+				collapsed[item] = count
+			end
+		end
+		for group, best in pairs(cheapest) do collapsed["group:" .. group] = view.needs[best.item] end
+		local function shown_value(item)
+			local group = item:match("^group:(.+)$")
+			return view.value(group and cheapest[group].item or item)
+		end
 		local needs = {}
-		for _, top in ipairs(ledger.top(view.needs, view.value, 3)) do
-			needs[#needs + 1] = top.count .. " " .. short(top.item) .. "@" .. string.format("%.0f", view.value(top.item) or 0)
+		for _, top in ipairs(ledger.top(collapsed, shown_value, 3)) do
+			local name = top.item:match("^group:(.+)$") or short(top.item)
+			needs[#needs + 1] = top.count .. " " .. name .. "@" .. string.format("%.0f", shown_value(top.item) or 0)
 		end
 		local heard = news.heard(e)
 		local deal = labour.deal(heard, possessions.emeralds(e))
