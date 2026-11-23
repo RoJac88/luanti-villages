@@ -85,6 +85,21 @@ have, and `--from DAY` drops the days before DAY. For each side the columns are:
 
 The means are taken over the days both sides finished.
 
+### A pair on this machine
+
+`local.sh` runs a pair here instead, for a second pair alongside the thinkpad's. Run one
+pair per host at a time: two servers are what each machine runs side by side.
+
+```sh
+scp rodri@thinkpad-win11:LVTown-1.tar ~/.cache/lv_pair/   # the same village as the thinkpad
+tools/lv_pair/local.sh run fuel experiment/a experiment/b
+tools/lv_pair/local.sh compare fuel
+tools/lv_pair/local.sh stop fuel
+```
+
+It needs `luanti` with the mineclone2 game and mcl_decor among the user mods. Worlds and
+their `server.log` are kept in `~/.cache/lv_pair/<name>/{a,b}` (`LV_PAIR_LOCAL`).
+
 ## How much is noise
 
 Two copies of the same world on the same code still drift apart, because timing differs from
