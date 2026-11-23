@@ -163,6 +163,25 @@ assert(near(glass_cost, 2 * alchemist.unit_cost(fresh_book, "stone")
 	+ 4 / 8 * 80 * alchemist.unit_cost(fresh_book, "fuel")), glass_cost)
 local fuel_cap = alchemist.caps(fresh_book, possessions.held(fresh_book))[CHARCOAL]
 assert(fuel_cap <= ledger.price("mcl_core:coal_lump") * 1.01, fuel_cap)
+-- Bids from demand (E11b): a smith heard to need ingots at 270 (30 a nugget, twice a
+-- nugget's cost) doubles its bid for stone; one at 1,000 lifts it DEMAND_SCALE times, no
+-- more; stale news, its own, and gold (sold only past its reserve) lift nothing.
+local function heard_need(item, price, heard, who)
+	return {kind = "needs", item = item, price = price, count = 12, who = who or "smith", heard = heard or now}
+end
+local plain = alchemist.caps(fresh_book, possessions.held(fresh_book))[COBBLE]
+local function cobble_cap(news_list)
+	local a = alchemist_with({[EMERALD] = 349})
+	a._villages_market_news = news_list
+	return alchemist.caps(a, possessions.held(a), now)[COBBLE]
+end
+local nugget_cost = alchemist.cost(fresh_book, by_makes[NUGGET])
+assert(near(cobble_cap({heard_need(INGOT, 18 * nugget_cost)}), 2 * plain), cobble_cap({heard_need(INGOT, 18 * nugget_cost)}))
+assert(near(cobble_cap({heard_need(INGOT, 1000)}), alchemist.DEMAND_SCALE * plain), "at most DEMAND_SCALE")
+assert(near(cobble_cap({heard_need(NUGGET, 2 * nugget_cost)}), 2 * plain), "a nugget's need too")
+assert(near(cobble_cap({heard_need(INGOT, 1000, now - (alchemist.DEMAND_DAYS + 1) * 1200)}), plain), "stale")
+assert(near(cobble_cap({heard_need(INGOT, 1000, now, "alch")}), plain), "its own")
+assert(near(cobble_cap({heard_need("mcl_core:gold_ingot", 1e6)}), plain), "gold lifts nothing")
 local rich = possessions.assess(alchemist_with({[NUGGET] = 500, [GLASS] = 100}))
 assert(rich.surplus[NUGGET] == 500, "every nugget is spare")
 

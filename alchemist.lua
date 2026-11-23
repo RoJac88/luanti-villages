@@ -53,6 +53,9 @@ local OVERLAY = "(living_villages_villager_profession_cleric.png^[multiply:#4fb3
 --   make (under `upto`) sell for pays: each recipe's sale price (`_villages_sold_at`, else
 --   its reference price) over its cost at the book scales the book's unit costs, and the
 --   best recipe's sets the cap. It applies after the money factor (ledger's `ceiling`).
+--   A good others were heard to need sells for no less than that need's price (E11b,
+--   M.demand), up to DEMAND_SCALE times its cost, so a smith's want of iron lifts its bid
+--   for stone.
 -- * Its budget (ticket 28a, `floors`) still lifts its bids, above those caps too: each
 --   day it means to spend what it holds over RESERVE_DINNERS dinners over SPEND_DAYS, on
 --   the day's wants (a day's stock, so its targets bound it), shared by base price. What
@@ -75,6 +78,11 @@ local COAL = "mcl_core:coal_lump"
 local FUEL_WANT = 16
 local RESERVE_DINNERS = 8
 local SPEND_DAYS = 30
+-- Bids from demand (E11b): a good it makes is worth to it what others were heard to need
+-- it at within DEMAND_DAYS, up to DEMAND_SCALE times its cost. Priced at cost, it bid 3.3
+-- for cobble asked at 3.9 to 6.5 and sat on 432 emeralds for ten days (lv_pair e11), while
+-- the smiths wanted ingots at 170 to 637, its cost about 140.
+local DEMAND_DAYS, DEMAND_SCALE, DAY_SECONDS = 2, 3, 1200
 -- Over its cost it asks this much (ticket 30).
 local MARGIN = 1.05
 local SMELTS_PER_LUMP = 8
@@ -89,7 +97,8 @@ local GOODS = {
 local M = {BLOCK = BLOCK, PROFESSION = PROFESSION, FLAG = FLAG, OVERLAY = OVERLAY, GOODS = GOODS,
 	GLASS_KEEP = GLASS_KEEP, FLINT_KEEP = FLINT_KEEP, LOGS_PER_FLINT = LOGS_PER_FLINT, LOG_CAP = LOG_CAP,
 	STONE_WANT = STONE_WANT, GOLD_RESERVE = GOLD_RESERVE, FUEL_WANT = FUEL_WANT, RESERVE_DINNERS = RESERVE_DINNERS,
-	SPEND_DAYS = SPEND_DAYS, MARGIN = MARGIN, NUGGET_KEEP = NUGGET_KEEP, IRON_FIRST = IRON_FIRST}
+	SPEND_DAYS = SPEND_DAYS, MARGIN = MARGIN, NUGGET_KEEP = NUGGET_KEEP, IRON_FIRST = IRON_FIRST,
+	DEMAND_DAYS = DEMAND_DAYS, DEMAND_SCALE = DEMAND_SCALE}
 
 -- For its ledger (possessions.assess), from what it holds (possessions.held): the
 -- categories it wants ({stone = n, log = n, fuel = burn seconds}). Stone and fuel always,
@@ -207,21 +216,44 @@ function M.stock_cost(self, item)
 	return seed
 end
 
+-- What others were heard to need of its goods within DEMAND_DAYS (E11b), a unit of what
+-- it makes: {item = emeralds}, the best price heard. An ingot asked is nine nuggets', a
+-- pane a glass's. Its own market news, read directly (market_news.lua needs this module).
+function M.demand(self, now)
+	local best, oldest = {}, now - DEMAND_DAYS * DAY_SECONDS
+	local per = {}
+	for item in pairs(by_makes) do per[item] = {item, 1} end
+	for _, conversion in ipairs(goods.CONVERSIONS.alchemist) do
+		if not conversion.reserve then per[conversion.to] = {conversion.from, conversion.ratio} end
+	end
+	for _, entry in ipairs(self._villages_market_news or {}) do
+		local unit = per[entry.item]
+		if entry.kind == "needs" and entry.price and entry.who ~= self._id and (entry.heard or 0) >= oldest and unit then
+			local price = entry.price * unit[2]
+			if price > (best[unit[1]] or 0) then best[unit[1]] = price end
+		end
+	end
+	return best
+end
+
 -- The most an input is worth to it ({item = emeralds}, ticket 30): for each recipe it
 -- would still make (`held` under its `upto`), what the good sells for over its cost at the
 -- book scales the book's unit costs; the best recipe's sets each category's cap, and a
 -- member's is that times its units. A category no such recipe takes is capped at 0: at
 -- its stops it buys nothing over its budget's floors, however rich.
-function M.caps(self, held)
+function M.caps(self, held, now)
 	local per_unit = {}
 	for category in pairs(INPUT_CATEGORIES) do per_unit[category] = 0 end
 	local sold_at = self._villages_sold_at or {}
+	local asked = M.demand(self, now or core.get_gametime())
 	for _, recipe in ipairs(recipes.alchemist) do
 		if not recipe.upto or (held[recipe.makes] or 0) < recipe.upto then
 			local sale = sold_at[recipe.makes] or prices.price(self._villages_prices, recipe.makes)
 				or ledger.price(recipe.makes)
 			local cost = M.cost(self, recipe)
 			if sale and cost > 0 then
+				-- What it heard asked for the good (E11b), up to DEMAND_SCALE times its cost.
+				if asked[recipe.makes] then sale = math.max(sale, math.min(asked[recipe.makes], DEMAND_SCALE * cost)) end
 				local scale = sale / cost
 				local used = {}
 				for _, input in ipairs(recipe.from) do
