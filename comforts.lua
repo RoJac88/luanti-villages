@@ -30,10 +30,30 @@
 -- flower in it wilts after FLOWER_DAYS and is gone.
 --
 -- Replaces the ledger's fixed preferences, two of which (cake, cookie) no village makes.
+--
+-- Following supply (experiment E9). Tastes are fixed, but what a village makes is not: in
+-- lv_pair e8b (37 days) no bookshelf, frame, lantern, cauldron or clock was ever made, so a
+-- villager with one of those tastes kept its slot empty and the money for it idle (a
+-- leatherworker with 1,970 wanted a frame, a butcher with 1,832 a cauldron), while a farmer
+-- with chestplates for a taste bought three in an hour, its later slots going round the
+-- same four tastes. Now:
+-- * A taste is about when its good is on offer (a `has` entry in its market news heard
+--   within OFFER_DAYS, from another villager), held, in use, or made by its own trade at
+--   its tier (a cartographer's banner); else dormant.
+-- * Its slots go to the tastes about, then to the other comforts on offer, cheapest
+--   first, one each, before any second of one: so savings always have something real to
+--   buy, and the richest buy more kinds rather than more of one.
+-- * A dormant taste still wants one (a probe) while the villager has a slot, at its usual
+--   worth: its want is told in market news, so a crafter that could make it hears of it,
+--   and a commission (commission.lua) can still be paid for it, and a new good can come
+--   into the village. Bought or heard offered, the taste is about again and takes its slots.
+-- * Worth is capped at MAX_MARKUP times the base price: the richer still pay more, but
+--   a cauldron is no longer worth 11,285 to a butcher.
 local core = minetest
 local ledger = dofile(core.get_modpath("living_villages") .. "/ledger.lua")
 local wants = dofile(core.get_modpath("living_villages") .. "/wants.lua")
 local goods = dofile(core.get_modpath("living_villages") .. "/goods.lua")
+local recipes = dofile(core.get_modpath("living_villages") .. "/recipes.lua")
 
 local M = {}
 
@@ -85,6 +105,10 @@ M.STEP = 4 * ledger.DINNER
 M.BASE_SLOTS = 6
 M.MAX_SLOTS = 12
 M.WORTH = 2
+-- Experiment E9: the most a comfort is worth to anyone, in base prices; how long a
+-- comfort heard offered counts as on offer.
+M.MAX_MARKUP = 4
+M.OFFER_DAYS = 2
 
 -- A category's members, in a fixed order.
 local function members(category)
@@ -148,24 +172,82 @@ local function in_use(self)
 	return self._villages_comforts or {}
 end
 
--- How many of `slots` each of its tastes gets, going round them: {[i] = count}.
-local function per_taste(tastes, slots)
-	local out = {}
-	for i = 1, #tastes do out[i] = 0 end
-	for slot = 1, slots do
-		local i = (slot - 1) % #tastes + 1
-		out[i] = out[i] + 1
-	end
-	return out
+-- The items a comfort is held as: its item, or every member of its category.
+local function items_of(comfort)
+	if comfort.category then return members(comfort.category) end
+	return {comfort.item}
 end
 
--- Which of its tastes a comfort in use is, or nil (a comfort from a taste it no longer has).
-local function taste_of(tastes, item)
-	local def = by_item[item]
-	for i, taste in ipairs(tastes) do
-		if taste == def then return i end
+-- Its base price: the cheapest member's for a category.
+local function price_of(comfort)
+	local best
+	for _, item in ipairs(items_of(comfort)) do
+		local price = ledger.price(item)
+		if price and (not best or price < best) then best = price end
 	end
-	return nil
+	return best or 0
+end
+
+-- What other villagers were heard to have within OFFER_DAYS: a set of items.
+local function offered(self, now)
+	local set, oldest = {}, now - M.OFFER_DAYS * wants.DAY_SECONDS
+	for _, entry in ipairs(self._villages_market_news or {}) do
+		if entry.kind == "has" and entry.who ~= self._id and (entry.heard or 0) >= oldest then set[entry.item] = true end
+	end
+	return set
+end
+
+-- Whether its own trade makes the item at its tier (recipes.lua; not a keeper or Builder).
+local function makes(self, item)
+	if self._villages_keeper or self._villages_builder then return false end
+	local tier = self._max_trade_tier or 1
+	for _, recipe in ipairs(recipes[self._profession] or {}) do
+		if recipe.makes == item and (recipe.tier or 1) <= tier then return true end
+	end
+	return false
+end
+
+-- Its slots' plan (experiment E9): {[comfort] = slots}, the comforts in the order they
+-- fill, its dormant tastes, and its slots. `count(self, item)` (possessions.count, may be
+-- nil) tells what it holds: a taste held or made by its own trade is about; another comfort
+-- only on offer or in use, so a crafter's stock of one is not its own comfort.
+function M.plan(self, emeralds, now, count)
+	local tastes = M.tastes(self._id)
+	local slots = M.slots(emeralds)
+	local heard, using = offered(self, now), {}
+	for _, comfort in ipairs(in_use(self)) do
+		if by_item[comfort.item] then using[by_item[comfort.item]] = true end
+	end
+	local function about(comfort, own)
+		if using[comfort] then return true end
+		for _, item in ipairs(items_of(comfort)) do
+			if heard[item] or (own and (makes(self, item) or (count and count(self, item) > 0))) then return true end
+		end
+		return false
+	end
+	local order, dormant, mine = {}, {}, {}
+	for _, taste in ipairs(tastes) do
+		mine[taste] = true
+		if about(taste, true) then order[#order + 1] = taste else dormant[#dormant + 1] = taste end
+	end
+	local others = {}
+	for _, comfort in ipairs(M.COMFORTS) do
+		if not mine[comfort] and about(comfort, false) then others[#others + 1] = comfort end
+	end
+	table.sort(others, function(a, b)
+		local pa, pb = price_of(a), price_of(b)
+		if pa ~= pb then return pa < pb end
+		return a.item < b.item
+	end)
+	for _, comfort in ipairs(others) do order[#order + 1] = comfort end
+	local per = {}
+	if #order > 0 then
+		for slot = 1, slots do
+			local comfort = order[(slot - 1) % #order + 1]
+			per[comfort] = (per[comfort] or 0) + 1
+		end
+	end
+	return per, order, slots > 0 and dormant or {}, slots
 end
 
 -- Never an alchemist's, which wants nothing for itself (ticket 20).
@@ -174,8 +256,8 @@ local function wanted(self)
 end
 
 -- Drops the comforts used up by `now`, and fills free slots from what it holds, through
--- take(self, item, count) (possessions.take). Returns nothing.
-function M.update(self, emeralds, take, now)
+-- take(self, item, count) (possessions.take); `count` as M.plan's. Returns nothing.
+function M.update(self, emeralds, take, now, count)
 	if not wanted(self) then return end
 	local id = tostring(self._id):sub(1, 6)
 	local list, kept = in_use(self), {}
@@ -204,75 +286,79 @@ function M.update(self, emeralds, take, now)
 			end
 		end
 	end
-	-- Each taste fills its own slots, so one held in plenty fills no other taste's
-	-- (ColonyFood, 2026-11-15: an armorer holding lilies filled all nine of its slots
-	-- with them). A comfort in use counts against its taste's slots and all of them.
-	local tastes = M.tastes(self._id)
-	local free = per_taste(tastes, M.slots(emeralds))
-	local total = M.slots(emeralds) - #kept
+	self._villages_comforts = #kept > 0 and kept or nil
+	-- Each comfort fills its own slots, so one held in plenty fills no other's (ColonyFood,
+	-- 2026-11-15: an armorer holding lilies filled all nine of its slots with them). A
+	-- comfort in use counts against its own slots and all of them.
+	local per, order, _, slots = M.plan(self, emeralds, now, count)
+	local free, total = {}, slots - #kept
+	for comfort, n in pairs(per) do free[comfort] = n end
 	for _, comfort in ipairs(kept) do
-		local i = taste_of(tastes, comfort.item)
-		if i then free[i] = free[i] - 1 end
+		local def = by_item[comfort.item]
+		if def and free[def] then free[def] = free[def] - 1 end
 	end
-	for i, taste in ipairs(tastes) do
-		while free[i] > 0 and total > 0 do
-			local item = take_one(self, taste, take)
+	for _, comfort in ipairs(order) do
+		while (free[comfort] or 0) > 0 and total > 0 do
+			local item = take_one(self, comfort, take)
 			if not item then break end
-			table.insert(kept, {item = item, ["until"] = now + taste.days * wants.DAY_SECONDS})
+			table.insert(kept, {item = item, ["until"] = now + comfort.days * wants.DAY_SECONDS})
 			core.log("action", string.format("[living_villages] villager %s enjoys a %s", id, item))
-			free[i], total = free[i] - 1, total - 1
+			free[comfort], total = free[comfort] - 1, total - 1
 		end
 	end
 	self._villages_comforts = #kept > 0 and kept or nil
 end
 
--- For the ledger: {item = count} it should get, {item = worth} for each of its tastes (a
--- flower's for every flower), and {category = count} for the comforts any member of a
--- category fills: a flower, and the flowers its pots want.
-function M.targets(self, emeralds, now)
+-- For the ledger: {item = count} it should get, {item = worth} for each of its tastes and
+-- the comforts its slots go to (a flower's for every flower), and {category = count} for
+-- the comforts any member of a category fills: a flower, and the flowers its pots want.
+-- `count` as M.plan's.
+function M.targets(self, emeralds, now, count)
 	local targets, worth, categories = {}, {}, {}
 	if not wanted(self) then return targets, worth, categories end
-	-- Over the money factor (ledger.lambda, ticket 21a): the richer, the more it pays.
+	-- Over the money factor (ledger.lambda, ticket 21a): the richer, the more it pays, up to
+	-- MAX_MARKUP times the base price (E9).
 	local lambda = ledger.lambda(emeralds)
-	local function value(item) worth[item] = M.WORTH * (ledger.price(item) or 0) / lambda end
-	local tastes = M.tastes(self._id)
-	local function want(comfort)
+	local function value_of(comfort)
+		for _, item in ipairs(items_of(comfort)) do
+			local price = ledger.price(item) or 0
+			worth[item] = math.min(M.WORTH * price / lambda, M.MAX_MARKUP * price)
+		end
+	end
+	local function want(comfort, n)
 		if comfort.category then
-			categories[comfort.category] = (categories[comfort.category] or 0) + 1
-			for _, member in ipairs(members(comfort.category)) do value(member) end
+			categories[comfort.category] = (categories[comfort.category] or 0) + (n or 1)
 		else
-			targets[comfort.item] = (targets[comfort.item] or 0) + 1
+			targets[comfort.item] = (targets[comfort.item] or 0) + (n or 1)
 		end
 	end
-	for _, taste in ipairs(tastes) do
-		if taste.category then
-			for _, member in ipairs(members(taste.category)) do value(member) end
-		else
-			value(taste.item)
-		end
-	end
-	-- A slot in use and not nearly done needs nothing, its taste's or any; a pot with no
+	local per, order, dormant, slots = M.plan(self, emeralds, now, count)
+	for _, taste in ipairs(M.tastes(self._id)) do value_of(taste) end
+	for _, comfort in ipairs(order) do value_of(comfort) end
+	-- A slot in use and not nearly done needs nothing, its comfort's or any; a pot with no
 	-- flower, or one nearly wilted, wants one.
-	local free = per_taste(tastes, M.slots(emeralds))
-	local total = M.slots(emeralds)
+	local free, total = {}, slots
+	for comfort, n in pairs(per) do free[comfort] = n end
 	for _, comfort in ipairs(in_use(self)) do
 		local def = by_item[comfort.item] or {days = 1}
 		if comfort["until"] - now > def.days * wants.DAY_SECONDS * wants.NEARLY_WORN then
 			total = total - 1
-			local i = taste_of(tastes, comfort.item)
-			if i then free[i] = free[i] - 1 end
+			if free[def] then free[def] = free[def] - 1 end
 		end
 		if def.holds and comfort["until"] > now and (not comfort.flower
 			or (comfort.flower_until or 0) - now <= M.FLOWER_DAYS * wants.DAY_SECONDS * wants.NEARLY_WORN) then
 			want({category = def.holds})
 		end
 	end
-	for i, taste in ipairs(tastes) do
-		for _ = 1, math.max(math.min(free[i], total), 0) do
-			want(taste)
-			total = total - 1
+	for _, comfort in ipairs(order) do
+		local n = math.max(math.min(free[comfort] or 0, total), 0)
+		if n > 0 then
+			want(comfort, n)
+			total = total - n
 		end
 	end
+	-- A dormant taste's probe (E9): one, so a crafter hears of it.
+	for _, taste in ipairs(dormant) do want(taste, 1) end
 	return targets, worth, categories
 end
 

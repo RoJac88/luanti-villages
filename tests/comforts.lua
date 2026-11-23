@@ -41,6 +41,16 @@ local function item_of(taste)
 	return list[1]
 end
 
+-- Puts its tastes on offer (experiment E9): another villager was heard to have each, for
+-- as long as the test runs. Without, a taste is dormant and wanted once, as a probe.
+local function offer(v, list)
+	v._villages_market_news = v._villages_market_news or {}
+	for _, taste in ipairs(list or comforts.tastes(v._id)) do
+		v._villages_market_news[#v._villages_market_news + 1] = {kind = "has", item = item_of(taste), who = "seller",
+			heard = math.huge}
+	end
+end
+
 -- Tastes: TASTES distinct comforts, always the same for one villager, and not the same
 -- for everyone.
 do
@@ -79,6 +89,7 @@ assert(comforts.slots(1e9) == comforts.MAX_SLOTS and comforts.MAX_SLOTS == 12)
 -- at most WORTH times its price.
 local v = {_id = "rich-farmer"}  -- no pot among its tastes: a pot wants flowers too
 local tastes = comforts.tastes(v._id)
+offer(v)
 do
 	local targets = comforts.targets(v, comforts.SAVINGS, clock)
 	assert(total(targets) == 0, "nothing below the savings")
@@ -90,7 +101,8 @@ do
 	for i = 2, comforts.TASTES do assert(wanted_of(tastes[i], targets, categories) == 1, "round its tastes") end
 	for _, taste in ipairs(tastes) do
 		local item = item_of(taste)
-		assert(math.abs(worth[item] - comforts.WORTH * ledger.price(item) / ledger.lambda(rich)) < 1e-9)
+		local expect = math.min(comforts.WORTH * ledger.price(item) / ledger.lambda(rich), comforts.MAX_MARKUP * ledger.price(item))
+		assert(math.abs(worth[item] - expect) < 1e-9)
 	end
 	assert(comforts.targets({_id = "kid", child = true}, rich, clock) and
 		total(comforts.targets({_id = "kid", child = true}, rich, clock)) == 0, "no child")
@@ -135,6 +147,7 @@ end
 do
 	local nine = {_id = "nine"}
 	local list = comforts.tastes(nine._id)
+	offer(nine)
 	local targets, _, categories = comforts.targets(nine, 1584, clock)
 	assert(total(targets, categories) == 9)
 	assert(wanted_of(list[1], targets, categories) == math.ceil(9 / #list))
@@ -146,6 +159,7 @@ end
 do
 	local nine = {_id = "rich-farmer"}
 	local list = comforts.tastes(nine._id)
+	offer(nine)
 	local first = item_of(list[1])
 	local held = {[first] = 20}
 	comforts.update(nine, 1584, take_from(held), clock)
@@ -179,6 +193,7 @@ local function with_tastes(id, want)
 end
 do
 	local f = {_id = with_tastes("flora", FLOWER_TASTE)}
+	offer(f)
 	local rich = comforts.SAVINGS + comforts.STEP
 	local targets, worth, categories = comforts.targets(f, rich, clock)
 	assert(total(targets) == 0 and categories.flower == 1, "a flower is wanted as the category")
@@ -201,6 +216,7 @@ assert(CARPET_TASTE and CARPET_TASTE.category == comforts.CARPET)
 assert(comforts.by_item["mcl_wool:grey_carpet"] == CARPET_TASTE and comforts.by_item["mcl_wool:black_carpet"] == CARPET_TASTE)
 do
 	local c = {_id = with_tastes("rug", CARPET_TASTE)}
+	offer(c)
 	local rich = comforts.SAVINGS + comforts.STEP
 	local targets, worth, categories = comforts.targets(c, rich, clock)
 	assert(total(targets) == 0 and categories.carpet == 1, "a carpet is wanted as the category")
@@ -226,6 +242,7 @@ assert(POT_TASTE.item == "mcl_flowerpots:flower_pot" and POT_TASTE.days == 8 and
 do
 	local t = clock
 	local p = {_id = with_tastes("potter", POT_TASTE)}
+	offer(p)
 	local rich = comforts.SAVINGS + comforts.STEP
 	local held = {[POT_TASTE.item] = 1}
 	comforts.update(p, rich, take_from(held), t)
@@ -254,6 +271,74 @@ do
 	comforts.update(p, rich, take_from({}), t + 8 * DAY)
 	assert(p._villages_comforts == nil and (held[POT_TASTE.item] or 0) == 0)
 	assert(comforts.status(p) == "none")
+end
+
+
+-- Following supply (experiment E9).
+do
+	local rich = comforts.SAVINGS + 5 * comforts.STEP
+	-- Nothing on offer: each taste is dormant and wanted once, however rich; its slots buy
+	-- nothing.
+	local d = {_id = "rich-farmer"}
+	local list = comforts.tastes(d._id)
+	local targets, worth, categories = comforts.targets(d, rich, clock)
+	assert(total(targets, categories) == #list, tostring(total(targets, categories)))
+	for _, taste in ipairs(list) do
+		assert(wanted_of(taste, targets, categories) == 1, "a probe each")
+		assert(worth[item_of(taste)] > 0, "worth something")
+	end
+	-- Its slots go to the comforts others have, cheapest first, one each before a second.
+	local mine = {}
+	for _, taste in ipairs(list) do mine[taste] = true end
+	local others = {}
+	for _, comfort in ipairs(comforts.COMFORTS) do
+		if not mine[comfort] and not comfort.category then others[#others + 1] = comfort end
+	end
+	table.sort(others, function(a, b) return ledger.price(a.item) < ledger.price(b.item) end)
+	local cheap, dear = others[1], others[#others]
+	offer(d, {cheap, dear})
+	targets, worth, categories = comforts.targets(d, rich, clock)
+	assert(targets[cheap.item] == 3 and targets[dear.item] == 2, tostring(targets[cheap.item]) .. " " .. tostring(targets[dear.item]))
+	assert(total(targets, categories) == 5 + #list, "five slots and the four probes")
+	assert(worth[dear.item] <= comforts.MAX_MARKUP * ledger.price(dear.item) + 1e-9, "capped")
+	-- Held, another villager's comfort fills a slot; one of its own tastes held is about.
+	local held = {[cheap.item] = 5, [item_of(list[1])] = 1}
+	local counts = function(_, item) return held[item] or 0 end
+	comforts.update(d, rich, take_from(held), clock, counts)
+	local using = {}
+	for _, comfort in ipairs(d._villages_comforts) do using[comfort.item] = (using[comfort.item] or 0) + 1 end
+	assert(using[item_of(list[1])] == 1, "its taste, held")
+	assert((using[cheap.item] or 0) >= 1, "an offered comfort, held")
+	-- A comfort nobody offers, only held (a crafter's stock), is not taken up.
+	local maker
+	for i = 1, 500 do
+		local fond = false
+		for _, taste in ipairs(comforts.tastes("maker" .. i)) do if taste == dear then fond = true end end
+		if not fond then maker = {_id = "maker" .. i} break end
+	end
+	local stock = {[dear.item] = 4}
+	comforts.update(maker, rich, take_from(stock), clock, function(_, item) return stock[item] or 0 end)
+	assert(stock[dear.item] == 4 and maker._villages_comforts == nil, "its stock stays")
+	-- Old news: an offer heard more than OFFER_DAYS ago no longer counts.
+	local old = {_id = "rich-farmer", _villages_market_news = {{kind = "has", item = cheap.item, who = "seller",
+		heard = clock - (comforts.OFFER_DAYS + 1) * DAY}}}
+	targets = comforts.targets(old, rich, clock)
+	assert(not targets[cheap.item], "stale offer")
+	-- Its own news is no offer.
+	local own = {_id = "rich-farmer", _villages_market_news = {{kind = "has", item = cheap.item, who = "rich-farmer",
+		heard = clock}}}
+	targets = comforts.targets(own, rich, clock)
+	assert(not targets[cheap.item], "its own")
+end
+-- The worth cap: the richest pay at most MAX_MARKUP times the base price.
+do
+	local r = {_id = "rich-farmer"}
+	offer(r)
+	local _, worth = comforts.targets(r, 1e6, clock)
+	for _, taste in ipairs(comforts.tastes(r._id)) do
+		local item = item_of(taste)
+		assert(math.abs(worth[item] - comforts.MAX_MARKUP * ledger.price(item)) < 1e-9, item)
+	end
 end
 
 print("comforts.lua: ok")
