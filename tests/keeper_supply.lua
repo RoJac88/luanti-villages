@@ -422,6 +422,24 @@ do
 	supply.update_wants(kate, chests)
 	assert(kate._villages_dish_short == before)
 end
+-- The shortfall is split among the dishes it knows, not laid whole on each: on each, a
+-- shortfall of 28 read 112 bread at market (lv_pair e8).
+do
+	local poss = dofile("possessions.lua")
+	kate._villages_known_dishes = {["mcl_mobitems:cooked_beef"] = day, ["mcl_mobitems:cooked_porkchop"] = day}
+	supply.update_wants(kate, chests)
+	local short, known = kate._villages_dish_short, 0
+	for _ in pairs(kate._villages_dish_wants) do known = known + 1 end
+	assert(known == 2 and short and short > 1, tostring(short))
+	local split = poss.assess(kate)
+	local share = math.ceil(short / 2)
+	for _, item in ipairs({"mcl_mobitems:cooked_beef", "mcl_mobitems:cooked_porkchop"}) do
+		local want = kate._villages_dish_wants[item]
+		assert(split.needs[item] == want + share, item .. " " .. tostring(split.needs[item]))
+	end
+	kate._villages_known_dishes = {["mcl_mobitems:cooked_beef"] = day}
+	supply.update_wants(kate, chests)
+end
 -- Its bids (ticket 46b): the cheapest ask it heard for a dish, where over its plate cap;
 -- raw food, a category's news, its own and asks under the cap left out.
 assert(kate._villages_dish_bids == nil, "nothing heard")

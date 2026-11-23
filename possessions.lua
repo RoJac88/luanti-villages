@@ -928,7 +928,11 @@ function M.assess(self, offered)
 		-- offer. The dish category leaves out a good wanted by name, so the shortfall fell only
 		-- on dishes nobody made (its needs read 60 baked potatoes, cooked beef and cooked
 		-- chicken, lv_pair e7) and the butcher's three dishes stayed at their few each.
-		local spread = math.max(self._villages_dish_short or 0, 0)
+		-- Split among them, not the whole of it on each: on each, a shortfall of 28 at market
+		-- read 112 bread and 49 cooked fish, and every trip set off for dozens (lv_pair e8).
+		local known = 0
+		for _ in pairs(self._villages_dish_wants or {}) do known = known + 1 end
+		local spread = known > 0 and math.ceil(math.max(self._villages_dish_short or 0, 0) / known) or 0
 		for item, count in pairs(self._villages_dish_wants or {}) do
 			held = held or M.held(self)
 			extra[item] = (extra[item] or 0) + math.max(count, held[item] or 0) + spread
