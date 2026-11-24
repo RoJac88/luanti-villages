@@ -65,6 +65,12 @@
 --   over the pick's rate after a block is mined, the cell turns to what the lava would
 --   cool it to (cobble, or stone under lava), unless it has refilled by then or someone
 --   stands in it. By hand it refills at VoxeLibre's own pace, which it logs.
+--   Two trades quarry for themselves (M.self_quarry), taking no other labour: a mason
+--   with nothing to make today, and an alchemist holding no stone or cobble at all,
+--   which then quarries until it holds a day's alchemist.STONE_WANT (M.alchemist_stone). The alchemist's
+--   nuggets take a stone each, and cobble came to it only from whichever villager
+--   happened to quarry: in lv_pair e12d (2026-11-24) one run's alchemist bought 56 and
+--   made 14 nuggets, the other's got 8 stone in 14 days and made none.
 -- * porter (ticket 11): carries goods for others on trade trips (trade_trips.lua), hired
 --   at the end of a conversation; labour.lua only chooses it. Its site is the market: it
 --   is open when the villager has heard of an item one villager needs and another has
@@ -111,6 +117,7 @@ local goods = dofile(core.get_modpath("living_villages") .. "/goods.lua")
 local recipes = dofile(core.get_modpath("living_villages") .. "/recipes.lua")
 local production = dofile(core.get_modpath("living_villages") .. "/production.lua")
 local ledger = dofile(core.get_modpath("living_villages") .. "/ledger.lua")
+local alchemist = dofile(core.get_modpath("living_villages") .. "/alchemist.lua")
 local cells = dofile(core.get_modpath("living_villages") .. "/cells.lua")
 
 local TICK_SECONDS = 2
@@ -293,9 +300,36 @@ local function beside(pos, avoid)
 	return nil
 end
 
+-- Stone and cobble it holds.
+local function stone_held(self)
+	return possessions.count(self, STONE) + possessions.count(self, COBBLE)
+end
+
+-- What an alchemist quarries up to: a day's stone, within what a quarrier keeps.
+function M.alchemist_stone()
+	return math.min(alchemist.STONE_WANT, QUARRY_KEEP)
+end
+
+-- Whether it quarries for itself now (see the header): a mason idle today, or an
+-- alchemist with no stone, or one quarrying today short of a day's stone; either only
+-- with a generator in reach.
+function M.self_quarry(self)
+	if self.child or not self._id or not self._jobsite then return false end
+	if self._villages_alchemist then
+		local held = stone_held(self)
+		local labour = self._villages_labour
+		local quarrying = labour and labour.day == core.get_day_count() and labour.activity == "quarrier"
+		if not (held == 0 or (quarrying and held < M.alchemist_stone())) then return false end
+	elseif self._profession ~= "mason" or self._villages_builder or not production.idle_today(self) then
+		return false
+	end
+	return #M.quarry_targets(self) > 0
+end
+
 function M.eligible(self)
 	if self.child or not self._id or not clock.enabled() or self._villages_keeper then return false end
 	if self._profession == "nitwit" or (self._profession == "unemployed" and not self._jobsite) then return true end
+	if self._villages_alchemist then return M.self_quarry(self) end
 	-- A crafter with nothing to make today (ticket 19b).
 	return production.idle_today(self)
 end
@@ -308,6 +342,8 @@ function M.activity_override(villager, stage)
 		and villager._villages_idle.day == core.get_day_count() then
 		return "putter"
 	end
+	-- An alchemist quarrying is not called back to its stand either.
+	if stage == "work" and villager._villages_alchemist and M.self_quarry(villager) then return "putter" end
 	return nil
 end
 
@@ -1130,6 +1166,8 @@ function M.today(self)
 	end
 	local activity = M.choose(heard, available(self), yesterday, math.random(), possessions.emeralds(self),
 		self._villages_porter_record, self._villages_gather_record, held)
+	-- A mason or alchemist short of stone quarries it (M.self_quarry).
+	if M.self_quarry(self) then activity = "quarrier" end
 	-- A peddle under way goes on: what it bought is still to sell.
 	if self._villages_peddle and activity ~= "peddler" then activity = "peddler" end
 	-- So does a commission (ticket 26b): it waits as a porter, crafting at home.
@@ -1422,8 +1460,8 @@ function M.install(def)
 		local walking = busy(self)
 		if not walking then M.step(self, now) end
 		if self._villages_quarry_hold then M.hold(self) end
-		-- Crafts while its activity waits (ticket 23a).
-		production.labour_step(self, now, not walking and waiting[self] == true)
+		-- Crafts while its activity waits (ticket 23a); an alchemist keeps its stone.
+		if not self._villages_alchemist then production.labour_step(self, now, not walking and waiting[self] == true) end
 		return result
 	end
 end

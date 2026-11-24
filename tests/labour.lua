@@ -571,6 +571,36 @@ do
 	possessions.add(quinn, "mcl_core:cobble", labour.QUARRY_KEEP)
 	nodes[key(at(6, 1, 0))] = "mcl_core:cobble"
 	assert(#labour.quarry_targets(quinn) == 0)
+	-- An alchemist quarries for itself only with no stone or cobble at all, then up to a
+	-- day's stone; it takes no other labour (lv_pair e12d).
+	possessions.take(quinn, "mcl_core:cobble", count(quinn, "mcl_core:cobble"))
+	quinn._profession, quinn._villages_alchemist, quinn._jobsite = "cleric", true, at(0, 1, 3)
+	quinn._villages_labour, quinn._villages_quarries = nil, nil
+	possessions.add(quinn, "mcl_core:stone", 1)
+	assert(not labour.self_quarry(quinn) and not labour.eligible(quinn), "it holds a stone")
+	possessions.take(quinn, "mcl_core:stone", 1)
+	assert(labour.self_quarry(quinn) and labour.eligible(quinn), "none left")
+	assert(labour.today(quinn) == "quarrier")
+	assert(labour.activity_override(quinn, "work") == "putter", "not called back to its stand")
+	possessions.add(quinn, "mcl_core:cobble", labour.alchemist_stone() - 1)
+	assert(labour.eligible(quinn), "quarrying, short of a day's stone")
+	possessions.add(quinn, "mcl_core:cobble", 1)
+	assert(not labour.eligible(quinn), "a day's stone: back to its stand")
+	possessions.take(quinn, "mcl_core:cobble", labour.alchemist_stone())
+	-- With no generator in reach it does not labour.
+	nodes[key(at(7, 1, 0))] = nil
+	assert(not labour.eligible(quinn), "no generator")
+	nodes[key(at(7, 1, 0))] = "mcl_core:water_flowing"
+	-- A mason with nothing to make today quarries, over any other labour; a busy one does not.
+	quinn._villages_alchemist, quinn._profession, quinn._villages_labour, quinn._villages_quarries = nil, "mason", nil, nil
+	quinn._villages_idle = {day = day, idle = true, at = now}
+	assert(labour.self_quarry(quinn) and labour.eligible(quinn))
+	assert(labour.today(quinn) == "quarrier")
+	quinn._villages_idle, quinn._villages_labour = {day = day, idle = false, at = now}, nil
+	assert(not labour.self_quarry(quinn) and not labour.eligible(quinn))
+	-- A Builder (a mason to vanilla) never.
+	quinn._villages_builder, quinn._villages_idle = true, {day = day, idle = true, at = now}
+	assert(not labour.self_quarry(quinn))
 	for _, name in ipairs({"air", "mcl_core:stone", "mcl_core:cobble", "mcl_core:lava_source", "mcl_core:lava_flowing",
 		"mcl_core:water_source", "mcl_core:water_flowing"}) do
 		defs[name] = nil
