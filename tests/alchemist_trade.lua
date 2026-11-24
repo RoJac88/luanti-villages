@@ -147,6 +147,14 @@ assert(near(caps[STONE], (ledger.price(NUGGET) - ledger.price("mcl_core:coal_lum
 assert(near(caps[COBBLE], caps[STONE]))
 assert(view.value(COBBLE) <= caps[COBBLE] + 1e-9 and view.value(STONE) <= caps[STONE] + 1e-9)
 assert(near(view.value(STONE), ledger.price(STONE)), "short, so at its price")
+-- Glass's stone counts in its cost: left out, glass seemed to pay 3.7 times over and
+-- lifted its fuel cap with it, to 17.5 a lump of charcoal against 4.7.
+local fresh_book = alchemist_with({[EMERALD] = 349})
+local glass_cost = alchemist.cost(fresh_book, by_makes[GLASS])
+assert(near(glass_cost, 2 * alchemist.unit_cost(fresh_book, "stone")
+	+ 4 / 8 * 80 * alchemist.unit_cost(fresh_book, "fuel")), glass_cost)
+local fuel_cap = alchemist.caps(fresh_book, possessions.held(fresh_book))[CHARCOAL]
+assert(fuel_cap <= ledger.price("mcl_core:coal_lump") * 1.01, fuel_cap)
 local rich = possessions.assess(alchemist_with({[NUGGET] = 500, [GLASS] = 100}))
 assert(rich.surplus[NUGGET] == 500, "every nugget is spare")
 

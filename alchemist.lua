@@ -133,9 +133,19 @@ function M.bought(self, held, item, count, paid)
 end
 
 -- The input category a recipe input is reckoned in, and its units.
+-- Glass's stone (no category named, and goods.target_category knows only fuel and wood)
+-- counts as stone: left out, glass cost its fuel alone, 2.35 against 8.75, so it seemed to
+-- pay 3.7 times over and lifted its fuel cap with it: in lv_pair e9b it paid 12.6 a lump of
+-- charcoal (base 4.3), and spent its 349 emeralds in two days.
 local function input_category(input)
 	local category = input[3] or goods.target_category(input[1])
-	if category and INPUT_CATEGORIES[category] then return category, goods.units(category, input[1]) end
+	if not (category and INPUT_CATEGORIES[category]) then
+		category = nil
+		for name in pairs(INPUT_CATEGORIES) do
+			if goods.CATEGORIES[name][input[1]] then category = name break end
+		end
+	end
+	if category then return category, goods.units(category, input[1]) end
 	return nil
 end
 
