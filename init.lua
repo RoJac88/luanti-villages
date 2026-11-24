@@ -830,6 +830,9 @@ core.register_on_mods_loaded(function()
 	mark("floor_guard")
 	dofile(core.get_modpath("living_villages") .. "/env_touch.lua")(def)
 	mark("env_touch")
+	-- Out of a tree trunk grown around it before the suffocation check (tree_rescue.lua).
+	dofile(core.get_modpath("living_villages") .. "/tree_rescue.lua").install(def)
+	mark("tree_rescue")
 	-- Outermost of all, so the economic clock runs whatever an inner do_custom returns.
 	dofile(core.get_modpath("living_villages") .. "/economy_clock.lua").install(def)
 	mark("economy_clock")
