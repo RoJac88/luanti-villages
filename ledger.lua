@@ -121,7 +121,9 @@ for _, species in ipairs({"acacia", "spruce", "birch", "jungle"}) do
 end
 
 -- The alchemist's goods (ticket 20), priced at what their inputs cost at base prices, in
--- order, each from the ones before it: a nugget is four stone, an ingot nine nuggets, a
+-- order, each from the ones before it: a nugget is one stone (E12c: at four, an iron axe
+-- cost about 550 against villagers' 240 on average, and none was ever bought in lv_pair
+-- e12b; four cobble a nugget is no vanilla recipe either), an ingot nine nuggets, a
 -- gold nugget two ingots' nuggets, a gold ingot nine gold nuggets, a flint four logs, glass
 -- two stone and a pane one glass, the first three with half a lump of coal (ticket 28c). These replace the trade tables' prices, so a smith values
 -- iron at what the alchemist can sell it for, and glass gets cheaper.
@@ -133,7 +135,7 @@ local TORCH, STICK, CHARCOAL, PLANKS = "mcl_torches:torch", "mcl_core:stick", "m
 -- Its fuel, half a lump a craft (ticket 28c), is in the cost, so an ingot is still nine nuggets.
 local ALCHEMY_FUEL = 0.5
 local COST_PRICED = {
-	{IRON_NUGGET, {{STONE, 4}, {COAL, ALCHEMY_FUEL}}},
+	{IRON_NUGGET, {{STONE, 1}, {COAL, ALCHEMY_FUEL}}},
 	{IRON, {{IRON_NUGGET, 9}}},
 	{GOLD_NUGGET, {{IRON_NUGGET, 18}}},
 	{GOLD, {{GOLD_NUGGET, 9}}},

@@ -541,7 +541,7 @@ function M.labour_step(self, now, waiting)
 	local day = core.get_day_count()
 	local plan = self._villages_labour_plan
 	-- A commission is its plan while it lasts (ticket 26b, possessions.labour_plan).
-	if not commission.of(self) and not (plan and plan.day == day and now - (plan.checked or 0) < PLAN_SECONDS) then
+	if not commission.labour_of(self) and not (plan and plan.day == day and now - (plan.checked or 0) < PLAN_SECONDS) then
 		local asks = news.asking(news.heard(self, now))
 		local view = possessions.assess(self)
 		local recipe = M.labour_plan(self, view, asks)

@@ -63,7 +63,12 @@ local OVERLAY = "(living_villages_villager_profession_cleric.png^[multiply:#4fb3
 local NUGGET, FLINT, GLASS = "mcl_core:iron_nugget", "mcl_core:flint", "mcl_core:glass"
 local GLASS_KEEP, FLINT_KEEP, NUGGET_KEEP = 12, 32, 192
 local LOGS_PER_FLINT, LOG_CAP = 4, 48
-local STONE_WANT = 144
+-- A day's nuggets, a stone each (E12c; four each, 144, before).
+local STONE_WANT = 36
+-- Iron first (E11, E12d): it wants logs for flint only while it holds this much iron, in
+-- nuggets (four ingots). In lv_pair e9b it spent 179 of its 349 emeralds on logs for flint
+-- nobody bought, in e12c 232 of 369, and made no nuggets for a commissioned iron axe.
+local IRON_FIRST = 36
 local GOLD_RESERVE = 24
 local COAL = "mcl_core:coal_lump"
 -- Fuel it keeps, in lumps: two hours of nuggets at half a lump each (ticket 28c), at
@@ -85,17 +90,25 @@ local GOODS = {
 local M = {BLOCK = BLOCK, PROFESSION = PROFESSION, FLAG = FLAG, OVERLAY = OVERLAY, GOODS = GOODS,
 	GLASS_KEEP = GLASS_KEEP, FLINT_KEEP = FLINT_KEEP, LOGS_PER_FLINT = LOGS_PER_FLINT, LOG_CAP = LOG_CAP,
 	STONE_WANT = STONE_WANT, GOLD_RESERVE = GOLD_RESERVE, FUEL_WANT = FUEL_WANT, RESERVE_DINNERS = RESERVE_DINNERS,
-	SPEND_DAYS = SPEND_DAYS, MARGIN = MARGIN, NUGGET_KEEP = NUGGET_KEEP}
+	SPEND_DAYS = SPEND_DAYS, MARGIN = MARGIN, NUGGET_KEEP = NUGGET_KEEP, IRON_FIRST = IRON_FIRST}
 
 -- For its ledger (possessions.assess), from what it holds (possessions.held): the
 -- categories it wants ({stone = n, log = n, fuel = burn seconds}). Stone and fuel always,
--- logs for the flint it is short of: whether they pay or not, since it works its stand
--- and spends its budget on them (ticket 28). Its goods have no floor (ticket 21b).
+-- logs for the flint it is short of once it holds IRON_FIRST of iron (E12d): whether they
+-- pay or not, since it works its stand and spends its budget on them (ticket 28). Its goods
+-- have no floor (ticket 21b).
 function M.targets(held)
 	local wanted = {stone = STONE_WANT, fuel = FUEL_WANT * goods.units("fuel", COAL)}
-	local logs = math.min(LOGS_PER_FLINT * math.max(FLINT_KEEP - (held[FLINT] or 0), 0), LOG_CAP)
-	if logs > 0 then wanted.log = logs end
+	if M.iron_held(held) >= IRON_FIRST then
+		local logs = math.min(LOGS_PER_FLINT * math.max(FLINT_KEEP - (held[FLINT] or 0), 0), LOG_CAP)
+		if logs > 0 then wanted.log = logs end
+	end
 	return wanted
+end
+
+-- The iron it holds, in nuggets: its nuggets and nine for each ingot.
+function M.iron_held(held)
+	return (held[NUGGET] or 0) + 9 * (held["mcl_core:iron_ingot"] or 0)
 end
 
 -- What a unit of each input category costs at base prices, for sharing out its budget,
