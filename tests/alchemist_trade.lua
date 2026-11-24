@@ -130,14 +130,22 @@ keen._villages_asks = {[FLINT] = 2}
 assert(production.choose(keen).makes == FLINT)
 
 -- What it buys: a day's 36 stone or cobble and 16 lumps' worth of fuel always, and logs for
--- the flint it is short of, four a flint, at most 48 at once (ticket 30's pace).
+-- the flint it is short of, four a flint, at most 48 at once (ticket 30's pace), once it
+-- holds IRON_FIRST of iron (E12d): before that, logs only as fuel.
+local INGOT_ITEM = "mcl_core:iron_ingot"
 local view = possessions.assess(alchemist_with({[EMERALD] = 1000}))
+assert(view.categories.stone.target == alchemist.STONE_WANT and view.categories.log == nil, "iron first")
+assert(view.needs[LOG] == math.ceil(alchemist.FUEL_WANT * 80 / 15), "logs only as fuel")
+assert(alchemist.iron_held({[NUGGET] = 9, [INGOT_ITEM] = 3}) == 36, "an ingot is nine")
+view = possessions.assess(alchemist_with({[EMERALD] = 1000, [NUGGET] = alchemist.IRON_FIRST - 9, [INGOT_ITEM] = 1}))
+assert(view.categories.log.target == 48, "four ingots' worth, one an ingot")
+view = possessions.assess(alchemist_with({[EMERALD] = 1000, [NUGGET] = alchemist.IRON_FIRST}))
 assert(view.categories.stone.target == alchemist.STONE_WANT and view.categories.log.target == 48)
 assert(view.categories.fuel.target == alchemist.FUEL_WANT * 80)
 assert(view.needs[COBBLE] == alchemist.STONE_WANT and view.needs[STONE] == alchemist.STONE_WANT and view.needs[LOG] == 48)
-view = possessions.assess(alchemist_with({[EMERALD] = 1000, [FLINT] = 30}))
+view = possessions.assess(alchemist_with({[EMERALD] = 1000, [FLINT] = 30, [NUGGET] = alchemist.IRON_FIRST}))
 assert(view.categories.log.target == 8)
-view = possessions.assess(alchemist_with({[EMERALD] = 1000, [FLINT] = 32}))
+view = possessions.assess(alchemist_with({[EMERALD] = 1000, [FLINT] = 32, [NUGGET] = alchemist.IRON_FIRST}))
 assert(view.categories.log == nil, "no logs for flint at 32 flint")
 assert(view.needs[LOG] == math.ceil(alchemist.FUEL_WANT * 80 / 15), "logs only as fuel")
 -- It values an input at no more than its best recipe returns for it (ticket 21d), less the
