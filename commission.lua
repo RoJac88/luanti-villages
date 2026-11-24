@@ -29,6 +29,16 @@ local core = minetest
 -- instead, and keeps any inputs. Work stages, not days: hires fall at the evening tavern,
 -- so "the day after the hire" left one work stage, none when that day was a holiday (every
 -- fourth), and all four of ColonyFood's first commissions ran out (2026-11-19).
+--
+-- A crafter's commission (E12). A jobsite crafter is hired the same way for a good of its
+-- own trade (recipes[profession], up to its tier) that it holds none of and its client
+-- has heard no one offer (trade_trips.hire): `trade` names the list `index` is in. The
+-- price is the same reckoning, with no porter's purse, and the client must hold it all:
+-- in lv_pair e11b rich villagers wanted iron axes at 1,500-5,000 while the smiths, at 36-83
+-- emeralds, could tell of their want of ingots only at that much (market_news.lua), under
+-- what one costs, and no iron was bought or made. Paid first, a smith bids for its inputs
+-- with the client's money. Its inputs may not exist yet, so it lasts TRADE_WORK_DAYS work
+-- stages, at most TRADE_MAX_DAYS days.
 local ledger = dofile(core.get_modpath("living_villages") .. "/ledger.lua")
 local recipes = dofile(core.get_modpath("living_villages") .. "/recipes.lua")
 
@@ -37,8 +47,11 @@ local PRICE_SLACK = 1.25
 -- days counting the hire's.
 local WORK_DAYS = 2
 local MAX_DAYS = 6
+local TRADE_WORK_DAYS = 4
+local TRADE_MAX_DAYS = 8
 
-local M = {PRICE_SLACK = PRICE_SLACK, WORK_DAYS = WORK_DAYS, MAX_DAYS = MAX_DAYS}
+local M = {PRICE_SLACK = PRICE_SLACK, WORK_DAYS = WORK_DAYS, MAX_DAYS = MAX_DAYS,
+	TRADE_WORK_DAYS = TRADE_WORK_DAYS, TRADE_MAX_DAYS = TRADE_MAX_DAYS}
 
 local function today()
 	return core.get_day_count and core.get_day_count() or 0
@@ -63,13 +76,15 @@ end
 -- The commission a client would pay for, or nil: {index, recipe, item, count, price, value}.
 -- `view` is its ledger view, `price_of` its prices, `emeralds` what it holds, `urgent` the
 -- least urgency, `fee` and `purse` the porter's, `urgency` trade_trips.urgency, `pending` a
--- good it already has a commission out for.
-function M.offer(view, price_of, emeralds, urgent, fee, purse, urgency, pending)
+-- good it already has a commission out for. `list` (default recipes.labour) and `goods`
+-- (default M.goods()) for a crafter's (E12): its recipes and the goods it would make.
+function M.offer(view, price_of, emeralds, urgent, fee, purse, urgency, pending, list, goods)
 	local best, best_gain
-	for index, recipe in ipairs(recipes.labour) do
+	goods = goods or M.goods()
+	for index, recipe in ipairs(list or recipes.labour) do
 		local item = recipe.makes
 		local need = view.needs[item] or 0
-		if need > 0 and item ~= pending and M.goods()[item] and urgency(view, item) >= urgent then
+		if need > 0 and item ~= pending and goods[item] and urgency(view, item) >= urgent then
 			local value = view.value(item)
 			local cost = M.cost(recipe, price_of)
 			if value and cost then
@@ -86,10 +101,23 @@ function M.offer(view, price_of, emeralds, urgent, fee, purse, urgency, pending)
 	return best
 end
 
+-- A commission's recipe: in its crafter's trade list (E12), else in recipes.labour.
+function M.recipe(c)
+	local list = recipes[c.trade or "labour"]
+	return list and c.index and list[c.index] or nil
+end
+
 -- Its commission, if it has one under way (not yet delivered or returned), else nil.
 function M.of(self)
 	local c = self._villages_commission
-	if type(c) ~= "table" or not recipes.labour[c.index] then return nil end
+	if type(c) ~= "table" or not M.recipe(c) then return nil end
+	return c
+end
+
+-- Its labour commission (ticket 26b), else nil: a crafter's (E12) is no labour plan.
+function M.labour_of(self)
+	local c = M.of(self)
+	if c and c.trade then return nil end
 	return c
 end
 
@@ -103,8 +131,10 @@ end
 -- Whether a commission has run out: its last work day over, or MAX_DAYS days.
 function M.expired(c, day)
 	day = day or today()
-	if day > c.day + MAX_DAYS - 1 then return true end
-	return (c.worked or 0) >= WORK_DAYS and day > c.worked_day
+	local max_days, work_days = MAX_DAYS, WORK_DAYS
+	if c.trade then max_days, work_days = TRADE_MAX_DAYS, TRADE_WORK_DAYS end
+	if day > c.day + max_days - 1 then return true end
+	return (c.worked or 0) >= work_days and day > c.worked_day
 end
 
 -- The emeralds of a commission's price it still holds back from its own spending.
@@ -116,12 +146,29 @@ end
 
 -- The caps of its commissioned recipe's inputs: the output at what one is paid.
 function M.caps(c, price_of)
-	local recipe = recipes.labour[c.index]
+	local recipe = M.recipe(c)
 	local unit = c.price / math.max(c.count, 1)
 	return ledger.imputed({recipe}, function(item)
 		if item == c.item then return math.max(price_of(item) or 0, unit) end
 		return price_of(item)
 	end, 5)
+end
+
+-- What a jobsite crafter may be commissioned for (E12): its trade, that trade's recipes
+-- and {item = true} of their goods up to its tier; nil for one with no trade list of its
+-- own (an alchemist, keeper or Builder, a child, one with no jobsite) or one already on
+-- a commission.
+function M.crafter(self)
+	if self.child or not self._jobsite or self._villages_alchemist or self._villages_keeper
+		or self._villages_builder or M.of(self) then return nil end
+	local trade = self._profession
+	local list = trade and trade ~= "labour" and recipes[trade]
+	if type(list) ~= "table" or not list[1] or not list[1].makes then return nil end
+	local tier, goods = self._max_trade_tier or 1, {}
+	for _, recipe in ipairs(list) do
+		if (recipe.tier or 1) <= tier then goods[recipe.makes] = true end
+	end
+	return trade, list, goods
 end
 
 -- The labour recipes' goods, {item = true}: their outputs that no labour recipe takes in

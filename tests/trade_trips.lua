@@ -653,6 +653,87 @@ do
 	time = 6000 / 24000
 end
 
+-- A crafter's commission (E12): a client with an urgent want of a good of a jobsite
+-- crafter's trade, that the crafter holds none of and nobody is heard to offer, pays it up
+-- front, up to all it holds. The crafter bids for the inputs with that money and delivers.
+do
+	local commission = dofile("commission.lua")
+	local production = dofile("production.lua")
+	local recipes = dofile("recipes.lua")
+	local AXE, INGOT, STICK = "mcl_tools:axe_iron", "mcl_core:iron_ingot", "mcl_core:stick"
+	local stash = chest({x = 200, y = 1, z = 2}, "cutter", {})
+	local client = villager("cutter", {x = 200, y = 1, z = 0}, {_profession = "leatherworker",
+		_jobsite = {x = 201, y = 1, z = 0}, _villages_stash = stash, _villages_belongings = {[EMERALD] = 2000}})
+	local view = possessions.assess(client)
+	assert((view.needs[AXE] or 0) > 0 and trips.urgency(view, AXE) >= trips.URGENT, "it wants an iron axe")
+	local smith = villager("smith", {x = 200, y = 1, z = 12}, {_profession = "weapon_smith",
+		_jobsite = {x = 201, y = 1, z = 12}, _villages_belongings = {[EMERALD] = 40}})
+	-- Not while it holds one: it sells that one.
+	possessions.add(smith, AXE, 1)
+	assert(#trips.hire({smith, client}) == 0, "it holds one")
+	possessions.take(smith, AXE, 1)
+	-- Not while the client has heard one offered.
+	client._villages_market_news = {{item = AXE, who = "seller", kind = "has", count = 1, price = 600,
+		home = {x = 0, y = 1, z = 0}, heard = now, hops = 0}}
+	assert(#trips.hire({smith, client}) == 0, "a seller is heard of")
+	client._villages_market_news = nil
+	local hires = trips.hire({smith, client})
+	assert(#hires == 1 and hires[1].crafter == smith, "a crafter's commission")
+	local c = smith._villages_commission
+	assert(c.trade == "weapon_smith" and c.item == AXE and c.count == 1 and c.client == "cutter")
+	local recipe = commission.recipe(c)
+	assert(recipes.weapon_smith[c.index].makes == AXE and recipe.makes == AXE)
+	assert(commission.of(smith) == c and commission.labour_of(smith) == nil)
+	local cost = commission.cost(recipe, possessions.prices_of(client))
+	assert(c.price == math.ceil(cost * commission.PRICE_SLACK) + trips.PORTER_FEE, c.price)
+	assert(c.price > trips.PURSE, "past a porter's purse")
+	assert(count(client, EMERALD) == 2000 - c.price and count(smith, EMERALD) == 40 + c.price)
+	assert(logs[#logs]:find("commissioned crafter smith %(weapon_smith%) with " .. c.price))
+	-- Its ingots are worth at least what the client paid for them, its axe held back at the
+	-- price; no labour plan comes of it; the price is not its money.
+	assert(possessions.labour_plan(smith) == nil)
+	local smith_view = possessions.assess(smith)
+	assert((smith_view.needs[INGOT] or 0) >= 3, "ingots are needs")
+	local client_ingot = possessions.prices_of(client)(INGOT)
+	assert(smith_view.value(INGOT) >= client_ingot - 1e-6, smith_view.value(INGOT) .. " " .. client_ingot)
+	assert(possessions.money(smith) == 40, possessions.money(smith))
+	-- Nor a second axe for the client while the first is out.
+	client._villages_porter_day = nil
+	local other = villager("smith2", {x = 200, y = 1, z = 13}, {_profession = "weapon_smith",
+		_jobsite = {x = 201, y = 1, z = 13}})
+	assert(#trips.hire({other, client}) == 0, "one axe commissioned is enough")
+	assert(commission.crafter(smith) == nil, "one commission at a time")
+	-- With the inputs it makes the axe, holds it back and takes it to the client's chest.
+	possessions.add(smith, INGOT, 3)
+	possessions.add(smith, STICK, 2)
+	possessions.add(smith, "mcl_core:coal_lump", 2)
+	local chosen = production.choose(smith)
+	assert(chosen and chosen.makes == AXE, "it makes the commissioned axe")
+	assert(production.make(smith, chosen))
+	assert((possessions.assess(smith).surplus[AXE] or 0) == 0, "held back")
+	time = 9000 / 24000
+	trips.step(smith, now)
+	assert(smith._villages_commission == nil and smith._villages_trade_trip.commission, "made: delivering")
+	smith.arrive()
+	trips.step(smith, now + 2)
+	assert(chest_count(stash, AXE) == 1 and count(smith, AXE) == 0, "delivered")
+	assert(logs[#logs]:find("commission: porter smith delivered 1 mcl_tools:axe_iron")
+		or logs[#logs - 1]:find("commission: crafter smith made"), logs[#logs])
+	-- A crafter's lasts longer: TRADE_WORK_DAYS work stages, at most TRADE_MAX_DAYS days.
+	local timed = {day = day, trade = "weapon_smith"}
+	for d = day, day + commission.TRADE_WORK_DAYS - 1 do commission.worked(timed, d) end
+	assert(not commission.expired(timed, day + commission.TRADE_WORK_DAYS - 1), "during its last work stage")
+	assert(commission.expired(timed, day + commission.TRADE_WORK_DAYS), "after it")
+	assert(not commission.expired({day = day, trade = "weapon_smith"}, day + commission.MAX_DAYS), "past a porter's days")
+	assert(commission.expired({day = day, trade = "weapon_smith"}, day + commission.TRADE_MAX_DAYS))
+	-- No commission the client cannot pay.
+	local poor = villager("poor", {x = 230, y = 1, z = 0}, {_profession = "leatherworker", _jobsite = {x = 231, y = 1, z = 0},
+		_villages_stash = chest({x = 230, y = 1, z = 2}, "poor", {}), _villages_belongings = {[EMERALD] = 100}})
+	local smith3 = villager("smith3", {x = 230, y = 1, z = 1}, {_profession = "weapon_smith", _jobsite = {x = 231, y = 1, z = 1}})
+	assert(#trips.hire({smith3, poor}) == 0, "the price is over what it holds")
+	time = 6000 / 24000
+end
+
 -- A farmer with no hoe plans a trip to a tool smith that has one, whatever the hoe is worth
 -- next to URGENT times its price (wants.lua caps it at what it brings; run 46, when that
 -- was under, before wheat yielded two a harvest).

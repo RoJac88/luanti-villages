@@ -664,10 +664,12 @@ function M.step(self, now)
 			trip = M.commission_delivery(self, commissioned, made)
 			self._villages_trade_trip, self._villages_commission = trip, nil
 			if made then
-				log("commission: porter %s made %d %s for %s", short_id(self._id), commissioned.count,
+				log("commission: %s %s made %d %s for %s", commissioned.trade and "crafter" or "porter",
+					short_id(self._id), commissioned.count,
 					commissioned.item, short_id(commissioned.client))
 			else
-				log("commission: porter %s ran out of time on %s for %s, returns %d emerald(s)", short_id(self._id),
+				log("commission: %s %s ran out of time on %s for %s, returns %d emerald(s)",
+					commissioned.trade and "crafter" or "porter", short_id(self._id),
 					commissioned.item, short_id(commissioned.client), trip.client.purse)
 			end
 		end
@@ -789,6 +791,52 @@ function M.hire(members)
 						hires[#hires + 1] = {porter = porter, client = client, commission = porter._villages_commission}
 						log("villager %s commissioned porter %s with %d emerald(s) for %d %s", short_id(client._id),
 							short_id(porter._id), offer.price, offer.count, offer.item)
+						break
+					end
+				end
+			end
+		end
+	end
+	-- A jobsite crafter may be commissioned for a good of its own trade (E12) that it holds
+	-- none of and its client has heard no one offer, paid at most all the client holds.
+	local views = {}
+	for _, crafter in ipairs(members) do
+		local trade, list, goods = commission.crafter(crafter)
+		if trade and not crafter._villages_trade_trip then
+			local held = possessions.held(crafter)
+			local unheld = {}
+			for item in pairs(goods) do
+				if (held[item] or 0) == 0 then unheld[item] = true end
+			end
+			for _, client in ipairs(members) do
+				local deliver = client ~= crafter and has_job(client) and not client._villages_trade_trip
+					and client._villages_porter_day ~= today() and delivery(client)
+				local emeralds = deliver and possessions.emeralds(client) or 0
+				if deliver and emeralds >= PORTER_FEE + 1 then
+					local view = views[client] or possessions.assess(client)
+					views[client] = view
+					local wanted = {}
+					for item in pairs(unheld) do wanted[item] = true end
+					for _, entry in ipairs(news.heard(client, now)) do
+						if entry.kind == "has" then wanted[entry.item] = nil end
+					end
+					local out = client._villages_commissioned
+					local pending = type(out) == "table" and not commission.expired(out, today()) and out.item or nil
+					-- No purse: a price cut to what the client holds would not buy the inputs.
+					local offer = commission.offer(view, possessions.prices_of(client), emeralds, URGENT, PORTER_FEE,
+						math.huge, M.urgency, pending, list, wanted)
+					if offer then
+						possessions.take(client, EMERALD, offer.price)
+						possessions.add(crafter, EMERALD, offer.price)
+						client._villages_porter_day = today()
+						client._villages_commissioned = {item = offer.item, day = today(), trade = trade}
+						crafter._villages_commission = {
+							index = offer.index, item = offer.item, count = offer.count, client = client._id,
+							deliver = deliver, price = offer.price, day = today(), trade = trade,
+						}
+						hires[#hires + 1] = {crafter = crafter, client = client, commission = crafter._villages_commission}
+						log("villager %s commissioned crafter %s (%s) with %d emerald(s) for %d %s", short_id(client._id),
+							short_id(crafter._id), trade, offer.price, offer.count, offer.item)
 						break
 					end
 				end

@@ -822,7 +822,7 @@ end
 -- The labour recipe it plans to buy inputs for today (production.labour_step), or nil.
 function M.labour_plan(self)
 	-- A commission's recipe, whatever the day's activity (ticket 26b).
-	local commissioned = not self.child and commission.of(self)
+	local commissioned = not self.child and commission.labour_of(self)
 	if commissioned then return recipes.labour[commissioned.index] end
 	local plan = self._villages_labour_plan
 	if not plan or not plan.index or not M.labouring(self) or plan.day ~= core.get_day_count() then return nil end
@@ -878,6 +878,31 @@ function M.available(self, offered)
 		end
 	end
 	return set
+end
+
+-- `least` with each input of `recipe` it holds too few of for one craft at no less than
+-- `share` (default PLAN_SHARE) of its cap in `caps` (ticket 23d): a plan's or a
+-- commission's inputs.
+local function plan_floors(self, recipe, caps, least, share)
+	share = share or PLAN_SHARE
+	local held = M.held(self)
+	for _, input in ipairs(recipe.from) do
+		local category = input[3] or goods.target_category(input[1])
+		if category ~= input[3] and category ~= "log" and category ~= "planks" then category = nil end
+		local members = category and goods.CATEGORIES[category] or {[input[1]] = true}
+		local have = 0
+		for item in pairs(members) do have = have + (held[item] or 0) end
+		if have < input[2] then
+			for item in pairs(members) do
+				local floor = share * (caps[item] or 0)
+				if floor > 0 then
+					least = least or {}
+					least[item] = math.max(least[item] or 0, floor)
+				end
+			end
+		end
+	end
+	return least
 end
 
 -- The ledger's view of this villager (ledger.lua): its targets, needs, surplus and values.
@@ -999,7 +1024,12 @@ function M.assess(self, offered)
 	-- 90 (ColonyFood, 2026-11-15).
 	-- A commission's (ticket 26b) are reckoned with its output at the price it is paid, and
 	-- the output is a need it holds back at that price: worth no more to it, sold for no less.
-	local commissioned = plan and commission.of(self)
+	-- A crafter's (E12) alike: its output held back at the price, and its inputs capped and
+	-- floored below as a plan's are, from its trade's recipe.
+	local crafting = not self.child and commission.of(self)
+	crafting = crafting and crafting.trade and crafting or nil
+	local labour_commission = plan and commission.labour_of(self)
+	local commissioned = labour_commission or crafting
 	if commissioned then
 		local unit = commissioned.price / math.max(commissioned.count, 1)
 		extra[commissioned.item] = (extra[commissioned.item] or 0) + commissioned.count
@@ -1008,31 +1038,19 @@ function M.assess(self, offered)
 		least[commissioned.item] = math.max(least[commissioned.item] or 0, unit)
 	end
 	if plan then
-		local planned = commissioned and commission.caps(commissioned, M.prices_of(self))
+		local planned = labour_commission and commission.caps(labour_commission, M.prices_of(self))
 			or self._villages_labour_plan.caps
 		local caps = planned or ledger.imputed({plan}, M.prices_of(self), 5)
 		for item, cap in pairs(caps) do
 			worth[item] = math.min(worth[item] or math.huge, cap)
 		end
-		if planned then
-			local held = M.held(self)
-			for _, input in ipairs(plan.from) do
-				local category = input[3] or goods.target_category(input[1])
-				if category ~= input[3] and category ~= "log" and category ~= "planks" then category = nil end
-				local members = category and goods.CATEGORIES[category] or {[input[1]] = true}
-				local have = 0
-				for item in pairs(members) do have = have + (held[item] or 0) end
-				if have < input[2] then
-					for item in pairs(members) do
-						local floor = PLAN_SHARE * (caps[item] or 0)
-						if floor > 0 then
-							least = least or {}
-							least[item] = math.max(least[item] or 0, floor)
-						end
-					end
-				end
-			end
-		end
+		if planned then least = plan_floors(self, plan, caps, least) end
+	end
+	if crafting then
+		local caps = commission.caps(crafting, M.prices_of(self))
+		for item, cap in pairs(caps) do worth[item] = math.min(worth[item] or math.huge, cap) end
+		-- The client paid its inputs at its prices times PRICE_SLACK: those prices are the floor.
+		least = plan_floors(self, commission.recipe(crafting), caps, least, 1 / commission.PRICE_SLACK)
 	end
 	local list = not self.child and M.recipes_of(self)
 	local unpaid, uncapped, tier
@@ -1042,7 +1060,13 @@ function M.assess(self, offered)
 		if self._villages_alchemist then tier = 5 end
 		uncapped = {}
 		for item, value in pairs(worth) do uncapped[item] = value end
-		for item, cap in pairs(ledger.imputed(list, price_of, tier)) do
+		-- Its commissioned good (E12) at no less than it is paid, so its other recipes' caps
+		-- leave the commission's inputs at the commission's.
+		local cap_price = price_of
+		if crafting then
+			cap_price = M.lifted(price_of, {[crafting.item] = crafting.price / math.max(crafting.count, 1)})
+		end
+		for item, cap in pairs(ledger.imputed(list, cap_price, tier)) do
 			worth[item] = math.min(worth[item] or math.huge, cap)
 		end
 		unpaid = ledger.unpaid(list, price_of, tier)
