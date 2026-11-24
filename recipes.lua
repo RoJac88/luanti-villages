@@ -154,7 +154,7 @@ return {
 			fuel = 4},
 		{makes = "mcl_core:flint", count = 1, tier = 1, from = {{"mcl_core:tree", 4}}, share = 1 / 12, rank = 2, upto = 32,
 			fuel = 4},
-		{makes = "mcl_core:iron_nugget", count = 1, tier = 1, from = {{"mcl_core:cobble", 4, "stone"}}, share = 1 / 36,
+		{makes = "mcl_core:iron_nugget", count = 1, tier = 1, from = {{"mcl_core:cobble", 1, "stone"}}, share = 1 / 36,
 			rank = 3, upto = 192, fuel = 4},
 	},
 	mason = {

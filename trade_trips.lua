@@ -810,7 +810,8 @@ function M.hire(members)
 				if (held[item] or 0) == 0 then unheld[item] = true end
 			end
 			for _, client in ipairs(members) do
-				local deliver = client ~= crafter and has_job(client) and not client._villages_trade_trip
+				-- Any villager with a chest to deliver to (E12c): a nitwit or one out of work too.
+				local deliver = client ~= crafter and not client.child and not client._villages_trade_trip
 					and client._villages_porter_day ~= today() and delivery(client)
 				local emeralds = deliver and possessions.emeralds(client) or 0
 				if deliver and emeralds >= PORTER_FEE + 1 then

@@ -63,7 +63,8 @@ local OVERLAY = "(living_villages_villager_profession_cleric.png^[multiply:#4fb3
 local NUGGET, FLINT, GLASS = "mcl_core:iron_nugget", "mcl_core:flint", "mcl_core:glass"
 local GLASS_KEEP, FLINT_KEEP, NUGGET_KEEP = 12, 32, 192
 local LOGS_PER_FLINT, LOG_CAP = 4, 48
-local STONE_WANT = 144
+-- A day's nuggets, a stone each (E12c; four each, 144, before).
+local STONE_WANT = 36
 local GOLD_RESERVE = 24
 local COAL = "mcl_core:coal_lump"
 -- Fuel it keeps, in lumps: two hours of nuggets at half a lump each (ticket 28c), at

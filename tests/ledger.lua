@@ -37,7 +37,7 @@ assert(#unpriced == 0, "unpriced: " .. table.concat(unpriced, ", "))
 local stone, log = ledger.price("mcl_core:stone"), ledger.price("mcl_core:tree")
 local fuel = ledger.price("mcl_core:coal_lump") / 2
 assert(near(stone, S / 20) and near(log, 16))
-assert(near(ledger.price("mcl_core:iron_nugget"), 4 * stone + fuel))
+assert(near(ledger.price("mcl_core:iron_nugget"), stone + fuel), "one stone (E12c)")
 assert(near(ledger.price("mcl_core:iron_ingot"), 9 * ledger.price("mcl_core:iron_nugget")), "nine nuggets, not vanilla's 16")
 assert(near(ledger.price("mcl_core:gold_nugget"), 2 * ledger.price("mcl_core:iron_ingot")))
 assert(near(ledger.price("mcl_core:gold_ingot"), 9 * ledger.price("mcl_core:gold_nugget")))
@@ -74,11 +74,13 @@ assert(near(ledger.price("mcl_cauldrons:cauldron"), ledger.COST_FLOOR * (7 * led
 -- The cleric's clock: one gold ingot and one iron (ticket 29).
 assert(near(ledger.price("mcl_clock:clock"), ledger.COST_FLOOR * (ledger.price("mcl_core:gold_ingot")
 	+ ledger.price("mcl_core:iron_ingot"))))
--- 724 and 439 before the alchemist's fuel (ticket 28c) went into an ingot's cost.
-assert(math.floor(ledger.price("mcl_armor:helmet_iron") + 0.5) == 856)
-assert(math.floor(ledger.price("mcl_tools:axe_iron") + 0.5) == 518)
-assert(near(ledger.price("mcl_armor:helmet_iron"), ledger.COST_FLOOR * (5 * ledger.price("mcl_core:iron_ingot")
-	+ 5 / 8 * ledger.price("mcl_core:coal_lump"))))
+-- 724 and 439 before the alchemist's fuel (ticket 28c) went into an ingot's cost, 856 and
+-- 518 before a nugget took one stone rather than four (E12c).
+assert(math.floor(ledger.price("mcl_armor:helmet_iron") + 0.5) == 320)
+assert(math.floor(ledger.price("mcl_tools:axe_iron") + 0.5) == 194)
+-- Its trade-table price now tops its cost floor.
+assert(ledger.price("mcl_armor:helmet_iron") >= ledger.COST_FLOOR * (5 * ledger.price("mcl_core:iron_ingot")
+	+ 5 / 8 * ledger.price("mcl_core:coal_lump")) - 1e-9)
 
 -- The dependency graph.
 local smith = ledger.inputs("tool_smith")

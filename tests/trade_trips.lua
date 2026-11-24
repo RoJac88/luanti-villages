@@ -686,7 +686,6 @@ do
 	assert(commission.of(smith) == c and commission.labour_of(smith) == nil)
 	local cost = commission.cost(recipe, possessions.prices_of(client))
 	assert(c.price == math.ceil(cost * commission.PRICE_SLACK) + trips.PORTER_FEE, c.price)
-	assert(c.price > trips.PURSE, "past a porter's purse")
 	assert(count(client, EMERALD) == 2000 - c.price and count(smith, EMERALD) == 40 + c.price)
 	assert(logs[#logs]:find("commissioned crafter smith %(weapon_smith%) with " .. c.price))
 	-- Its ingots are worth at least what the client paid for them, its axe held back at the
@@ -733,6 +732,17 @@ do
 	assert(commission.expired(timed, day + commission.TRADE_WORK_DAYS), "after it")
 	assert(not commission.expired({day = day, trade = "weapon_smith"}, day + commission.MAX_DAYS), "past a porter's days")
 	assert(commission.expired({day = day, trade = "weapon_smith"}, day + commission.TRADE_MAX_DAYS))
+	-- A client with no job may commission too (E12c), with a chest to deliver to: a nitwit
+	-- woodcutting today wants an iron axe.
+	local idler_stash = chest({x = 260, y = 1, z = 2}, "idler", {})
+	local idler = villager("idler", {x = 260, y = 1, z = 0}, {_profession = "nitwit",
+		_villages_labour = {day = day, activity = "woodcutter"},
+		_villages_stash = idler_stash, _villages_belongings = {[EMERALD] = 2000}})
+	local idle_view = possessions.assess(idler)
+	assert((idle_view.needs[AXE] or 0) > 0 and trips.urgency(idle_view, AXE) >= trips.URGENT, "it wants an axe")
+	local smith4 = villager("smith4", {x = 260, y = 1, z = 1}, {_profession = "weapon_smith", _jobsite = {x = 261, y = 1, z = 1}})
+	local idle_hires = trips.hire({smith4, idler})
+	assert(#idle_hires == 1 and smith4._villages_commission.client == "idler", "a nitwit commissions")
 	-- No commission the client cannot pay.
 	local poor = villager("poor", {x = 230, y = 1, z = 0}, {_profession = "leatherworker", _jobsite = {x = 231, y = 1, z = 0},
 		_villages_stash = chest({x = 230, y = 1, z = 2}, "poor", {}), _villages_belongings = {[EMERALD] = 100}})

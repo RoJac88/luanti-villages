@@ -315,7 +315,8 @@ do
 	assert(row(window.rows(empty, {[NUGGET] = 42}, 0, 0, nil, true).sells, GOLD_NUGGET).lots == 1, "past it")
 	local bid = row(r.buys, IRON)
 	assert(bid and bid.price == math.floor(ledger.price(IRON)) and bid.lots == math.floor(1000 / bid.price))
-	assert(row(r.buys, GOLD) and row(r.buys, GOLD).lots == 0, "a gold ingot is more than it has")
+	local gold = row(r.buys, GOLD)
+	assert(gold and gold.lots == math.floor(1000 / gold.price), "the gold ingots 1000 pays for")
 	assert(row(r.buys, FLINT).lots == 15 and row(r.buys, GLASS).lots == 10, "what 1000 pays for; 13 glass less 3")
 	-- At 32 flint and 13 glass it takes no more; panes count as glass.
 	r = window.rows(empty, {[FLINT] = 32, [GLASS] = 10, [PANE] = 3}, 1000, 0, nil, true)
