@@ -38,9 +38,13 @@ local core = minetest
 -- emeralds, could tell of their want of ingots only at that much (market_news.lua), under
 -- what one costs, and no iron was bought or made. Paid first, a smith bids for its inputs
 -- with the client's money. Its inputs may not exist yet, so it lasts TRADE_WORK_DAYS work
--- stages, at most TRADE_MAX_DAYS days.
+-- stages, at most TRADE_MAX_DAYS days. Only finished goods (M.finished): no food, which
+-- the tavern sells (lv_pair e12 day 4: a cooked salmon commissioned of the butcher for 71,
+-- four dinners, and the keeper's buys fell from 1.5 a day to 0.2), and nothing any recipe
+-- takes in (4 planks commissioned of a cartographer for 91).
 local ledger = dofile(core.get_modpath("living_villages") .. "/ledger.lua")
 local recipes = dofile(core.get_modpath("living_villages") .. "/recipes.lua")
+local food = dofile(core.get_modpath("living_villages") .. "/food.lua")
 
 local PRICE_SLACK = 1.25
 -- How long a commission lasts: WORK_DAYS of the worker's work stages, at most MAX_DAYS
@@ -164,11 +168,37 @@ function M.crafter(self)
 	local trade = self._profession
 	local list = trade and trade ~= "labour" and recipes[trade]
 	if type(list) ~= "table" or not list[1] or not list[1].makes then return nil end
-	local tier, goods = self._max_trade_tier or 1, {}
+	local tier, goods, finished = self._max_trade_tier or 1, {}, M.finished()
 	for _, recipe in ipairs(list) do
-		if (recipe.tier or 1) <= tier then goods[recipe.makes] = true end
+		if (recipe.tier or 1) <= tier and finished[recipe.makes] then goods[recipe.makes] = true end
 	end
+	if not next(goods) then return nil end
 	return trade, list, goods
+end
+
+-- Finished goods, {item = true}: every recipe's output that no recipe takes in and that
+-- is not food (E12): a crafter's commission is for one of these.
+local FINISHED
+function M.finished()
+	if FINISHED then return FINISHED end
+	local inputs = {}
+	for _, list in pairs(recipes) do
+		if type(list) == "table" then
+			for _, recipe in ipairs(list) do
+				for _, input in ipairs(type(recipe) == "table" and recipe.from or {}) do inputs[input[1]] = true end
+			end
+		end
+	end
+	FINISHED = {}
+	for _, list in pairs(recipes) do
+		if type(list) == "table" then
+			for _, recipe in ipairs(list) do
+				local item = type(recipe) == "table" and recipe.makes
+				if item and not inputs[item] and not food.POINTS[item] then FINISHED[item] = true end
+			end
+		end
+	end
+	return FINISHED
 end
 
 -- The labour recipes' goods, {item = true}: their outputs that no labour recipe takes in

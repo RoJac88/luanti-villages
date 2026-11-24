@@ -451,7 +451,8 @@ function M.deliver(self, trip)
 		end
 	end
 	if trip.commission then
-		log("commission: porter %s delivered %d %s and %d emerald(s) for %s at %s", short_id(self._id),
+		log("commission: %s %s delivered %d %s and %d emerald(s) for %s at %s",
+			type(trip.commission) == "string" and "crafter" or "porter", short_id(self._id),
 			goods - left_goods, trip.item, back - left_back, short_id(client.id), core.pos_to_string(client.deliver))
 		return
 	end
@@ -694,7 +695,7 @@ end
 function M.commission_delivery(self, c, made)
 	return {
 		item = c.item, who = c.client, home = vector.new(c.deliver), want = c.count, price = 0,
-		leg = "deliver", tries = 0, day = today(), commission = true,
+		leg = "deliver", tries = 0, day = today(), commission = c.trade or true,
 		bought = made and c.count or 0, spent = 0,
 		client = {id = c.client, deliver = vector.new(c.deliver), fee = 0,
 			purse = made and 0 or math.min(c.price, possessions.emeralds(self)), value = c.price / math.max(c.count, 1)},

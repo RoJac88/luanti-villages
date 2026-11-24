@@ -717,8 +717,15 @@ do
 	smith.arrive()
 	trips.step(smith, now + 2)
 	assert(chest_count(stash, AXE) == 1 and count(smith, AXE) == 0, "delivered")
-	assert(logs[#logs]:find("commission: porter smith delivered 1 mcl_tools:axe_iron")
-		or logs[#logs - 1]:find("commission: crafter smith made"), logs[#logs])
+	assert(logs[#logs]:find("commission: crafter smith delivered 1 mcl_tools:axe_iron"), logs[#logs])
+	-- Only finished goods: no food, nothing a recipe takes in.
+	local finished = commission.finished()
+	assert(finished[AXE] and finished["mcl_cauldrons:cauldron"] and finished["mcl_books:bookshelf"])
+	assert(not finished["mcl_fishing:salmon_cooked"] and not finished["mcl_mobitems:cooked_beef"], "no food")
+	assert(not finished["mcl_core:wood"] and not finished[STICK] and not finished[INGOT], "no inputs")
+	local cook = villager("cook", {x = 200, y = 1, z = 14}, {_profession = "butcher", _jobsite = {x = 201, y = 1, z = 14}})
+	local _, _, cook_goods = commission.crafter(cook)
+	for item in pairs(cook_goods or {}) do assert(not dofile("food.lua").POINTS[item], item) end
 	-- A crafter's lasts longer: TRADE_WORK_DAYS work stages, at most TRADE_MAX_DAYS days.
 	local timed = {day = day, trade = "weapon_smith"}
 	for d = day, day + commission.TRADE_WORK_DAYS - 1 do commission.worked(timed, d) end
