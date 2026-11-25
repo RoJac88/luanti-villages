@@ -64,10 +64,13 @@
 --   (ColonyFood, 2026-11-14). With a pick the generator refills faster too: REGEN_SECONDS
 --   over the pick's rate after a block is mined, the cell turns to what the lava would
 --   cool it to (cobble, or stone under lava), unless it has refilled by then or someone
---   stands in it. By hand it refills at VoxeLibre's own pace, which it logs.
+--   stands in it. By hand it refills at VoxeLibre's own pace, which it logs. Let go (off
+--   work, its want met) while the cell it mined is still open, it stays held until the
+--   cell fills, at most LEAVE_SECONDS (M.release).
 --   Two trades quarry for themselves (M.self_quarry), taking no other labour: a mason
 --   with nothing to make today, and an alchemist holding no stone or cobble at all,
---   which then quarries until it holds a day's alchemist.STONE_WANT (M.alchemist_stone). The alchemist's
+--   which then quarries until it holds a day's alchemist.STONE_WANT (M.alchemist_stone),
+--   so long as it is still at the generator. The alchemist's
 --   nuggets take a stone each, and cobble came to it only from whichever villager
 --   happened to quarry: in lv_pair e12d (2026-11-24) one run's alchemist bought 56 and
 --   made 14 nuggets, the other's got 8 stone in 14 days and made none.
@@ -318,7 +321,11 @@ function M.self_quarry(self)
 	if self._villages_alchemist then
 		local held = stone_held(self)
 		local labour = self._villages_labour
+		-- Short of a day's stone it goes on only while still at the generator: it set off
+		-- again for each stone a nugget took, 65 blocks for one cobble, and was let go by
+		-- the open cell it had just mined (ColonyFood, 2026-11-25).
 		local quarrying = labour and labour.day == core.get_day_count() and labour.activity == "quarrier"
+			and self._villages_quarry_hold ~= nil
 		if not (held == 0 or (quarrying and held < M.alchemist_stone())) then return false end
 	elseif self._profession ~= "mason" or self._villages_builder or not production.idle_today(self) then
 		return false
@@ -1260,12 +1267,33 @@ end
 -- 6,600 emeralds (ColonyFood, 2026-11-19).
 local HOLD_SLACK = 0.15
 
+-- How long a quarrier let go is still held while the cell it mined is open (M.release).
+local LEAVE_SECONDS = 10
+M.LEAVE_SECONDS = LEAVE_SECONDS
+
+local function cell_open(pos)
+	local node = core.get_node_or_nil(pos)
+	return node ~= nil and node.name ~= COBBLE and node.name ~= STONE
+end
+
+-- Lets it go, giving back the order it had if nothing has changed it since.
+local function let_go(self)
+	local hold = self._villages_quarry_hold
+	if self.order == "stand" and hold.previous_order then self.order = hold.previous_order end
+	self._villages_quarry_hold = nil
+end
+
 -- Pins a quarrier to the middle of its standing cell at the generator, facing it:
 -- vanilla's stand state rolls a walk every second unless its order is "stand", and a
 -- mined cell is an open dead end to walk into.
 function M.hold(self)
 	local hold = self._villages_quarry_hold
 	if not hold or not self.object then return end
+	-- Let go while the cell was open (M.release): free once it has filled, or at the end.
+	if hold.leaving and (not cell_open(hold.cell) or core.get_gametime() >= hold.leaving) then
+		let_go(self)
+		return
+	end
 	if self.order ~= "stand" then
 		hold.previous_order = hold.previous_order or self.order
 		self.order = "stand"
@@ -1286,20 +1314,32 @@ function M.hold(self)
 	end
 end
 
--- Lets it go, giving back the order it had if nothing has changed it since.
-function M.release(self)
+-- Lets it go, unless the cell it mined is still open: then it stays held until the cell
+-- fills or LEAVE_SECONDS pass (M.hold). Let go at once, its walk home or to its stand
+-- set off through the open cell as the lava flowed back: five alchemists burned so at
+-- ColonyFood's generator, each a few seconds after a block (days 1080-1184, 2026-11-25).
+-- `now` lets go regardless (it is put straight onto another stand). Returns whether it
+-- is free.
+function M.release(self, now)
 	local hold = self._villages_quarry_hold
-	if not hold then return end
-	if self.order == "stand" and hold.previous_order then self.order = hold.previous_order end
-	self._villages_quarry_hold = nil
+	if not hold then return true end
+	if not now and cell_open(hold.cell) then
+		hold.leaving = hold.leaving or core.get_gametime() + LEAVE_SECONDS
+		if core.get_gametime() < hold.leaving then return false end
+	end
+	let_go(self)
+	return true
 end
 
 -- Starts holding it at the generator `cell`: where it stands, unless that is the cell
 -- itself or no place to stand, then the nearest place beside it.
 local function hold_at(self, cell)
 	local hold = self._villages_quarry_hold
-	if hold and vector.equals(hold.cell, cell) then return end
-	M.release(self)
+	if hold and vector.equals(hold.cell, cell) then
+		hold.leaving = nil
+		return
+	end
+	M.release(self, true)
 	local pos = self.object:get_pos()
 	local stand = pos and cells.standing_cell(pos)
 	if not stand or vector.equals(stand, cell) or not cells.can_stand(stand) then stand = M.stand_by(cell) end
@@ -1338,7 +1378,11 @@ function M.step(self, now)
 		return
 	end
 	-- A porter's work is its trips (trade_trips.lua).
-	if activity ~= "quarrier" then M.release(self) end
+	-- Held by a mined cell still open, it waits for it to fill (M.release).
+	if activity ~= "quarrier" and not M.release(self) then
+		waiting[self] = true
+		return
+	end
 	if not activity or activity == "porter" then
 		waiting[self] = not self._villages_trade_trip
 		return
@@ -1386,7 +1430,10 @@ function M.step(self, now)
 		return
 	end
 	if target.kind == "cobble" and distance <= REACH then hold_at(self, target.pos)
-	elseif target.kind == "cobble" then M.release(self) end
+	elseif target.kind == "cobble" and not M.release(self) then
+		waiting[self] = true
+		return
+	end
 	if distance <= REACH then
 		-- At a generator between blocks: wait for the next.
 		if target.kind == "cobble" and not target.ready then
@@ -1449,11 +1496,13 @@ function M.install(def)
 		local result = original(self, dtime)
 		if result == false or not M.eligible(self) then
 			if self._villages_quarry_hold and result ~= false then M.release(self) end
+			if self._villages_quarry_hold then M.hold(self) end
 			return result
 		end
 		if common.schedule_stage(nil, self) ~= "work" then
 			self._villages_labour_target = nil
 			M.release(self)
+			if self._villages_quarry_hold then M.hold(self) end
 			return result
 		end
 		local now = core.get_gametime()

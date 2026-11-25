@@ -583,10 +583,15 @@ do
 	assert(labour.today(quinn) == "quarrier")
 	assert(labour.activity_override(quinn, "work") == "putter", "not called back to its stand")
 	possessions.add(quinn, "mcl_core:cobble", labour.alchemist_stone() - 1)
+	quinn._villages_quarry_hold = {cell = at(6, 1, 0), stand = at(5, 1, 0)}
 	assert(labour.eligible(quinn), "quarrying, short of a day's stone")
 	possessions.add(quinn, "mcl_core:cobble", 1)
 	assert(not labour.eligible(quinn), "a day's stone: back to its stand")
-	possessions.take(quinn, "mcl_core:cobble", labour.alchemist_stone())
+	-- Back at its stand, a stone short, it does not walk to the generator for one more.
+	quinn._villages_quarry_hold = nil
+	possessions.take(quinn, "mcl_core:cobble", 1)
+	assert(not labour.eligible(quinn), "not for one stone")
+	possessions.take(quinn, "mcl_core:cobble", labour.alchemist_stone() - 1)
 	-- With no generator in reach it does not labour.
 	nodes[key(at(7, 1, 0))] = nil
 	assert(not labour.eligible(quinn), "no generator")
@@ -679,9 +684,36 @@ do
 	end
 	minetest.after = saved_after
 	cole._villages_wants = nil
-	-- Off work, it is let go with its order back.
+	-- Off work, its cell full, it is let go with its order back.
+	nodes[key(at(0, 1, 0))] = "mcl_core:cobble"
 	labour.release(cole)
 	assert(cole._villages_quarry_hold == nil and cole.order == "work")
+	-- Let go with the cell it mined still open, it stays held until the cell fills: five
+	-- alchemists walked into the open cell as they set off home and burned (ColonyFood,
+	-- 2026-11-25).
+	cole.move_to(at(0, 1, -1))
+	nodes[key(at(0, 1, 0))] = "mcl_core:cobble"
+	labour.step(cole, now + 6000)
+	assert(cole._villages_quarry_hold and nodes[key(at(0, 1, 0))] == nil, "mined")
+	assert(labour.release(cole) == false and cole._villages_quarry_hold, "held while open")
+	cole.move_to(at(0, 0.5, 0))
+	labour.hold(cole)
+	assert(cole._villages_quarry_hold and cole.object:get_pos().z == -1, "kept off the open cell")
+	nodes[key(at(0, 1, 0))] = "mcl_core:cobble"
+	labour.hold(cole)
+	assert(cole._villages_quarry_hold == nil and cole.order == "work", "free once it fills")
+	-- Never filling, it is let go after LEAVE_SECONDS.
+	labour.step(cole, now + 9000)
+	assert(cole._villages_quarry_hold and nodes[key(at(0, 1, 0))] == nil)
+	assert(labour.release(cole) == false)
+	now = now + labour.LEAVE_SECONDS
+	labour.hold(cole)
+	assert(cole._villages_quarry_hold == nil, "let go at the end")
+	now = now - labour.LEAVE_SECONDS
+	-- Put straight onto another stand, it is let go at once.
+	nodes[key(at(0, 1, 0))] = "mcl_core:cobble"
+	labour.step(cole, now + 12000)
+	assert(labour.release(cole, true) and cole._villages_quarry_hold == nil)
 	for k in pairs(nodes) do nodes[k] = nil end
 	for k, v in pairs(saved) do nodes[k] = v end
 	for _, name in ipairs({"air", "mcl_core:stone", "mcl_core:cobble", "mcl_core:lava_source", "mcl_core:lava_flowing",
