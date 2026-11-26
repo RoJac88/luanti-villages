@@ -631,13 +631,13 @@ to the villagers who sell it stone and logs.
   look for it. It is the mod's fourth node: remove the mod and a placed stand becomes
   an unknown node, and its alchemist loses its job, as with the bench and the pulpit.
 - Recipe, shaped, with the top of the grid read as north: a feather (air) north, a
-  nautilus shell (water) east, any stone-tier block (earth, `group:cobble`: cobble,
+  water bottle (water, `mcl_potions:water`; the empty glass bottle is handed back) east, any stone-tier block (earth, `group:cobble`: cobble,
   cobbled deepslate, blackstone, as stone tools take) south and a blaze rod (fire,
   `mcl_mobitems:blaze_rod`, an alias of `flaming_rod`) west. The centre is empty.
 
   ```
   .            feather         .
-  blaze rod    .               nautilus shell
+  blaze rod    .               water bottle
   .            group:cobble    .
   ```
 

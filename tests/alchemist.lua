@@ -60,14 +60,16 @@ assert(minetest.registered_nodes["mcl_brewing:stand_000"].groups.container == 2,
 assert(stand.tiles[1] ~= "mcl_brewing_top.png" and stand.tiles[1]:find("mcl_brewing_top.png", 1, true), "recoloured")
 
 -- Its recipe: air north, water east, earth south, fire west, the centre empty.
-local recipe
+local recipe, replacements
 for _, craft in ipairs(registered) do
-	if craft.output == NAME then recipe = craft.recipe end
+	if craft.output == NAME then recipe, replacements = craft.recipe, craft.replacements end
 end
 assert(recipe, "craftable")
 assert(recipe[1][1] == "" and recipe[1][2] == "mcl_mobitems:feather" and recipe[1][3] == "")
-assert(recipe[2][1] == "mcl_mobitems:blaze_rod" and recipe[2][2] == "" and recipe[2][3] == "mcl_mobitems:nautilus_shell")
+assert(recipe[2][1] == "mcl_mobitems:blaze_rod" and recipe[2][2] == "" and recipe[2][3] == "mcl_potions:water")
 assert(recipe[3][1] == "" and recipe[3][2] == "group:cobble" and recipe[3][3] == "")
+assert(replacements and replacements[1][1] == "mcl_potions:water" and replacements[1][2] == "mcl_potions:glass_bottle",
+	"the bottle comes back empty")
 
 -- Without mcl_brewing nothing is registered, and the name is still returned.
 do

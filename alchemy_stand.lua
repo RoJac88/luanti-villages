@@ -5,9 +5,9 @@
 -- register_on_mods_loaded: register_node checks the current mod name.
 --
 -- Never generated with a village. A player crafts one from the four elements, read with the
--- top of the grid as north: a feather (air) north, a nautilus shell (water) east, a
+-- top of the grid as north: a feather (air) north, a water bottle (water) east, a
 -- stone-tier block (earth, group:cobble, as stone tools take) south and a blaze rod (fire)
--- west, the centre empty.
+-- west, the centre empty. The emptied glass bottle is handed back.
 local core = minetest
 
 local NAME = "living_villages:alchemy_stand"
@@ -44,9 +44,10 @@ core.register_craft({
 	output = NAME,
 	recipe = {
 		{"", "mcl_mobitems:feather", ""},
-		{"mcl_mobitems:blaze_rod", "", "mcl_mobitems:nautilus_shell"},
+		{"mcl_mobitems:blaze_rod", "", "mcl_potions:water"},
 		{"", "group:cobble", ""},
 	},
+	replacements = {{"mcl_potions:water", "mcl_potions:glass_bottle"}},
 })
 
 return NAME
