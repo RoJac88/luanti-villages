@@ -1,6 +1,12 @@
 -- The window a right-click on a church's pulpit opens (ticket 48, the parish register): the
 -- day of the week and the state of the village within VILLAGE_RADIUS of the pulpit
--- (parish_report.lua), and the latest death there (parish_deaths.lua). It only looks. It shows with or without a cleric: the church part
+-- (parish_report.lua), and the latest death there (parish_deaths.lua). It only looks.
+--
+-- The register (ticket 48c, parish_register.lua) notes a day's snapshot in the pulpit's
+-- meta once the day turns: the pulpit's node timer runs every few seconds while its block
+-- is loaded (started on placing it, and by an LBM for pulpits a schematic placed or that
+-- were there before), and opening the page notes one too. The page shows the last week's
+-- trade and the change in population from it. It shows with or without a cleric: the church part
 -- says when no cleric holds the pulpit, and the alms fund needs the economy on.
 --
 -- The lectern the pulpit copies has no right-click of its own (mcl_lectern), so nothing is
@@ -12,6 +18,7 @@ local food = dofile(core.get_modpath("living_villages") .. "/food.lua")
 local clock = dofile(core.get_modpath("living_villages") .. "/economy_clock.lua")
 local parish = dofile(core.get_modpath("living_villages") .. "/parish_report.lua")
 local deaths = dofile(core.get_modpath("living_villages") .. "/parish_deaths.lua")
+local register = dofile(core.get_modpath("living_villages") .. "/parish_register.lua")
 
 local M = {}
 
@@ -28,6 +35,8 @@ local TITLE_COLOR, HEADER_COLOR, PROBLEM_COLOR, GOOD_COLOR = "#ffff80", "#c8c8c8
 local NAMES = {
 	tool_smith = S("Tool smith"), weapon_smith = S("Weapon smith"),
 }
+
+local TRENDS = {rising = S("rising"), falling = S("falling"), steady = S("steady")}
 
 -- player name -> pulpit position
 local open = {}
@@ -51,6 +60,11 @@ local function people_lines(report)
 		header(S("People")),
 		S("@1 adults, @2 children", tostring(report.adults), tostring(report.children)),
 	}
+	local summary = report.register
+	if summary and summary.growth and summary.growth_days > 0 then
+		local change = summary.growth > 0 and ("+" .. summary.growth) or tostring(summary.growth)
+		lines[#lines + 1] = S("Over @1 days: @2", tostring(summary.growth_days), change)
+	end
 	local death = report.death
 	if death then
 		local who = death.trade == "child" and S("A child") or S("The @1", M.pretty(death.trade or "villager"):lower())
@@ -89,19 +103,38 @@ local function food_lines(report)
 	local f = report.food
 	local starving = S("starving @1", tostring(f.starving))
 	if f.starving > 0 then starving = core.colorize(PROBLEM_COLOR, starving) end
-	return {
+	local lines = {
 		header(S("Food")),
 		S("Full @1, fed @2, hungry @3, @4", tostring(f.full), tostring(f.fed), tostring(f.hungry), starving),
 	}
+	if report.economy then
+		if (report.keepers or 0) == 0 then
+			lines[#lines + 1] = S("No keeper serves dinner here.")
+		elseif report.dinner_price then
+			lines[#lines + 1] = S("Tavern: @1 meals last evening, dinner @2 emeralds", tostring(report.diners),
+				tostring(report.dinner_price))
+		else
+			lines[#lines + 1] = S("Tavern: @1 meals last evening", tostring(report.diners))
+		end
+	end
+	return lines
 end
 
 local function trade_volume_lines(report)
 	if not report.economy then return {} end
-	return {
+	local lines = {
 		header(S("Trade")),
 		S("Paid between villagers: @1 emeralds today, @2 yesterday", tostring(report.paid_today),
 			tostring(report.paid_yesterday)),
 	}
+	local summary = report.register
+	if summary and summary.paid_avg then
+		local trend = summary.paid_trend and TRENDS[summary.paid_trend]
+		local line = S("Average @1 a day over @2 days", tostring(math.floor(summary.paid_avg + 0.5)),
+			tostring(summary.paid_days))
+		lines[#lines + 1] = trend and S("@1, @2", line, trend) or line
+	end
+	return lines
 end
 
 local function church_lines(report)
@@ -146,11 +179,33 @@ function M.formspec(report)
 	return table.concat(parts)
 end
 
--- alms.lua, loaded the first time a cleric is found: it loads the economy's modules.
-local alms
+-- alms.lua and dinner.lua, loaded the first time they are wanted: they load the economy's
+-- modules.
+local alms, dinner
 local function alms_module()
 	alms = alms or dofile(core.get_modpath("living_villages") .. "/alms.lua")
 	return alms
+end
+local function dinner_module()
+	dinner = dinner or dofile(core.get_modpath("living_villages") .. "/dinner.lua")
+	return dinner
+end
+
+-- The keepers among `adults`: how many, the meals they served last evening, and the dinner
+-- price posted at the first one's jukebox (its jobsite).
+local function tavern_of(adults)
+	local tavern = {keepers = 0, diners = 0}
+	for _, villager in ipairs(adults) do
+		if villager._villages_keeper then
+			local d = dinner_module()
+			tavern.keepers = tavern.keepers + 1
+			tavern.diners = tavern.diners + d.last_served(villager)
+			local jukebox = villager._jobsite
+			local price = jukebox and tonumber(core.get_meta(jukebox):get_string(d.POSTED))
+			if price and not tavern.price then tavern.price = math.floor(price) end
+		end
+	end
+	return tavern
 end
 
 -- The adults and children within the radius, and the loaded cleric with id `cleric_id`.
@@ -187,6 +242,7 @@ function M.gather(pos)
 		day = core.get_day_count(), weekday = weekday, weekday_name = S(weekday_name),
 		state = food.state, economy = economy, church = church,
 		death = deaths.latest(pos, VILLAGE_RADIUS),
+		tavern = economy and tavern_of(adults) or nil,
 	})
 end
 
@@ -195,8 +251,27 @@ local function pulpit_is_there(pos)
 	return node and node.name == PULPIT
 end
 
+-- Notes the day that ended in the register, once it has turned; `report` saves a second
+-- gathering. Returns the register.
+function M.note(pos, report)
+	local list = register.load(pos)
+	local day = core.get_day_count()
+	if register.due(list, day) then
+		list = register.push(list, register.entry(report or M.gather(pos), day))
+		register.save(pos, list)
+	end
+	return list
+end
+
 local function show(name, pos)
-	core.show_formspec(name, M.FORM, M.formspec(M.gather(pos)))
+	local report = M.gather(pos)
+	report.register = register.summary(M.note(pos, report), report)
+	core.show_formspec(name, M.FORM, M.formspec(report))
+end
+
+local function start_timer(pos)
+	local timer = core.get_node_timer(pos)
+	if not timer:is_started() then timer:start(register.TIMER_SECONDS) end
 end
 
 function M.open(name, pos)
@@ -231,6 +306,19 @@ function M.install()
 			end
 			return itemstack
 		end,
+		on_construct = start_timer,
+		on_timer = function(pos)
+			M.note(pos)
+			return true
+		end,
+	})
+	-- A schematic's pulpit, and one placed before the register, get their timer on load.
+	core.register_lbm({
+		label = "Start the parish register's timer",
+		name = "living_villages:pulpit_register",
+		nodenames = {PULPIT},
+		run_at_every_load = true,
+		action = start_timer,
 	})
 	core.register_on_player_receive_fields(function(player, formname, fields)
 		if formname ~= M.FORM then return false end

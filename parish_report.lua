@@ -83,7 +83,8 @@ end
 --   economy: whether the village economy is on,
 --   church: {claimed = whether a cleric holds the pulpit, here = that cleric is loaded,
 --            fund, target (nil before its first service)},
---   death: the latest death within the radius (parish_deaths.latest), or nil.
+--   death: the latest death within the radius (parish_deaths.latest), or nil,
+--   tavern: {keepers, diners (meals served last evening), price (posted dinner)} (48c).
 function M.build(adults, children, opts)
 	local present = economy_report.present(adults)
 	local idle = economy_report.idle(adults, opts.day)
@@ -105,6 +106,9 @@ function M.build(adults, children, opts)
 		food = food,
 		paid_today = M.paid(adults, opts.day), paid_yesterday = M.paid(adults, opts.day - 1),
 		death = opts.death,
+		keepers = opts.tavern and opts.tavern.keepers or 0,
+		diners = opts.tavern and opts.tavern.diners or 0,
+		dinner_price = opts.tavern and opts.tavern.price,
 		economy = opts.economy,
 		church = opts.church or {},
 	}

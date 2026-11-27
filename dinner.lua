@@ -25,7 +25,8 @@
 --   the other amounts counted in dinners follow it.
 -- * Demand (ticket 22c): each evening the keeper counts the meals it served (`served`)
 --   and the guests who would have paid but found no dish (`short`); at the day's turn
---   their sum is `demand`, which keeper_supply.lua stocks the pantry to.
+--   their sum is `demand`, which keeper_supply.lua stocks the pantry to. The meals alone
+--   are kept as `last_served`, for the pulpit (ticket 48c).
 --
 -- Pure but for the jukebox's meta and the log.
 local core = minetest
@@ -114,7 +115,8 @@ function M.settle(keeper, jukebox, day)
 			core.log("action", string.format("[living_villages] keeper %s moved its dinner margin to %.2f (%s)",
 				short_id(keeper._id), factor, record.out and "ran out" or "guests turned away"))
 		end
-		record = {day = day, factor = factor, demand = record.day and M.evening(record) or nil}
+		record = {day = day, factor = factor, demand = record.day and M.evening(record) or nil,
+			last_served = record.day and (record.served or 0) or nil}
 		keeper._villages_dinner = record
 	end
 	local price = M.price(keeper)
@@ -169,6 +171,11 @@ function M.evening(record)
 	local short = 0
 	for _ in pairs(record.short or {}) do short = short + 1 end
 	return (record.served or 0) + short
+end
+
+-- Meals served the last evening the keeper kept, for the pulpit (ticket 48c); 0 before any.
+function M.last_served(keeper)
+	return (keeper and keeper._villages_dinner or {}).last_served or 0
 end
 
 -- Meals wanted the last evening the keeper kept (ticket 22c); 0 before any.
