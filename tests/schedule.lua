@@ -103,6 +103,31 @@ for d = 0, 8 do
 end
 mcl_moon = {get_moon_phase = function() return (day + offset + (time > 0.5 and 1 or 0)) % 8 end}
 
+-- The day of the week (ticket 48): Sunday is the holiday, the rest follow it, morning and
+-- evening alike.
+for d = 0, 7 do
+	for _, ticks in ipairs({1000, 11999, 12001, 23000}) do
+		day, time = d, at(ticks)
+		local index, name = common.day_of_week()
+		assert(index == d % 4 + 1 and name == common.WEEKDAYS[index], ("day %d at %d"):format(d, ticks))
+		assert((index == 1) == common.is_holiday(), "Sunday is the holiday")
+		assert(common.day_of_week(1) == (d + 1) % 4 + 1, "tomorrow")
+	end
+end
+assert(common.WEEKDAYS[1] == "Sunday" and #common.WEEKDAYS == 4)
+mcl_moon = nil
+day, time = 6, at(9000)
+assert(select(2, common.day_of_week()) == "Forgeday", "without mcl_moon the day count decides")
+-- A forced holiday is Sunday; a forced working day is never Sunday.
+local override
+minetest.settings = {get = function() return override end}
+override = "6:holiday"
+assert(common.day_of_week() == 1 and common.is_holiday())
+day, override = 8, "8:work"
+assert(common.day_of_week() == 2 and not common.is_holiday())
+minetest.settings, override = nil, nil
+mcl_moon = {get_moon_phase = function() return (day + offset + (time > 0.5 and 1 or 0)) % 8 end}
+
 local cleric = {_profession = "cleric"}
 local villager = {_profession = "farmer"}
 day = 4
