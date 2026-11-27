@@ -4334,8 +4334,11 @@ the keeper's among them; dinners nearer demand.
   loaf it is made of is worth about 11, which is why money piled up at the tavern; it
   now costs 18 (`ledger.DINNER`), a loaf's worth and a little for the cooking. Rent and
   starting money are still set against vanilla's prices.
-- Emerald ore and emerald blocks still yield vanilla's 1 and 9 after ticket 11h, so
-  mining becomes a small income next to trading. Whether ore drops should scale too.
+- Emerald ore and emerald blocks yielded vanilla's 1 and 9 after ticket 11h, so mining
+  was a small income next to trading. Settled on 2026-11-27 (`emerald_supply.lua`): ore
+  and its smelting give `ledger.SCALE` (64) per vanilla emerald, and a block takes 64 in
+  each slot and breaks into 576. Loot chests, raiders' drops and explosions still give
+  vanilla's counts.
 - Whether a peddler walks to another village is the start of the next phase, and
   needs its own design (routes between villages, news carried across them).
 - Whether stashes should be protected from players beyond the gossip cost, for

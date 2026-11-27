@@ -47,6 +47,8 @@ dofile(core.get_modpath("living_villages") .. "/chopping_block.lua")
 -- Registers living_villages:alchemy_stand, the alchemist's (ticket 20), likewise.
 dofile(core.get_modpath("living_villages") .. "/alchemy_stand.lua")
 dofile(core.get_modpath("living_villages") .. "/builder_block.lua")
+-- Emerald ore, its smelting and the emerald block at the economy's scale (ticket 11h follow-up).
+dofile(core.get_modpath("living_villages") .. "/emerald_supply.lua").install()
 local MODEL = "living_villages_villager.b3d"
 local BASE = "living_villages_villager_base.png^living_villages_villager_plains.png"
 local SLEEP_BOX = {-0.25, 0, -0.25, 0.25, 0.3, 0.25}
