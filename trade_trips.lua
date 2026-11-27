@@ -64,6 +64,7 @@ local exchange = dofile(core.get_modpath("living_villages") .. "/exchange.lua")
 local prices = dofile(core.get_modpath("living_villages") .. "/prices.lua")
 local asks = dofile(core.get_modpath("living_villages") .. "/asks.lua")
 local cost_book = dofile(core.get_modpath("living_villages") .. "/cost_book.lua")
+local tally = dofile(core.get_modpath("living_villages") .. "/economy_tally.lua")
 local stock = dofile(core.get_modpath("living_villages") .. "/farm_stock.lua")
 local cells = dofile(core.get_modpath("living_villages") .. "/cells.lua")
 local goods_mod = dofile(core.get_modpath("living_villages") .. "/goods.lua")
@@ -334,6 +335,7 @@ function M.buy_from_stash(self, trip, chest)
 	possessions.take(self, EMERALD, pay)
 	local paid = put(chest, EMERALD, pay)
 	if paid < pay then possessions.add(self, EMERALD, pay - paid) end
+	tally.paid(self, paid)
 	possessions.add(self, trip.item, count)
 	-- Its reference price learns what it paid (ticket 21b).
 	prices.learn(self, trip.item, paid / count)
@@ -780,6 +782,7 @@ function M.hire(members)
 					if offer then
 						possessions.take(client, EMERALD, offer.price)
 						possessions.add(porter, EMERALD, offer.price)
+						tally.paid(client, offer.price)
 						client._villages_porter_day = today()
 						client._villages_commissioned = {item = offer.item, day = today()}
 						porter._villages_commission = {
@@ -830,6 +833,7 @@ function M.hire(members)
 					if offer then
 						possessions.take(client, EMERALD, offer.price)
 						possessions.add(crafter, EMERALD, offer.price)
+						tally.paid(client, offer.price)
 						client._villages_porter_day = today()
 						client._villages_commissioned = {item = offer.item, day = today(), trade = trade}
 						crafter._villages_commission = {

@@ -663,6 +663,7 @@ assert(pantry_items["mcl_farming:bread"] == nil, "taken out of the pantry")
 assert(vera._villages_food == 4, "fed when served")
 assert(vera._villages_belongings["mcl_core:emerald"] == 128 - P and pantry_items["mcl_core:emerald"] == P, "paid a dinner")
 assert(logs[#logs]:find("villager vera paid " .. P .. " emerald%(s%) for dinner at the tavern at"), "the payment is logged")
+assert((vera._villages_tally and vera._villages_tally.money and vera._villages_tally.money.paid or 0) == P, "a dinner is trade (ticket 48b)")
 -- Paying taught her what a dinner costs (dinner.lua).
 assert(math.abs(dinner.reference(vera) - P) < math.abs(ledger.DINNER - P))
 now = now + 20

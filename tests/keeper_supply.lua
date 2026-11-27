@@ -182,6 +182,7 @@ do
 	paid, left = supply.pay(buyer, chest, {["mcl_farming:bread"] = 1})
 	assert(paid == 17 and left < 1e-3 and supply.tab(chest) == 0, "the tab is paid first")
 	assert(inventories[key(chest)]["mcl_core:emerald"] == 33 and buyer._villages_farm_pouch["mcl_core:emerald"] == 7)
+	assert((buyer._villages_tally and buyer._villages_tally.money and buyer._villages_tally.money.paid or 0) == 33, "what it paid the farm chest is trade (ticket 48b)")
 end
 
 -- At the next check it carries the food back to the pantry.

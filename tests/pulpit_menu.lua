@@ -4,7 +4,19 @@ local day, time, economy = 10, 0.3, true
 local objects, metas, shown, closed = {}, {}, {}, 0
 local node_there, player_pos = true, {x = 0, y = 0, z = 3}
 local overrides, receive, leave
+local stored, serialized = {}, {}
 minetest = {
+	get_mod_storage = function()
+		return {
+			get_string = function(_, k) return stored[k] or "" end,
+			set_string = function(_, k, v) stored[k] = v end,
+		}
+	end,
+	serialize = function(value)
+		serialized[#serialized + 1] = value
+		return "s" .. #serialized
+	end,
+	deserialize = function(text) return serialized[tonumber((text or ""):match("^s(%d+)$") or 0)] end,
 	get_modpath = function() return "." end,
 	get_gametime = function() return 0 end,
 	get_day_count = function() return day end,
@@ -53,6 +65,8 @@ vector = {
 
 local parish = dofile("parish_report.lua")
 local menu = dofile("pulpit_menu.lua")
+local tally = dofile("economy_tally.lua")
+local deaths = dofile("parish_deaths.lua")
 
 local function villager(fields)
 	fields.name = fields.name or "mobs_mc:villager"
@@ -110,6 +124,56 @@ do
 	assert(#report.missing == 11)
 end
 
+-- Trade volume (ticket 48b): what villagers paid one another, today and yesterday.
+do
+	local a, b = {}, {}
+	tally.paid(a, 5, 9)
+	tally.paid(a, 7, 10)
+	tally.paid(b, 3, 10)
+	tally.paid(b, 0, 10)
+	tally.paid(b, nil, 10)
+	tally.money(b, "premium_in", 100, 10)
+	assert(parish.paid({a, b}, 10) == 10 and parish.paid({a, b}, 9) == 5, "only `paid` counts")
+	local report = parish.build({a, b}, {}, {day = 10, weekday = 1, weekday_name = "Sunday",
+		state = function() return "fed" end, economy = true})
+	assert(report.paid_today == 10 and report.paid_yesterday == 5)
+end
+
+-- How a villager died, in words.
+do
+	local zombie = {get_luaentity = function() return {name = "mobs_mc:zombie"} end, is_player = function() return false end}
+	local player = {is_player = function() return true end, get_player_name = function() return "sam" end}
+	assert(deaths.cause({type = "punch", puncher = zombie}) == "was killed by a zombie")
+	assert(deaths.cause({type = "punch", puncher = player}) == "was killed by sam")
+	assert(deaths.cause({type = "fall"}) == "died in a fall")
+	assert(deaths.cause({type = "environment", node = "mcl_core:water_source"}) == "drowned")
+	assert(deaths.cause({type = "environment", node = "mcl_core:lava_flowing"}) == "burned to death")
+	assert(deaths.cause({type = "environment", node = "mcl_core:acaciatree"}) == "suffocated in acaciatree")
+	assert(deaths.cause({type = "fire"}) == "burned to death")
+	assert(deaths.cause({type = "unknown"}) == "died")
+	assert(deaths.cause({type = "unknown"}, true) == "starved")
+	assert(deaths.cause({type = "fall"}, true) == "died in a fall, starving")
+	assert(deaths.cause(nil) == "died")
+	assert(parish.trade_of({child = true, _profession = "farmer"}) == "child")
+	assert(parish.trade_of({_profession = "mason", _villages_builder = true}) == "builder")
+	assert(parish.trade_of({_profession = "cleric"}) == "cleric")
+end
+
+-- The latest death within a radius; the list keeps KEEP, newest last.
+do
+	assert(deaths.latest({x = 0, y = 0, z = 0}, 128) == nil)
+	deaths.note({pos = {x = 10.4, y = 0, z = 0}, day = 5, id = "farmer1234", trade = "farmer", cause = "drowned"})
+	deaths.note({pos = {x = 500, y = 0, z = 0}, day = 6, id = "far", trade = "mason", cause = "died"})
+	local latest = deaths.latest({x = 0, y = 0, z = 0}, 128)
+	assert(latest.id == "farmer1234" and latest.pos.x == 10 and latest.day == 5, "the far one is another village's")
+	assert(deaths.latest({x = 490, y = 0, z = 0}, 128).id == "far")
+	deaths.note({pos = {x = 20, y = 0, z = 0}, day = 7, id = "kid", trade = "child", cause = "died in a fall"})
+	assert(deaths.latest({x = 0, y = 0, z = 0}, 128).id == "kid", "the newest first")
+	for i = 1, deaths.KEEP + 3 do deaths.note({pos = {x = 900, y = 0, z = 0}, day = 8, id = "n" .. i}) end
+	assert(deaths.latest({x = 0, y = 0, z = 0}, 128) == nil, "the oldest are dropped past KEEP")
+	stored[deaths.KEY] = nil
+end
+
 -- The page.
 local function page(report)
 	return menu.formspec(report)
@@ -121,8 +185,12 @@ do
 		missing = {"weapon_smith", "mason"}, idle = 1, labouring = 0,
 		food = {full = 1, fed = 1, hungry = 0, starving = 1}, economy = true,
 		church = {claimed = true, here = true, fund = 40, target = 120},
+		paid_today = 34, paid_yesterday = 120,
+		death = {id = "84ebb7aa", trade = "tool_smith", cause = "drowned", day = 1090},
 	}
 	local text = page(base)
+	assert(text:find("Latest death: The tool smith 84ebb7 drowned\\, day 1090", 1, true), text)
+	assert(text:find("Paid between villagers: 34 emeralds today\\, 120 yesterday", 1, true))
 	assert(text:find("Sunday\\, day 1093", 1, true), text)
 	assert(text:find("3 adults\\, 1 children", 1, true))
 	assert(text:find("Farmer 2\\, Tool smith 1", 1, true))
@@ -133,6 +201,10 @@ do
 	assert(text:find("button%[.-refresh;Refresh%]"))
 	base.missing = {}
 	assert(page(base):find("Every trade is here.", 1, true))
+	base.death = {id = "k1", trade = "child", cause = "died in a fall", day = 3}
+	assert(page(base):find("Latest death: A child k1 died in a fall", 1, true))
+	base.death = nil
+	assert(page(base):find("No death is recorded here.", 1, true))
 	base.church = {claimed = false}
 	assert(page(base):find("No cleric tends this church.", 1, true))
 	base.church = {claimed = true, here = false}
@@ -141,6 +213,7 @@ do
 	assert(page(base):find("Alms fund: 5 emeralds\\, no service held yet", 1, true))
 	base.economy = false
 	assert(page(base):find("economy is off", 1, true))
+	assert(not page(base):find("Paid between villagers", 1, true), "no trade volume with the economy off")
 	base.trades = {}
 	assert(page(base):find("No one here has a trade.", 1, true))
 end

@@ -10,6 +10,9 @@ local is_standing_space = common.is_standing_space
 local is_suffocating = common.is_suffocating
 local far_trips = dofile(core.get_modpath("living_villages") .. "/far_trips.lua")
 local death_log = dofile(core.get_modpath("living_villages") .. "/death_log.lua")
+local parish_deaths = dofile(core.get_modpath("living_villages") .. "/parish_deaths.lua")
+local food = dofile(core.get_modpath("living_villages") .. "/food.lua")
+local parish_report = dofile(core.get_modpath("living_villages") .. "/parish_report.lua")
 local builder_climb = dofile(core.get_modpath("living_villages") .. "/builder_climb.lua")
 -- core.register_entity requires the loading mod's own name-prefix context
 -- (register.lua's check_modname_prefix reads core.get_current_modname()),
@@ -576,6 +579,13 @@ core.register_on_mods_loaded(function()
 			tostring(self._id), pos_string(died_at), tostring(cause),
 			detail, tostring(self.standing_in), tostring(self.order),
 			self._villages_sleeping and ", asleep" or "", since_load, ok and context or ""))
+		-- The pulpit's latest death (ticket 48b); never in the way of dying either.
+		pcall(function()
+			parish_deaths.note({
+				pos = died_at, day = core.get_day_count(), id = self._id, trade = parish_report.trade_of(self),
+				cause = parish_deaths.cause(cmi_cause, not self.child and food.state(self) == "starving"),
+			})
+		end)
 		if original_die then return original_die(self, pos, cmi_cause) end
 	end
 

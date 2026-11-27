@@ -123,6 +123,8 @@ do
 	local keeper = villager("ke", {["mcl_core:emerald"] = 30}, {_villages_keeper = true})
 	assert(exchange.settle({seller = butcher, buyer = keeper, item = FISH, count = 2, pay = 9}))
 	assert(math.abs(keeper._villages_input_cost[FISH] - 4.5) < 1e-9)
+	-- The pulpit's trade volume (ticket 48b): the buyer notes what it paid.
+	assert((keeper._villages_tally and keeper._villages_tally.money and keeper._villages_tally.money.paid or 0) == 9 and (butcher._villages_tally and butcher._villages_tally.money and butcher._villages_tally.money.paid or 0) == 0, "the buyer notes the 9 paid")
 	-- Anyone else buying notes nothing: a dish is no input of its trade (ticket 43a).
 	assert(exchange.settle({seller = butcher, buyer = b, item = FISH, count = 1, pay = 5}))
 	assert(b._villages_input_cost == nil or b._villages_input_cost[FISH] == nil)

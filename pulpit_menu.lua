@@ -1,6 +1,6 @@
 -- The window a right-click on a church's pulpit opens (ticket 48, the parish register): the
 -- day of the week and the state of the village within VILLAGE_RADIUS of the pulpit
--- (parish_report.lua). It only looks. It shows with or without a cleric: the church part
+-- (parish_report.lua), and the latest death there (parish_deaths.lua). It only looks. It shows with or without a cleric: the church part
 -- says when no cleric holds the pulpit, and the alms fund needs the economy on.
 --
 -- The lectern the pulpit copies has no right-click of its own (mcl_lectern), so nothing is
@@ -11,6 +11,7 @@ local common = dofile(core.get_modpath("living_villages") .. "/common.lua")
 local food = dofile(core.get_modpath("living_villages") .. "/food.lua")
 local clock = dofile(core.get_modpath("living_villages") .. "/economy_clock.lua")
 local parish = dofile(core.get_modpath("living_villages") .. "/parish_report.lua")
+local deaths = dofile(core.get_modpath("living_villages") .. "/parish_deaths.lua")
 
 local M = {}
 
@@ -46,10 +47,19 @@ local function header(text)
 end
 
 local function people_lines(report)
-	return {
+	local lines = {
 		header(S("People")),
 		S("@1 adults, @2 children", tostring(report.adults), tostring(report.children)),
 	}
+	local death = report.death
+	if death then
+		local who = death.trade == "child" and S("A child") or S("The @1", M.pretty(death.trade or "villager"):lower())
+		lines[#lines + 1] = S("Latest death: @1 @2 @3, day @4", who, tostring(death.id or ""):sub(1, 6), death.cause or S("died"),
+			tostring(death.day or "?"))
+	else
+		lines[#lines + 1] = S("No death is recorded here.")
+	end
+	return lines
 end
 
 local function trade_lines(report)
@@ -85,6 +95,15 @@ local function food_lines(report)
 	}
 end
 
+local function trade_volume_lines(report)
+	if not report.economy then return {} end
+	return {
+		header(S("Trade")),
+		S("Paid between villagers: @1 emeralds today, @2 yesterday", tostring(report.paid_today),
+			tostring(report.paid_yesterday)),
+	}
+end
+
 local function church_lines(report)
 	local church = report.church
 	local lines = {header(S("Church"))}
@@ -105,7 +124,7 @@ end
 local function join(...)
 	local lines = {}
 	for _, list in ipairs({...}) do
-		if #lines > 0 then lines[#lines + 1] = "" end
+		if #lines > 0 and #list > 0 then lines[#lines + 1] = "" end
 		for _, line in ipairs(list) do lines[#lines + 1] = line end
 	end
 	return table.concat(lines, "\n")
@@ -123,7 +142,7 @@ function M.formspec(report)
 	parts[#parts + 1] = ("textarea[0.4,1.2;%.2f,%.2f;;;%s]"):format(half, HEIGHT - 1.6,
 		escape(join(people_lines(report), trade_lines(report))))
 	parts[#parts + 1] = ("textarea[%.2f,1.2;%.2f,%.2f;;;%s]"):format(0.8 + half, half, HEIGHT - 1.6,
-		escape(join(food_lines(report), church_lines(report))))
+		escape(join(food_lines(report), trade_volume_lines(report), church_lines(report))))
 	return table.concat(parts)
 end
 
@@ -167,6 +186,7 @@ function M.gather(pos)
 	return parish.build(adults, children, {
 		day = core.get_day_count(), weekday = weekday, weekday_name = S(weekday_name),
 		state = food.state, economy = economy, church = church,
+		death = deaths.latest(pos, VILLAGE_RADIUS),
 	})
 end
 

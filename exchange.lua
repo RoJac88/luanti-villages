@@ -36,6 +36,7 @@ local core = minetest
 local clock = dofile(core.get_modpath("living_villages") .. "/economy_clock.lua")
 local possessions = dofile(core.get_modpath("living_villages") .. "/possessions.lua")
 local cost_book = dofile(core.get_modpath("living_villages") .. "/cost_book.lua")
+local tally = dofile(core.get_modpath("living_villages") .. "/economy_tally.lua")
 local food = dofile(core.get_modpath("living_villages") .. "/food.lua")
 local gossip = dofile(core.get_modpath("living_villages") .. "/gossip.lua")
 local goods_mod = dofile(core.get_modpath("living_villages") .. "/goods.lua")
@@ -233,6 +234,7 @@ function M.settle(trade)
 	if trade.pay then
 		possessions.take(buyer, EMERALD, trade.pay)
 		possessions.add(seller, EMERALD, trade.pay)
+		tally.paid(buyer, trade.pay)
 		show(buyer, seller, EMERALD)
 		price = trade.pay .. " emerald(s)"
 	else
