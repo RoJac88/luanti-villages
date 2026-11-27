@@ -84,7 +84,8 @@ end
 --   church: {claimed = whether a cleric holds the pulpit, here = that cleric is loaded,
 --            fund, target (nil before its first service)},
 --   death: the latest death within the radius (parish_deaths.latest), or nil,
---   tavern: {keepers, diners (meals served last evening), price (posted dinner)} (48c).
+--   tavern: {keepers, diners (meals served last evening), price (posted dinner)} (48c),
+--   dinner_ref: the villagers' mean reference price for a dinner, for the rating (48d).
 function M.build(adults, children, opts)
 	local present = economy_report.present(adults)
 	local idle = economy_report.idle(adults, opts.day)
@@ -109,6 +110,7 @@ function M.build(adults, children, opts)
 		keepers = opts.tavern and opts.tavern.keepers or 0,
 		diners = opts.tavern and opts.tavern.diners or 0,
 		dinner_price = opts.tavern and opts.tavern.price,
+		dinner_ref = opts.dinner_ref,
 		economy = opts.economy,
 		church = opts.church or {},
 	}
