@@ -1,6 +1,6 @@
 -- What a villager made and used, today and yesterday (docs/villager-economy-design.md,
--- What the player sees, Visibility; ticket 10), for the Builder's bench Economy tab
--- (economy_report.lua). It lives on the villager, in `_villages_tally`:
+-- What the player sees, Visibility; ticket 10), once for the Builder's bench Economy tab, and
+-- for the pulpit's trade volume (ticket 48b). It lives on the villager, in `_villages_tally`:
 --
 --   {day, made = {item = count}, used = {item = count}, money = {kind = emeralds},
 --    last = {day, made, used, money}}

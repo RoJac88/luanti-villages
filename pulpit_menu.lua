@@ -9,7 +9,8 @@
 -- trade and the change in population from it.
 --
 -- Under the day stand the stars and the sermon (ticket 48d, parish_rating.lua), and each
--- part's score is listed beside the food. It shows with or without a cleric: the church part
+-- part's score is listed beside the food. Under the trades stand the village's needs (ticket
+-- 48e): its shortages and the professions that would make them, from the cleric's news. It shows with or without a cleric: the church part
 -- says when no cleric holds the pulpit, and the alms fund needs the economy on.
 --
 -- The lectern the pulpit copies has no right-click of its own (mcl_lectern), so nothing is
@@ -60,6 +61,43 @@ end
 
 local function header(text)
 	return core.colorize(HEADER_COLOR, text)
+end
+
+local NEEDS_SHOWN, GAPS_SHOWN = 4, 3
+
+local function item_label(item)
+	local def = core.registered_items and core.registered_items[item]
+	local description = def and def.description or item
+	return (description:match("^[^\n]*"))
+end
+
+local function needs_lines(report)
+	if not report.economy then return {} end
+	local lines = {header(S("Village needs"))}
+	local needs = report.needs
+	if not needs then
+		lines[#lines + 1] = S("With no cleric to hear the village's news, no one knows what it lacks.")
+		return lines
+	end
+	if #needs.shortages == 0 then
+		lines[#lines + 1] = S("No shortage is heard of.")
+	else
+		local parts = {}
+		for i = 1, math.min(NEEDS_SHOWN, #needs.shortages) do
+			local row = needs.shortages[i]
+			parts[i] = row.count .. " " .. item_label(row.item)
+		end
+		lines[#lines + 1] = S("Short of: @1", table.concat(parts, ", "))
+	end
+	if #needs.gaps > 0 then
+		local parts = {}
+		for i = 1, math.min(GAPS_SHOWN, #needs.gaps) do
+			local gap = needs.gaps[i]
+			parts[i] = S("@1 (@2)", M.pretty(gap.profession), item_label(gap.items[1]))
+		end
+		lines[#lines + 1] = S("No one here makes it: @1", table.concat(parts, ", "))
+	end
+	return lines
 end
 
 local function people_lines(report)
@@ -221,15 +259,15 @@ function M.formspec(report)
 	local half = (WIDTH - 1.2) / 2
 	local top = 3.0
 	parts[#parts + 1] = ("textarea[0.4,%.2f;%.2f,%.2f;;;%s]"):format(top, half, HEIGHT - top - 0.4,
-		escape(join(people_lines(report), trade_lines(report))))
+		escape(join(people_lines(report), trade_lines(report), needs_lines(report))))
 	parts[#parts + 1] = ("textarea[%.2f,%.2f;%.2f,%.2f;;;%s]"):format(0.8 + half, top, half, HEIGHT - top - 0.4,
 		escape(join(rating_lines(rated), food_lines(report), trade_volume_lines(report), church_lines(report))))
 	return table.concat(parts)
 end
 
--- alms.lua and dinner.lua, loaded the first time they are wanted: they load the economy's
--- modules.
-local alms, dinner
+-- alms.lua, dinner.lua, market_news.lua and possessions.lua, loaded the first time they are
+-- wanted: they load the economy's modules.
+local alms, dinner, news, possessions
 local function alms_module()
 	alms = alms or dofile(core.get_modpath("living_villages") .. "/alms.lua")
 	return alms
@@ -237,6 +275,16 @@ end
 local function dinner_module()
 	dinner = dinner or dofile(core.get_modpath("living_villages") .. "/dinner.lua")
 	return dinner
+end
+
+-- The cleric's market news, own and hearsay, as builder.lua reads its Builder's.
+local function cleric_news(cleric)
+	news = news or dofile(core.get_modpath("living_villages") .. "/market_news.lua")
+	possessions = possessions or dofile(core.get_modpath("living_villages") .. "/possessions.lua")
+	local now = core.get_gametime()
+	local known = news.own(cleric, possessions.assess(cleric), now)
+	for _, entry in ipairs(news.heard(cleric, now)) do known[#known + 1] = entry end
+	return known
 end
 
 -- The keepers among `adults`: how many, the meals they served last evening, and the dinner
@@ -301,6 +349,7 @@ function M.gather(pos)
 		death = deaths.latest(pos, VILLAGE_RADIUS),
 		tavern = economy and tavern_of(adults) or nil,
 		dinner_ref = economy and dinner_reference(adults) or nil,
+		heard = economy and cleric and cleric_news(cleric) or nil,
 	})
 end
 

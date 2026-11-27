@@ -1,6 +1,7 @@
 -- What a Builder's bench says about its village's economy (docs/villager-economy-design.md,
--- What the player sees, Visibility; ticket 10): the Economy tab (builder_bench_menu.lua)
--- and the census weight (village_census.lua, through builder.lua).
+-- What the player sees, Visibility; ticket 10): the census weight (village_census.lua,
+-- through builder.lua), and since ticket 48 the pulpit's counts and needs (parish_report.lua).
+-- The bench's Economy tab that showed it went in ticket 48e.
 --
 -- Two kinds of knowledge, kept apart and labelled so in the tab:
 -- * Heard: the bench Builder's market news (market_news.lua), its own and what it was

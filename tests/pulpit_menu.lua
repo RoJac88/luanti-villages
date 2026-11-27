@@ -220,6 +220,20 @@ do
 	assert(summary.paid_avg == 20 and summary.paid_days == 2 and summary.growth == -1 and summary.last_day == 5)
 end
 
+-- The village's needs from the cleric's news (ticket 48e): shortages summed by item, and
+-- the professions that would make them with none present.
+do
+	assert(parish.needs(nil, {}) == nil, "no cleric, no news")
+	local heard = {
+		{kind = "needs", item = "mcl_books:book", count = 8, price = 1, who = "a"},
+		{kind = "needs", item = "mcl_books:book", count = 4, price = 1, who = "b"},
+		{kind = "has", item = "mcl_farming:bread", count = 9, price = 1, who = "c"},
+	}
+	local needs = parish.needs(heard, {farmer = 1})
+	assert(#needs.shortages == 1 and needs.shortages[1].count == 12 and needs.shortages[1].villagers == 2)
+	assert(#needs.gaps >= 1 and needs.gaps[1].items[1] == "mcl_books:book", "no one here makes books")
+end
+
 -- The page.
 local function page(report)
 	return menu.formspec(report)
@@ -235,6 +249,11 @@ do
 		death = {id = "84ebb7aa", trade = "tool_smith", cause = "drowned", day = 1090},
 		keepers = 1, diners = 12, dinner_price = 3,
 		register = {paid_avg = 85.4, paid_days = 7, paid_trend = "rising", growth = 2, growth_days = 6},
+		needs = {
+			shortages = {{item = "mcl_core:cobble", count = 12, villagers = 2, worth = 12},
+				{item = "mcl_core:iron_ingot", count = 3, villagers = 1, worth = 9}},
+			gaps = {{profession = "mason", score = 12, items = {"mcl_core:cobble"}}},
+		},
 	}
 	local text = page(base)
 	assert(text:find("Latest death: The tool smith 84ebb7 drowned\\, day 1090", 1, true), text)
@@ -250,6 +269,17 @@ do
 	assert(text:find("The cleric preaches: \"", 1, true) and text:find("one of ", 1, true), text)
 	assert(text:find("One starving: at most four stars.", 1, true))
 	assert(text:find("Fed: 67%", 1, true), "each part's score")
+	assert(text:find("Village needs", 1, true) and text:find("Short of: 12 mcl_core:cobble\\, 3 mcl_core:iron_ingot", 1, true), text)
+	assert(text:find("No one here makes it: Mason (mcl_core:cobble)", 1, true))
+	minetest.registered_items = {["mcl_core:cobble"] = {description = "Cobblestone\nHard"}}
+	assert(page(base):find("Short of: 12 Cobblestone\\, 3", 1, true), "items by their description's first line")
+	minetest.registered_items = nil
+	local needs = base.needs
+	base.needs = {shortages = {}, gaps = {}}
+	assert(page(base):find("No shortage is heard of.", 1, true) and not page(base):find("No one here makes", 1, true))
+	base.needs = nil
+	assert(page(base):find("no one knows what it lacks", 1, true))
+	base.needs = needs
 	assert(text:find("Sunday\\, day 1093", 1, true), text)
 	assert(text:find("3 adults\\, 1 children", 1, true))
 	assert(text:find("Farmer 2\\, Tool smith 1", 1, true))
@@ -282,6 +312,7 @@ do
 	assert(page(base):find("economy is off", 1, true))
 	assert(not page(base):find("Paid between villagers", 1, true), "no trade volume with the economy off")
 	assert(not page(base):find("keeper", 1, true) and not page(base):find("Tavern", 1, true))
+	assert(not page(base):find("Village needs", 1, true), "no needs with the economy off")
 	base.trades = {}
 	assert(page(base):find("No one here has a trade.", 1, true))
 end
@@ -304,6 +335,7 @@ do
 	-- Phase 2 in the morning reads 3: Hearthday.
 	assert(report.weekday == 4 and report.weekday_name == "Hearthday")
 	assert(report.church.claimed and report.church.here and report.church.fund == 33)
+	assert(report.needs and report.needs.shortages and report.needs.gaps, "the cleric's news")
 	assert(report.church.target and report.church.target > 50, "the target adds the flesh reserve")
 	priest._villages_alms_need = nil
 	assert(menu.gather(PULPIT).church.target == nil)
@@ -314,6 +346,7 @@ do
 	minetest.get_meta(PULPIT):set_string("villager", "gone")
 	local away = menu.gather(PULPIT)
 	assert(away.church.claimed and not away.church.here)
+	assert(away.needs == nil, "no news with the cleric away")
 	minetest.get_meta(PULPIT):set_string("villager", "")
 	assert(not menu.gather(PULPIT).church.claimed)
 end

@@ -1,4 +1,4 @@
--- The window a right-click on a Builder's bench opens, in three tabs:
+-- The window a right-click on a Builder's bench opens, in two tabs:
 --
 -- * Default: what the Builder builds by itself, for what the village needs (builder_needs.lua),
 --   with the village's mix, what is next and why.
@@ -8,12 +8,9 @@
 --   of them (builder.lua). Ordering one pays the bench; the Builder takes it up in place of
 --   whatever it has not started. If it finds no site, it goes back to what it was doing and
 --   the player who paid may take the emeralds back here.
--- * Economy (docs/villager-economy-design.md, Visibility; ticket 10): the bench's economy
---   report (builder.economy, economy_report.lua) in two halves, each labelled with how it is
---   known: what the bench's Builder has heard in market news (shortages, gluts, and the worst
---   gaps: professions missing that would make what the village is short of), and what is seen
---   of the villagers loaded around the bench (professions present, nitwits and the unemployed
---   with their labour, and goods made and used today and yesterday). It only looks.
+--
+-- The Economy tab (ticket 10) is gone (ticket 48e): the church's pulpit shows the village's
+-- state (pulpit_menu.lua). builder.economy still gives the census its worst gap.
 --
 -- An order takes what building takes: the bench must not be protected from the player.
 -- Everything a client sends is checked against what the server showed it: names never come
@@ -25,7 +22,7 @@ local preview = dofile(core.get_modpath("living_villages") .. "/builder_preview.
 local M = {}
 
 M.FORM = "living_villages:builder_bench"
-M.DEFAULT, M.SELECT, M.ECONOMY = "default", "select", "economy"
+M.DEFAULT, M.SELECT = "default", "select"
 local BENCH = "living_villages:builder_block"
 -- A little past a player's reach, for one who stepped back with the window open.
 local MAX_DISTANCE = 12
@@ -37,10 +34,7 @@ local ROW_COLOR, HEADER_COLOR, PROBLEM_COLOR, GOOD_COLOR = "#ffffff", "#c8c8c8",
 local TABS = {
 	{view = M.DEFAULT, title = S("Default")},
 	{view = M.SELECT, title = S("Select schematic")},
-	{view = M.ECONOMY, title = S("Economy")},
 }
-local ECONOMY_ROWS = 5
-local GOODS_SHOWN = 4
 
 -- player name -> {bench, builder, view, options, selected name}
 local open = {}
@@ -176,113 +170,8 @@ local function detail_parts(view, row)
 	return table.concat(parts)
 end
 
-local function goods_text(rows)
-	local parts = {}
-	for i = 1, math.min(GOODS_SHOWN, #rows) do parts[i] = rows[i].count .. " " .. item_label(rows[i].item) end
-	if #rows > GOODS_SHOWN then parts[#parts + 1] = S("@1 more", tostring(#rows - GOODS_SHOWN)) end
-	return #parts > 0 and table.concat(parts, ", ") or S("nothing")
-end
-
--- Emeralds players paid for premium goods and got for rotten flesh (ticket 37b), with the
--- village's net; a tolerant default for a report without them.
-local function money_text(money)
-	money = money or {}
-	local paid, got = money.premium_in or 0, money.flesh_out or 0
-	return S("Players: paid @1 for premium goods, got @2 for flesh (net @3)", tostring(paid), tostring(got),
-		tostring(paid - got))
-end
-
-local function list_text(list, shown, describe)
-	local parts = {}
-	for i = 1, math.min(shown, #list) do parts[i] = describe(list[i]) end
-	if #list > shown then parts[#parts + 1] = S("@1 more", tostring(#list - shown)) end
-	return table.concat(parts, ", ")
-end
-
--- The Economy tab's body, from builder.economy's report (nil with the economy off).
-local function economy_parts(report)
-	local parts = {}
-	local function label(x, y, text)
-		parts[#parts + 1] = ("label[%.2f,%.2f;%s]"):format(x, y, escape(text))
-	end
-	local function wrapped(x, y, w, h, text)
-		parts[#parts + 1] = ("textarea[%.2f,%.2f;%.2f,%.2f;;;%s]"):format(x, y, w, h, escape(text))
-	end
-	if not report then
-		label(0.4, 0.6, S("The village economy is off on this server."))
-		return table.concat(parts)
-	end
-	parts[#parts + 1] = ("button[%.2f,0.15;2.2,0.65;refresh;%s]"):format(WIDTH - 2.6, escape(S("Refresh")))
-	-- Heard, on the left.
-	local x, y = 0.4, 0.6
-	label(x, y, core.colorize("#ffff80", S("Heard by the Builder (market news)")))
-	y = y + 0.5
-	if not report.heard then
-		wrapped(x, y - 0.2, 6.8, 1.2, S("The Builder is not here, so there is no news to tell."))
-	else
-		local function rows(title, list, empty)
-			label(x, y, core.colorize(HEADER_COLOR, title))
-			y = y + 0.45
-			if #list == 0 then
-				label(x + 0.2, y, empty)
-				y = y + 0.5
-			end
-			for i = 1, math.min(ECONOMY_ROWS, #list) do
-				local row = list[i]
-				parts[#parts + 1] = ("item_image[%.2f,%.2f;0.5,0.5;%s]"):format(x + 0.2, y - 0.25, escape(row.item))
-				label(x + 0.85, y, S("@1 @2, @3 villagers", tostring(row.count), item_label(row.item), tostring(row.villagers)))
-				y = y + 0.52
-			end
-			y = y + 0.15
-		end
-		rows(S("Short of"), report.shortages, S("No shortage heard of."))
-		rows(S("Spare"), report.gluts, S("No glut heard of."))
-		label(x, y, core.colorize(HEADER_COLOR, S("Missing professions")))
-		y = y + 0.2
-		local text
-		if #report.gaps == 0 then
-			text = S("None: someone here makes everything the village is short of.")
-		else
-			text = list_text(report.gaps, 3, function(gap)
-				return S("@1 (@2)", pretty(gap.profession), list_text(gap.items, 2, item_label))
-			end)
-			text = text .. "\n" .. S("A building for the first comes when nothing is more pressing.")
-		end
-		wrapped(x, y, 6.8, HEIGHT - y - 0.3, text)
-	end
-	-- Seen, on the right.
-	x, y = 7.8, 0.6
-	label(x, y, core.colorize("#ffff80", S("Seen around the bench")))
-	local professions = {}
-	for name, count in pairs(report.present) do professions[#professions + 1] = {name = name, count = count} end
-	table.sort(professions, function(a, b) return a.name < b.name end)
-	local lines = {
-		core.colorize(HEADER_COLOR, S("Professions")),
-		#professions > 0 and list_text(professions, #professions, function(entry)
-			return pretty(entry.name) .. " " .. entry.count
-		end) or S("No villagers loaded."),
-		"",
-		core.colorize(HEADER_COLOR, S("Idle hands")),
-		#report.idle > 0 and list_text(report.idle, 6, function(entry)
-			return S("@1 @2: @3", pretty(entry.profession), tostring(entry.id):sub(1, 6), entry.activity or S("nothing to do"))
-		end) or S("None."),
-		"",
-		core.colorize(HEADER_COLOR, S("Today")),
-		S("Made: @1", goods_text(report.today.made)),
-		S("Used: @1", goods_text(report.today.used)),
-		money_text(report.today.money),
-		"",
-		core.colorize(HEADER_COLOR, S("Yesterday")),
-		S("Made: @1", goods_text(report.yesterday.made)),
-		S("Used: @1", goods_text(report.yesterday.used)),
-		money_text(report.yesterday.money),
-	}
-	wrapped(x, y + 0.3, WIDTH - x - 0.4, HEIGHT - y - 0.6, table.concat(lines, "\n"))
-	return table.concat(parts)
-end
-
 -- The form, from what show() gathered. Pure, for the tests.
---   view: {view, report (economy), options, selected, preview, notice, place, can_use,
+--   view: {view, options, selected, preview, notice, place, can_use,
 --          project_text, order, can_refund}
 function M.formspec(view)
 	local options = view.options
@@ -292,10 +181,6 @@ function M.formspec(view)
 	local titles = {}
 	for i, tab in ipairs(TABS) do titles[i] = escape(tab.title) end
 	parts[#parts + 1] = ("tabheader[0,0;tabs;%s;%d;false;false]"):format(table.concat(titles, ","), tab_index(view.view))
-	if view.view == M.ECONOMY then
-		parts[#parts + 1] = economy_parts(view.report)
-		return table.concat(parts)
-	end
 
 	parts[#parts + 1] = ("button[%.2f,0.15;2.2,0.65;refresh;%s]"):format(WIDTH - 2.6, escape(S("Refresh")))
 	local selecting = view.view == M.SELECT
@@ -387,10 +272,6 @@ end
 
 local show
 show = function(name, context, notice)
-	if context.view == M.ECONOMY then
-		core.show_formspec(name, M.FORM, M.formspec({view = M.ECONOMY, report = context.builder.economy(context.bench)}))
-		return
-	end
 	local directory = context.options.directory
 	local selected = context.selected and row_of(context.options, context.selected)
 	local picture
@@ -482,7 +363,7 @@ local function handle_fields(player, fields)
 end
 
 -- `builder`: options(bench), catalog_options(bench, player name), order_of(bench),
--- place_order(bench, player, name), refund(bench, player), load_project(bench), economy(bench).
+-- place_order(bench, player, name), refund(bench, player), load_project(bench).
 function M.install(builder)
 	core.override_item(BENCH, {
 		_doc_items_usagehelp = S("Rightclick to see what a Builder will build from it, or to order a building. "
