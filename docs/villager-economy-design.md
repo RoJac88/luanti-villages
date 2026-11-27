@@ -4300,6 +4300,94 @@ held 12 stacks of eggs, 7 of feathers, seeds, cobble, logs and two armor stands,
 **Success, on ColonyFood.** Dishes in the butcher's chest, and most trips to it ending in a sale,
 the keeper's among them; dinners nearer demand.
 
+### 48. The parish register
+
+Status: design.
+
+**Problem.** The Builder's bench Economy tab (ticket 10) lists what the Builder heard and what
+it sees around the bench, but it gives no verdict: a player has to read it all to learn
+whether the village is doing well. It also only sees loaded villagers and keeps today and
+yesterday, so it has no averages or trends, and it needs a Builder, which a handcrafted
+village may not have. Trade volume is not recorded anywhere: `economy_tally.lua` counts goods
+made and used and the player money flows (37b), not the emeralds villagers pay one another.
+
+**Rule.** The church's pulpit shows the village's state, and the bench loses its Economy tab.
+
+- **The village** is the pulpit's radius, VILLAGE_RADIUS (128, as in `church.lua` and
+  `rent.lua`). Nothing depends on `village_index.lua`'s record, a Builder or the generated
+  buildings: a hand-built church with a crafted pulpit and villagers who took jobs by
+  themselves works the same. Each pulpit reports on its own radius.
+- **No cleric needed.** The page shows with or without a cleric. With one, the alms part
+  shows its fund; without one it says no cleric tends the church, and the cleric counts as a
+  missing profession like any other.
+- **The day of the week.** A holiday (`common.is_holiday`, every full and new moon) is
+  **Sunday**, so the week has four days: Sunday, Plowday, Forgeday, Hearthday.
+  `common.day_of_week` counts from the moon phase the way `is_holiday` reads it (the
+  evening's phase stands for the whole day), and from the day count without `mcl_moon`. A
+  holiday override (`living_villages_holiday_override`) makes its day Sunday.
+- **The page** (a right-click on the pulpit, read only):
+  1. The day of the week and the day number.
+  2. The rating, 1 to 5 stars, with the score of each part on its own line, and a sermon.
+  3. People: adults and children, the change over 7 days.
+  4. Trades: the count of each profession present (the keeper, Builder and alchemist by role),
+     and the professions missing for five stars; nitwits and the unemployed with today's labour.
+  5. Food: villagers full, fed, hungry and starving (`food.state`); tavern diners yesterday and
+     the dinner price.
+  6. Trade: emeralds paid between villagers per day, averaged over 7 days, with its trend.
+  7. Church: the alms fund against its target (`alms.fund_target`), and the last service's
+     attendance.
+  8. The latest death in the village: who, its trade, the cause and the day.
+  9. Village needs (with a cleric): shortages and missing professions from the cleric's market
+     news, which it already swaps with churchgoers (`alms.church_news`), summed as the bench
+     did (`economy_report.shortages`, `economy_report.gaps`).
+- **The rating.** Each part scores 0 to 1:
+
+  | Part | Score | Weight |
+  | --- | --- | --- |
+  | Fed | 1 − (hungry × ½ + starving) / adults | 0.30 |
+  | Trades | professions present of the 12 that count / 12 | 0.20 |
+  | Employed | adults with a job or today's labour / adults | 0.15 |
+  | Trade | emeralds paid per villager per day / TRADE_REF (1 dinner), at most 1 | 0.15 |
+  | Safety net | alms fund / its target, at most 1; 0 with no cleric | 0.10 |
+  | Growth | ½ + population change over 7 days / 10, from 0 to 1 | 0.10 |
+
+  Stars are 1 + 4 × the weighted sum, rounded, then capped:
+  - **Five stars** needs no one starving and at least one of every profession but the
+    fisherman: farmer, shepherd, fletcher, librarian, cartographer, cleric, armorer, butcher,
+    leatherworker, tool smith, weapon smith and mason. No stock building holds a tool smith's,
+    weapon smith's or mason's jobsite (`economy_report.BUILDINGS`), so five stars asks the
+    player to place them: the page names what is missing.
+  - **One villager starving** caps it at 4; **two or more** at 3.
+- **The sermon** is one line from the worst part, the cap first when one applies: "The parish
+  prays for bread; two of us go hungry to bed." (starving), "Idle hands wait on work." (employed),
+  "The market square is quiet." (trade), "The alms box is near empty." (safety net), "We are
+  fewer than we were." (growth), "We have no smith among us." (a missing profession), and
+  "The Lord has blessed this village." at five stars. A few lines for each, picked by the day.
+  Without a cleric it reads as a notice: "No one preaches here."
+
+**Parts.**
+
+- **a. The pulpit page, live.** `common.day_of_week`; the pulpit's right-click opens a page from
+  the loaded villagers around it: the day, people, trades with what is missing, food, the alms
+  fund. No history yet.
+- **b. Trade volume and the latest death.** `economy_tally.money(self, "paid", n)` wherever a
+  villager pays another emeralds (`exchange.lua`, `meal.lua`, `keeper_supply.lua`,
+  `trade_trips.lua`, `farmer.lua`, `fisherman.lua`, `labour.lua`, `rent.lua`, `alms.lua`, the
+  bench market), through one helper so none is missed. `on_die` records the latest deaths in
+  mod storage (position, day, trade, `death_log`'s cause), a few dozen at most; the page takes
+  the latest within its radius.
+- **c. The register.** The pulpit's node timer notes a snapshot in its meta when the day turns
+  while it is loaded: population, professions, food states, trade paid, diners, the fund. It
+  keeps 7 days. The page shows the averages and trends and dates them ("as of day N"). Days
+  with the pulpit unloaded are gaps, and averages count only the days noted.
+- **d. The rating and the sermon.**
+- **e. The bench loses its Economy tab.** `builder_bench_menu.lua` keeps Default and Select.
+  `economy_report.lua` stays: the census still favours the worst gap's building
+  (`builder.economy`). The village needs part moves to the pulpit.
+
+**Success.** A player right-clicks a pulpit, in a generated or a handcrafted village, and learns
+in one line whether the village is well and what it lacks most, with the numbers below it.
+
 ## Open questions
 
 - Price discovery (ticket 21):
