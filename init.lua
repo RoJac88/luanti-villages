@@ -42,6 +42,8 @@ local market = dofile(core.get_modpath("living_villages") .. "/market.lua")
 dofile(core.get_modpath("living_villages") .. "/farm_compost.lua")
 -- Registers living_villages:pulpit, likewise.
 dofile(core.get_modpath("living_villages") .. "/pulpit.lua")
+-- Its right-click, the parish register (ticket 48).
+dofile(core.get_modpath("living_villages") .. "/pulpit_menu.lua").install()
 -- Registers living_villages:chopping_block, the woodcutter's (ticket 16), likewise.
 dofile(core.get_modpath("living_villages") .. "/chopping_block.lua")
 -- Registers living_villages:alchemy_stand, the alchemist's (ticket 20), likewise.

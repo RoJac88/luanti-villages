@@ -1,0 +1,215 @@
+-- Run with: lua tests/pulpit_menu.lua
+-- The parish register on the pulpit (ticket 48a): the report, the page and its right-click.
+local day, time, economy = 10, 0.3, true
+local objects, metas, shown, closed = {}, {}, {}, 0
+local node_there, player_pos = true, {x = 0, y = 0, z = 3}
+local overrides, receive, leave
+minetest = {
+	get_modpath = function() return "." end,
+	get_gametime = function() return 0 end,
+	get_day_count = function() return day end,
+	get_timeofday = function() return time end,
+	settings = {
+		get = function() return nil end,
+		get_bool = function(_, name, default)
+			if name == "living_villages_economy" then return economy end
+			return default
+		end,
+	},
+	log = function() end,
+	get_objects_inside_radius = function() return objects end,
+	get_meta = function(pos)
+		local key = pos.x .. "," .. pos.y .. "," .. pos.z
+		metas[key] = metas[key] or {}
+		local fields = metas[key]
+		return {
+			get_string = function(_, k) return fields[k] or "" end,
+			set_string = function(_, k, v) fields[k] = v end,
+		}
+	end,
+	formspec_escape = function(text) return (text:gsub("[,;%[%]\\]", "\\%0")) end,
+	colorize = function(_, text) return text end,
+	get_translator = function()
+		return function(message, ...)
+			local args = {...}
+			return (message:gsub("@(%d)", function(i) return args[tonumber(i)] end))
+		end
+	end,
+	registered_nodes = {["living_villages:pulpit"] = {}},
+	get_node_or_nil = function() return node_there and {name = "living_villages:pulpit"} or nil end,
+	show_formspec = function(name, form, text) shown[#shown + 1] = {name = name, form = form, text = text} end,
+	close_formspec = function() closed = closed + 1 end,
+	override_item = function(name, fields) overrides = {name = name, fields = fields} end,
+	register_on_player_receive_fields = function(fn) receive = fn end,
+	register_on_leaveplayer = function(fn) leave = fn end,
+}
+vector = {
+	new = function(p) return {x = p.x, y = p.y, z = p.z} end,
+	distance = function(a, b)
+		local dx, dy, dz = a.x - b.x, a.y - b.y, a.z - b.z
+		return math.sqrt(dx * dx + dy * dy + dz * dz)
+	end,
+}
+
+local parish = dofile("parish_report.lua")
+local menu = dofile("pulpit_menu.lua")
+
+local function villager(fields)
+	fields.name = fields.name or "mobs_mc:villager"
+	return fields
+end
+local function as_objects(list)
+	local out = {}
+	for i, entity in ipairs(list) do out[i] = {get_luaentity = function() return entity end} end
+	return out
+end
+
+-- Counted for five stars: every profession but the fisherman.
+do
+	assert(#parish.COUNTED == 12)
+	local counted = {}
+	for _, name in ipairs(parish.COUNTED) do counted[name] = true end
+	assert(not counted.fisherman and counted.tool_smith and counted.weapon_smith and counted.mason)
+	local all = {}
+	for _, name in ipairs(parish.COUNTED) do all[name] = 1 end
+	assert(#parish.missing(all) == 0)
+	all.mason = nil
+	local missing = parish.missing(all)
+	assert(#missing == 1 and missing[1] == "mason")
+	assert(#parish.missing({fisherman = 3}) == 12, "the fisherman counts for nothing")
+end
+
+-- Trades in order: counted, the fisherman, the roles; no nitwits or unemployed.
+do
+	local list = parish.trades({keeper = 1, farmer = 2, fisherman = 1, nitwit = 3, unemployed = 1, cleric = 1})
+	local names = {}
+	for i, entry in ipairs(list) do names[i] = entry.name .. entry.count end
+	assert(table.concat(names, " ") == "farmer2 cleric1 fisherman1 keeper1", table.concat(names, " "))
+end
+
+-- The report: roles by role (a Builder is no mason, an alchemist no cleric), idle hands,
+-- food states.
+do
+	local adults = {
+		villager({_id = "a", _profession = "farmer", _jobsite = {}}),
+		villager({_id = "b", _profession = "mason", _villages_builder = true}),
+		villager({_id = "c", _profession = "cleric", _villages_alchemist = true}),
+		villager({_id = "d", _profession = "nitwit", _villages_labour = {day = 10, activity = "gather"}}),
+		villager({_id = "e", _profession = "unemployed"}),
+	}
+	local states = {a = "full", b = "fed", c = "full", d = "hungry", e = "starving"}
+	local report = parish.build(adults, {{}, {}}, {
+		day = 10, weekday = 3, weekday_name = "Forgeday",
+		state = function(v) return states[v._id] end, economy = true,
+	})
+	assert(report.adults == 5 and report.children == 2)
+	assert(report.idle == 2 and report.labouring == 1)
+	assert(report.food.full == 2 and report.food.fed == 1 and report.food.hungry == 1 and report.food.starving == 1)
+	local missing = table.concat(report.missing, " ")
+	assert(missing:find("mason") and missing:find("cleric") and not missing:find("farmer"), missing)
+	assert(#report.missing == 11)
+end
+
+-- The page.
+local function page(report)
+	return menu.formspec(report)
+end
+do
+	local base = {
+		day = 1093, weekday = 1, weekday_name = "Sunday", adults = 3, children = 1,
+		trades = {{name = "farmer", count = 2}, {name = "tool_smith", count = 1}},
+		missing = {"weapon_smith", "mason"}, idle = 1, labouring = 0,
+		food = {full = 1, fed = 1, hungry = 0, starving = 1}, economy = true,
+		church = {claimed = true, here = true, fund = 40, target = 120},
+	}
+	local text = page(base)
+	assert(text:find("Sunday\\, day 1093", 1, true), text)
+	assert(text:find("3 adults\\, 1 children", 1, true))
+	assert(text:find("Farmer 2\\, Tool smith 1", 1, true))
+	assert(text:find("Missing: Weapon smith\\, Mason", 1, true))
+	assert(text:find("Without a trade: 1\\, 0 of them labouring today", 1, true))
+	assert(text:find("starving 1", 1, true))
+	assert(text:find("Alms fund: 40 of 120 emeralds", 1, true))
+	assert(text:find("button%[.-refresh;Refresh%]"))
+	base.missing = {}
+	assert(page(base):find("Every trade is here.", 1, true))
+	base.church = {claimed = false}
+	assert(page(base):find("No cleric tends this church.", 1, true))
+	base.church = {claimed = true, here = false}
+	assert(page(base):find("The cleric is away.", 1, true))
+	base.church = {claimed = true, here = true, fund = 5}
+	assert(page(base):find("Alms fund: 5 emeralds\\, no service held yet", 1, true))
+	base.economy = false
+	assert(page(base):find("economy is off", 1, true))
+	base.trades = {}
+	assert(page(base):find("No one here has a trade.", 1, true))
+end
+
+-- Gathering from the world: children apart, the pulpit's cleric found by its claim.
+local PULPIT = {x = 0, y = 0, z = 0}
+do
+	mcl_moon = {get_moon_phase = function() return 2 end}
+	local priest = villager({_id = "p1", _profession = "cleric", _villages_alms = 33.6, _villages_alms_need = 50})
+	objects = as_objects({
+		priest,
+		villager({_id = "f1", _profession = "farmer", _villages_food = 12}),
+		villager({_id = "k1", child = true}),
+		villager({name = "mobs_mc:cow", _id = "cow"}),
+		villager({_profession = "farmer"}),
+	})
+	minetest.get_meta(PULPIT):set_string("villager", "p1")
+	local report = menu.gather(PULPIT)
+	assert(report.adults == 2 and report.children == 1)
+	-- Phase 2 in the morning reads 3: Hearthday.
+	assert(report.weekday == 4 and report.weekday_name == "Hearthday")
+	assert(report.church.claimed and report.church.here and report.church.fund == 33)
+	assert(report.church.target and report.church.target > 50, "the target adds the flesh reserve")
+	priest._villages_alms_need = nil
+	assert(menu.gather(PULPIT).church.target == nil)
+	economy = false
+	local off = menu.gather(PULPIT)
+	assert(off.church.here and off.church.fund == nil and not off.economy)
+	economy = true
+	minetest.get_meta(PULPIT):set_string("villager", "gone")
+	local away = menu.gather(PULPIT)
+	assert(away.church.claimed and not away.church.here)
+	minetest.get_meta(PULPIT):set_string("villager", "")
+	assert(not menu.gather(PULPIT).church.claimed)
+end
+
+-- Install: the right-click opens the page, Refresh redraws it, walking away closes it.
+do
+	menu.install()
+	assert(overrides.name == "living_villages:pulpit" and overrides.fields.on_rightclick)
+	local player = {
+		is_player = function() return true end,
+		get_player_name = function() return "sam" end,
+		get_pos = function() return player_pos end,
+	}
+	local stack = {}
+	assert(overrides.fields.on_rightclick(PULPIT, nil, player, stack) == stack)
+	assert(#shown == 1 and shown[1].form == menu.FORM and shown[1].name == "sam")
+	assert(receive(player, "other:form", {}) == false)
+	assert(receive(player, menu.FORM, {refresh = "Refresh"}) == true and #shown == 2)
+	player_pos = {x = 0, y = 0, z = 40}
+	receive(player, menu.FORM, {refresh = "Refresh"})
+	assert(#shown == 2 and closed == 1, "too far: closed, not redrawn")
+	receive(player, menu.FORM, {refresh = "Refresh"})
+	assert(#shown == 2, "forgotten once closed")
+	player_pos = {x = 0, y = 0, z = 3}
+	overrides.fields.on_rightclick(PULPIT, nil, player, stack)
+	node_there = false
+	receive(player, menu.FORM, {refresh = "Refresh"})
+	assert(closed == 2, "the pulpit is gone")
+	node_there = true
+	overrides.fields.on_rightclick(PULPIT, nil, player, stack)
+	leave(player)
+	local before = #shown
+	receive(player, menu.FORM, {refresh = "Refresh"})
+	assert(#shown == before, "forgotten on leaving")
+	-- A mob or a dispenser right-clicking shows nothing.
+	overrides.fields.on_rightclick(PULPIT, nil, nil, stack)
+	assert(#shown == before)
+end
+
+print("pulpit_menu tests passed")

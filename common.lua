@@ -156,6 +156,25 @@ local function is_holiday(days_ahead)
 	return core.get_day_count and (core.get_day_count() + days_ahead) % 4 == 0 or false
 end
 
+-- The day of the week (ticket 48): a holiday is Sunday, so a week runs from one to the
+-- next, four days, read from the moon as is_holiday reads it. 1 is Sunday, then
+-- WEEKDAYS' order. A forced holiday is Sunday and a forced working day never is.
+local WEEKDAYS = {"Sunday", "Plowday", "Forgeday", "Hearthday"}
+local function day_of_week(days_ahead)
+	days_ahead = days_ahead or 0
+	local index
+	if mcl_moon and mcl_moon.get_moon_phase then
+		local phase = mcl_moon.get_moon_phase()
+		if core.get_timeofday() <= 0.5 then phase = phase + 1 end
+		index = (phase + days_ahead) % 4
+	else
+		index = core.get_day_count and (core.get_day_count() + days_ahead) % 4 or 1
+	end
+	local forced = overridden(core.get_day_count and core.get_day_count() + days_ahead)
+	if forced == true then index = 0 elseif forced == false and index == 0 then index = 1 end
+	return index + 1, WEEKDAYS[index + 1]
+end
+
 local function is_thunder()
 	return mcl_weather and mcl_weather.get_weather
 		and mcl_weather.get_weather() == "thunder" or false
@@ -400,6 +419,8 @@ M = {
 	end_seat_walk = end_seat_walk,
 	schedule_stage = stage_at,
 	is_holiday = is_holiday,
+	day_of_week = day_of_week,
+	WEEKDAYS = WEEKDAYS,
 	work_seconds = work_seconds,
 	work_day_ticks = work_day_ticks,
 	-- Replacement for VoxeLibre's get_activity(tod), which villager.lua
