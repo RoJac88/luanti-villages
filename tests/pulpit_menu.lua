@@ -242,6 +242,14 @@ do
 	assert(text:find("Average 85 a day over 7 days\\, rising", 1, true), text)
 	assert(text:find("Over 6 days: +2", 1, true))
 	assert(text:find("Tavern: 12 meals last evening\\, dinner 3 emeralds", 1, true))
+	-- The stars and the sermon (ticket 48d): one starving caps at four, and the sermon says so.
+	local _, lit = text:gsub("image%[[^%]]*mcl_mobitems_nether_star.png%]", "")
+	local _, dark = text:gsub("nether_star%.png%^\\%[colorize", "")
+	local stars = tonumber(text:match("(%d) of 5 stars"))
+	assert(stars and stars <= 4 and lit == stars and dark == 5 - stars, text)
+	assert(text:find("The cleric preaches: \"", 1, true) and text:find("one of ", 1, true), text)
+	assert(text:find("One starving: at most four stars.", 1, true))
+	assert(text:find("Fed: 67%", 1, true), "each part's score")
 	assert(text:find("Sunday\\, day 1093", 1, true), text)
 	assert(text:find("3 adults\\, 1 children", 1, true))
 	assert(text:find("Farmer 2\\, Tool smith 1", 1, true))
@@ -265,6 +273,7 @@ do
 	assert(page(base):find("No death is recorded here.", 1, true))
 	base.church = {claimed = false}
 	assert(page(base):find("No cleric tends this church.", 1, true))
+	assert(page(base):find("No one preaches here. A note on the pulpit reads: \"", 1, true))
 	base.church = {claimed = true, here = false}
 	assert(page(base):find("The cleric is away.", 1, true))
 	base.church = {claimed = true, here = true, fund = 5}

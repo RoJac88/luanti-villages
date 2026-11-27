@@ -6,7 +6,10 @@
 -- meta once the day turns: the pulpit's node timer runs every few seconds while its block
 -- is loaded (started on placing it, and by an LBM for pulpits a schematic placed or that
 -- were there before), and opening the page notes one too. The page shows the last week's
--- trade and the change in population from it. It shows with or without a cleric: the church part
+-- trade and the change in population from it.
+--
+-- Under the day stand the stars and the sermon (ticket 48d, parish_rating.lua), and each
+-- part's score is listed beside the food. It shows with or without a cleric: the church part
 -- says when no cleric holds the pulpit, and the alms fund needs the economy on.
 --
 -- The lectern the pulpit copies has no right-click of its own (mcl_lectern), so nothing is
@@ -19,6 +22,7 @@ local clock = dofile(core.get_modpath("living_villages") .. "/economy_clock.lua"
 local parish = dofile(core.get_modpath("living_villages") .. "/parish_report.lua")
 local deaths = dofile(core.get_modpath("living_villages") .. "/parish_deaths.lua")
 local register = dofile(core.get_modpath("living_villages") .. "/parish_register.lua")
+local rating = dofile(core.get_modpath("living_villages") .. "/parish_rating.lua")
 
 local M = {}
 
@@ -29,7 +33,10 @@ local VILLAGER = "mobs_mc:villager"
 local VILLAGE_RADIUS = 128
 -- A little past a player's reach, for one who stepped back with the window open.
 local MAX_DISTANCE = 12
-local WIDTH, HEIGHT = 13, 9
+local WIDTH, HEIGHT = 13, 10.5
+local STAR = "mcl_mobitems_nether_star.png"
+local NO_STAR = STAR .. "^[colorize:#000000:190"
+local STAR_SIZE = 0.55
 local TITLE_COLOR, HEADER_COLOR, PROBLEM_COLOR, GOOD_COLOR = "#ffff80", "#c8c8c8", "#ff8a80", "#7fe08a"
 
 local NAMES = {
@@ -154,6 +161,31 @@ local function church_lines(report)
 	return lines
 end
 
+local PART_NAMES = {
+	fed = S("Fed"), trades = S("Trades"), employed = S("Employed"), trade = S("Trade"),
+	safety = S("Alms"), growth = S("Growth"),
+}
+
+local CAP_TEXT = {
+	starving1 = S("One starving: at most four stars."),
+	starving2 = S("Two or more starving: at most three stars."),
+	missing = S("Five stars needs every trade."),
+}
+
+local function rating_lines(rated)
+	local lines = {header(S("Rating"))}
+	for _, part in ipairs(rating.PARTS) do
+		local score = rated.scores[part.name]
+		if score then
+			local text = S("@1: @2%", PART_NAMES[part.name], tostring(math.floor(score * 100 + 0.5)))
+			if score < 0.5 then text = core.colorize(PROBLEM_COLOR, text) end
+			lines[#lines + 1] = text
+		end
+	end
+	if rated.cap_reason then lines[#lines + 1] = CAP_TEXT[rated.cap_reason] end
+	return lines
+end
+
 local function join(...)
 	local lines = {}
 	for _, list in ipairs({...}) do
@@ -164,18 +196,34 @@ local function join(...)
 end
 
 -- The form, from a parish report. Pure, for the tests.
+-- The sermon as the page gives it: the cleric's words, or a note on a pulpit with none.
+function M.sermon_text(report, rated)
+	local line = rating.sermon(rated, report, report.day)
+	if report.church and report.church.claimed then return S("The cleric preaches: \"@1\"", line) end
+	return S("No one preaches here. A note on the pulpit reads: \"@1\"", line)
+end
+
 function M.formspec(report)
+	local rated = rating.rate(report)
 	local parts = {
-		("formspec_version[4]size[%d,%d]"):format(WIDTH, HEIGHT),
+		("formspec_version[4]size[%.2f,%.2f]"):format(WIDTH, HEIGHT),
 		("label[0.4,0.6;%s]"):format(escape(core.colorize(TITLE_COLOR,
 			S("@1, day @2", report.weekday_name, tostring(report.day))))),
 		("button[%.2f,0.25;2.2,0.65;refresh;%s]"):format(WIDTH - 2.6, escape(S("Refresh"))),
 	}
+	for i = 1, 5 do
+		parts[#parts + 1] = ("image[%.2f,1.0;%.2f,%.2f;%s]"):format(0.4 + (i - 1) * (STAR_SIZE + 0.1), STAR_SIZE,
+			STAR_SIZE, escape(i <= rated.stars and STAR or NO_STAR))
+	end
+	parts[#parts + 1] = ("label[%.2f,1.28;%s]"):format(0.6 + 5 * (STAR_SIZE + 0.1),
+		escape(S("@1 of 5 stars", tostring(rated.stars))))
+	parts[#parts + 1] = ("textarea[0.4,1.8;%.2f,1.0;;;%s]"):format(WIDTH - 0.8, escape(M.sermon_text(report, rated)))
 	local half = (WIDTH - 1.2) / 2
-	parts[#parts + 1] = ("textarea[0.4,1.2;%.2f,%.2f;;;%s]"):format(half, HEIGHT - 1.6,
+	local top = 3.0
+	parts[#parts + 1] = ("textarea[0.4,%.2f;%.2f,%.2f;;;%s]"):format(top, half, HEIGHT - top - 0.4,
 		escape(join(people_lines(report), trade_lines(report))))
-	parts[#parts + 1] = ("textarea[%.2f,1.2;%.2f,%.2f;;;%s]"):format(0.8 + half, half, HEIGHT - 1.6,
-		escape(join(food_lines(report), trade_volume_lines(report), church_lines(report))))
+	parts[#parts + 1] = ("textarea[%.2f,%.2f;%.2f,%.2f;;;%s]"):format(0.8 + half, top, half, HEIGHT - top - 0.4,
+		escape(join(rating_lines(rated), food_lines(report), trade_volume_lines(report), church_lines(report))))
 	return table.concat(parts)
 end
 
@@ -225,6 +273,15 @@ local function villagers_around(pos, cleric_id)
 	return adults, children, cleric
 end
 
+-- The villagers' mean reference price for a dinner (dinner.reference), the rating's
+-- measure of trade when no keeper posts one; nil with no adults.
+local function dinner_reference(adults)
+	if #adults == 0 then return nil end
+	local d, sum = dinner_module(), 0
+	for _, villager in ipairs(adults) do sum = sum + d.reference(villager) end
+	return sum / #adults
+end
+
 -- The report for the pulpit at pos, from the world as it is loaded now.
 function M.gather(pos)
 	local claim = core.get_meta(pos):get_string("villager")
@@ -243,6 +300,7 @@ function M.gather(pos)
 		state = food.state, economy = economy, church = church,
 		death = deaths.latest(pos, VILLAGE_RADIUS),
 		tavern = economy and tavern_of(adults) or nil,
+		dinner_ref = economy and dinner_reference(adults) or nil,
 	})
 end
 
