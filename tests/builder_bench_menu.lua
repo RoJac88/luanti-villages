@@ -161,7 +161,7 @@ assert(receive(player(), "other", {}) == false)
 -- Default tab: a row per building of the mix, first selected, what is next and why; nothing to order.
 do
 	local form = last()
-	assert(has(form, "tabheader[0,0;tabs;Default,Select schematic,Economy;1;false;false]"))
+	assert(has(form, "tabheader[0,0;tabs;Default,Select schematic;1;false;false]"))
 	assert(has(form, "The Builder builds what the village needs."))
 	assert(has(form, "Small house") and has(form, "75%") and has(form, "Well"))
 	assert(has(form, ";projects;") and form:find(";2]", 1, true), "first building selected, past the header")
@@ -431,48 +431,12 @@ do
 	assert(shown[#shown].name == "ann" and has(last(), ";1;false"))
 end
 
--- The Economy tab: what the Builder heard, and what is seen around the bench.
+-- No Economy tab (ticket 48e): the pulpit shows the village's state.
 do
 	click()
-	local calls = options_calls
-	economy_report = {
-		heard = true,
-		present = {farmer = 2, builder = 1, weapon_smith = 1},
-		shortages = {{item = "mcl_core:cobble", count = 12, villagers = 2, worth = 3}},
-		gluts = {},
-		gaps = {{profession = "mason", score = 3, items = {"mcl_core:cobble"}}},
-		idle = {{id = "nit123456", profession = "nitwit", activity = "forager"}, {id = "une", profession = "unemployed"}},
-		today = {made = {{item = "mcl_core:cobble", count = 4}}, used = {}, money = {premium_in = 736, flesh_out = 36}},
-		yesterday = {made = {}, used = {}},
-	}
+	assert(not has(last(), "Economy"))
 	send({tabs = "3"})
-	local form = last()
-	assert(has(form, "Select schematic,Economy;3;"))
-	assert(has(form, "Heard by the Builder") and has(form, "Seen around the bench"))
-	assert(has(form, "item_image[") and has(form, "12 Cobblestone\\, 2 villagers"), form)
-	assert(has(form, "No glut heard of."))
-	assert(has(form, "Mason (Cobblestone)") and has(form, "A building for the first comes when nothing is more pressing."))
-	assert(has(form, "Builder 1\\, Farmer 2\\, Weapon smith 1"))
-	assert(has(form, "Nitwit nit123: forager\\, Unemployed une: nothing to do"))
-	assert(has(form, "Made: 4 Cobblestone") and has(form, "Used: nothing"))
-	assert(has(form, "Players: paid 736 for premium goods\\, got 36 for flesh (net 700)"), form)
-	assert(has(form, "Players: paid 0 for premium goods"), "none yesterday")
-	assert(not has(form, "order;") and options_calls == calls, "only looks")
-	-- Refresh reads it again.
-	economy_report.gluts = {{item = "mcl_core:cobble", count = 40, villagers = 1, worth = 5}}
-	send({refresh = "Refresh"})
-	assert(has(last(), "40 Cobblestone"))
-	-- Without the Builder near, nothing heard; with the economy off, it says so.
-	economy_report = {heard = false, present = {}, idle = {},
-		today = {made = {}, used = {}}, yesterday = {made = {}, used = {}}}
-	send({refresh = "Refresh"})
-	assert(has(last(), "no news to tell") and has(last(), "No villagers loaded.") and has(last(), "None."))
-	economy_report = nil
-	send({refresh = "Refresh"})
-	assert(has(last(), "economy is off"))
-	-- Back to the Default tab.
-	send({tabs = "1"})
-	assert(has(last(), ";1;false") and has(last(), "Small house"))
+	assert(has(last(), ";1;false"), "an unknown tab changes nothing")
 end
 
 io.open = real_open

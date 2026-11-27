@@ -6,7 +6,9 @@
 -- 48a reads the loaded villagers around the pulpit when a player looks: the day of the
 -- week, the people, the trades present and those missing for five stars, idle hands, the
 -- food states and the alms fund. 48b adds the emeralds they paid one another today and
--- yesterday (economy_tally.paid) and the latest death (parish_deaths.lua). This file is pure: pulpit_menu.lua gathers the villagers
+-- yesterday (economy_tally.paid) and the latest death (parish_deaths.lua). 48e adds what the
+-- village lacks, from the cleric's market news: shortages, and the professions that would
+-- make them with none present (economy_report's, which the Builder's bench showed until then). This file is pure: pulpit_menu.lua gathers the villagers
 -- and the church and draws the page.
 --
 -- Five stars needs every profession in COUNTED, which is all of VoxeLibre's but the
@@ -67,6 +69,14 @@ function M.missing(present)
 	return list
 end
 
+-- What the village lacks, from the cleric's news as the bench had it from its Builder's
+-- (ticket 48e): {shortages, gaps} (economy_report), or nil with no news.
+function M.needs(heard, present)
+	if not heard then return nil end
+	local shortages = economy_report.shortages(heard)
+	return {shortages = shortages, gaps = economy_report.gaps(shortages, present)}
+end
+
 -- The emeralds `villagers` paid other villagers in trade on `day` (economy_tally.paid).
 function M.paid(villagers, day)
 	local total = 0
@@ -85,7 +95,8 @@ end
 --            fund, target (nil before its first service)},
 --   death: the latest death within the radius (parish_deaths.latest), or nil,
 --   tavern: {keepers, diners (meals served last evening), price (posted dinner)} (48c),
---   dinner_ref: the villagers' mean reference price for a dinner, for the rating (48d).
+--   dinner_ref: the villagers' mean reference price for a dinner, for the rating (48d),
+--   heard: the cleric's market news, own and hearsay, or nil with no cleric loaded (48e).
 function M.build(adults, children, opts)
 	local present = economy_report.present(adults)
 	local idle = economy_report.idle(adults, opts.day)
@@ -111,6 +122,7 @@ function M.build(adults, children, opts)
 		diners = opts.tavern and opts.tavern.diners or 0,
 		dinner_price = opts.tavern and opts.tavern.price,
 		dinner_ref = opts.dinner_ref,
+		needs = M.needs(opts.heard, present),
 		economy = opts.economy,
 		church = opts.church or {},
 	}

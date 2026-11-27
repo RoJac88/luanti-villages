@@ -9,8 +9,7 @@
 -- is free, a greenhouse when it goes hungry, a tavern, bell or church near beds out of reach
 -- of one, the building of the worst economic gap, a workplace for the unemployed, and with
 -- nothing pressing the stock mix (village_census.lua). The gap is read from this Builder's
--- market news and the villagers loaded near the bench (economy_report.lua). M.economy gives
--- the same report to the bench's Economy tab (builder_bench_menu.lua).
+-- market news and the villagers loaded near the bench (economy_report.lua, M.economy).
 --
 -- Waiting for materials, it posts what it lacks and buys it from villagers on trade trips
 -- (builder_market.lua, trade_trips.lua), with its own emeralds and any left in its chests.
@@ -418,7 +417,7 @@ local function builder_news(self)
 	return known
 end
 
--- The bench's economy report (economy_report.lua), for its Economy tab and the census, or
+-- The bench's economy report (economy_report.lua), for the census, or
 -- nil with the economy off. What was heard comes from the bench's Builder, if it is loaded.
 function M.economy(bench)
 	if not economy_clock.enabled() then return nil end

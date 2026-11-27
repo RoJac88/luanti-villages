@@ -1179,17 +1179,11 @@ The days are kept in `_villages_tier_supply` ({tier, days, day}). Going up sets
 
 **Visibility.**
 
-- **Economy tab** on the Builder's bench (`builder_bench_menu.lua`, from
-  `economy_report.lua` through `builder.economy`), in two labelled halves. *Heard by
-  the Builder*: shortages and gluts, its market news (own and hearsay) summed by item
-  with how many villagers and items, and the missing professions: those that make
-  what the village is short of when none of that item's producers is present, worst
-  (most worth answered) first. *Seen around the bench*: the loaded adult villagers
-  within 128: professions present (the keeper and the Builder by role), nitwits and
-  the unemployed with today's activity, and goods made and used today and yesterday.
-  Made and used come from each villager's tally (`economy_tally.lua`,
-  `_villages_tally`): crafts with their inputs and lumps, gathering and charcoal,
-  meals. With no Builder loaded nothing is heard; with the economy off it says so.
+- **The parish register** on the church's pulpit (ticket 48, `pulpit_menu.lua`): the day
+  of the week, the village's stars and sermon, its people, trades, needs, food, trade
+  volume and church, for the village within 128 of the pulpit. It replaced the Builder's
+  bench Economy tab (ticket 10), removed in 48e; `economy_report.lua` still gives the
+  census its worst gap through `builder.economy`.
 - **Need bubble** (`need_bubble.lua`). Once a second, a ray from each player's eye
   along its look, 8 nodes; the first object, if an adult villager, shows that player
   a particle of its top need by worth (the first of its ledger's needs, as the
@@ -1249,7 +1243,7 @@ village turns raw materials into goods.
 | `common.lua` | `activity_override` answers for labour activities |
 | `far_trips.lua` | Trade trips and labour sites count as errands |
 | `builder.lua`, `builder_status.lua` | Builder posts its missing materials as news and buys them on trade trips; Buy buttons unchanged |
-| `builder_bench_menu.lua` | Economy tab |
+| `builder_bench_menu.lua` | Economy tab (until ticket 48e; now `pulpit_menu.lua`) |
 | `village_census.lua` | Economic weight in the building choice |
 | `market.lua`, `bell.lua` | Stalls sell real surplus (ticket 12) |
 | `diagnostic.lua` | Shows the economy fields |
@@ -4302,7 +4296,11 @@ the keeper's among them; dinners nearer demand.
 
 ### 48. The parish register
 
-Status: design.
+Status: built (#179 48a, #180 48b, #181 48c, #182 48d, 48e). Choices beyond the rule: a
+village with no adults is one star; the alms part is half while the cleric is away or before
+its first service; the village needs come from the cleric's news, and with no cleric loaded
+the page says no one knows what the village lacks. The bench's made-and-used lists and the
+players' money flows were not moved to the pulpit.
 
 **Problem.** The Builder's bench Economy tab (ticket 10) lists what the Builder heard and what
 it sees around the bench, but it gives no verdict: a player has to read it all to learn
