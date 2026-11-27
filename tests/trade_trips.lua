@@ -586,6 +586,7 @@ do
 	local hires = trips.hire({hand, client})
 	assert(#hires == 1 and hires[1].commission, "no seller: a commission")
 	local c = hand._villages_commission
+	assert((client._villages_tally and client._villages_tally.money and client._villages_tally.money.paid or 0) == c.price and (hand._villages_tally and hand._villages_tally.money and hand._villages_tally.money.paid or 0) == 0, "the client notes the commission it paid (ticket 48b)")
 	local recipe = recipes.labour[c.index]
 	assert(c.item == LANTERN and recipe.makes == LANTERN and c.client == fond and c.count == 1)
 	local cost = commission.cost(recipe, possessions.prices_of(client))
@@ -862,6 +863,7 @@ do
 	-- 30 nuggets make three ingots, whole batches: 27 go, 3 stay.
 	assert(trips.buy_from_stash(armo, trip, stash) == 3, "three ingots from 30 nuggets")
 	assert(count(armo, INGOT) == 3 and chest_count(stash, NUGGET) == 3 and chest_count(stash, EMERALD) == 48)
+	assert((armo._villages_tally and armo._villages_tally.money and armo._villages_tally.money.paid or 0) == 48, "a stash buy is trade (ticket 48b)")
 	local bought, why = trips.buy_from_stash(armo, trip, stash)
 	assert(bought == 0 and why:find("stash holds 0 from " .. NUGGET, 1, true), why)
 	-- Without the sources told, nuggets are no ingots.

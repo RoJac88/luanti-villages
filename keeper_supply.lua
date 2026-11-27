@@ -72,6 +72,7 @@ local keeper = dofile(core.get_modpath("living_villages") .. "/keeper.lua")
 local possessions = dofile(core.get_modpath("living_villages") .. "/possessions.lua")
 local food = dofile(core.get_modpath("living_villages") .. "/food.lua")
 local dinner = dofile(core.get_modpath("living_villages") .. "/dinner.lua")
+local tally = dofile(core.get_modpath("living_villages") .. "/economy_tally.lua")
 local prices = dofile(core.get_modpath("living_villages") .. "/prices.lua")
 local market = dofile(core.get_modpath("living_villages") .. "/keeper_market.lua")
 
@@ -347,6 +348,7 @@ end
 function M.pay(self, chest, taken)
 	local due = M.tab(chest) + M.worth(taken, self, chest)
 	local paid = stock.put_in_chest(self, chest, EMERALD, math.min(math.floor(due + EPSILON), stock.count(self, EMERALD)))
+	tally.paid(self, paid)
 	local owed = due - paid
 	local cap = M.tab_cap()
 	if owed > cap then

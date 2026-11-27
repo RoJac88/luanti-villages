@@ -5,7 +5,8 @@
 --
 -- 48a reads the loaded villagers around the pulpit when a player looks: the day of the
 -- week, the people, the trades present and those missing for five stars, idle hands, the
--- food states and the alms fund. This file is pure: pulpit_menu.lua gathers the villagers
+-- food states and the alms fund. 48b adds the emeralds they paid one another today and
+-- yesterday (economy_tally.paid) and the latest death (parish_deaths.lua). This file is pure: pulpit_menu.lua gathers the villagers
 -- and the church and draws the page.
 --
 -- Five stars needs every profession in COUNTED, which is all of VoxeLibre's but the
@@ -16,6 +17,7 @@
 -- alchemist (a cleric) its cleric.
 local core = minetest
 local economy_report = dofile(core.get_modpath("living_villages") .. "/economy_report.lua")
+local tally = dofile(core.get_modpath("living_villages") .. "/economy_tally.lua")
 
 local COUNTED = {
 	"farmer", "shepherd", "fletcher", "librarian", "cartographer", "cleric",
@@ -29,6 +31,14 @@ local NOT_TRADES = {nitwit = true, unemployed = true}
 local FOOD_STATES = {"full", "fed", "hungry", "starving"}
 
 local M = {COUNTED = COUNTED, ORDER = ORDER, FOOD_STATES = FOOD_STATES}
+
+-- A villager's trade as the page names it: a child, its role (the keeper, a Builder, an
+-- alchemist), else its profession.
+function M.trade_of(villager)
+	if villager.child then return "child" end
+	return (villager._villages_keeper and "keeper") or (villager._villages_builder and "builder")
+		or (villager._villages_alchemist and "alchemist") or villager._profession or "villager"
+end
 
 -- {name, count} for each trade present, in ORDER, then any other, by name.
 function M.trades(present)
@@ -57,12 +67,23 @@ function M.missing(present)
 	return list
 end
 
+-- The emeralds `villagers` paid other villagers in trade on `day` (economy_tally.paid).
+function M.paid(villagers, day)
+	local total = 0
+	for _, villager in ipairs(villagers) do
+		local _, _, money = tally.on(villager, day)
+		total = total + (money and money.paid or 0)
+	end
+	return total
+end
+
 -- The report. `adults` and `children` are the villagers around the pulpit; `opts`:
 --   day, weekday (index), weekday_name,
 --   state(villager): its food state (food.state),
 --   economy: whether the village economy is on,
 --   church: {claimed = whether a cleric holds the pulpit, here = that cleric is loaded,
---            fund, target (nil before its first service)}.
+--            fund, target (nil before its first service)},
+--   death: the latest death within the radius (parish_deaths.latest), or nil.
 function M.build(adults, children, opts)
 	local present = economy_report.present(adults)
 	local idle = economy_report.idle(adults, opts.day)
@@ -82,6 +103,8 @@ function M.build(adults, children, opts)
 		trades = M.trades(present), missing = M.missing(present),
 		idle = #idle, labouring = labouring,
 		food = food,
+		paid_today = M.paid(adults, opts.day), paid_yesterday = M.paid(adults, opts.day - 1),
+		death = opts.death,
 		economy = opts.economy,
 		church = opts.church or {},
 	}

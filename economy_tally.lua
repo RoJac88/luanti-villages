@@ -7,6 +7,11 @@
 --
 -- `money` (ticket 37b) is what crossed between players and the village: `premium_in`, paid
 -- for premium goods (trade_window.lua), and `flesh_out`, the cleric's pay for rotten flesh.
+-- `paid` (ticket 48b) is what the villager paid other villagers for goods and services, the
+-- village's trade volume for the pulpit (`M.paid`): a sale in person (exchange.lua), a buy
+-- from a stash or a farm chest (trade_trips.lua, keeper_supply.lua), a meal at the tavern
+-- (meal.lua) and a commission (trade_trips.lua). Rent, alms, donations and a porter's purse
+-- and change move money without trade, so they are left out.
 --
 -- `last` is the day before `day`, kept when the day turns; anything older is dropped.
 -- production.lua notes crafts (output made, inputs and fuel used), labour.lua gathering
@@ -47,6 +52,12 @@ function M.money(self, kind, amount, day)
 	local tally = today(self, day)
 	tally.money = tally.money or {}
 	add(tally.money, kind, amount)
+end
+
+-- Notes emeralds it paid another villager in trade (ticket 48b). Nothing for none.
+function M.paid(self, amount, day)
+	if not amount or amount <= 0 then return end
+	M.money(self, "paid", amount, day)
 end
 
 -- What it made and used on `day`, and its money flows, or nil for each.

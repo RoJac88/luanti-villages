@@ -58,6 +58,7 @@ local pantry = dofile(core.get_modpath("living_villages") .. "/tavern_pantry.lua
 local possessions = dofile(core.get_modpath("living_villages") .. "/possessions.lua")
 local news = dofile(core.get_modpath("living_villages") .. "/market_news.lua")
 local dinner = dofile(core.get_modpath("living_villages") .. "/dinner.lua")
+local tally = dofile(core.get_modpath("living_villages") .. "/economy_tally.lua")
 local variety = dofile(core.get_modpath("living_villages") .. "/variety.lua")
 local ENTITY = "living_villages:meal"
 local PLATE = "mcl_itemframes:plate"
@@ -388,6 +389,7 @@ local function settle(self, jukebox, chests, item, portion, price, pay, what)
 		pay()
 		pantry.put(chests, pantry.EMERALD, price)
 		if is_villager(self) then
+			tally.paid(self, price)
 			core.log("action", string.format("[living_villages] villager %s paid %d emerald(s) for %s at the tavern at %s",
 				tostring(self._id):sub(1, 6), price, what or "dinner", core.pos_to_string(jukebox)))
 		end
