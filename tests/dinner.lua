@@ -217,8 +217,10 @@ dinner.ran_out(busy, 10)
 assert(dinner.demand(busy) == 0, "not before the day is out")
 dinner.settle(busy, nil, 11)
 assert(dinner.demand(busy) == 25)
+assert(dinner.last_served(busy) == 20, "the meals alone, for the pulpit (ticket 48c)")
 dinner.settle(busy, nil, 12)
-assert(dinner.demand(busy) == 0)
+assert(dinner.demand(busy) == 0 and dinner.last_served(busy) == 0)
+assert(dinner.last_served(nil) == 0 and dinner.last_served({}) == 0)
 dinner.served(nil, 12)
 
 -- Amounts counted in dinners follow its reference price for one.

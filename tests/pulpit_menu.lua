@@ -5,7 +5,16 @@ local objects, metas, shown, closed = {}, {}, {}, 0
 local node_there, player_pos = true, {x = 0, y = 0, z = 3}
 local overrides, receive, leave
 local stored, serialized = {}, {}
+local lbm, timers = nil, {}
 minetest = {
+	register_lbm = function(def) lbm = def end,
+	get_node_timer = function(pos)
+		local key = pos.x .. "," .. pos.y .. "," .. pos.z
+		return {
+			is_started = function() return timers[key] ~= nil end,
+			start = function(_, seconds) timers[key] = seconds end,
+		}
+	end,
 	get_mod_storage = function()
 		return {
 			get_string = function(_, k) return stored[k] or "" end,
@@ -67,6 +76,7 @@ local parish = dofile("parish_report.lua")
 local menu = dofile("pulpit_menu.lua")
 local tally = dofile("economy_tally.lua")
 local deaths = dofile("parish_deaths.lua")
+local register = dofile("parish_register.lua")
 
 local function villager(fields)
 	fields.name = fields.name or "mobs_mc:villager"
@@ -174,6 +184,42 @@ do
 	stored[deaths.KEY] = nil
 end
 
+-- The register (ticket 48c): a day noted once, the last KEEP kept, averages over the days
+-- noted, trends from four.
+do
+	local list = {}
+	assert(register.due(list, 10))
+	local report = {adults = 10, children = 2, food = {starving = 1, hungry = 2}, paid_yesterday = 40,
+		diners = 6, church = {fund = 90}}
+	list = register.push(list, register.entry(report, 10))
+	assert(#list == 1 and list[1].day == 9 and list[1].paid == 40 and list[1].starving == 1 and list[1].fund == 90)
+	assert(not register.due(list, 10), "noted for the day that ended")
+	assert(register.due(list, 11))
+	report.paid_yesterday = 44
+	list = register.push(list, register.entry(report, 10))
+	assert(#list == 1 and list[1].paid == 44, "a day noted again is replaced")
+	for d = 11, 20 do
+		report.paid_yesterday = d * 10
+		list = register.push(list, register.entry(report, d))
+	end
+	assert(#list == register.KEEP and list[1].day == 13 and list[#list].day == 19)
+	assert(register.average(list, "paid") == 170 and select(2, register.average(list, "paid")) == 7)
+	assert(register.trend(list, "paid") == "rising")
+	assert(register.trend({{paid = 50}, {paid = 50}, {paid = 30}, {paid = 30}}, "paid") == "falling")
+	assert(register.trend({{paid = 50}, {paid = 52}, {paid = 49}, {paid = 51}}, "paid") == "steady")
+	assert(register.trend({{paid = 0}, {paid = 0}, {paid = 0}, {paid = 0}}, "paid") == "steady")
+	assert(register.trend({{paid = 1}, {paid = 2}, {paid = 3}}, "paid") == nil, "too few days")
+	assert(register.average({}, "paid") == nil)
+	-- Gaps: averages count the days noted.
+	local gappy = {{day = 1, paid = 10, adults = 8, children = 0}, {day = 5, paid = 30, adults = 9, children = 1}}
+	assert(register.average(gappy, "paid") == 20 and register.span(gappy) == 5)
+	local growth, days = register.growth(gappy, 9, 2, 6)
+	assert(growth == 3 and days == 5)
+	assert(register.growth({}, 1, 1, 1) == nil)
+	local summary = register.summary(gappy, {adults = 7, children = 0, day = 6})
+	assert(summary.paid_avg == 20 and summary.paid_days == 2 and summary.growth == -1 and summary.last_day == 5)
+end
+
 -- The page.
 local function page(report)
 	return menu.formspec(report)
@@ -187,10 +233,15 @@ do
 		church = {claimed = true, here = true, fund = 40, target = 120},
 		paid_today = 34, paid_yesterday = 120,
 		death = {id = "84ebb7aa", trade = "tool_smith", cause = "drowned", day = 1090},
+		keepers = 1, diners = 12, dinner_price = 3,
+		register = {paid_avg = 85.4, paid_days = 7, paid_trend = "rising", growth = 2, growth_days = 6},
 	}
 	local text = page(base)
 	assert(text:find("Latest death: The tool smith 84ebb7 drowned\\, day 1090", 1, true), text)
 	assert(text:find("Paid between villagers: 34 emeralds today\\, 120 yesterday", 1, true))
+	assert(text:find("Average 85 a day over 7 days\\, rising", 1, true), text)
+	assert(text:find("Over 6 days: +2", 1, true))
+	assert(text:find("Tavern: 12 meals last evening\\, dinner 3 emeralds", 1, true))
 	assert(text:find("Sunday\\, day 1093", 1, true), text)
 	assert(text:find("3 adults\\, 1 children", 1, true))
 	assert(text:find("Farmer 2\\, Tool smith 1", 1, true))
@@ -201,6 +252,13 @@ do
 	assert(text:find("button%[.-refresh;Refresh%]"))
 	base.missing = {}
 	assert(page(base):find("Every trade is here.", 1, true))
+	base.register = {paid_avg = 10, paid_days = 2, growth = -3, growth_days = 1}
+	assert(page(base):find("Average 10 a day over 2 days\n", 1, true), "no trend from two days")
+	assert(page(base):find("Over 1 days: -3", 1, true))
+	base.register = {}
+	assert(not page(base):find("Average", 1, true) and not page(base):find("Over ", 1, true), "nothing noted yet")
+	base.keepers = 0
+	assert(page(base):find("No keeper serves dinner here.", 1, true))
 	base.death = {id = "k1", trade = "child", cause = "died in a fall", day = 3}
 	assert(page(base):find("Latest death: A child k1 died in a fall", 1, true))
 	base.death = nil
@@ -214,6 +272,7 @@ do
 	base.economy = false
 	assert(page(base):find("economy is off", 1, true))
 	assert(not page(base):find("Paid between villagers", 1, true), "no trade volume with the economy off")
+	assert(not page(base):find("keeper", 1, true) and not page(base):find("Tavern", 1, true))
 	base.trades = {}
 	assert(page(base):find("No one here has a trade.", 1, true))
 end
@@ -250,6 +309,32 @@ do
 	assert(not menu.gather(PULPIT).church.claimed)
 end
 
+-- The tavern from its keepers: last evening's meals, the posted price; the register noted
+-- once a day by the timer and by opening the page.
+do
+	local JUKEBOX = {x = 5, y = 0, z = 5}
+	minetest.get_meta(JUKEBOX):set_string("villages_dinner_price", "3")
+	local keeper = villager({_id = "kp", _profession = "farmer", _villages_keeper = true, _jobsite = JUKEBOX,
+		_villages_dinner = {day = 10, last_served = 9}})
+	tally.paid(keeper, 20, 9)
+	objects = as_objects({keeper, villager({_id = "f2", _profession = "farmer"})})
+	local report = menu.gather(PULPIT)
+	assert(report.keepers == 1 and report.diners == 9 and report.dinner_price == 3)
+	economy = false
+	assert(menu.gather(PULPIT).keepers == 0, "no tavern with the economy off")
+	economy = true
+	minetest.get_meta(PULPIT):set_string(register.META, "")
+	day = 10
+	local list = menu.note(PULPIT)
+	assert(#list == 1 and list[1].day == 9 and list[1].paid == 20 and list[1].diners == 9 and list[1].adults == 2)
+	tally.paid(keeper, 5, 9)
+	assert(menu.note(PULPIT)[1].paid == 20, "not noted twice in a day")
+	day = 11
+	assert(#menu.note(PULPIT) == 2, "the next day")
+	minetest.get_meta(PULPIT):set_string(register.META, "")
+	day = 10
+end
+
 -- Install: the right-click opens the page, Refresh redraws it, walking away closes it.
 do
 	menu.install()
@@ -262,6 +347,20 @@ do
 	local stack = {}
 	assert(overrides.fields.on_rightclick(PULPIT, nil, player, stack) == stack)
 	assert(#shown == 1 and shown[1].form == menu.FORM and shown[1].name == "sam")
+	assert(#register.load(PULPIT) == 1, "opening the page notes the day")
+	-- The timer: started on placing, by the LBM on load, and noting on each run.
+	assert(lbm and lbm.name == "living_villages:pulpit_register" and lbm.run_at_every_load
+		and lbm.nodenames[1] == "living_villages:pulpit")
+	local placed = {x = 50, y = 0, z = 0}
+	overrides.fields.on_construct(placed)
+	assert(timers["50,0,0"] == register.TIMER_SECONDS)
+	local loaded = {x = 60, y = 0, z = 0}
+	lbm.action(loaded)
+	assert(timers["60,0,0"] == register.TIMER_SECONDS)
+	timers["60,0,0"] = 99
+	lbm.action(loaded)
+	assert(timers["60,0,0"] == 99, "a running timer is left alone")
+	assert(overrides.fields.on_timer(loaded) == true and #register.load(loaded) == 1, "the timer notes and repeats")
 	assert(receive(player, "other:form", {}) == false)
 	assert(receive(player, menu.FORM, {refresh = "Refresh"}) == true and #shown == 2)
 	player_pos = {x = 0, y = 0, z = 40}
