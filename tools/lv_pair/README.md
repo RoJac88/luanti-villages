@@ -26,17 +26,19 @@ hills or decorations) and runs the `lv_town` world mod's setup. The setup:
 3. gives every trade that has nobody a job block on open ground: farmer, fisherman, fletcher,
    shepherd, librarian, cartographer, armorer, butcher, weapon smith, tool smith, cleric, mason,
    leatherworker, keeper, Builder, woodcutter and alchemist. It adds tower houses if too few
-   villagers are out of work, and leaves 2 out of work as labourers;
-4. adds two chickens by the butcher's smoker, an oak grove, sugar cane along a channel,
-   poppies and the quarry (a cobblestone generator), and puts a chest by any bed that has no
+   villagers are out of work, and leaves 2 out of work as labourers (`--labour N` for more);
+4. adds four chickens by the butcher's smoker, four cows by the leatherworker's cauldron, an
+   oak grove, sugar cane along a channel, poppies and the quarry (a cobblestone generator), and puts a chest by any bed that has no
    stash;
 5. writes `census.json`, plus `lvw.conf` with `lv_keep`'s centre and the spawn point, then
    shuts down.
 
 The build fails, and says why, if any trade is missing, if a villager has no stash, if
-there are fewer than two chickens, or if there isn't exactly one bell (one village). The
+there are fewer than two chickens or two cows, or if there isn't exactly one bell (one village). The
 `lv_town` mod stays in the template, and it declines every village VoxeLibre would
-generate, so the test village is the only one however far the world grows. The cows and
+generate, so the test village is the only one however far the world grows, and `lvw.conf`
+turns pillager outposts off (`mcl_disabled_structures`); the flat world's `nodecorations`
+already keeps mapgen structures out. The cows and
 sheep come from the leatherworker's herd and the shepherd's flock, which seed themselves.
 
 ```sh
