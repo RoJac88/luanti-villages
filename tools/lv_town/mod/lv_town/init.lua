@@ -15,7 +15,7 @@
 --      stash chests and staffing all apply
 --   4. after staffing, a job block on open ground for each trade nobody has, and tower
 --      houses for more villagers if too few are out of work (LABOUR stay out of work)
---   5. two chickens by the butcher's smoker, an oak grove, sugar cane on a channel,
+--   5. chickens by the butcher's smoker, cows by the leatherworker's cauldron, an oak grove, sugar cane on a channel,
 --      poppies, the quarry (a cobblestone generator), a chest by any bed without a stash
 --   6. census.json, lvw.conf (lv_keep's centre, the spawn point) and setup.done
 local core = minetest
@@ -25,7 +25,8 @@ local DONE, FAILED = WORLD .. "/setup.done", WORLD .. "/setup.failed"
 local SEED = tonumber(core.settings:get("lv_town_seed")) or 1
 local SETUP = core.settings:get_bool("lv_town_setup", false)
 local AREA = 112
-local LABOUR = 2
+local LABOUR = tonumber(core.settings:get("lv_town_labour")) or 2
+local CHICKENS, COWS = 4, 4
 local GRASS = "mcl_core:dirt_with_grass"
 local WATER = "mcl_core:water_source"
 
@@ -93,7 +94,9 @@ core.register_on_mods_loaded(function()
 	local class = mcl_mobs.mob_class
 	local original = class.player_in_active_range
 	class.player_in_active_range = function(self, ...)
-		if self.name == "mobs_mc:villager" or self.name == "mobs_mc:chicken" then return true end
+		if self.name == "mobs_mc:villager" or self.name == "mobs_mc:chicken" or self.name == "mobs_mc:cow" then
+			return true
+		end
 		return original(self, ...)
 	end
 end)
@@ -203,6 +206,46 @@ local function census()
 	return by_trade, list, missing, no_stash
 end
 
+-- The jobsite of the first villager of a trade.
+local function jobsite_of(trade)
+	for _, e in ipairs(villagers()) do
+		if trade_of(e) == trade and e._jobsite then return e._jobsite end
+	end
+end
+
+-- How many `mob` stand within 12 of the trade's jobsite.
+local function animals_by(trade, mob)
+	local j = jobsite_of(trade)
+	local n = 0
+	if not j then return 0 end
+	for _, obj in ipairs(core.get_objects_inside_radius(j, 12)) do
+		local l = obj:get_luaentity()
+		if l and l.name == mob then n = n + 1 end
+	end
+	return n
+end
+
+-- `count` of `mob` on open cells beside the trade's jobsite.
+local function spawn_by(trade, mob, count)
+	local j = jobsite_of(trade)
+	if not j then return end
+	local n = 0
+	for r = 1, 4 do
+		for dx = -r, r do
+			for dz = -r, r do
+				local p = {x = j.x + dx, y = j.y, z = j.z + dz}
+				local below = core.registered_nodes[node({x = p.x, y = p.y - 1, z = p.z})]
+				if n < count and (math.abs(dx) == r or math.abs(dz) == r) and node(p) == "air"
+						and node({x = p.x, y = p.y + 1, z = p.z}) == "air" and below and below.walkable then
+					core.add_entity(p, mob)
+					n = n + 1
+					report.placed[#report.placed + 1] = {what = mob, pos = core.pos_to_string(p)}
+				end
+			end
+		end
+	end
+end
+
 local function count_nodes(names, radius)
 	local found = core.find_nodes_in_area({x = -radius, y = G - 8, z = -radius},
 		{x = radius, y = G + 24, z = radius}, names)
@@ -215,35 +258,30 @@ local function phase_census()
 	report.villagers, report.by_trade, report.missing = list, by_trade, missing
 	report.adults = #list
 	report.no_stash = #no_stash
-	local butcher
-	for _, e in ipairs(villagers()) do
-		if trade_of(e) == "butcher" and e._jobsite then butcher = e end
-	end
-	local chickens = 0
-	if butcher then
-		for _, obj in ipairs(core.get_objects_inside_radius(butcher._jobsite, 12)) do
-			local l = obj:get_luaentity()
-			if l and l.name == "mobs_mc:chicken" then chickens = chickens + 1 end
-		end
-	end
+	local chickens = animals_by("butcher", "mobs_mc:chicken")
+	local cows = animals_by("leatherworker", "mobs_mc:cow")
 	report.chickens_by_smoker = chickens
+	report.cows_by_cauldron = cows
 	report.reeds = count_nodes({"mcl_core:reeds"}, AREA)
 	report.poppies = count_nodes({"mcl_flowers:poppy"}, AREA)
 	report.oak_logs = count_nodes({"mcl_core:tree"}, AREA)
 	report.bells = count_nodes({"mcl_bells:bell"}, AREA)
 	report.lava = count_nodes({"mcl_core:lava_source"}, AREA)
 	write(WORLD .. "/lvw.conf", string.format(
-		"lv_keep_center = 0,%d,0\nlv_keep_radius = 96\nstatic_spawnpoint = 0,%d,0\n", G, G + 20))
+		"lv_keep_center = 0,%d,0\nlv_keep_radius = 96\nstatic_spawnpoint = 0,%d,0\n"
+		.. "mcl_disabled_structures = pillager_outpost\n", G, G + 20))
 	local shape = {}
 	for trade, n in pairs(by_trade) do shape[#shape + 1] = trade .. "=" .. n end
 	table.sort(shape)
 	log("census: %d adults: %s", #list, table.concat(shape, " "))
+	log("census: cows %d, labour %d", cows, LABOUR)
 	log("census: missing [%s], without stash %d, chickens %d, reeds %d, poppies %d, oak logs %d, bells %d, lava %d",
 		table.concat(missing, " "), #no_stash, chickens, report.reeds, report.poppies, report.oak_logs,
 		report.bells, report.lava)
 	if #missing > 0 then return finish(false, "missing trades: " .. table.concat(missing, " ")) end
 	if #no_stash > 0 then return finish(false, #no_stash .. " villagers without a stash or work chest") end
 	if chickens < 2 then return finish(false, "chickens by the smoker: " .. chickens) end
+	if cows < 2 then return finish(false, "cows by the cauldron: " .. cows) end
 	if report.bells ~= 1 then return finish(false, "bells: " .. report.bells .. " (another village?)") end
 	finish(true)
 end
@@ -267,24 +305,8 @@ end
 
 -- 5. What the economy needs round the village.
 local function phase_extras()
-	local butcher
-	for _, e in ipairs(villagers()) do
-		if trade_of(e) == "butcher" and e._jobsite then butcher = e end
-	end
-	if butcher then
-		local j = butcher._jobsite
-		local n = 0
-		for dx = -2, 2 do
-			for dz = -2, 2 do
-				local p = {x = j.x + dx, y = j.y, z = j.z + dz}
-				if n < 2 and node(p) == "air" and node({x = p.x, y = p.y + 1, z = p.z}) == "air" then
-					core.add_entity(p, "mobs_mc:chicken")
-					n = n + 1
-					report.placed[#report.placed + 1] = {what = "chicken", pos = core.pos_to_string(p)}
-				end
-			end
-		end
-	end
+	spawn_by("butcher", "mobs_mc:chicken", CHICKENS)
+	spawn_by("leatherworker", "mobs_mc:cow", COWS)
 	local grove = spot(15, 15, 30, 95)
 	if grove then
 		for i = 0, 2 do

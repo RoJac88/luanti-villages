@@ -2,9 +2,10 @@
 # Builds the standard test village (tools/lv_town/README.md) on a fresh flat world, headless,
 # and packs it as a template for tools/lv_world/lvw.sh new.
 #
-#   tools/lv_town/build.sh [--seed N] [--ref REF] [--push]
+#   tools/lv_town/build.sh [--seed N] [--labour N] [--ref REF] [--push]
 #
 # --seed  the world seed and the village's PseudoRandom (default 1)
+# --labour how many villagers stay out of work (default 2)
 # --ref   the living_villages code that builds it (default origin/main)
 # --push  copy the template to the thinkpad (~/LVTown-<seed>.tar)
 #
@@ -21,11 +22,13 @@ mods_dir=$(lv_user_dir)/mods
 luanti=${LUANTI:-/usr/bin/luanti}
 
 seed=1
+labour=2
 ref=origin/main
 push=false
 while [ $# -gt 0 ]; do
 	case $1 in
 		--seed) seed=$2; shift 2 ;;
+		--labour) labour=$2; shift 2 ;;
 		--ref) ref=$2; shift 2 ;;
 		--push) push=true; shift ;;
 		*) echo "unknown option $1" >&2; exit 2 ;;
@@ -62,6 +65,7 @@ server_announce = false
 max_forceloaded_blocks = 4000
 lv_town_setup = true
 lv_town_seed = $seed
+lv_town_labour = $labour
 CONF
 
 port=$(lv_claim_port "${LV_TOWN_PORT:-30970}" "$work/ports")
